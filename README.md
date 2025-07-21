@@ -28,3 +28,15 @@ https://www.youtube.com/watch?v=x2-DFRnEFBU - Android Tutorial.
 * Press 'D' to toggle the dark mode.
 * Press 'F' to toggle the show mass option.
 * Press 'ESC' for the option menu.
+
+## Trading Bot
+
+This repository now includes a simple Python trading bot (`trading_bot.py`).
+It fetches historical data from Yahoo Finance, optimizes a moving average
+crossover strategy, and outputs a basic buy or sell decision. Use
+
+```bash
+python trading_bot.py AAPL --start 2022-01-01 --end 2022-06-01 --opt
+```
+
+to run an example with parameter optimization.
