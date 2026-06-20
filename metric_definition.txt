@@ -1,0 +1,5 @@
+Messbare Metrik: Aufgaben-Erfolgsrate
+Definition: (Anzahl erfolgreich abgeschlossener Aufgaben / Gesamtanzahl der gestellten Aufgaben) * 100
+Erfassung: Jede abgeschlossene Aufgabe wird als 'erfolgreich' oder 'fehlgeschlagen' gekennzeichnet.
+Speicherung: Ergebnisse werden in einer CSV-Datei 'task_results.csv' mit Spalten 'task_id', 'status' (success/failure), 'timestamp' gespeichert.
+Berechnung: Aufgaben-Erfolgsrate = (Anzahl 'success' Einträge / Gesamtanzahl Einträge) * 100

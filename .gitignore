@@ -1,24 +1,39 @@
+# --- Secrets / Keys ---
+*.key
+*.pem
+*.env
+.env
+id_*
+*.token
+config.json
+config*.json
+# --- Logs / temp / backups ---
 *.log
 *.tmp
 *.bak
-__pycache__/
-*.pyc
-venv/
-.gitignore
-.git/
-*.sh
-*.prof
-*.md
-*.txt
-*.csv
-*.py
-*.sh
+*.bak.*
 *.out
 *.err
-*.lock
-results/
+*.prof
+performance_log.txt
 logs/
+results/
 backups/
 agent_versions/
+# --- Caches / venv ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+# --- Grosse Binaries / Installer / fremde Programme ---
+ollama/
+Miniconda3-*.sh
+*.dll
+*.exe
+*.so
+*.bin
+*.tar.gz
+*.zip
+# --- OS ---
 .DS_Store
 Thumbs.db

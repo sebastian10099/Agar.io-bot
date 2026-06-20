@@ -1,0 +1,6 @@
+task_id,status,timestamp
+task_001,success,2026-06-16 19:41:05.819330
+task_002,failure,2026-06-16 19:41:05.819406
+task_003,success,2026-06-16 19:41:05.819442
+task_001,success,2026-06-16 19:42:26.240636
+task_002,failure,2026-06-16 19:42:26.240739

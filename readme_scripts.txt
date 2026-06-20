@@ -1,0 +1,15 @@
+cleanup_report.sh
+disk_usage_monitor.sh
+file_permissions_check.sh
+log_analyzer.sh
+log_checker.sh
+memory_check.sh
+memory_monitor.sh
+memory_usage.sh
+network_status.sh
+process_monitor.sh
+service_status.sh
+system_health.sh
+workspace_analyzer.sh
+workspace_backup.sh
+workspace_status.sh

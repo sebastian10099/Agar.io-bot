@@ -1,0 +1,121 @@
+===========================================
+UNIFIED SYSTEM REPORT
+Erstellt am: Thu Jun 18 15:13:49 UTC 2026
+===========================================
+
+--- HEALTH CHECK ---
+=========================================
+SYSTEM HEALTH CHECK REPORT
+=========================================
+
+1. DISK USAGE CHECK
+-------------------
+
+2. MEMORY USAGE CHECK
+-------------------
+=== Speicherüberwachung ===
+RAM: 985800 / 16376016 KB (6%)
+Swap: 46568 / 102396 KB (45%)
+
+
+3. CPU USAGE CHECK
+-------------------
+=== CPU-Überwachung ===
+CPU-Auslastung: 2%
+
+4. PROCESS MONITORING CHECK
+-------------------
+PROCESSES OK - 126 Prozesse, 0 Zombies | processes=126;;500 zombies=0;;5
+
+5. LOG ERROR CHECK
+-------------------
+System Log Error and Warning Check
+===================================
+=== Analyzing syslog ===
+[0;31mERRORS: 18[0m
+[1;33mWARNINGS: 28[0m
+Sample entries:
+2026-06-16T19:23:50.796269+00:00 srv1594310 python[22945]: #033[31m#033[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.#033[0m
+2026-06-16T19:32:52.575074+00:00 srv1594310 python[24856]: #033[31m#033[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.#033[0m
+2026-06-16T19:43:04.452429+00:00 srv1594310 python[26306]: #033[31m#033[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.#033[0m
+
+=== Analyzing kern.log ===
+[0;31mERRORS: 33[0m
+[0;32mWARNINGS: 0[0m
+Sample entries:
+2026-06-16T19:52:45.272936+00:00 srv1594310 kernel: RAS: Correctable Errors collector initialized.
+2026-06-17T09:16:05.318836+00:00 srv1594310 kernel: audit: type=1400 audit(1781687765.316:121): apparmor="STATUS" operation="profile_load" profile="unconfined" name="docker-default" pid=61267 comm="apparmor_parser"
+2026-06-17T09:16:05.612828+00:00 srv1594310 kernel: bridge: filtering via arp/ip/ip6tables is no longer available by default. Update your scripts to load br_netfilter if you need this.
+
+=== Analyzing dmesg ===
+[0;31mERRORS: 12[0m
+[0;32mWARNINGS: 0[0m
+Sample entries:
+[    1.670984] kernel: RAS: Correctable Errors collector initialized.
+[    3.902423] systemd[1]: systemd 255.4-1ubuntu8.16 running in system mode (+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY +P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -BPF_FRAMEWORK -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified)
+[    4.165785] systemd[1]: Queued start job for default target graphical.target.
+
+=== Analyzing auth.log ===
+[0;31mERRORS: 131[0m
+[0;32mWARNINGS: 0[0m
+Sample entries:
+2026-06-18T13:05:12.093336+00:00 srv1594310 sshd[2893383]: Failed password for root from 116.99.173.91 port 56506 ssh2
+2026-06-18T13:12:43.186132+00:00 srv1594310 sshd[2893438]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=116.99.173.91 
+2026-06-18T13:12:44.601936+00:00 srv1594310 sshd[2893438]: Failed password for invalid user test from 116.99.173.91 port 48816 ssh2
+
+Summary:
+=========
+[0;31mTOTAL ERRORS: 194[0m
+[1;33mTOTAL WARNINGS: 28[0m
+
+6. SECURITY AUDIT CHECK
+-------------------
+=== SECURITY AUDIT: SSH Login Failures ===
+Total SSH Login Failures: 71
+Failed Password Attempts: 47
+Invalid User Attempts: 24
+Failed Public Key Attempts: 0
+Connection Refused: 0
+SECURITY RISK LEVEL: MEDIUM
+RECOMMENDATION: Monitor SSH logs regularly and consider strengthening authentication
+
+7. WORKSPACE BACKUP CHECK
+-------------------
+Backup erfolgreich erstellt in: /root/local_agent/agent_workspace/backups/backup_20260618_151349
+
+8. BACKUP CLEANUP CHECK
+-------------------
+Suche nach Backup-Verzeichnissen älter als 7 Tage...
+Keine alten Backup-Verzeichnisse gefunden
+
+9. SERVICE STATUS CHECK
+-------------------
+[OK] ssh is running
+[OK] cron is running
+[OK] systemd-journald is running
+
+=========================================
+END OF REPORT
+=========================================
+Exit Code: 0
+
+--- SECURITY AUDIT ---
+=== SECURITY AUDIT: SSH Login Failures ===
+Total SSH Login Failures: 71
+Failed Password Attempts: 47
+Invalid User Attempts: 24
+Failed Public Key Attempts: 0
+Connection Refused: 0
+SECURITY RISK LEVEL: MEDIUM
+RECOMMENDATION: Monitor SSH logs regularly and consider strengthening authentication
+Exit Code: 1
+
+--- SERVICE STATUS ---
+[OK] ssh is running
+[OK] cron is running
+[OK] systemd-journald is running
+Exit Code: 0
+
+===========================================
+ENDE DES BERICHTS
+===========================================

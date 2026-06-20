@@ -1,0 +1,146 @@
+=========================================
+         SYSTEM HEALTH SUMMARY           
+=========================================
+
+=== System Health ===
+=== System Health Report ===
+
+Available disk space:
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs           1.6G  984K  1.6G   1% /run
+/dev/sda1       193G   85G  109G  44% /
+tmpfs           7.9G     0  7.9G   0% /dev/shm
+tmpfs           5.0M     0  5.0M   0% /run/lock
+/dev/sda16      881M  117M  703M  15% /boot
+/dev/sda15      105M  6.2M   99M   6% /boot/efi
+
+Memory status:
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       1.7Gi       183Mi       984Ki        14Gi        13Gi
+Swap:             0B          0B          0B
+
+Top 5 processes by memory usage:
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root        2744  1.0  5.3 1309224 869724 ?      Ssl  19:59   0:32 /root/local_agent/.venv/bin/python /root/local_agent/server.py
+root         377  0.0  0.1 289120 27456 ?        SLsl 19:52   0:00 /sbin/multipathd -d -s
+root         836  0.0  0.1 109996 23144 ?        Ssl  19:52   0:00 /usr/bin/python3 /usr/share/unattended-upgrades/unattended-upgrade-shutdown --wait-for-signal
+root         331  0.0  0.0  33988 14948 ?        S<s  19:52   0:02 /usr/lib/systemd/systemd-journald
+root         789  0.0  0.0 469000 13708 ?        Ssl  19:52   0:00 /usr/libexec/udisks2/udisksd
+
+CPU load:
+%Cpu(s):  0.0 us,  2.4 sy,  0.0 ni, 97.6 id,  0.0 wa,  0.0 hi,  0.0 si,  0.0 st 
+
+Network interfaces:
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+eth0             UP             187.127.72.126/24 2a02:4780:79:6e52::1/48 fe80::d0e8:d4ff:febd:63c6/64 
+
+System uptime:
+ 20:52:36 up  1:00,  0 user,  load average: 0.02, 0.29, 0.40
+
+=== Health Summary ===
+OK: Disk usage is at 44%
+OK: Memory usage is at 11%
+OK: CPU load is normal
+
+=== Log Check ===
+Anzahl 'error'-Einträge: 35
+=== Suchergebnisse für: error ===
+2026-06-16T19:07:12.719460+00:00 srv1594310 python[20682]: bash: -c: line
+2026-06-16T19:50:44.680656+00:00 srv1594310 python[26306]: ModuleNotFoundError: No module
+2026-06-16T19:50:46.868111+00:00 srv1594310 python[26306]: error: externally-managed-environment
+2026-06-16T19:52:45.272401+00:00 srv1594310 systemd[1]: apport-autoreport.path - Process
+2026-06-16T19:52:45.272408+00:00 srv1594310 systemd[1]: apport-autoreport.timer - Process
+
+Anzahl 'warning'-Einträge: 38
+=== Suchergebnisse für: warning ===
+2026-06-16T14:58:00.350151+00:00 srv1594310 apt.systemd.daily[4481]: /usr/bin/unattended-upgrade:567: DeprecationWarning: This
+2026-06-16T14:58:12.269020+00:00 srv1594310 apt.systemd.daily[4481]: /usr/bin/unattended-upgrade:567: DeprecationWarning: This
+2026-06-16T14:58:16.624298+00:00 srv1594310 apt.systemd.daily[4481]: /usr/bin/unattended-upgrade:567: DeprecationWarning: This
+2026-06-16T14:58:19.907179+00:00 srv1594310 apt.systemd.daily[4481]: /usr/bin/unattended-upgrade:567: DeprecationWarning: This
+2026-06-16T14:58:22.481287+00:00 srv1594310 apt.systemd.daily[4481]: /usr/bin/unattended-upgrade:567: DeprecationWarning: This
+
+Anzahl 'failed'-Einträge: 19
+=== Suchergebnisse für: failed ===
+2026-06-16T14:29:00.416815+00:00 srv1594310 systemd[1]: Starting update-notifier-download.service -
+2026-06-16T14:29:00.512197+00:00 srv1594310 systemd[1]: Finished update-notifier-download.service -
+2026-06-16T19:52:45.271842+00:00 srv1594310 kernel: ACPI: _OSC evaluation
+2026-06-16T19:52:45.272484+00:00 srv1594310 systemd[1]: Started update-notifier-download.timer -
+2026-06-16T19:52:45.272875+00:00 srv1594310 systemd[1]: Starting grub-initrd-fallback.service -
+
+=== ZUSAMMENFASSUNG ===
+'error': 35 Treffer
+'warning': 38 Treffer
+'failed': 19 Treffer
+\n=== EMPFEHLUNGEN ===
+1. Prüfen Sie die vollständigen Log-Einträge mit: grep -i 'error\|warning\|failed' /var/log/syslog
+2. Für detaillierte Fehleranalyse: tail -f /var/log/syslog
+3. Systematische Fehlersuche: journalctl -f
+4. Bei wiederkehrenden Fehlern: Erwägen Sie die Einrichtung eines Monitoring-Tools
+
+=== Process Monitor ===
+=== Prozess Monitor Report ===
+
+Aktive Prozesse (Top 10 nach CPU-Nutzung):
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root          66  1.3  0.0      0     0 ?        R    19:52   0:49 [kswapd0]
+root        2744  1.0  5.3 1309224 869724 ?      Ssl  19:59   0:32 /root/local_agent/.venv/bin/python /root/local_agent/server.py
+root          76  0.7  0.0      0     0 ?        I    19:52   0:28 [kworker/u8:3-events_power_efficient]
+root          47  0.2  0.0      0     0 ?        S    19:52   0:10 [kcompactd0]
+root         258  0.1  0.0      0     0 ?        S    19:52   0:04 [jbd2/sda1-8]
+root          17  0.0  0.0      0     0 ?        I    19:52   0:02 [rcu_preempt]
+root         778  0.0  0.0  80812  4604 ?        Ssl  19:52   0:02 /usr/sbin/qemu-ga
+root         331  0.0  0.0  33988 14948 ?        S<s  19:52   0:02 /usr/lib/systemd/systemd-journald
+root           1  0.0  0.0  22284 13428 ?        Ss   19:52   0:02 /sbin/init
+syslog       814  0.0  0.0 222508  6284 ?        Ssl  19:52   0:00 /usr/sbin/rsyslogd -n -iNONE
+
+Prozessbaum (pstree):
+systemd(1)-+-ModemManager(837)-+-{ModemManager}(844)
+           |                   |-{ModemManager}(846)
+           |                   `-{ModemManager}(848)
+           |-agetty(903)
+           |-agetty(915)
+           |-cron(770)
+           |-dbus-daemon(771)
+           |-multipathd(377)-+-{multipathd}(396)
+           |                 |-{multipathd}(397)
+           |                 |-{multipathd}(398)
+           |                 |-{multipathd}(399)
+           |                 |-{multipathd}(400)
+           |                 `-{multipathd}(401)
+           |-polkitd(777)-+-{polkitd}(823)
+           |              |-{polkitd}(824)
+           |              `-{polkitd}(825)
+           |-python(2744)-+-bash(10138)---bash(10143)---process_monitor(10232)-+-head(10236)
+           |              |                                                    `-pstree(10235)
+           |              |-{python}(2746)
+           |              |-{python}(2747)
+
+Speicherintensive Prozesse (Top 5):
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root        2744  1.0  5.3 1309224 869724 ?      Ssl  19:59   0:32 /root/local_agent/.venv/bin/python /root/local_agent/server.py
+root         377  0.0  0.1 289120 27456 ?        SLsl 19:52   0:00 /sbin/multipathd -d -s
+root         836  0.0  0.1 109996 23144 ?        Ssl  19:52   0:00 /usr/bin/python3 /usr/share/unattended-upgrades/unattended-upgrade-shutdown --wait-for-signal
+root         331  0.0  0.0  33988 14948 ?        S<s  19:52   0:02 /usr/lib/systemd/systemd-journald
+root         789  0.0  0.0 469000 13708 ?        Ssl  19:52   0:00 /usr/libexec/udisks2/udisksd
+
+=== Prozess Monitor Zusammenfassung ===
+Anzahl laufender Prozesse: 120
+Prozess mit höchster CPU-Auslastung: [kswapd0] (1.3%)
+Prozess mit höchster Speicherauslastung: /root/local_agent/.venv/bin/python (5.3%)
+
+=== Disk Usage Monitor ===
+=== Disk Usage Monitor ===
+HOME Verzeichnis: /root
+Belegung: 81.9G / 192.7G (43%)
+---
+WORKSPACE Verzeichnis: /root/local_agent/agent_workspace
+Belegung: 81.3G / 192.7G (42%)
+---
+Mountpoint: /
+Belegung: 85G (44%)
+---
+=== Ueberwachung abgeschlossen ===
+
+=========================================
+       Ueberpruefung abgeschlossen       
+=========================================
