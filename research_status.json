@@ -1,12 +1,24 @@
 {
   "ok": true,
-  "checked_at": "2026-06-23 19:23:22 UTC",
+  "checked_at": "2026-06-23 19:30:01 UTC",
   "topics": 4,
   "repos": 15,
   "ok_to_study": 14,
   "concept_only": 1,
-  "errors": [],
-  "warnings": [],
+  "errors": [
+    "OpenClaw autonomous agent: HTTP Error 403: rate limit exceeded",
+    "AI coding agent anti loop guard: HTTP Error 403: rate limit exceeded",
+    "agent framework tool testing: HTTP Error 403: rate limit exceeded",
+    "self improving coding agent: HTTP Error 403: rate limit exceeded"
+  ],
+  "warnings": [
+    "OpenClaw autonomous agent: HTTP Error 403: rate limit exceeded",
+    "AI coding agent anti loop guard: HTTP Error 403: rate limit exceeded",
+    "agent framework tool testing: HTTP Error 403: rate limit exceeded",
+    "self improving coding agent: HTTP Error 403: rate limit exceeded"
+  ],
+  "stale": true,
+  "stale_reason": "GitHub API returned no usable results; kept previous digest/backlog/license guard.",
   "digest": "/root/local_agent/agent_workspace/github_research_digest.md",
   "backlog": "/root/local_agent/agent_workspace/improvement_backlog.md",
   "license_guard": "/root/local_agent/agent_workspace/LICENSE_GUARD.md"
