@@ -188,7 +188,6 @@ def render_backlog(findings: list[dict]) -> str:
             if idea not in ideas:
                 ideas.append(idea)
     priority = [
-        "Build read_registry.json so agents stop reading the same file repeatedly without a new reason.",
         "Require one successful lightweight test after write_file/create_tool before marking a goal done.",
         "Use an experiment branch for self-improvement changes and keep live server code protected.",
         "Add license_guard notes to every GitHub research item before code reuse.",
@@ -203,9 +202,15 @@ def render_backlog(findings: list[dict]) -> str:
         "",
         "Only one small improvement should be implemented per cycle.",
         "",
+        "## Done",
+        "",
+        "- [x] P1: Build read_registry.json and per-goal anti-loop guard so agents stop reading the same file repeatedly without a new reason.",
+        "",
+        "## Open",
+        "",
     ]
     for idx, idea in enumerate(priority[:12], start=1):
-        lines.append(f"- [ ] P{idx}: {idea}")
+        lines.append(f"- [ ] P{idx + 1}: {idea}")
     lines.append("")
     return "\n".join(lines)
 

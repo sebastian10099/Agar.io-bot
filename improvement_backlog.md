@@ -1,10 +1,15 @@
 # Improvement Backlog
 
-Updated: 2026-06-23 19:16:37 UTC
+Updated: 2026-06-23 19:17:27 UTC
 
 Only one small improvement should be implemented per cycle.
 
-- [ ] P1: Build read_registry.json so agents stop reading the same file repeatedly without a new reason.
+## Done
+
+- [x] P1: Build read_registry.json and per-goal anti-loop guard so agents stop reading the same file repeatedly without a new reason.
+
+## Open
+
 - [ ] P2: Require one successful lightweight test after write_file/create_tool before marking a goal done.
 - [ ] P3: Use an experiment branch for self-improvement changes and keep live server code protected.
 - [ ] P4: Add license_guard notes to every GitHub research item before code reuse.
