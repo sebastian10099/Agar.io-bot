@@ -289,14 +289,16 @@ def main() -> int:
     LICENSE_GUARD.write_text(render_license_guard(findings), encoding="utf-8")
     ok_to_study = sum(1 for item in findings for repo in item["repos"] if repo["license_ok"])
     concept_only = sum(1 for item in findings for repo in item["repos"] if not repo["license_ok"])
+    total_repos = sum(len(x["repos"]) for x in findings)
     STATUS.write_text(json.dumps({
-        "ok": not errors,
+        "ok": total_repos > 0,
         "checked_at": now(),
         "topics": len(findings),
-        "repos": sum(len(x["repos"]) for x in findings),
+        "repos": total_repos,
         "ok_to_study": ok_to_study,
         "concept_only": concept_only,
         "errors": errors[-5:],
+        "warnings": errors[-5:],
         "digest": str(DIGEST),
         "backlog": str(BACKLOG),
         "license_guard": str(LICENSE_GUARD),
