@@ -37,3 +37,8 @@ Miniconda3-*.sh
 # --- OS ---
 .DS_Store
 Thumbs.db
+# --- Safe external-code intake staging (local only) ---
+external_code_staging/
+intake_tests/
+safe_code_intake_report.json
+
