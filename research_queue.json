@@ -1,22 +1,22 @@
 [
   {
     "topic": "OpenClaw autonomous agent",
-    "query": "OpenClaw autonomous agent",
+    "query": "autonomous agent framework language:Python",
     "why": "Find ideas for agent coordination, memory, and safe autonomy."
   },
   {
     "topic": "AI coding agent anti loop guard",
-    "query": "AI coding agent anti loop guard",
+    "query": "coding agent loop prevention language:Python",
     "why": "Reduce repeated file reads and repeated failed actions."
   },
   {
     "topic": "agent framework tool testing",
-    "query": "agent framework tool testing",
+    "query": "AI agent tool testing framework language:Python",
     "why": "Improve the test gate before GitHub push."
   },
   {
     "topic": "self improving coding agent",
-    "query": "self improving coding agent",
+    "query": "self improving coding agent language:Python",
     "why": "Collect safe patterns for plan, experiment, test, and learn loops."
   }
 ]

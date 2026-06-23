@@ -1,6 +1,6 @@
 # Improvement Backlog
 
-Updated: 2026-06-23 19:15:35 UTC
+Updated: 2026-06-23 19:16:37 UTC
 
 Only one small improvement should be implemented per cycle.
 
@@ -9,6 +9,5 @@ Only one small improvement should be implemented per cycle.
 - [ ] P3: Use an experiment branch for self-improvement changes and keep live server code protected.
 - [ ] P4: Add license_guard notes to every GitHub research item before code reuse.
 - [ ] P5: Add a safer tool-selection loop: plan, act once, verify, then continue.
-- [ ] P6: Review the project concept for OpenClaw autonomous agent and extract one small local improvement.
-- [ ] P7: Improve long-term memory with concise summaries and duplicate detection.
-- [ ] P8: Add stronger automatic test/evaluation checks before commit.
+- [ ] P6: Improve long-term memory with concise summaries and duplicate detection.
+- [ ] P7: Add stronger automatic test/evaluation checks before commit.

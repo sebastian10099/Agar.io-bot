@@ -32,8 +32,45 @@ ALLOWED_LICENSES = {
 }
 
 
+STOP_WORDS = {
+    "agent",
+    "agents",
+    "framework",
+    "language",
+    "python",
+    "coding",
+    "testing",
+    "self",
+    "improving",
+}
+
+
 def now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+
+
+def clean_text(value: str, limit: int = 260) -> str:
+    value = " ".join(str(value or "").split())
+    if len(value) > limit:
+        return value[: limit - 3].rstrip() + "..."
+    return value
+
+
+def relevance_terms(query: str) -> set[str]:
+    raw = query.replace(":", " ").replace("-", " ").replace("_", " ").split()
+    return {x.lower() for x in raw if len(x) > 3 and x.lower() not in STOP_WORDS}
+
+
+def is_relevant(repo: dict, query: str) -> bool:
+    terms = relevance_terms(query)
+    if not terms:
+        return True
+    hay = " ".join([
+        str(repo.get("full_name") or ""),
+        str(repo.get("description") or ""),
+        " ".join(repo.get("topics") or []),
+    ]).lower()
+    return any(term in hay for term in terms)
 
 
 def read_queue() -> list[dict]:
@@ -41,18 +78,23 @@ def read_queue() -> list[dict]:
         default = [
             {
                 "topic": "OpenClaw autonomous agent",
-                "query": "OpenClaw autonomous agent",
+                "query": "autonomous agent framework language:Python",
                 "why": "Find ideas for agent coordination, memory, and safe autonomy.",
             },
             {
                 "topic": "AI coding agent anti loop guard",
-                "query": "AI coding agent anti loop guard",
+                "query": "coding agent loop prevention language:Python",
                 "why": "Reduce repeated file reads and repeated failed actions.",
             },
             {
                 "topic": "agent framework tool testing",
-                "query": "agent framework tool testing",
+                "query": "AI agent tool testing framework language:Python",
                 "why": "Improve the test gate before GitHub push.",
+            },
+            {
+                "topic": "self improving coding agent",
+                "query": "self improving coding agent language:Python",
+                "why": "Collect safe patterns for plan, experiment, test, and learn loops.",
             },
         ]
         QUEUE.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -177,18 +219,22 @@ def main() -> int:
         why = str(entry.get("why") or "Explore useful agent improvement ideas.")
         repos = []
         try:
-            for repo in github_search(query):
+            for repo in github_search(query, limit=8):
+                if not is_relevant(repo, query):
+                    continue
                 lic, ok = license_status(repo)
                 repos.append({
                     "full_name": repo.get("full_name", ""),
                     "html_url": repo.get("html_url", ""),
-                    "description": repo.get("description", ""),
+                    "description": clean_text(repo.get("description", "")),
                     "stars": repo.get("stargazers_count", 0),
                     "updated_at": repo.get("updated_at", ""),
                     "license": lic,
                     "license_ok": ok,
                     "idea": idea_from_repo(topic, repo, ok),
                 })
+                if len(repos) >= 5:
+                    break
         except Exception as exc:
             errors.append(f"{topic}: {exc}")
         findings.append({"topic": topic, "query": query, "why": why, "repos": repos})
