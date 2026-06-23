@@ -21,6 +21,7 @@ QUEUE = ROOT / "research_queue.json"
 DIGEST = ROOT / "github_research_digest.md"
 BACKLOG = ROOT / "improvement_backlog.md"
 STATUS = ROOT / "research_status.json"
+LICENSE_GUARD = ROOT / "LICENSE_GUARD.md"
 
 ALLOWED_LICENSES = {
     "mit",
@@ -188,9 +189,8 @@ def render_backlog(findings: list[dict]) -> str:
             if idea not in ideas:
                 ideas.append(idea)
     priority = [
-        "Require one successful lightweight test after write_file/create_tool before marking a goal done.",
         "Use an experiment branch for self-improvement changes and keep live server code protected.",
-        "Add license_guard notes to every GitHub research item before code reuse.",
+        "Add a safer tool-selection loop: plan, act once, verify, then continue.",
     ]
     for idea in ideas:
         if idea not in priority:
@@ -205,13 +205,53 @@ def render_backlog(findings: list[dict]) -> str:
         "## Done",
         "",
         "- [x] P1: Build read_registry.json and per-goal anti-loop guard so agents stop reading the same file repeatedly without a new reason.",
+        "- [x] P2: Require one successful lightweight test after write_file/create_tool before marking a goal done.",
+        "- [x] P4: Add license_guard notes to every GitHub research item before code reuse.",
         "",
         "## Open",
         "",
     ]
     for idx, idea in enumerate(priority[:12], start=1):
-        lines.append(f"- [ ] P{idx + 1}: {idea}")
+        lines.append(f"- [ ] P{idx + 2}: {idea}")
     lines.append("")
+    return "\n".join(lines)
+
+
+def render_license_guard(findings: list[dict]) -> str:
+    rows = []
+    allowed = 0
+    concept_only = 0
+    for item in findings:
+        for repo in item["repos"]:
+            if repo["license_ok"]:
+                allowed += 1
+                mode = "study concepts; snippets only with attribution/review"
+            else:
+                concept_only += 1
+                mode = "concept only; no code reuse"
+            rows.append(
+                "| {topic} | {repo} | {license} | {mode} |".format(
+                    topic=item["topic"].replace("|", "/"),
+                    repo=repo["full_name"].replace("|", "/"),
+                    license=repo["license"].replace("|", "/"),
+                    mode=mode,
+                )
+            )
+    lines = [
+        "# License Guard",
+        "",
+        f"Updated: {now()}",
+        "",
+        "Policy: external code is never copied automatically. License, source URL, attribution, and fit must be reviewed before reuse.",
+        "",
+        f"- OK-to-study repositories: {allowed}",
+        f"- Concept-only repositories: {concept_only}",
+        "",
+        "| Topic | Repository | License | Allowed use |",
+        "|---|---|---|---|",
+        *rows,
+        "",
+    ]
     return "\n".join(lines)
 
 
@@ -246,14 +286,20 @@ def main() -> int:
 
     DIGEST.write_text(render_digest(findings), encoding="utf-8")
     BACKLOG.write_text(render_backlog(findings), encoding="utf-8")
+    LICENSE_GUARD.write_text(render_license_guard(findings), encoding="utf-8")
+    ok_to_study = sum(1 for item in findings for repo in item["repos"] if repo["license_ok"])
+    concept_only = sum(1 for item in findings for repo in item["repos"] if not repo["license_ok"])
     STATUS.write_text(json.dumps({
         "ok": not errors,
         "checked_at": now(),
         "topics": len(findings),
         "repos": sum(len(x["repos"]) for x in findings),
+        "ok_to_study": ok_to_study,
+        "concept_only": concept_only,
         "errors": errors[-5:],
         "digest": str(DIGEST),
         "backlog": str(BACKLOG),
+        "license_guard": str(LICENSE_GUARD),
     }, indent=2), encoding="utf-8")
     print(f"Research loop complete: {sum(len(x['repos']) for x in findings)} repos, {len(errors)} errors")
     return 0 if not errors else 1

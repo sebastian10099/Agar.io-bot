@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-23 19:17:27 UTC
+Last run: 2026-06-23 19:21:55 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -143,7 +143,7 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 
 - URL: https://github.com/PrismorSec/immunity-agent
 - Stars: 208
-- Updated: 2026-06-23T18:23:51Z
+- Updated: 2026-06-23T19:20:14Z
 - License: apache-2.0 (OK to study)
 - Summary: Self improving security layer for AI coding agents : Safe package recommendations, Secret protection, MCP/tools guardrails, Skill governance, runtime policy enforcement and full audit visibility with a self-serve dashboard.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.

@@ -18,6 +18,9 @@ external code.
 - Check license before any code reuse.
 - Prefer high-level concepts over source-code reuse.
 - Keep live server code protected; experiments belong in the workspace first.
+- For risky self-improvement work, run `./experiment_branch_flow.sh` and work on
+  the created `experiment/selfdev-*` branch. Auto-sync preserves experiment
+  branches instead of pushing them into `prometheus`.
 - Stop repeated reads/actions and write a short diagnosis instead.
 
 ## Current Priorities

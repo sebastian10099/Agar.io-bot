@@ -1,9 +1,12 @@
 {
   "ok": true,
-  "checked_at": "2026-06-23 19:17:27 UTC",
+  "checked_at": "2026-06-23 19:21:55 UTC",
   "topics": 4,
   "repos": 15,
+  "ok_to_study": 14,
+  "concept_only": 1,
   "errors": [],
   "digest": "/root/local_agent/agent_workspace/github_research_digest.md",
-  "backlog": "/root/local_agent/agent_workspace/improvement_backlog.md"
+  "backlog": "/root/local_agent/agent_workspace/improvement_backlog.md",
+  "license_guard": "/root/local_agent/agent_workspace/LICENSE_GUARD.md"
 }
