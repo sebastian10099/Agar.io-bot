@@ -1,0 +1,22 @@
+[
+  {
+    "topic": "OpenClaw autonomous agent",
+    "query": "OpenClaw autonomous agent",
+    "why": "Find ideas for agent coordination, memory, and safe autonomy."
+  },
+  {
+    "topic": "AI coding agent anti loop guard",
+    "query": "AI coding agent anti loop guard",
+    "why": "Reduce repeated file reads and repeated failed actions."
+  },
+  {
+    "topic": "agent framework tool testing",
+    "query": "agent framework tool testing",
+    "why": "Improve the test gate before GitHub push."
+  },
+  {
+    "topic": "self improving coding agent",
+    "query": "self improving coding agent",
+    "why": "Collect safe patterns for plan, experiment, test, and learn loops."
+  }
+]
