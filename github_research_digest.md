@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-23 19:21:55 UTC
+Last run: 2026-06-23 19:22:21 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -112,47 +112,4 @@ Why: Improve the test gate before GitHub push.
 
 Why: Collect safe patterns for plan, experiment, test, and learn loops.
 
-### MervinPraison/PraisonAI
-
-- URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8225
-- Updated: 2026-06-23T17:48:47Z
-- License: mit (OK to study)
-- Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
-- Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
-
-### MaximeRobeyns/self_improving_coding_agent
-
-- URL: https://github.com/MaximeRobeyns/self_improving_coding_agent
-- Stars: 357
-- Updated: 2026-06-22T08:54:30Z
-- License: mit (OK to study)
-- Summary: A coding agent framework, that works on its own codebase.
-- Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
-
-### BetterForAll/self-improving-agents
-
-- URL: https://github.com/BetterForAll/self-improving-agents
-- Stars: 266
-- Updated: 2026-06-19T01:42:55Z
-- License: mit (OK to study)
-- Summary: Self-Improving Agents -- A Progression Four levels of self-improving code agents, from the simplest loop to a full adversarial arena with self-modifying agents. Each level adds one key idea.
-- Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
-
-### PrismorSec/immunity-agent
-
-- URL: https://github.com/PrismorSec/immunity-agent
-- Stars: 208
-- Updated: 2026-06-23T19:20:14Z
-- License: apache-2.0 (OK to study)
-- Summary: Self improving security layer for AI coding agents : Safe package recommendations, Secret protection, MCP/tools guardrails, Skill governance, runtime policy enforcement and full audit visibility with a self-serve dashboard.
-- Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
-
-### AmoghReddy45/autonomous-workstream
-
-- URL: https://github.com/AmoghReddy45/autonomous-workstream
-- Stars: 57
-- Updated: 2026-06-23T14:30:59Z
-- License: apache-2.0 (OK to study)
-- Summary: Run an AI coding agent autonomously across a multi-step workstream, safely. Claude Code plugin + cross-platform CLI, Codex backend, lessons memory, guarded self-improving loop.
-- Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
+No repositories found or GitHub API returned no usable result.

@@ -1,11 +1,13 @@
 {
-  "ok": true,
-  "checked_at": "2026-06-23 19:21:55 UTC",
+  "ok": false,
+  "checked_at": "2026-06-23 19:22:21 UTC",
   "topics": 4,
-  "repos": 15,
-  "ok_to_study": 14,
+  "repos": 10,
+  "ok_to_study": 9,
   "concept_only": 1,
-  "errors": [],
+  "errors": [
+    "self improving coding agent: HTTP Error 403: rate limit exceeded"
+  ],
   "digest": "/root/local_agent/agent_workspace/github_research_digest.md",
   "backlog": "/root/local_agent/agent_workspace/improvement_backlog.md",
   "license_guard": "/root/local_agent/agent_workspace/LICENSE_GUARD.md"

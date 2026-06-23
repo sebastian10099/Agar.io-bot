@@ -189,7 +189,6 @@ def render_backlog(findings: list[dict]) -> str:
             if idea not in ideas:
                 ideas.append(idea)
     priority = [
-        "Use an experiment branch for self-improvement changes and keep live server code protected.",
         "Add a safer tool-selection loop: plan, act once, verify, then continue.",
     ]
     for idea in ideas:
@@ -206,13 +205,14 @@ def render_backlog(findings: list[dict]) -> str:
         "",
         "- [x] P1: Build read_registry.json and per-goal anti-loop guard so agents stop reading the same file repeatedly without a new reason.",
         "- [x] P2: Require one successful lightweight test after write_file/create_tool before marking a goal done.",
+        "- [x] P3: Use an experiment branch for self-improvement changes and keep live server code protected.",
         "- [x] P4: Add license_guard notes to every GitHub research item before code reuse.",
         "",
         "## Open",
         "",
     ]
     for idx, idea in enumerate(priority[:12], start=1):
-        lines.append(f"- [ ] P{idx + 2}: {idea}")
+        lines.append(f"- [ ] P{idx + 4}: {idea}")
     lines.append("")
     return "\n".join(lines)
 
