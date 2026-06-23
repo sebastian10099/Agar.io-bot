@@ -284,12 +284,36 @@ def main() -> int:
             errors.append(f"{topic}: {exc}")
         findings.append({"topic": topic, "query": query, "why": why, "repos": repos})
 
-    DIGEST.write_text(render_digest(findings), encoding="utf-8")
-    BACKLOG.write_text(render_backlog(findings), encoding="utf-8")
-    LICENSE_GUARD.write_text(render_license_guard(findings), encoding="utf-8")
     ok_to_study = sum(1 for item in findings for repo in item["repos"] if repo["license_ok"])
     concept_only = sum(1 for item in findings for repo in item["repos"] if not repo["license_ok"])
     total_repos = sum(len(x["repos"]) for x in findings)
+    if total_repos == 0 and errors:
+        previous = {}
+        if STATUS.exists():
+            try:
+                previous = json.loads(STATUS.read_text(encoding="utf-8"))
+            except Exception:
+                previous = {}
+        STATUS.write_text(json.dumps({
+            "ok": bool(previous.get("ok", False)),
+            "checked_at": now(),
+            "topics": len(findings),
+            "repos": previous.get("repos", 0),
+            "ok_to_study": previous.get("ok_to_study", 0),
+            "concept_only": previous.get("concept_only", 0),
+            "errors": errors[-5:],
+            "warnings": errors[-5:],
+            "stale": True,
+            "stale_reason": "GitHub API returned no usable results; kept previous digest/backlog/license guard.",
+            "digest": str(DIGEST),
+            "backlog": str(BACKLOG),
+            "license_guard": str(LICENSE_GUARD),
+        }, indent=2), encoding="utf-8")
+        print(f"Research loop kept previous files: 0 repos, {len(errors)} errors")
+        return 0 if previous.get("ok", False) else 1
+    DIGEST.write_text(render_digest(findings), encoding="utf-8")
+    BACKLOG.write_text(render_backlog(findings), encoding="utf-8")
+    LICENSE_GUARD.write_text(render_license_guard(findings), encoding="utf-8")
     STATUS.write_text(json.dumps({
         "ok": total_repos > 0,
         "checked_at": now(),

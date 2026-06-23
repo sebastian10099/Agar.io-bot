@@ -1,6 +1,6 @@
 # Improvement Backlog
 
-Updated: 2026-06-23 19:22:41 UTC
+Updated: 2026-06-23 19:23:22 UTC
 
 Only one small improvement should be implemented per cycle.
 
@@ -14,3 +14,5 @@ Only one small improvement should be implemented per cycle.
 ## Open
 
 - [ ] P5: Add a safer tool-selection loop: plan, act once, verify, then continue.
+- [ ] P6: Improve long-term memory with concise summaries and duplicate detection.
+- [ ] P7: Add stronger automatic test/evaluation checks before commit.
