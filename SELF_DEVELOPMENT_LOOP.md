@@ -16,6 +16,8 @@ external code.
 
 - Do not clone or copy external code automatically.
 - Check license before any code reuse.
+- Copied/pasted code must go through `safe_code_intake.py`: stage with source
+  URL/license, validate, fix while staged, then promote only after green checks.
 - Prefer high-level concepts over source-code reuse.
 - Keep live server code protected; experiments belong in the workspace first.
 - For risky self-improvement work, run `./experiment_branch_flow.sh` and work on
