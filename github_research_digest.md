@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-24 20:00:04 UTC
+Last run: 2026-06-24 20:30:04 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -11,8 +11,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### crewAIInc/crewAI
 
 - URL: https://github.com/crewAIInc/crewAI
-- Stars: 54305
-- Updated: 2026-06-24T19:24:23Z
+- Stars: 54306
+- Updated: 2026-06-24T20:23:23Z
 - License: mit (OK to study)
 - Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -29,8 +29,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### TransformerOptimus/SuperAGI
 
 - URL: https://github.com/TransformerOptimus/SuperAGI
-- Stars: 17579
-- Updated: 2026-06-24T17:10:39Z
+- Stars: 17578
+- Updated: 2026-06-24T20:23:28Z
 - License: mit (OK to study)
 - Summary: <⚡️> SuperAGI - A dev-first open source autonomous AI agent framework. Enabling developers to build, manage & run useful autonomous agents quickly and reliably.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -38,8 +38,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### wanshuiyin/Auto-claude-code-research-in-sleep
 
 - URL: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
-- Stars: 12584
-- Updated: 2026-06-24T19:36:09Z
+- Stars: 12585
+- Updated: 2026-06-24T20:01:18Z
 - License: mit (OK to study)
 - Summary: ARIS ⚔️ (Auto-Research-In-Sleep) — Lightweight Markdown-only skills for autonomous ML research: cross-model review loops, idea discovery, and experiment automation. No framework, no lock-in — works with Claude Code, Codex, OpenClaw, or any LLM agent.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -142,8 +142,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### PrismorSec/immunity-agent
 
 - URL: https://github.com/PrismorSec/immunity-agent
-- Stars: 209
-- Updated: 2026-06-24T16:05:48Z
+- Stars: 210
+- Updated: 2026-06-24T20:19:45Z
 - License: apache-2.0 (OK to study)
 - Summary: Self improving security layer for AI coding agents : Safe package recommendations, Secret protection, MCP/tools guardrails, Skill governance, runtime policy enforcement and full audit visibility with a self-serve dashboard.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
