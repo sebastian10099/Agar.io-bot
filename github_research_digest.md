@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-24 21:00:05 UTC
+Last run: 2026-06-24 21:30:03 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -12,7 +12,7 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 
 - URL: https://github.com/crewAIInc/crewAI
 - Stars: 54306
-- Updated: 2026-06-24T20:55:46Z
+- Updated: 2026-06-24T21:23:31Z
 - License: mit (OK to study)
 - Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
