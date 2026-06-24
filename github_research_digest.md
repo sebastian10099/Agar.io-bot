@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-24 11:30:04 UTC
+Last run: 2026-06-24 12:00:04 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -11,8 +11,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### crewAIInc/crewAI
 
 - URL: https://github.com/crewAIInc/crewAI
-- Stars: 54278
-- Updated: 2026-06-24T11:15:41Z
+- Stars: 54281
+- Updated: 2026-06-24T11:58:00Z
 - License: mit (OK to study)
 - Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -20,8 +20,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### agent0ai/agent-zero
 
 - URL: https://github.com/agent0ai/agent-zero
-- Stars: 18186
-- Updated: 2026-06-24T10:32:27Z
+- Stars: 18187
+- Updated: 2026-06-24T11:48:56Z
 - License: other (concept only)
 - Summary: Agent Zero AI framework
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -48,7 +48,7 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 
 - URL: https://github.com/MervinPraison/PraisonAI
 - Stars: 8233
-- Updated: 2026-06-24T11:21:30Z
+- Updated: 2026-06-24T11:51:32Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -116,7 +116,7 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 
 - URL: https://github.com/MervinPraison/PraisonAI
 - Stars: 8233
-- Updated: 2026-06-24T11:21:30Z
+- Updated: 2026-06-24T11:51:32Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
