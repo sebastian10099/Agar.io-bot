@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-24 09:00:04 UTC
+Last run: 2026-06-24 09:30:04 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -38,8 +38,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### wanshuiyin/Auto-claude-code-research-in-sleep
 
 - URL: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
-- Stars: 12566
-- Updated: 2026-06-24T08:49:56Z
+- Stars: 12568
+- Updated: 2026-06-24T09:22:56Z
 - License: mit (OK to study)
 - Summary: ARIS ⚔️ (Auto-Research-In-Sleep) — Lightweight Markdown-only skills for autonomous ML research: cross-model review loops, idea discovery, and experiment automation. No framework, no lock-in — works with Claude Code, Codex, OpenClaw, or any LLM agent.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -47,8 +47,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8229
-- Updated: 2026-06-24T08:59:58Z
+- Stars: 8230
+- Updated: 2026-06-24T09:29:33Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -115,8 +115,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8229
-- Updated: 2026-06-24T08:59:58Z
+- Stars: 8230
+- Updated: 2026-06-24T09:29:33Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
