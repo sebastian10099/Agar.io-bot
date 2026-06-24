@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-24 20:30:04 UTC
+Last run: 2026-06-24 21:00:05 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -12,7 +12,7 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 
 - URL: https://github.com/crewAIInc/crewAI
 - Stars: 54306
-- Updated: 2026-06-24T20:23:23Z
+- Updated: 2026-06-24T20:55:46Z
 - License: mit (OK to study)
 - Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -47,8 +47,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8247
-- Updated: 2026-06-24T19:27:42Z
+- Stars: 8246
+- Updated: 2026-06-24T20:57:07Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -115,8 +115,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8247
-- Updated: 2026-06-24T19:27:42Z
+- Stars: 8246
+- Updated: 2026-06-24T20:57:07Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
