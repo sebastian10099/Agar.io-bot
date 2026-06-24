@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-24 03:30:03 UTC
+Last run: 2026-06-24 04:00:03 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -11,8 +11,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### crewAIInc/crewAI
 
 - URL: https://github.com/crewAIInc/crewAI
-- Stars: 54254
-- Updated: 2026-06-24T03:16:37Z
+- Stars: 54255
+- Updated: 2026-06-24T03:48:41Z
 - License: mit (OK to study)
 - Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -20,8 +20,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### agent0ai/agent-zero
 
 - URL: https://github.com/agent0ai/agent-zero
-- Stars: 18182
-- Updated: 2026-06-24T02:36:06Z
+- Stars: 18183
+- Updated: 2026-06-24T03:48:31Z
 - License: other (concept only)
 - Summary: Agent Zero AI framework
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -39,7 +39,7 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 
 - URL: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
 - Stars: 12548
-- Updated: 2026-06-24T03:13:05Z
+- Updated: 2026-06-24T03:57:28Z
 - License: mit (OK to study)
 - Summary: ARIS ⚔️ (Auto-Research-In-Sleep) — Lightweight Markdown-only skills for autonomous ML research: cross-model review loops, idea discovery, and experiment automation. No framework, no lock-in — works with Claude Code, Codex, OpenClaw, or any LLM agent.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -142,8 +142,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### PrismorSec/immunity-agent
 
 - URL: https://github.com/PrismorSec/immunity-agent
-- Stars: 208
-- Updated: 2026-06-23T19:24:10Z
+- Stars: 209
+- Updated: 2026-06-24T03:55:14Z
 - License: apache-2.0 (OK to study)
 - Summary: Self improving security layer for AI coding agents : Safe package recommendations, Secret protection, MCP/tools guardrails, Skill governance, runtime policy enforcement and full audit visibility with a self-serve dashboard.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
