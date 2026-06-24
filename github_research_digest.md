@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-23 23:30:02 UTC
+Last run: 2026-06-24 00:00:04 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -20,8 +20,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### agent0ai/agent-zero
 
 - URL: https://github.com/agent0ai/agent-zero
-- Stars: 18180
-- Updated: 2026-06-23T23:10:19Z
+- Stars: 18181
+- Updated: 2026-06-23T23:42:33Z
 - License: other (concept only)
 - Summary: Agent Zero AI framework
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
