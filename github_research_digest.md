@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-24 13:00:04 UTC
+Last run: 2026-06-24 13:30:03 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -11,8 +11,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### crewAIInc/crewAI
 
 - URL: https://github.com/crewAIInc/crewAI
-- Stars: 54283
-- Updated: 2026-06-24T12:40:55Z
+- Stars: 54284
+- Updated: 2026-06-24T13:19:37Z
 - License: mit (OK to study)
 - Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -20,8 +20,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### agent0ai/agent-zero
 
 - URL: https://github.com/agent0ai/agent-zero
-- Stars: 18187
-- Updated: 2026-06-24T12:04:19Z
+- Stars: 18188
+- Updated: 2026-06-24T13:28:15Z
 - License: other (concept only)
 - Summary: Agent Zero AI framework
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -38,8 +38,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### wanshuiyin/Auto-claude-code-research-in-sleep
 
 - URL: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
-- Stars: 12575
-- Updated: 2026-06-24T12:59:41Z
+- Stars: 12576
+- Updated: 2026-06-24T13:05:15Z
 - License: mit (OK to study)
 - Summary: ARIS ⚔️ (Auto-Research-In-Sleep) — Lightweight Markdown-only skills for autonomous ML research: cross-model review loops, idea discovery, and experiment automation. No framework, no lock-in — works with Claude Code, Codex, OpenClaw, or any LLM agent.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -47,8 +47,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8236
-- Updated: 2026-06-24T12:43:06Z
+- Stars: 8237
+- Updated: 2026-06-24T13:26:20Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -94,7 +94,7 @@ Why: Improve the test gate before GitHub push.
 
 - URL: https://github.com/taoq-ai/ziran
 - Stars: 8
-- Updated: 2026-06-24T11:28:04Z
+- Updated: 2026-06-24T13:23:57Z
 - License: apache-2.0 (OK to study)
 - Summary: 自然 ZIRAN is an open-source security testing framework for AI agents. It discovers dangerous tool chain compositions via knowledge graph analysis, detects execution-level side effects (not just text output), and runs multi-phase trust exploitation campaigns...
 - Safe takeaway: Add stronger automatic test/evaluation checks before commit.
@@ -115,8 +115,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8236
-- Updated: 2026-06-24T12:43:06Z
+- Stars: 8237
+- Updated: 2026-06-24T13:26:20Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
