@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-24 16:00:04 UTC
+Last run: 2026-06-24 16:30:03 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -11,8 +11,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### crewAIInc/crewAI
 
 - URL: https://github.com/crewAIInc/crewAI
-- Stars: 54291
-- Updated: 2026-06-24T15:51:03Z
+- Stars: 54293
+- Updated: 2026-06-24T16:21:10Z
 - License: mit (OK to study)
 - Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -38,8 +38,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### wanshuiyin/Auto-claude-code-research-in-sleep
 
 - URL: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
-- Stars: 12581
-- Updated: 2026-06-24T15:54:07Z
+- Stars: 12583
+- Updated: 2026-06-24T16:22:16Z
 - License: mit (OK to study)
 - Summary: ARIS ⚔️ (Auto-Research-In-Sleep) — Lightweight Markdown-only skills for autonomous ML research: cross-model review loops, idea discovery, and experiment automation. No framework, no lock-in — works with Claude Code, Codex, OpenClaw, or any LLM agent.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -47,8 +47,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8243
-- Updated: 2026-06-24T15:49:51Z
+- Stars: 8244
+- Updated: 2026-06-24T16:05:12Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -115,8 +115,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8243
-- Updated: 2026-06-24T15:49:51Z
+- Stars: 8244
+- Updated: 2026-06-24T16:05:12Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -143,7 +143,7 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 
 - URL: https://github.com/PrismorSec/immunity-agent
 - Stars: 209
-- Updated: 2026-06-24T03:55:14Z
+- Updated: 2026-06-24T16:05:48Z
 - License: apache-2.0 (OK to study)
 - Summary: Self improving security layer for AI coding agents : Safe package recommendations, Secret protection, MCP/tools guardrails, Skill governance, runtime policy enforcement and full audit visibility with a self-serve dashboard.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
