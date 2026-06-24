@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-24 13:30:03 UTC
+Last run: 2026-06-24 14:00:04 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -11,8 +11,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### crewAIInc/crewAI
 
 - URL: https://github.com/crewAIInc/crewAI
-- Stars: 54284
-- Updated: 2026-06-24T13:19:37Z
+- Stars: 54285
+- Updated: 2026-06-24T13:49:39Z
 - License: mit (OK to study)
 - Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -38,8 +38,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### wanshuiyin/Auto-claude-code-research-in-sleep
 
 - URL: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
-- Stars: 12576
-- Updated: 2026-06-24T13:05:15Z
+- Stars: 12577
+- Updated: 2026-06-24T13:45:27Z
 - License: mit (OK to study)
 - Summary: ARIS ⚔️ (Auto-Research-In-Sleep) — Lightweight Markdown-only skills for autonomous ML research: cross-model review loops, idea discovery, and experiment automation. No framework, no lock-in — works with Claude Code, Codex, OpenClaw, or any LLM agent.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -47,8 +47,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8237
-- Updated: 2026-06-24T13:26:20Z
+- Stars: 8238
+- Updated: 2026-06-24T13:36:59Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -75,8 +75,8 @@ Why: Improve the test gate before GitHub push.
 ### eth-sri/ToolFuzz
 
 - URL: https://github.com/eth-sri/ToolFuzz
-- Stars: 41
-- Updated: 2026-06-08T07:27:18Z
+- Stars: 42
+- Updated: 2026-06-24T13:34:08Z
 - License: mit (OK to study)
 - Summary: ToolFuzz is a fuzzing framework designed to test your LLM Agent tools.
 - Safe takeaway: Add stronger automatic test/evaluation checks before commit.
@@ -115,8 +115,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8237
-- Updated: 2026-06-24T13:26:20Z
+- Stars: 8238
+- Updated: 2026-06-24T13:36:59Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
