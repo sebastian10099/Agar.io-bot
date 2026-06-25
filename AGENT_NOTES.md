@@ -1,14 +1,15 @@
-# Agent Notes
+# Agent Notes — 2026-06-22
 
-## 2026-06-18
-- Workspace-Check abgeschlossen.
-- Logs-Verzeichnis ist leer: Keine laufenden Prozesse, keine kuerzlichen Fehler.
-- Keine neuen Werkzeuge oder Skripte wurden kuerzlich ausgefuehrt.
+## Erkenntnisse aus aktueller Prüfung
 
-## Bisherige Status-Quellen
-- `STATUS_PROMETHEUS.md`: Kernfunktionen (Test-Gate, Auto-Commit, Roadmap).
-- Workspace-Inhalt: Vielfalt an Monitoring- und Cleanup-Skripten, aber keine aktuelle Ausfuehrung beobachtbar.
+- **Sicherheit**: 349 SSH-Failures (HIGH RISK), empfohlen: fail2ban + SSH-Hardening.
+- **Systemgesundheit**: Hohe CPU/RAM-Nutzung durch Python/Ollama, 550 Errors (445 aus auth.log).
+- **Infrastruktur**: Disk OK (16%), Services (ssh, cron, journald) OK, Backup OK.
 
-## Nächste Schritte (wenn gewünscht)
-- Logs aktivieren oder gezielt Prozesse starten.
-- Oder: Ziel neu definieren.
+## Nächste Schritte (Vorschlag)
+1. fail2ban installieren und konfigurieren.
+2. SSH-Konfiguration prüfen und ggf. anpassen.
+3. Python/Ollama-Prozesse auf Ressourcenverbrauch analysieren.
+
+---
+*PROMETHEUS | 2026-06-22T19:40:00Z*
