@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-25 09:00:04 UTC
+Last run: 2026-06-25 09:30:03 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -11,8 +11,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### crewAIInc/crewAI
 
 - URL: https://github.com/crewAIInc/crewAI
-- Stars: 54336
-- Updated: 2026-06-25T08:59:46Z
+- Stars: 54342
+- Updated: 2026-06-25T09:29:43Z
 - License: mit (OK to study)
 - Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -20,8 +20,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### agent0ai/agent-zero
 
 - URL: https://github.com/agent0ai/agent-zero
-- Stars: 18201
-- Updated: 2026-06-25T08:06:07Z
+- Stars: 18203
+- Updated: 2026-06-25T09:29:28Z
 - License: other (concept only)
 - Summary: Agent Zero AI framework
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -38,8 +38,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### wanshuiyin/Auto-claude-code-research-in-sleep
 
 - URL: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
-- Stars: 12603
-- Updated: 2026-06-25T08:17:33Z
+- Stars: 12605
+- Updated: 2026-06-25T09:15:43Z
 - License: mit (OK to study)
 - Summary: ARIS ⚔️ (Auto-Research-In-Sleep) — Lightweight Markdown-only skills for autonomous ML research: cross-model review loops, idea discovery, and experiment automation. No framework, no lock-in — works with Claude Code, Codex, OpenClaw, or any LLM agent.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
