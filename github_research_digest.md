@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-25 13:00:04 UTC
+Last run: 2026-06-25 13:30:03 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -11,8 +11,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### crewAIInc/crewAI
 
 - URL: https://github.com/crewAIInc/crewAI
-- Stars: 54353
-- Updated: 2026-06-25T12:46:17Z
+- Stars: 54356
+- Updated: 2026-06-25T13:25:46Z
 - License: mit (OK to study)
 - Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -20,8 +20,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### agent0ai/agent-zero
 
 - URL: https://github.com/agent0ai/agent-zero
-- Stars: 18205
-- Updated: 2026-06-25T11:27:34Z
+- Stars: 18206
+- Updated: 2026-06-25T13:21:09Z
 - License: other (concept only)
 - Summary: Agent Zero AI framework
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -29,8 +29,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### TransformerOptimus/SuperAGI
 
 - URL: https://github.com/TransformerOptimus/SuperAGI
-- Stars: 17580
-- Updated: 2026-06-25T11:36:57Z
+- Stars: 17581
+- Updated: 2026-06-25T13:20:59Z
 - License: mit (OK to study)
 - Summary: <⚡️> SuperAGI - A dev-first open source autonomous AI agent framework. Enabling developers to build, manage & run useful autonomous agents quickly and reliably.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -38,8 +38,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### wanshuiyin/Auto-claude-code-research-in-sleep
 
 - URL: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
-- Stars: 12616
-- Updated: 2026-06-25T12:45:36Z
+- Stars: 12620
+- Updated: 2026-06-25T13:21:35Z
 - License: mit (OK to study)
 - Summary: ARIS ⚔️ (Auto-Research-In-Sleep) — Lightweight Markdown-only skills for autonomous ML research: cross-model review loops, idea discovery, and experiment automation. No framework, no lock-in — works with Claude Code, Codex, OpenClaw, or any LLM agent.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -47,8 +47,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8267
-- Updated: 2026-06-25T11:50:34Z
+- Stars: 8268
+- Updated: 2026-06-25T13:11:20Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -93,8 +93,8 @@ Why: Improve the test gate before GitHub push.
 ### taoq-ai/ziran
 
 - URL: https://github.com/taoq-ai/ziran
-- Stars: 8
-- Updated: 2026-06-24T13:23:57Z
+- Stars: 9
+- Updated: 2026-06-25T13:00:44Z
 - License: apache-2.0 (OK to study)
 - Summary: 自然 ZIRAN is an open-source security testing framework for AI agents. It discovers dangerous tool chain compositions via knowledge graph analysis, detects execution-level side effects (not just text output), and runs multi-phase trust exploitation campaigns...
 - Safe takeaway: Add stronger automatic test/evaluation checks before commit.
@@ -115,8 +115,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8267
-- Updated: 2026-06-25T11:50:34Z
+- Stars: 8268
+- Updated: 2026-06-25T13:11:20Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
