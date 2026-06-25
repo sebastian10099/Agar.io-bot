@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "checked_at": "2026-06-25 19:15:51 UTC",
+  "checked_at": "2026-06-25 19:20:39 UTC",
   "topics": 10,
   "repos": 21,
   "ok_to_study": 16,
@@ -10,5 +10,6 @@
   "digest": "/root/local_agent/agent_workspace/github_research_digest.md",
   "backlog": "/root/local_agent/agent_workspace/improvement_backlog.md",
   "license_guard": "/root/local_agent/agent_workspace/LICENSE_GUARD.md",
-  "intake_plan": "/root/local_agent/agent_workspace/safe_intake_plan.md"
+  "intake_plan": "/root/local_agent/agent_workspace/safe_intake_plan.md",
+  "learning_activity": "/root/local_agent/agent_workspace/github_learning_activity.json"
 }

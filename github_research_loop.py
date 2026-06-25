@@ -24,6 +24,7 @@ BACKLOG = ROOT / "improvement_backlog.md"
 STATUS = ROOT / "research_status.json"
 LICENSE_GUARD = ROOT / "LICENSE_GUARD.md"
 INTAKE_PLAN = ROOT / "safe_intake_plan.md"
+LEARNING_ACTIVITY = ROOT / "github_learning_activity.json"
 
 ALLOWED_LICENSES = {
     "mit",
@@ -176,6 +177,81 @@ def idea_from_repo(topic: str, repo: dict, license_ok: bool) -> str:
     if not license_ok:
         return "Use only the high-level concept; code reuse needs explicit license approval first."
     return f"Review the project concept for {topic} and extract one small local improvement."
+
+
+def adaptation_action(topic: str, repo: dict, license_ok: bool) -> str:
+    text = " ".join([
+        topic,
+        repo.get("full_name", ""),
+        repo.get("description", ""),
+        " ".join(repo.get("topics") or []),
+    ]).lower()
+    if not license_ok:
+        return "Nur Konzept extrahieren; Code erst nach Lizenzfreigabe stagen."
+    if "paperclip" in text or "orchestration" in text:
+        return "Orchestrierung/Budget/Task-Zuordnung als Dashboard- und Team-Regel adaptieren."
+    if "openclaw" in text:
+        return "Autonomie-, Skill-, Memory- oder Kanal-Muster pruefen und als kleinen Patch stagen."
+    if "guard" in text or "security" in text or "safety" in text:
+        return "Guardrail oder Rollback-Regel als Sicherheits-Patch ueber safe_code_intake testen."
+    if "template" in text or "soul" in text:
+        return "Agentenrolle oder Workflow-Vorlage als Konfig-/Prompt-Erweiterung pruefen."
+    if "test" in text or "eval" in text:
+        return "Test-Gate/Eval-Idee als kleinen Validator ergaenzen."
+    return "Einen kleinen nutzbaren Teil isolieren, stagen, validieren und erst dann promoten."
+
+
+def risk_level(repo: dict, license_ok: bool) -> str:
+    if not license_ok:
+        return "hoch: Lizenz unklar oder nicht direkt erlaubt"
+    desc = (repo.get("description") or "").lower()
+    if any(word in desc for word in ["shell", "browser", "credential", "security", "autonomous"]):
+        return "mittel: Funktion betrifft autonome/privilegierte Aktionen"
+    return "niedrig: permissive Lizenz und begrenzter Scope"
+
+
+def learning_activity(findings: list[dict], errors: list[str]) -> dict:
+    events = []
+    candidates = []
+    for item in findings:
+        repos = item.get("repos", [])
+        events.append({
+            "type": "topic_scan",
+            "topic": item.get("topic", ""),
+            "query": item.get("query", ""),
+            "why": item.get("why", ""),
+            "result": f"{len(repos)} passende Repos gefunden",
+        })
+        for repo in repos:
+            mode = "code-intake-allowed" if repo["license_ok"] else "concept-only"
+            event = {
+                "type": "repo_review",
+                "topic": item.get("topic", ""),
+                "repo": repo["full_name"],
+                "url": repo["html_url"],
+                "stars": repo["stars"],
+                "updated_at": repo["updated_at"],
+                "license": repo["license"],
+                "mode": mode,
+                "idea": repo["idea"],
+                "action": adaptation_action(item.get("topic", ""), repo, repo["license_ok"]),
+                "risk": risk_level(repo, repo["license_ok"]),
+                "next_step": (
+                    "safe_code_intake stage/validate/promote"
+                    if repo["license_ok"] else
+                    "Konzept notieren; kein Code-Promote"
+                ),
+            }
+            events.append(event)
+            candidates.append(event)
+    return {
+        "checked_at": now(),
+        "summary": f"{len(findings)} Themen, {len(candidates)} Repo-Kandidaten, {len(errors)} Fehler",
+        "current_focus": candidates[0] if candidates else None,
+        "events": events[-80:],
+        "candidates": candidates[:24],
+        "errors": errors[-5:],
+    }
 
 
 def render_digest(findings: list[dict]) -> str:
@@ -387,6 +463,7 @@ def main() -> int:
             "backlog": str(BACKLOG),
             "license_guard": str(LICENSE_GUARD),
             "intake_plan": str(INTAKE_PLAN),
+            "learning_activity": str(LEARNING_ACTIVITY),
         }, indent=2), encoding="utf-8")
         print(f"Research loop kept previous files: 0 repos, {len(errors)} errors")
         return 0 if previous.get("ok", False) else 1
@@ -394,6 +471,7 @@ def main() -> int:
     BACKLOG.write_text(render_backlog(findings), encoding="utf-8")
     LICENSE_GUARD.write_text(render_license_guard(findings), encoding="utf-8")
     INTAKE_PLAN.write_text(render_intake_plan(findings), encoding="utf-8")
+    LEARNING_ACTIVITY.write_text(json.dumps(learning_activity(findings, errors), indent=2), encoding="utf-8")
     STATUS.write_text(json.dumps({
         "ok": total_repos > 0,
         "checked_at": now(),
@@ -407,6 +485,7 @@ def main() -> int:
         "backlog": str(BACKLOG),
         "license_guard": str(LICENSE_GUARD),
         "intake_plan": str(INTAKE_PLAN),
+        "learning_activity": str(LEARNING_ACTIVITY),
     }, indent=2), encoding="utf-8")
     print(f"Research loop complete: {sum(len(x['repos']) for x in findings)} repos, {len(errors)} errors")
     return 0 if not errors else 1
