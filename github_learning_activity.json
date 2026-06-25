@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-25 22:30:06 UTC",
+  "checked_at": "2026-06-25 23:00:05 UTC",
   "summary": "10 Themen, 21 Repo-Kandidaten, 0 Fehler",
   "current_focus": {
     "type": "repo_review",
@@ -309,7 +309,7 @@
       "repo": "MervinPraison/PraisonAI",
       "url": "https://github.com/MervinPraison/PraisonAI",
       "stars": 8273,
-      "updated_at": "2026-06-25T21:51:00Z",
+      "updated_at": "2026-06-25T22:44:43Z",
       "license": "mit",
       "mode": "code-intake-allowed",
       "idea": "Improve long-term memory with concise summaries and duplicate detection.",
@@ -612,7 +612,7 @@
       "repo": "MervinPraison/PraisonAI",
       "url": "https://github.com/MervinPraison/PraisonAI",
       "stars": 8273,
-      "updated_at": "2026-06-25T21:51:00Z",
+      "updated_at": "2026-06-25T22:44:43Z",
       "license": "mit",
       "mode": "code-intake-allowed",
       "idea": "Improve long-term memory with concise summaries and duplicate detection.",
