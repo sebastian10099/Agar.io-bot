@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-25 05:00:04 UTC
+Last run: 2026-06-25 05:30:03 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
@@ -20,8 +20,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### agent0ai/agent-zero
 
 - URL: https://github.com/agent0ai/agent-zero
-- Stars: 18197
-- Updated: 2026-06-25T04:39:53Z
+- Stars: 18198
+- Updated: 2026-06-25T05:26:45Z
 - License: other (concept only)
 - Summary: Agent Zero AI framework
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -29,8 +29,8 @@ Why: Find ideas for agent coordination, memory, and safe autonomy.
 ### TransformerOptimus/SuperAGI
 
 - URL: https://github.com/TransformerOptimus/SuperAGI
-- Stars: 17578
-- Updated: 2026-06-24T20:23:28Z
+- Stars: 17579
+- Updated: 2026-06-25T05:03:41Z
 - License: mit (OK to study)
 - Summary: <⚡️> SuperAGI - A dev-first open source autonomous AI agent framework. Enabling developers to build, manage & run useful autonomous agents quickly and reliably.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
