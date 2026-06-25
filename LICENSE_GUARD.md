@@ -1,6 +1,6 @@
 # License Guard
 
-Updated: 2026-06-25 17:30:03 UTC
+Updated: 2026-06-25 18:00:05 UTC
 
 Policy: external code is never copied automatically. License, source URL, attribution, and fit must be reviewed before reuse.
 
@@ -23,4 +23,4 @@ Policy: external code is never copied automatically. License, source URL, attrib
 | self improving coding agent | MaximeRobeyns/self_improving_coding_agent | mit | study concepts; snippets only with attribution/review |
 | self improving coding agent | BetterForAll/self-improving-agents | mit | study concepts; snippets only with attribution/review |
 | self improving coding agent | PrismorSec/immunity-agent | apache-2.0 | study concepts; snippets only with attribution/review |
-| self improving coding agent | AmoghReddy45/autonomous-workstream | apache-2.0 | study concepts; snippets only with attribution/review |
+| self improving coding agent | YiShu5/claude-skills | mit | study concepts; snippets only with attribution/review |
