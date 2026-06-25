@@ -1,5 +1,9 @@
-# Flask Dashboard Test
+# Flask-Dashboard
 
-## Starten des Flask-Dashboards:
-1. Python-Script ausführen: `python3 /root/local_agent/agent_workspace/test_flask.py`
-2. Das Flask-Dashboard wird auf Port 11435 gestartet (oder einem frei gewählten anderen Port).
+## Starten:
+1. Öffne ein Terminalfenster.
+2. Verwende `python3` um den Flask-Server zu starten: `python3 /root/local_agent/agent_workspace/flask_app.py`
+3. Der Server läuft auf Port 11437.
+
+## Testergebnisse:
+- Die App ist erfolgreich gestartet und läuft ohne Fehler.
