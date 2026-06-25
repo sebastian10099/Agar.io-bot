@@ -5,6 +5,31 @@
     "why": "Find ideas for agent coordination, memory, and safe autonomy."
   },
   {
+    "topic": "OpenClaw core autonomy",
+    "query": "openclaw openclaw personal AI assistant autonomous agent",
+    "why": "Import useful self-coding, skills, memory, channel, and live-canvas patterns when license allows."
+  },
+  {
+    "topic": "Paperclip AI orchestration",
+    "query": "paperclip ai autonomous agents orchestration github",
+    "why": "Find org chart, budgets, governance, task assignment, and multi-agent coordination patterns."
+  },
+  {
+    "topic": "Antfarm OpenClaw agent team",
+    "query": "Antfarm OpenClaw planner developer verifier tester reviewer",
+    "why": "Import team-role patterns for planner, coder, verifier, tester, and reviewer agents."
+  },
+  {
+    "topic": "Awesome OpenClaw agent templates",
+    "query": "awesome OpenClaw agents SOUL.md templates",
+    "why": "Use permissive templates as candidate personalities, roles, and workflows."
+  },
+  {
+    "topic": "OpenClaw high privilege safety",
+    "query": "OpenClaw security practice guide autonomous AI agents",
+    "why": "Keep autonomy powerful without losing rollback, audit, least privilege, and kill-switch controls."
+  },
+  {
     "topic": "AI coding agent LoopGuard",
     "query": "coding agent loop guard loop prevention language:Python",
     "why": "Reduce repeated file reads and repeated failed actions."

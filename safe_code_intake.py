@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 
@@ -76,6 +77,13 @@ def resolve_target(path: str) -> Path:
 
 
 def load_text(args: argparse.Namespace) -> str:
+    if getattr(args, "from_url", None):
+        req = urllib.request.Request(
+            args.from_url,
+            headers={"User-Agent": "PROMETHEUS-safe-code-intake"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.read().decode("utf-8", errors="replace")
     if args.from_file:
         return Path(args.from_file).read_text(encoding="utf-8", errors="replace")
     if args.content is not None:
@@ -272,6 +280,7 @@ def main() -> int:
     s.add_argument("--license", required=True)
     s.add_argument("--target", required=True)
     s.add_argument("--from-file")
+    s.add_argument("--from-url", help="fetch external code into staging; use raw/source URLs only")
     s.add_argument("--content")
     s.set_defaults(func=stage)
     v = sub.add_parser("validate")

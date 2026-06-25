@@ -1,7 +1,7 @@
 # PROMETHEUS Self-Development Loop
 
-Goal: improve the agent system in small, tested steps without blindly copying
-external code.
+Goal: improve the agent system in small, tested steps. External code is allowed
+when license, source, staging, tests, and rollback are clean.
 
 ## Loop
 
@@ -16,7 +16,8 @@ external code.
 
 ## Safety Rules
 
-- Do not clone or copy external code automatically.
+- External code from OpenClaw, Paperclip, Antfarm, and similar agent projects is
+  allowed when its license permits reuse.
 - Check license before any code reuse.
 - Copied/pasted code must go through `safe_code_intake.py`: stage with source
   URL/license, validate, fix while staged, then promote only after green checks

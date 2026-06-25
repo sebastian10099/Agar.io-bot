@@ -1,7 +1,8 @@
 # External Code Policy
 
-External or copied code may help PROMETHEUS evolve, but it must never go live
-directly.
+External or copied code is allowed and should help PROMETHEUS evolve, including
+useful autonomy patterns from OpenClaw, Paperclip, Antfarm, and similar agent
+projects. It must never go live directly.
 
 ## Required Flow
 
@@ -17,6 +18,7 @@ Use:
 
 ```bash
 python safe_code_intake.py stage --name tool-name --source-url https://example --license mit --target tools/new_tool.py --from-file /tmp/snippet.py
+python safe_code_intake.py stage --name tool-name --source-url https://raw.githubusercontent.com/org/repo/main/tool.py --license mit --target tools/new_tool.py --from-url https://raw.githubusercontent.com/org/repo/main/tool.py
 python safe_code_intake.py validate <item_id>
 python safe_code_intake.py promote <item_id>
 python safe_code_intake.py promote <item_id> --test-command "python3 -m py_compile tools/new_tool.py"
@@ -25,6 +27,7 @@ python safe_code_intake.py promote <item_id> --test-command "python3 -m py_compi
 ## Hard Rules
 
 - Do not copy code without source URL and license metadata.
+- Prefer MIT, Apache-2.0, BSD, ISC, or MPL-2.0 code for direct reuse.
 - Unknown, GPL/AGPL, proprietary, or unclear licenses are concept-only until a
   human/reviewer approves reuse.
 - Do not write outside the workspace.

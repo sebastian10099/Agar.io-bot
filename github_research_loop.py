@@ -2,8 +2,9 @@
 """PROMETHEUS self-development research loop.
 
 This script reads a small research queue, looks up public GitHub projects, and
-turns findings into safe improvement ideas. It records summaries only; it does
-not clone repositories or copy source code.
+turns findings into safe improvement ideas. External code is allowed when its
+source, license, staging, validation, target-side test, and rollback path are
+documented by safe_code_intake.py.
 """
 
 from __future__ import annotations
@@ -84,6 +85,31 @@ def read_queue() -> list[dict]:
                 "why": "Find ideas for agent coordination, memory, and safe autonomy.",
             },
             {
+                "topic": "OpenClaw core autonomy",
+                "query": "openclaw openclaw personal AI assistant autonomous agent",
+                "why": "Import useful self-coding, skills, memory, channel, and live-canvas patterns when license allows.",
+            },
+            {
+                "topic": "Paperclip AI orchestration",
+                "query": "paperclip ai autonomous agents orchestration github",
+                "why": "Find org chart, budgets, governance, task assignment, and multi-agent coordination patterns.",
+            },
+            {
+                "topic": "Antfarm OpenClaw agent team",
+                "query": "Antfarm OpenClaw planner developer verifier tester reviewer",
+                "why": "Import team-role patterns for planner, coder, verifier, tester, and reviewer agents.",
+            },
+            {
+                "topic": "Awesome OpenClaw agent templates",
+                "query": "awesome OpenClaw agents SOUL.md templates",
+                "why": "Use permissive templates as candidate personalities, roles, and workflows.",
+            },
+            {
+                "topic": "OpenClaw high privilege safety",
+                "query": "OpenClaw security practice guide autonomous AI agents",
+                "why": "Keep autonomy powerful without losing rollback, audit, least privilege, and kill-switch controls.",
+            },
+            {
                 "topic": "AI coding agent LoopGuard",
                 "query": "coding agent loop guard loop prevention language:Python",
                 "why": "Reduce repeated file reads and repeated failed actions.",
@@ -148,7 +174,7 @@ def idea_from_repo(topic: str, repo: dict, license_ok: bool) -> str:
     if "monitor" in text or "dashboard" in text:
         return "Improve dashboard visibility for progress, blocked states, and resource use."
     if not license_ok:
-        return "Use only the high-level concept; do not copy code until license is reviewed."
+        return "Use only the high-level concept; code reuse needs explicit license approval first."
     return f"Review the project concept for {topic} and extract one small local improvement."
 
 
@@ -158,7 +184,7 @@ def render_digest(findings: list[dict]) -> str:
         "",
         f"Last run: {now()}",
         "",
-        "Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.",
+        "Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.",
         "",
     ]
     for item in findings:
@@ -182,6 +208,7 @@ def render_digest(findings: list[dict]) -> str:
                 f"- License: {repo['license']} ({safe})",
                 f"- Summary: {repo['description'] or 'No description'}",
                 f"- Safe takeaway: {repo['idea']}",
+                f"- Intake: stage with source `{repo['html_url']}` and license `{repo['license']}` before any code reuse.",
                 "",
             ])
     return "\n".join(lines).rstrip() + "\n"
@@ -231,7 +258,7 @@ def render_license_guard(findings: list[dict]) -> str:
         for repo in item["repos"]:
             if repo["license_ok"]:
                 allowed += 1
-                mode = "study concepts; snippets only with attribution/review"
+                mode = "code reuse allowed through safe_code_intake with attribution/review"
             else:
                 concept_only += 1
                 mode = "concept only; no code reuse"
@@ -248,7 +275,7 @@ def render_license_guard(findings: list[dict]) -> str:
         "",
         f"Updated: {now()}",
         "",
-        "Policy: external code is never copied automatically. License, source URL, attribution, and fit must be reviewed before reuse.",
+        "Policy: external code is allowed, but never goes live directly. License, source URL, attribution, fit, validation, target-side test, and rollback must be reviewed before reuse.",
         "",
         f"- OK-to-study repositories: {allowed}",
         f"- Concept-only repositories: {concept_only}",
@@ -267,13 +294,13 @@ def render_intake_plan(findings: list[dict]) -> str:
         "",
         f"Updated: {now()}",
         "",
-        "Purpose: turn GitHub research into small implementation candidates without letting untested code go live.",
+        "Purpose: turn GitHub research into small implementation candidates, including external code, without letting untested code go live.",
         "",
         "## Flow",
         "",
         "1. Pick one backlog item only.",
-        "2. Prefer reimplementing the idea locally instead of copying source.",
-        "3. If code is copied, stage it with source URL, license, and target path.",
+        "2. Prefer reimplementing the idea locally when simpler; copied code is allowed when license permits.",
+        "3. If code is copied, stage it with source URL, license, and target path. Raw GitHub files may use `--from-url`.",
         "4. Run `safe_code_intake.py validate <item_id>`.",
         "5. Promote only if green; promotion runs a target-side test and rolls back on failure.",
         "6. Run the agent Test-Gate and GitHub auto-sync only after the target is clean.",
@@ -288,7 +315,7 @@ def render_intake_plan(findings: list[dict]) -> str:
             if key in seen:
                 continue
             seen.add(key)
-            mode = "concept-only" if not repo["license_ok"] else "study-first"
+            mode = "concept-only" if not repo["license_ok"] else "code-intake-allowed"
             lines.extend([
                 f"### {repo['full_name']}",
                 "",
@@ -297,7 +324,7 @@ def render_intake_plan(findings: list[dict]) -> str:
                 f"- Safe idea: {repo['idea']}",
                 f"- Source: {repo['html_url']}",
                 f"- License: {repo['license']}",
-                "- Integration rule: implement one small local patch, validate, then promote/test before replacing anything.",
+                "- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.",
                 "",
             ])
     if len(lines) <= 19:
