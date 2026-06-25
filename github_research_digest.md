@@ -1,59 +1,59 @@
 # GitHub Research Digest
 
-Last run: 2026-06-25 19:00:03 UTC
+Last run: 2026-06-25 19:03:57 UTC
 
 Rule: summarize ideas only. Do not copy external code unless license, source, and attribution are reviewed.
 
-## OpenClaw autonomous agent
+## OpenClaw / OpenClout autonomous agent
 
 Why: Find ideas for agent coordination, memory, and safe autonomy.
 
-### crewAIInc/crewAI
+### openclaw-token-optimizer/openclaw-token-optimizer
 
-- URL: https://github.com/crewAIInc/crewAI
-- Stars: 54366
-- Updated: 2026-06-25T18:23:32Z
-- License: mit (OK to study)
-- Summary: Framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks.
+- URL: https://github.com/openclaw-token-optimizer/openclaw-token-optimizer
+- Stars: 7
+- Updated: 2026-04-07T09:14:49Z
+- License: apache-2.0 (OK to study)
+- Summary: OpenClaw Token Optimizer is an open-source local skills patcher for the autonomous AI agent OpenClaw.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
 
-### agent0ai/agent-zero
+### AuroraKON6/xianyu-agent
 
-- URL: https://github.com/agent0ai/agent-zero
-- Stars: 18207
-- Updated: 2026-06-25T17:46:11Z
-- License: other (concept only)
-- Summary: Agent Zero AI framework
+- URL: https://github.com/AuroraKON6/xianyu-agent
+- Stars: 4
+- Updated: 2026-06-12T04:31:49Z
+- License: unknown (concept only)
+- Summary: AI-Powered E-Commerce Autonomous Agent System — Multi-Agent orchestration for automated product sourcing, listing optimization, order fulfillment, and intelligent customer service on second-hand marketplaces. Built with OpenClaw + MiMo/DeepSeek.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
 
-### TransformerOptimus/SuperAGI
+### satawarlock-a11y/agent-memory-core
 
-- URL: https://github.com/TransformerOptimus/SuperAGI
-- Stars: 17581
-- Updated: 2026-06-25T13:20:59Z
+- URL: https://github.com/satawarlock-a11y/agent-memory-core
+- Stars: 1
+- Updated: 2026-06-03T09:51:00Z
 - License: mit (OK to study)
-- Summary: <⚡️> SuperAGI - A dev-first open source autonomous AI agent framework. Enabling developers to build, manage & run useful autonomous agents quickly and reliably.
+- Summary: An open-source hybrid (Vector + Graph) long-term memory architecture and integration schema for autonomous LLM agents, OpenClaw, and multimodal AI workflows.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
 
-### wanshuiyin/Auto-claude-code-research-in-sleep
+### MABAIStrategies/agent-guardrails-v0.1
 
-- URL: https://github.com/wanshuiyin/Auto-claude-code-research-in-sleep
-- Stars: 12628
-- Updated: 2026-06-25T18:06:51Z
+- URL: https://github.com/MABAIStrategies/agent-guardrails-v0.1
+- Stars: 0
+- Updated: 2026-04-23T11:27:54Z
 - License: mit (OK to study)
-- Summary: ARIS ⚔️ (Auto-Research-In-Sleep) — Lightweight Markdown-only skills for autonomous ML research: cross-model review loops, idea discovery, and experiment automation. No framework, no lock-in — works with Claude Code, Codex, OpenClaw, or any LLM agent.
+- Summary: Open source skill packages for adding smart guardrails to your autonomous agent (openclaw, hermes, memubot, nanoclaw, etc)
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
 
-### MervinPraison/PraisonAI
+### yahweh12025-dev/human-ai
 
-- URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8272
-- Updated: 2026-06-25T17:58:20Z
-- License: mit (OK to study)
-- Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
-- Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
+- URL: https://github.com/yahweh12025-dev/human-ai
+- Stars: 0
+- Updated: 2026-06-20T15:24:14Z
+- License: unknown (concept only)
+- Summary: An open-source personal AI assistant bridging human intent with autonomous action. Built on the OpenClaw agent framework and powered by Hermes.
+- Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
 
-## AI coding agent anti loop guard
+## AI coding agent LoopGuard
 
 Why: Reduce repeated file reads and repeated failed actions.
 
@@ -156,3 +156,9 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 - License: mit (OK to study)
 - Summary: 🧩 通用 Claude Code Skills 集合 · 即插即用 · 包含 clawd-animation、self-improving-agent、wechat-article-publisher 等
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
+
+## safe external code intake
+
+Why: Improve stage, validate, promote, rollback, and test-before-live workflows.
+
+No repositories found or GitHub API returned no usable result.

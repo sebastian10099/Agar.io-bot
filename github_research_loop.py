@@ -22,6 +22,7 @@ DIGEST = ROOT / "github_research_digest.md"
 BACKLOG = ROOT / "improvement_backlog.md"
 STATUS = ROOT / "research_status.json"
 LICENSE_GUARD = ROOT / "LICENSE_GUARD.md"
+INTAKE_PLAN = ROOT / "safe_intake_plan.md"
 
 ALLOWED_LICENSES = {
     "mit",
@@ -78,13 +79,13 @@ def read_queue() -> list[dict]:
     if not QUEUE.exists():
         default = [
             {
-                "topic": "OpenClaw autonomous agent",
-                "query": "autonomous agent framework language:Python",
+                "topic": "OpenClaw / OpenClout autonomous agent",
+                "query": "OpenClaw autonomous agent OR open source autonomous agent language:Python",
                 "why": "Find ideas for agent coordination, memory, and safe autonomy.",
             },
             {
-                "topic": "AI coding agent anti loop guard",
-                "query": "coding agent loop prevention language:Python",
+                "topic": "AI coding agent LoopGuard",
+                "query": "coding agent loop guard loop prevention language:Python",
                 "why": "Reduce repeated file reads and repeated failed actions.",
             },
             {
@@ -96,6 +97,11 @@ def read_queue() -> list[dict]:
                 "topic": "self improving coding agent",
                 "query": "self improving coding agent language:Python",
                 "why": "Collect safe patterns for plan, experiment, test, and learn loops.",
+            },
+            {
+                "topic": "safe external code intake",
+                "query": "AI coding agent safe code execution sandbox tests language:Python",
+                "why": "Improve stage, validate, promote, rollback, and test-before-live workflows.",
             },
         ]
         QUEUE.write_text(json.dumps(default, indent=2), encoding="utf-8")
@@ -255,6 +261,51 @@ def render_license_guard(findings: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def render_intake_plan(findings: list[dict]) -> str:
+    lines = [
+        "# Safe Intake Plan",
+        "",
+        f"Updated: {now()}",
+        "",
+        "Purpose: turn GitHub research into small implementation candidates without letting untested code go live.",
+        "",
+        "## Flow",
+        "",
+        "1. Pick one backlog item only.",
+        "2. Prefer reimplementing the idea locally instead of copying source.",
+        "3. If code is copied, stage it with source URL, license, and target path.",
+        "4. Run `safe_code_intake.py validate <item_id>`.",
+        "5. Promote only if green; promotion runs a target-side test and rolls back on failure.",
+        "6. Run the agent Test-Gate and GitHub auto-sync only after the target is clean.",
+        "",
+        "## Candidate Mapping",
+        "",
+    ]
+    seen = set()
+    for item in findings:
+        for repo in item["repos"]:
+            key = (repo["full_name"], repo["idea"])
+            if key in seen:
+                continue
+            seen.add(key)
+            mode = "concept-only" if not repo["license_ok"] else "study-first"
+            lines.extend([
+                f"### {repo['full_name']}",
+                "",
+                f"- Topic: {item['topic']}",
+                f"- Mode: {mode}",
+                f"- Safe idea: {repo['idea']}",
+                f"- Source: {repo['html_url']}",
+                f"- License: {repo['license']}",
+                "- Integration rule: implement one small local patch, validate, then promote/test before replacing anything.",
+                "",
+            ])
+    if len(lines) <= 19:
+        lines.append("No candidates yet.")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def main() -> int:
     findings = []
     errors = []
@@ -308,12 +359,14 @@ def main() -> int:
             "digest": str(DIGEST),
             "backlog": str(BACKLOG),
             "license_guard": str(LICENSE_GUARD),
+            "intake_plan": str(INTAKE_PLAN),
         }, indent=2), encoding="utf-8")
         print(f"Research loop kept previous files: 0 repos, {len(errors)} errors")
         return 0 if previous.get("ok", False) else 1
     DIGEST.write_text(render_digest(findings), encoding="utf-8")
     BACKLOG.write_text(render_backlog(findings), encoding="utf-8")
     LICENSE_GUARD.write_text(render_license_guard(findings), encoding="utf-8")
+    INTAKE_PLAN.write_text(render_intake_plan(findings), encoding="utf-8")
     STATUS.write_text(json.dumps({
         "ok": total_repos > 0,
         "checked_at": now(),
@@ -326,6 +379,7 @@ def main() -> int:
         "digest": str(DIGEST),
         "backlog": str(BACKLOG),
         "license_guard": str(LICENSE_GUARD),
+        "intake_plan": str(INTAKE_PLAN),
     }, indent=2), encoding="utf-8")
     print(f"Research loop complete: {sum(len(x['repos']) for x in findings)} repos, {len(errors)} errors")
     return 0 if not errors else 1

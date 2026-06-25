@@ -1,13 +1,14 @@
 {
   "ok": true,
-  "checked_at": "2026-06-25 19:00:03 UTC",
-  "topics": 4,
+  "checked_at": "2026-06-25 19:03:57 UTC",
+  "topics": 5,
   "repos": 15,
-  "ok_to_study": 14,
-  "concept_only": 1,
+  "ok_to_study": 13,
+  "concept_only": 2,
   "errors": [],
   "warnings": [],
   "digest": "/root/local_agent/agent_workspace/github_research_digest.md",
   "backlog": "/root/local_agent/agent_workspace/improvement_backlog.md",
-  "license_guard": "/root/local_agent/agent_workspace/LICENSE_GUARD.md"
+  "license_guard": "/root/local_agent/agent_workspace/LICENSE_GUARD.md",
+  "intake_plan": "/root/local_agent/agent_workspace/safe_intake_plan.md"
 }

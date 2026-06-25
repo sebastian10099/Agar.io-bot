@@ -18,6 +18,7 @@ import json
 import os
 import py_compile
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -195,6 +196,21 @@ def promote(args: argparse.Namespace) -> int:
         shutil.copy2(target, backup)
         meta["backup"] = str(backup)
     shutil.copy2(meta["snippet"], target)
+    promote_test = run_promote_test(target, args.test_command)
+    meta["promote_test"] = promote_test
+    if not promote_test["ok"]:
+        if meta.get("backup"):
+            shutil.copy2(meta["backup"], target)
+            promote_test["rollback"] = f"restored {meta['backup']}"
+        else:
+            target.unlink(missing_ok=True)
+            promote_test["rollback"] = "removed newly promoted file"
+        meta["validation"] = result
+        meta["status"] = "blocked"
+        (item_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        REPORT.write_text(json.dumps({"last_item": meta, "updated_at": utc()}, indent=2), encoding="utf-8")
+        print(json.dumps(promote_test, indent=2))
+        return 3
     meta["validation"] = result
     meta["promoted_at"] = utc()
     meta["status"] = "promoted"
@@ -202,6 +218,37 @@ def promote(args: argparse.Namespace) -> int:
     REPORT.write_text(json.dumps({"last_item": meta, "updated_at": utc()}, indent=2), encoding="utf-8")
     print(f"promoted {args.item_id} -> {target}")
     return 0
+
+
+def run_promote_test(target: Path, command: str | None = None) -> dict:
+    """Run a final target-side check after copying; callers roll back on failure."""
+    suffix = target.suffix.lower()
+    if command:
+        cmd = shlex.split(command)
+        label = command
+    elif suffix == ".py":
+        cmd = [sys.executable, "-m", "py_compile", str(target)]
+        label = "python py_compile"
+    elif suffix == ".sh":
+        cmd = ["bash", "-n", str(target)]
+        label = "bash -n"
+    elif suffix == ".json":
+        try:
+            json.loads(target.read_text(encoding="utf-8"))
+            return {"ok": True, "name": "json_parse", "detail": "json parse ok"}
+        except Exception as exc:
+            return {"ok": False, "name": "json_parse", "detail": str(exc)[:500]}
+    else:
+        return {"ok": True, "name": "basic_target_check", "detail": "no executable target-side test needed"}
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        return {
+            "ok": proc.returncode == 0,
+            "name": "promote_test",
+            "detail": label if proc.returncode == 0 else (proc.stderr or proc.stdout or label)[:500],
+        }
+    except Exception as exc:
+        return {"ok": False, "name": "promote_test", "detail": str(exc)[:500]}
 
 
 def status(_: argparse.Namespace) -> int:
@@ -232,6 +279,7 @@ def main() -> int:
     v.set_defaults(func=validate)
     pr = sub.add_parser("promote")
     pr.add_argument("item_id")
+    pr.add_argument("--test-command", help="optional final command, split shell-style and run without shell")
     pr.set_defaults(func=promote)
     st = sub.add_parser("status")
     st.set_defaults(func=status)
