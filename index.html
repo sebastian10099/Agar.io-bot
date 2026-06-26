@@ -1,2 +1,1 @@
-<html><head><title>Wertansicht</title></head><body><h1>Werte:</h1><ul>
-<a href='/werte'>Werte anzeigen</a></body></html>
+<html><head><title>Agent Workspace</title></head><body><h1>JSON Values:</h1><pre>{% for key, value in json.loads(read_file('/root/local_agent/agent_workspace/json_values.json')).items() %}<strong>{{key}}</strong>: {{value}}<br>{% endfor %}</pre></body></html>
