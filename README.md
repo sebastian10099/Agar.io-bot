@@ -6,4 +6,4 @@
 3. Der Server läuft auf Port 11437.
 
 ## Testergebnisse:
-- Die App ist erfolgreich gestartet und läuft ohne Fehler.
+- Die App ist erfolgreich gestartet und läuft ohne Fehler.# Versuche Port 11439 für das Flask-Dashboard und dokumentiere in der README, wie man es startet
