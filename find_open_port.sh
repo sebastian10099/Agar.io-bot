@@ -1,8 +1,16 @@
 #!/bin/bash
-PORT=$(netstat -tuln | grep ':<port>' | cut -d: -f4 | sort -u)
-if [ -z "$PORT" ]; then
-    echo "No open ports found."
-else
-    echo "Open port(s): $PORT" | tee /root/local_agent/agent_workspace/open_ports.txt
-echo "$PORT" > /root/local_agent/agent_workspace/current_open_port.txt
-fi
+
+# Variablen initialisieren
+OPEN_PORTS=()
+
+timeouts=$((SECONDS+90)) # Timeout nach 1 Minute
+
+while [[ $SECONDS -lt $timeouts ]]; do
+    PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind("") ; s.listen(); c, addr = s.accept(); OPEN_PORTS+=([addr[0]])' | tr -d "[]" && echo $OPEN_PORTS)
+    if [ ${#PORT[@]} -gt 0 ]; then
+        break
+    fi
+    sleep 1
+done
+
+echo 'Open Ports: ${OPEN_PORTS[*]}'
