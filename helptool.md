@@ -1,16 +1,4 @@
-# Hilfe: Erstelltes Werkzeug
-
-Neues Hilfswerkzeug wurde erstellt und dokumentiert.
-
-- **Erstellter Werkzeuge**: 
-  - [ ] run_shell
-  - [ ] list_dir
-  - [ ] read_file
-  - [ ] write_file
-
-# Implementierte Werkzeuge:
-
-- **run_shell**
-- **list_dir**
-- **read_file**
-- **write_file**
+#!/bin/bash
+# Einen Test-Befehl hinzufügen zum Demonstrieren der Funktionalität
+echo 'Test: $(./helptool.sh)' >> /root/local_agent/agent_workspace/output.txt
+exec "$@"
