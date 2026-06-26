@@ -1,10 +1,8 @@
-# Monitor Project
+# Projektmonitor
 
-Ziel: Einwachsfähiges Monitoring-System einrichten.
+Ziel: Ein einfacher Monitoring-System für CPU, RAM, Disk und laufende Dienste.
 
-Geplante Features:
-1. Systemstatus Überwachung
-2. Fehlermeldungen automatisierte Berichterstellung
-3. Warnungen für Ausnahmeverhalten
-
-... (weitere geplanten Features)
+Planned Features:
+- Sammeln von CPU, RAM, Disk und Load-Daten
+- Überwachung aktiver Dienste
+- Export der Daten als JSON
