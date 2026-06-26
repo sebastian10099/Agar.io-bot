@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-26 21:00:05 UTC
+Last run: 2026-06-26 21:30:07 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -65,8 +65,8 @@ Why: Import useful self-coding, skills, memory, channel, and live-canvas pattern
 ### zeroclaw-labs/zeroclaw
 
 - URL: https://github.com/zeroclaw-labs/zeroclaw
-- Stars: 32050
-- Updated: 2026-06-26T20:27:56Z
+- Stars: 32051
+- Updated: 2026-06-26T21:24:03Z
 - License: apache-2.0 (OK to study)
 - Summary: Fast, small, and fully autonomous AI personal assistant infrastructure, any OS, any platform — deploy anywhere, swap anything 🦀
 - Safe takeaway: Review the project concept for OpenClaw core autonomy and extract one small local improvement.
@@ -242,7 +242,7 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 
 - URL: https://github.com/PrismorSec/immunity-agent
 - Stars: 210
-- Updated: 2026-06-26T20:57:40Z
+- Updated: 2026-06-26T21:09:41Z
 - License: apache-2.0 (OK to study)
 - Summary: Self improving security layer for AI coding agents : Safe package recommendations, Secret protection, MCP/tools guardrails, Skill governance, runtime policy enforcement and full audit visibility with a self-serve dashboard.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
