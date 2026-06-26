@@ -1,3 +1,3 @@
 #!/bin/bash
-echo 'Hello, World!' > /root/local_agent/agent_workspace/output.txt
-exec "$@"
+echo "Verbindung zum Google-Server: $(ping -c 4 google.com)"
+echo "$DISPLAY"
