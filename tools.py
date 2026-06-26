@@ -1,3 +1,3 @@
-import os
-os.environ['DISPLAY'] = ':0'
-print(os.environ.get('DISPLAY'))open_port_test
+
+# Kompletter Weg zu Python im PATH
+export PATH=$PATH:/usr/bin/python /root/local_agent/agent_workspace/tools.py
