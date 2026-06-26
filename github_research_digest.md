@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-26 10:30:05 UTC
+Last run: 2026-06-26 11:00:05 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -65,8 +65,8 @@ Why: Import useful self-coding, skills, memory, channel, and live-canvas pattern
 ### zeroclaw-labs/zeroclaw
 
 - URL: https://github.com/zeroclaw-labs/zeroclaw
-- Stars: 32041
-- Updated: 2026-06-26T10:01:54Z
+- Stars: 32043
+- Updated: 2026-06-26T10:58:06Z
 - License: apache-2.0 (OK to study)
 - Summary: Fast, small, and fully autonomous AI personal assistant infrastructure, any OS, any platform — deploy anywhere, swap anything 🦀
 - Safe takeaway: Review the project concept for OpenClaw core autonomy and extract one small local improvement.
@@ -131,8 +131,8 @@ Why: Use permissive templates as candidate personalities, roles, and workflows.
 ### mergisi/awesome-openclaw-agents
 
 - URL: https://github.com/mergisi/awesome-openclaw-agents
-- Stars: 3731
-- Updated: 2026-06-25T23:24:56Z
+- Stars: 3730
+- Updated: 2026-06-26T10:44:06Z
 - License: mit (OK to study)
 - Summary: 162 production-ready AI agent templates for OpenClaw. SOUL.md configs across 19 categories. Submit yours!
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -212,7 +212,7 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 
 - URL: https://github.com/MervinPraison/PraisonAI
 - Stars: 8288
-- Updated: 2026-06-26T10:29:54Z
+- Updated: 2026-06-26T10:42:10Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -251,8 +251,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### YiShu5/claude-skills
 
 - URL: https://github.com/YiShu5/claude-skills
-- Stars: 66
-- Updated: 2026-06-26T08:54:52Z
+- Stars: 68
+- Updated: 2026-06-26T10:49:02Z
 - License: mit (OK to study)
 - Summary: 🧩 通用 Claude Code Skills 集合 · 即插即用 · 包含 clawd-animation、self-improving-agent、wechat-article-publisher 等
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
