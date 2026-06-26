@@ -7,3 +7,7 @@
 
 ## Testergebnisse:
 - Die App ist erfolgreich gestartet und läuft ohne Fehler.# Versuche Port 11439 für das Flask-Dashboard und dokumentiere in der README, wie man es startet
+### Port 8080 Testing
+
+# Check if Flask app is running on port 8080
+nc -vz localhost 8080
