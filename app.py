@@ -1,13 +1,9 @@
-from flask import Flask, render_template
-import json
-
+from flask import Flask, jsonify
 app = Flask(__name__)
 
-@app.route('/')
-def index():
-    with open('/root/local_agent/agent_workspace/data.json', 'r') as f:
-        data = json.load(f)
-    return render_template('index.html', data=data)
+@app.route('/read_value', methods=['GET'])
+def read_value():
+    return jsonify({'value': 'initial value'})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0')
