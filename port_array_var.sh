@@ -1,4 +1,2 @@
 #!/bin/bash
-PORTS=(
-$(cat /root/local_agent/agent_workspace/port_array_var.sh)
-)
+PORTS=(1234 5678 9012)
