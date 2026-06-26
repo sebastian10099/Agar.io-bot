@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-26 11:30:05 UTC",
+  "checked_at": "2026-06-26 12:00:06 UTC",
   "summary": "10 Themen, 21 Repo-Kandidaten, 0 Fehler",
   "current_focus": {
     "type": "repo_review",
@@ -308,8 +308,8 @@
       "topic": "self improving coding agent",
       "repo": "MervinPraison/PraisonAI",
       "url": "https://github.com/MervinPraison/PraisonAI",
-      "stars": 8289,
-      "updated_at": "2026-06-26T11:11:32Z",
+      "stars": 8290,
+      "updated_at": "2026-06-26T11:55:45Z",
       "license": "mit",
       "mode": "code-intake-allowed",
       "idea": "Improve long-term memory with concise summaries and duplicate detection.",
@@ -611,8 +611,8 @@
       "topic": "self improving coding agent",
       "repo": "MervinPraison/PraisonAI",
       "url": "https://github.com/MervinPraison/PraisonAI",
-      "stars": 8289,
-      "updated_at": "2026-06-26T11:11:32Z",
+      "stars": 8290,
+      "updated_at": "2026-06-26T11:55:45Z",
       "license": "mit",
       "mode": "code-intake-allowed",
       "idea": "Improve long-term memory with concise summaries and duplicate detection.",

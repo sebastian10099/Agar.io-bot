@@ -1,22 +1,3 @@
-$(function findOpenPort() {
-    let openPorts = [];
-    for (let i = 1; i <= 65535; i++) {
-        if (!isPortInUse(i)) {
-            openPorts.push(i);
-        }
-    }
-    return openPorts;
-})
-
-function isPortInUse(port) {
-    const socket = new WebSocket(`ws://localhost:${port}`);
-    try {
-        socket.send('test');
-    } catch (error) {
-        return true;
-    }
-    socket.close();
-    return false;
-}
-
-findOpenPort()
+#!/bin/bash
+# Find open ports and save count to PORT_COUNT variable
+PORT_COUNT=$(netstat -tuln | grep -v ':0.0.0.0' | awk '{print $4}' | wc -l)
