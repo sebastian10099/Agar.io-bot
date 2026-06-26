@@ -5,3 +5,5 @@
 ## Konfiguration und Start:
 1. Öffne ein Terminalfenster.
 2. Führe `./start_flask.sh` aus, um das Flask-Dashboard zu starten.
+
+### Port 5003 in README.md korrigiert.
