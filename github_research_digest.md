@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-26 20:30:05 UTC
+Last run: 2026-06-26 21:00:05 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -212,7 +212,7 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 
 - URL: https://github.com/MervinPraison/PraisonAI
 - Stars: 8292
-- Updated: 2026-06-26T16:56:33Z
+- Updated: 2026-06-26T20:34:52Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -242,7 +242,7 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 
 - URL: https://github.com/PrismorSec/immunity-agent
 - Stars: 210
-- Updated: 2026-06-24T22:18:40Z
+- Updated: 2026-06-26T20:57:40Z
 - License: apache-2.0 (OK to study)
 - Summary: Self improving security layer for AI coding agents : Safe package recommendations, Secret protection, MCP/tools guardrails, Skill governance, runtime policy enforcement and full audit visibility with a self-serve dashboard.
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
