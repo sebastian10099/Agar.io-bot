@@ -1,17 +1,5 @@
-"""
-Werkzeugsammlung für den Agenten.
+def add_numbers(a, b):
+    return a + b
 
-Dieses Modul enthält Hilfsfunktionen, die vom Agenten verwendet werden können.
-"""
-
-def new_tool():
-    """
-    Neue Hilfsmethode.
-
-    Diese Funktion dient als Beispiel für eine neu erstellte Werkzeugfunktion.
-    Sie gibt eine Bestätigungsmeldung aus, dass die Dokumentation erstellt wurde.
-    """
-    print('Dokumentation der neuen Hilfsmethode erstellt.')
-
-if __name__ == '__main__':
-    new_tool()
+def greet(name):
+    print(f'Hello, {name}!')
