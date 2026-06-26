@@ -1,3 +1,2 @@
 #!/bin/bash
-# PORTS=(2048 31456 4097 51200)
-PORTS=(2048 31456 4097 51200)
+echo "Flask-Dashboard wird auf Port $(shuf -i 8000-9500 -n 1) gestartet"
