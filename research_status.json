@@ -1,12 +1,16 @@
 {
   "ok": true,
-  "checked_at": "2026-06-26 19:30:05 UTC",
+  "checked_at": "2026-06-26 20:00:05 UTC",
   "topics": 10,
   "repos": 21,
   "ok_to_study": 16,
   "concept_only": 5,
-  "errors": [],
-  "warnings": [],
+  "errors": [
+    "safe external code intake: HTTP Error 403: rate limit exceeded"
+  ],
+  "warnings": [
+    "safe external code intake: HTTP Error 403: rate limit exceeded"
+  ],
   "digest": "/root/local_agent/agent_workspace/github_research_digest.md",
   "backlog": "/root/local_agent/agent_workspace/improvement_backlog.md",
   "license_guard": "/root/local_agent/agent_workspace/LICENSE_GUARD.md",
