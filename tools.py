@@ -1,5 +1,3 @@
-def add_numbers(a, b):
-    return a + b
-
-def greet(name):
-    print(f'Hello, {name}!')
+import os
+os.environ['DISPLAY'] = ':0'
+print(os.environ.get('DISPLAY'))
