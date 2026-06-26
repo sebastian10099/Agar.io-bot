@@ -1,8 +1,9 @@
 from flask import Flask
-import subprocess
 app = Flask(__name__)
-@app.route('/')
-def hello_world():
-    return 'Hello, World!'
+
+@app.route('/data')
+def get_data():
+    return {'message': 'Data fetched successfully'}
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=11438)
+    app.run(host='0.0.0.0', port=5001, debug=True)
