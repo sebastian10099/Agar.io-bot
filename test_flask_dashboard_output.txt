@@ -1,0 +1,1 @@
+Port 5000 ist bereits von lokaler Anwendung verwendet. Der Flask-Dashboard sollte direkt auf Port 5000 laufen.
