@@ -1,6 +1,6 @@
-# Dockerfile for the Flask Dashboard
-FROM python:3.9-slim as base
+# Dockerfile for Flask Dashboard
+FROM tiangolo/uwsgi-appimage:latest
 COPY . /app
-RUN pip install -r requirements.txt
-CMD []
-ENTRYPOINT []
+WORKDIR /app
+EXPOSE 8080
+ENTRYPOINT ["uwsgi", "--socket", ":8080"]
