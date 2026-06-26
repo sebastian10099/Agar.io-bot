@@ -7,8 +7,9 @@ unset temp
 ports=()
 for i in ${PORTS[@]}; do
   if [[ ! "${PORTS[@]}" =~ $i ]]; then
-    ports+=($i)
+    ports+=($i
   fi
 done
 if [ -z "$ports" ]; then
-  echo 
+  echo "No free port found." > /root/local_agent/agent_workspace/free_ports.txt
+fi
