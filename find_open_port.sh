@@ -1,16 +1,22 @@
-#!/bin/bash
+$(function findOpenPort() {
+    let openPorts = [];
+    for (let i = 1; i <= 65535; i++) {
+        if (!isPortInUse(i)) {
+            openPorts.push(i);
+        }
+    }
+    return openPorts;
+})
 
-# Variablen initialisieren
-OPEN_PORTS=()
+function isPortInUse(port) {
+    const socket = new WebSocket(`ws://localhost:${port}`);
+    try {
+        socket.send('test');
+    } catch (error) {
+        return true;
+    }
+    socket.close();
+    return false;
+}
 
-timeouts=$((SECONDS+90)) # Timeout nach 1 Minute
-
-while [[ $SECONDS -lt $timeouts ]]; do
-    PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind("") ; s.listen(); c, addr = s.accept(); OPEN_PORTS+=([addr[0]])' | tr -d "[]" && echo $OPEN_PORTS)
-    if [ ${#PORT[@]} -gt 0 ]; then
-        break
-    fi
-    sleep 1
-done
-
-echo 'Open Ports: ${OPEN_PORTS[*]}'
+findOpenPort()
