@@ -1,15 +1,29 @@
 #!/bin/bash
-cp /root/local_agent/agent_workspace/port_array_var.sh /root/local_agent/agent_workspace/temp
-PORTS=(
-$(cat /root/local_agent/agent_workspace/temp)
-)
-unset temp
-ports=()
-for i in ${PORTS[@]}; do
-  if [[ ! "${PORTS[@]}" =~ $i ]]; then
-    ports+=($i
+
+# Variablen initialisieren
+OPEN_PORTS=()
+
+# Funktion, die freie Ports findet und in die Variable einfügt
+find_free_ports() {
+  for port in {1..65535}; do
+    if ! lsof -i :$port > /dev/null; then
+      OPEN_PORTS+=($port)
+    fi
+  done
+}
+
+# Aufruf der Funktion
+find_free_ports
+
+# Ausgabe der freien Ports in einer Tabelle
+printf "Port\tStatus\
+"
+for port in ${OPEN_PORTS[@]}; do
+  if lsof -i :$port > /dev/null; then
+    printf "$port\tbusy\
+"
+  else
+    printf "$port\topen\
+"
   fi
 done
-if [ -z "$ports" ]; then
-  echo "No free port found." > /root/local_agent/agent_workspace/free_ports.txt
-fi
