@@ -1,0 +1,6 @@
+# Grundlegende Anweisungen
+
+1. Wie man das neue Werkzeug benutzt:
+   - Beispiel 1: [code]
+2. Wie man es mit anderen Werkzeuggruppen kombiniert:
+   - Beispiel 2: [code]
