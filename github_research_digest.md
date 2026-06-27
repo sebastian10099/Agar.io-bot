@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-27 21:00:06 UTC
+Last run: 2026-06-27 21:30:04 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -212,7 +212,7 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 
 - URL: https://github.com/MervinPraison/PraisonAI
 - Stars: 8303
-- Updated: 2026-06-27T20:54:04Z
+- Updated: 2026-06-27T21:08:52Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
@@ -251,8 +251,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### YiShu5/claude-skills
 
 - URL: https://github.com/YiShu5/claude-skills
-- Stars: 86
-- Updated: 2026-06-27T18:25:57Z
+- Stars: 87
+- Updated: 2026-06-27T21:10:43Z
 - License: mit (OK to study)
 - Summary: 🧩 通用 Claude Code Skills 集合 · 即插即用 · 包含 clawd-animation、self-improving-agent、wechat-article-publisher 等
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
