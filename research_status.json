@@ -1,20 +1,12 @@
 {
   "ok": true,
-  "checked_at": "2026-06-27 14:30:07 UTC",
+  "checked_at": "2026-06-27 15:00:08 UTC",
   "topics": 10,
-  "repos": 11,
-  "ok_to_study": 6,
+  "repos": 21,
+  "ok_to_study": 16,
   "concept_only": 5,
-  "errors": [
-    "agent framework tool testing: HTTP Error 403: rate limit exceeded",
-    "self improving coding agent: HTTP Error 403: rate limit exceeded",
-    "safe external code intake: HTTP Error 403: rate limit exceeded"
-  ],
-  "warnings": [
-    "agent framework tool testing: HTTP Error 403: rate limit exceeded",
-    "self improving coding agent: HTTP Error 403: rate limit exceeded",
-    "safe external code intake: HTTP Error 403: rate limit exceeded"
-  ],
+  "errors": [],
+  "warnings": [],
   "digest": "/root/local_agent/agent_workspace/github_research_digest.md",
   "backlog": "/root/local_agent/agent_workspace/improvement_backlog.md",
   "license_guard": "/root/local_agent/agent_workspace/LICENSE_GUARD.md",
