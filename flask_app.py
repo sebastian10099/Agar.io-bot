@@ -1,12 +1,8 @@
-from flask import Flask, jsonify
-import json
+from flask import Flask
+
 app = Flask(__name__)
-
-@app.route('/values')
-def get_values():
-    with open('/root/local_agent/agent_workspace/values.json', 'r') as f:
-        values = json.load(f)
-    return jsonify(values)
-
+@app.route('/')
+def hello_world():
+    return "Hello, World!"
 if __name__ == '__main__':
-    app.run(debug=True, port=5010)
+    app.run(host='0.0.0.0', port=8086)"
