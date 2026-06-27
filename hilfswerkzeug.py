@@ -1,6 +1,7 @@
+# Grundlegende Anweisungen für ein neues Hilfswerkzeug
 
-# Hilfswerkzeug-Anleitung
+def basic_helptool_instruction():
+    print('Dies ist eine grundlegene Anweisung für ein Hilfswerkzeug.')
 
-# Inhalt der Datei:
-# 1. Erstelle ein neues Hilfswerkzeug mit grundlegenden Anweisungen.
-# 2. Speichere es in der angegebenen Ordnung und Dateiname.
+if __name__ == '__main__':
+    basic_helptool_instruction()
