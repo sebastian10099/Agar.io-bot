@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang='de'>
+<head><meta charset='UTF-8'><title>JSON Werte</title></head>
+<body>
+<h1>Wertenthalt:</h1>
+<ul id='value-list'></ul>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const values = [
+        {key: 'thought', value: '{{thought}}'},
+        {key: 'action', value: '{{action}}'},
+        {key: 'action_input', value: JSON.stringify('{{action_input}}')}
+    ];
+    values.forEach(value => {
+        const li = document.createElement('li');
+        li.textContent = `${value.key}: ${value.value}`;
+        document.getElementById('value-list').appendChild(li);
+    });
+});
+</script>
+</body>
+</html>
