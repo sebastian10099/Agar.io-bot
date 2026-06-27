@@ -1,10 +1,10 @@
 # License Guard
 
-Updated: 2026-06-27 05:00:04 UTC
+Updated: 2026-06-27 05:30:04 UTC
 
 Policy: external code is allowed, but never goes live directly. License, source URL, attribution, fit, validation, target-side test, and rollback must be reviewed before reuse.
 
-- OK-to-study repositories: 11
+- OK-to-study repositories: 16
 - Concept-only repositories: 5
 
 | Topic | Repository | License | Allowed use |
@@ -25,3 +25,8 @@ Policy: external code is allowed, but never goes live directly. License, source 
 | agent framework tool testing | hleliofficiel/ExaAiAgent | apache-2.0 | code reuse allowed through safe_code_intake with attribution/review |
 | agent framework tool testing | taoq-ai/ziran | apache-2.0 | code reuse allowed through safe_code_intake with attribution/review |
 | agent framework tool testing | ttgaillc/Quant-Tools-2026 | mit | code reuse allowed through safe_code_intake with attribution/review |
+| self improving coding agent | MervinPraison/PraisonAI | mit | code reuse allowed through safe_code_intake with attribution/review |
+| self improving coding agent | MaximeRobeyns/self_improving_coding_agent | mit | code reuse allowed through safe_code_intake with attribution/review |
+| self improving coding agent | BetterForAll/self-improving-agents | mit | code reuse allowed through safe_code_intake with attribution/review |
+| self improving coding agent | PrismorSec/immunity-agent | apache-2.0 | code reuse allowed through safe_code_intake with attribution/review |
+| self improving coding agent | YiShu5/claude-skills | mit | code reuse allowed through safe_code_intake with attribution/review |
