@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+
+def summarize_helptool_instructions():
+    with open('/root/local_agent/agent_workspace/hilfswerkzeug.py', 'r') as file:
+        content = file.read()
+    print(f'Hilfswerkzeug-Instruktionen: {content}')
+if __name__ == '__main__':
+    summarize_helptool_instructions()
