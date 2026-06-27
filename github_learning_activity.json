@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-27 11:00:06 UTC",
+  "checked_at": "2026-06-27 11:30:05 UTC",
   "summary": "10 Themen, 21 Repo-Kandidaten, 0 Fehler",
   "current_focus": {
     "type": "repo_review",
@@ -105,8 +105,8 @@
       "topic": "OpenClaw core autonomy",
       "repo": "zeroclaw-labs/zeroclaw",
       "url": "https://github.com/zeroclaw-labs/zeroclaw",
-      "stars": 32058,
-      "updated_at": "2026-06-27T10:06:55Z",
+      "stars": 32057,
+      "updated_at": "2026-06-27T11:04:58Z",
       "license": "apache-2.0",
       "mode": "code-intake-allowed",
       "idea": "Review the project concept for OpenClaw core autonomy and extract one small local improvement.",
@@ -457,8 +457,8 @@
       "topic": "OpenClaw core autonomy",
       "repo": "zeroclaw-labs/zeroclaw",
       "url": "https://github.com/zeroclaw-labs/zeroclaw",
-      "stars": 32058,
-      "updated_at": "2026-06-27T10:06:55Z",
+      "stars": 32057,
+      "updated_at": "2026-06-27T11:04:58Z",
       "license": "apache-2.0",
       "mode": "code-intake-allowed",
       "idea": "Review the project concept for OpenClaw core autonomy and extract one small local improvement.",
