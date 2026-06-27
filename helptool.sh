@@ -1,1 +1,3 @@
-sudo /path/to/my_tool $@
+#!/bin/bash
+echo 'Hello, World!'
+chmod +x ./helptool.sh
