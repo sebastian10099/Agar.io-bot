@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-27 17:30:07 UTC
+Last run: 2026-06-27 18:00:06 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -128,15 +128,7 @@ No repositories found or GitHub API returned no usable result.
 
 Why: Use permissive templates as candidate personalities, roles, and workflows.
 
-### mergisi/awesome-openclaw-agents
-
-- URL: https://github.com/mergisi/awesome-openclaw-agents
-- Stars: 3735
-- Updated: 2026-06-27T17:21:38Z
-- License: mit (OK to study)
-- Summary: 162 production-ready AI agent templates for OpenClaw. SOUL.md configs across 19 categories. Submit yours!
-- Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
-- Intake: stage with source `https://github.com/mergisi/awesome-openclaw-agents` and license `mit` before any code reuse.
+No repositories found or GitHub API returned no usable result.
 
 ## OpenClaw high privilege safety
 
@@ -154,55 +146,7 @@ No repositories found or GitHub API returned no usable result.
 
 Why: Improve the test gate before GitHub push.
 
-### vstorm-co/pydantic-ai-backend
-
-- URL: https://github.com/vstorm-co/pydantic-ai-backend
-- Stars: 104
-- Updated: 2026-06-27T08:57:54Z
-- License: mit (OK to study)
-- Summary: File Storage & Sandbox Backends for Pydantic AI: console tools for file operations, Docker-isolated sandboxes for safe execution, and permission system with presets for access control. Enables secure multi-user handling and testing in agents via in-memory,...
-- Safe takeaway: Add stronger automatic test/evaluation checks before commit.
-- Intake: stage with source `https://github.com/vstorm-co/pydantic-ai-backend` and license `mit` before any code reuse.
-
-### eth-sri/ToolFuzz
-
-- URL: https://github.com/eth-sri/ToolFuzz
-- Stars: 42
-- Updated: 2026-06-24T13:34:08Z
-- License: mit (OK to study)
-- Summary: ToolFuzz is a fuzzing framework designed to test your LLM Agent tools.
-- Safe takeaway: Add stronger automatic test/evaluation checks before commit.
-- Intake: stage with source `https://github.com/eth-sri/ToolFuzz` and license `mit` before any code reuse.
-
-### hleliofficiel/ExaAiAgent
-
-- URL: https://github.com/hleliofficiel/ExaAiAgent
-- Stars: 9
-- Updated: 2026-06-19T03:37:09Z
-- License: apache-2.0 (OK to study)
-- Summary: ExaAiAgent — Advanced AI-powered penetration testing framework with Docker sandbox, multi-agent workflows, and 50+ integrated cybersecurity tools.
-- Safe takeaway: Add stronger automatic test/evaluation checks before commit.
-- Intake: stage with source `https://github.com/hleliofficiel/ExaAiAgent` and license `apache-2.0` before any code reuse.
-
-### taoq-ai/ziran
-
-- URL: https://github.com/taoq-ai/ziran
-- Stars: 9
-- Updated: 2026-06-25T13:00:44Z
-- License: apache-2.0 (OK to study)
-- Summary: 自然 ZIRAN is an open-source security testing framework for AI agents. It discovers dangerous tool chain compositions via knowledge graph analysis, detects execution-level side effects (not just text output), and runs multi-phase trust exploitation campaigns...
-- Safe takeaway: Add stronger automatic test/evaluation checks before commit.
-- Intake: stage with source `https://github.com/taoq-ai/ziran` and license `apache-2.0` before any code reuse.
-
-### ttgaillc/Quant-Tools-2026
-
-- URL: https://github.com/ttgaillc/Quant-Tools-2026
-- Stars: 8
-- Updated: 2026-05-19T17:54:10Z
-- License: mit (OK to study)
-- Summary: Battle-tested quantitative trading scripts used by True Trading Group for real-world stock market analysis and technical signal development. Includes native support for Massive.com, formerly Polygon.io, and seamless integration into AI agent frameworks and...
-- Safe takeaway: Add stronger automatic test/evaluation checks before commit.
-- Intake: stage with source `https://github.com/ttgaillc/Quant-Tools-2026` and license `mit` before any code reuse.
+No repositories found or GitHub API returned no usable result.
 
 ## self improving coding agent
 

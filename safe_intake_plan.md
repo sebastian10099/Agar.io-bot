@@ -1,6 +1,6 @@
 # Safe Intake Plan
 
-Updated: 2026-06-27 17:30:07 UTC
+Updated: 2026-06-27 18:00:06 UTC
 
 Purpose: turn GitHub research into small implementation candidates, including external code, without letting untested code go live.
 
@@ -103,58 +103,4 @@ Purpose: turn GitHub research into small implementation candidates, including ex
 - Safe idea: Improve long-term memory with concise summaries and duplicate detection.
 - Source: https://github.com/jonathanprocter/openclaw-config
 - License: unknown
-- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
-
-### mergisi/awesome-openclaw-agents
-
-- Topic: Awesome OpenClaw agent templates
-- Mode: code-intake-allowed
-- Safe idea: Add a safer tool-selection loop: plan, act once, verify, then continue.
-- Source: https://github.com/mergisi/awesome-openclaw-agents
-- License: mit
-- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
-
-### vstorm-co/pydantic-ai-backend
-
-- Topic: agent framework tool testing
-- Mode: code-intake-allowed
-- Safe idea: Add stronger automatic test/evaluation checks before commit.
-- Source: https://github.com/vstorm-co/pydantic-ai-backend
-- License: mit
-- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
-
-### eth-sri/ToolFuzz
-
-- Topic: agent framework tool testing
-- Mode: code-intake-allowed
-- Safe idea: Add stronger automatic test/evaluation checks before commit.
-- Source: https://github.com/eth-sri/ToolFuzz
-- License: mit
-- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
-
-### hleliofficiel/ExaAiAgent
-
-- Topic: agent framework tool testing
-- Mode: code-intake-allowed
-- Safe idea: Add stronger automatic test/evaluation checks before commit.
-- Source: https://github.com/hleliofficiel/ExaAiAgent
-- License: apache-2.0
-- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
-
-### taoq-ai/ziran
-
-- Topic: agent framework tool testing
-- Mode: code-intake-allowed
-- Safe idea: Add stronger automatic test/evaluation checks before commit.
-- Source: https://github.com/taoq-ai/ziran
-- License: apache-2.0
-- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
-
-### ttgaillc/Quant-Tools-2026
-
-- Topic: agent framework tool testing
-- Mode: code-intake-allowed
-- Safe idea: Add stronger automatic test/evaluation checks before commit.
-- Source: https://github.com/ttgaillc/Quant-Tools-2026
-- License: mit
 - Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
