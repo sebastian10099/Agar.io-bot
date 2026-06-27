@@ -1,6 +1,4 @@
+# Flask Dashboard
 
-
-### Start Flask App and Check Port 8086
-
-- Schritt: Das Skript wurde erstellt.
-- Status: Der Script-Pfad wurde in die README.md-zu aktualisiert.
+- Port: 5001
+- IP: 127.0.0.1 (localhost)

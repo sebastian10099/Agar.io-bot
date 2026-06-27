@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-27 08:30:05 UTC
+Last run: 2026-06-27 09:00:04 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -158,7 +158,7 @@ Why: Improve the test gate before GitHub push.
 
 - URL: https://github.com/vstorm-co/pydantic-ai-backend
 - Stars: 104
-- Updated: 2026-06-22T11:45:44Z
+- Updated: 2026-06-27T08:57:54Z
 - License: mit (OK to study)
 - Summary: File Storage & Sandbox Backends for Pydantic AI: console tools for file operations, Docker-isolated sandboxes for safe execution, and permission system with presets for access control. Enables secure multi-user handling and testing in agents via in-memory,...
 - Safe takeaway: Add stronger automatic test/evaluation checks before commit.
