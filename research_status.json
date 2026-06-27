@@ -1,20 +1,16 @@
 {
   "ok": true,
-  "checked_at": "2026-06-27 18:00:06 UTC",
+  "checked_at": "2026-06-27 18:30:07 UTC",
   "topics": 10,
-  "repos": 10,
-  "ok_to_study": 5,
+  "repos": 11,
+  "ok_to_study": 6,
   "concept_only": 5,
   "errors": [
-    "OpenClaw high privilege safety: HTTP Error 403: rate limit exceeded",
-    "AI coding agent LoopGuard: HTTP Error 403: rate limit exceeded",
     "agent framework tool testing: HTTP Error 403: rate limit exceeded",
     "self improving coding agent: HTTP Error 403: rate limit exceeded",
     "safe external code intake: HTTP Error 403: rate limit exceeded"
   ],
   "warnings": [
-    "OpenClaw high privilege safety: HTTP Error 403: rate limit exceeded",
-    "AI coding agent LoopGuard: HTTP Error 403: rate limit exceeded",
     "agent framework tool testing: HTTP Error 403: rate limit exceeded",
     "self improving coding agent: HTTP Error 403: rate limit exceeded",
     "safe external code intake: HTTP Error 403: rate limit exceeded"

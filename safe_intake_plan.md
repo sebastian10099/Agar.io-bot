@@ -1,6 +1,6 @@
 # Safe Intake Plan
 
-Updated: 2026-06-27 18:00:06 UTC
+Updated: 2026-06-27 18:30:07 UTC
 
 Purpose: turn GitHub research into small implementation candidates, including external code, without letting untested code go live.
 
@@ -103,4 +103,13 @@ Purpose: turn GitHub research into small implementation candidates, including ex
 - Safe idea: Improve long-term memory with concise summaries and duplicate detection.
 - Source: https://github.com/jonathanprocter/openclaw-config
 - License: unknown
+- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
+
+### mergisi/awesome-openclaw-agents
+
+- Topic: Awesome OpenClaw agent templates
+- Mode: code-intake-allowed
+- Safe idea: Add a safer tool-selection loop: plan, act once, verify, then continue.
+- Source: https://github.com/mergisi/awesome-openclaw-agents
+- License: mit
 - Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.

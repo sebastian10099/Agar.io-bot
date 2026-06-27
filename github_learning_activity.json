@@ -1,6 +1,6 @@
 {
-  "checked_at": "2026-06-27 18:00:06 UTC",
-  "summary": "10 Themen, 10 Repo-Kandidaten, 6 Fehler",
+  "checked_at": "2026-06-27 18:30:07 UTC",
+  "summary": "10 Themen, 11 Repo-Kandidaten, 3 Fehler",
   "current_focus": {
     "type": "repo_review",
     "topic": "OpenClaw / OpenClout autonomous agent",
@@ -189,7 +189,21 @@
       "topic": "Awesome OpenClaw agent templates",
       "query": "awesome OpenClaw agents SOUL.md templates",
       "why": "Use permissive templates as candidate personalities, roles, and workflows.",
-      "result": "0 passende Repos gefunden"
+      "result": "1 passende Repos gefunden"
+    },
+    {
+      "type": "repo_review",
+      "topic": "Awesome OpenClaw agent templates",
+      "repo": "mergisi/awesome-openclaw-agents",
+      "url": "https://github.com/mergisi/awesome-openclaw-agents",
+      "stars": 3735,
+      "updated_at": "2026-06-27T17:21:38Z",
+      "license": "mit",
+      "mode": "code-intake-allowed",
+      "idea": "Add a safer tool-selection loop: plan, act once, verify, then continue.",
+      "action": "Autonomie-, Skill-, Memory- oder Kanal-Muster pruefen und als kleinen Patch stagen.",
+      "risk": "niedrig: permissive Lizenz und begrenzter Scope",
+      "next_step": "safe_code_intake stage/validate/promote"
     },
     {
       "type": "topic_scan",
@@ -367,11 +381,23 @@
       "action": "Nur Konzept extrahieren; Code erst nach Lizenzfreigabe stagen.",
       "risk": "hoch: Lizenz unklar oder nicht direkt erlaubt",
       "next_step": "Konzept notieren; kein Code-Promote"
+    },
+    {
+      "type": "repo_review",
+      "topic": "Awesome OpenClaw agent templates",
+      "repo": "mergisi/awesome-openclaw-agents",
+      "url": "https://github.com/mergisi/awesome-openclaw-agents",
+      "stars": 3735,
+      "updated_at": "2026-06-27T17:21:38Z",
+      "license": "mit",
+      "mode": "code-intake-allowed",
+      "idea": "Add a safer tool-selection loop: plan, act once, verify, then continue.",
+      "action": "Autonomie-, Skill-, Memory- oder Kanal-Muster pruefen und als kleinen Patch stagen.",
+      "risk": "niedrig: permissive Lizenz und begrenzter Scope",
+      "next_step": "safe_code_intake stage/validate/promote"
     }
   ],
   "errors": [
-    "OpenClaw high privilege safety: HTTP Error 403: rate limit exceeded",
-    "AI coding agent LoopGuard: HTTP Error 403: rate limit exceeded",
     "agent framework tool testing: HTTP Error 403: rate limit exceeded",
     "self improving coding agent: HTTP Error 403: rate limit exceeded",
     "safe external code intake: HTTP Error 403: rate limit exceeded"

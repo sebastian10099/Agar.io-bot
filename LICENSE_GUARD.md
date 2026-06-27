@@ -1,10 +1,10 @@
 # License Guard
 
-Updated: 2026-06-27 18:00:06 UTC
+Updated: 2026-06-27 18:30:07 UTC
 
 Policy: external code is allowed, but never goes live directly. License, source URL, attribution, fit, validation, target-side test, and rollback must be reviewed before reuse.
 
-- OK-to-study repositories: 5
+- OK-to-study repositories: 6
 - Concept-only repositories: 5
 
 | Topic | Repository | License | Allowed use |
@@ -19,3 +19,4 @@ Policy: external code is allowed, but never goes live directly. License, source 
 | OpenClaw core autonomy | Agnuxo1/OpenCLAW-Autonomous-Multi-Agent-Scientific-Research-Platform | unknown | concept only; no code reuse |
 | OpenClaw core autonomy | shaoxiang/awesome-openclaw | unknown | concept only; no code reuse |
 | OpenClaw core autonomy | jonathanprocter/openclaw-config | unknown | concept only; no code reuse |
+| Awesome OpenClaw agent templates | mergisi/awesome-openclaw-agents | mit | code reuse allowed through safe_code_intake with attribution/review |
