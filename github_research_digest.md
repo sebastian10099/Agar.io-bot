@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-27 17:00:08 UTC
+Last run: 2026-06-27 17:30:07 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -65,8 +65,8 @@ Why: Import useful self-coding, skills, memory, channel, and live-canvas pattern
 ### zeroclaw-labs/zeroclaw
 
 - URL: https://github.com/zeroclaw-labs/zeroclaw
-- Stars: 32065
-- Updated: 2026-06-27T16:46:22Z
+- Stars: 32066
+- Updated: 2026-06-27T17:11:01Z
 - License: apache-2.0 (OK to study)
 - Summary: Fast, small, and fully autonomous AI personal assistant infrastructure, any OS, any platform — deploy anywhere, swap anything 🦀
 - Safe takeaway: Review the project concept for OpenClaw core autonomy and extract one small local improvement.
@@ -131,8 +131,8 @@ Why: Use permissive templates as candidate personalities, roles, and workflows.
 ### mergisi/awesome-openclaw-agents
 
 - URL: https://github.com/mergisi/awesome-openclaw-agents
-- Stars: 3734
-- Updated: 2026-06-27T05:42:51Z
+- Stars: 3735
+- Updated: 2026-06-27T17:21:38Z
 - License: mit (OK to study)
 - Summary: 162 production-ready AI agent templates for OpenClaw. SOUL.md configs across 19 categories. Submit yours!
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -208,55 +208,7 @@ Why: Improve the test gate before GitHub push.
 
 Why: Collect safe patterns for plan, experiment, test, and learn loops.
 
-### MervinPraison/PraisonAI
-
-- URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8300
-- Updated: 2026-06-27T13:53:48Z
-- License: mit (OK to study)
-- Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
-- Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
-- Intake: stage with source `https://github.com/MervinPraison/PraisonAI` and license `mit` before any code reuse.
-
-### MaximeRobeyns/self_improving_coding_agent
-
-- URL: https://github.com/MaximeRobeyns/self_improving_coding_agent
-- Stars: 359
-- Updated: 2026-06-26T03:55:48Z
-- License: mit (OK to study)
-- Summary: A coding agent framework, that works on its own codebase.
-- Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
-- Intake: stage with source `https://github.com/MaximeRobeyns/self_improving_coding_agent` and license `mit` before any code reuse.
-
-### BetterForAll/self-improving-agents
-
-- URL: https://github.com/BetterForAll/self-improving-agents
-- Stars: 265
-- Updated: 2026-06-25T13:33:19Z
-- License: mit (OK to study)
-- Summary: Self-Improving Agents -- A Progression Four levels of self-improving code agents, from the simplest loop to a full adversarial arena with self-modifying agents. Each level adds one key idea.
-- Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
-- Intake: stage with source `https://github.com/BetterForAll/self-improving-agents` and license `mit` before any code reuse.
-
-### PrismorSec/immunity-agent
-
-- URL: https://github.com/PrismorSec/immunity-agent
-- Stars: 212
-- Updated: 2026-06-27T09:57:37Z
-- License: apache-2.0 (OK to study)
-- Summary: Self improving security layer for AI coding agents : Safe package recommendations, Secret protection, MCP/tools guardrails, Skill governance, runtime policy enforcement and full audit visibility with a self-serve dashboard.
-- Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
-- Intake: stage with source `https://github.com/PrismorSec/immunity-agent` and license `apache-2.0` before any code reuse.
-
-### YiShu5/claude-skills
-
-- URL: https://github.com/YiShu5/claude-skills
-- Stars: 84
-- Updated: 2026-06-27T16:32:21Z
-- License: mit (OK to study)
-- Summary: 🧩 通用 Claude Code Skills 集合 · 即插即用 · 包含 clawd-animation、self-improving-agent、wechat-article-publisher 等
-- Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
-- Intake: stage with source `https://github.com/YiShu5/claude-skills` and license `mit` before any code reuse.
+No repositories found or GitHub API returned no usable result.
 
 ## safe external code intake
 
