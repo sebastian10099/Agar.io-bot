@@ -9,4 +9,4 @@ def get_values():
     return jsonify(values)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5010)

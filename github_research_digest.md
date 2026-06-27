@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-27 05:30:04 UTC
+Last run: 2026-06-27 06:00:06 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -131,8 +131,8 @@ Why: Use permissive templates as candidate personalities, roles, and workflows.
 ### mergisi/awesome-openclaw-agents
 
 - URL: https://github.com/mergisi/awesome-openclaw-agents
-- Stars: 3733
-- Updated: 2026-06-27T01:03:09Z
+- Stars: 3734
+- Updated: 2026-06-27T05:42:51Z
 - License: mit (OK to study)
 - Summary: 162 production-ready AI agent templates for OpenClaw. SOUL.md configs across 19 categories. Submit yours!
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
