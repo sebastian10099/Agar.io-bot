@@ -1,4 +1,6 @@
-import new_helper_tool
-helper = new_helper_tool.NewHelperTool()
-output = helper.run()
-print(output)
+
+def hello_world():
+    print('Hello, World!')
+
+if __name__ == '__main__':
+    hello_world()
