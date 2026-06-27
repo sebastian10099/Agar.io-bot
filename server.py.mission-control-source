@@ -1,0 +1,1976 @@
+"""
+Web-Dashboard + Start des Agenten.
+Starte mit START.bat oder: python server.py
+Dashboard: http://localhost:7860
+"""
+
+import json
+import os
+import sys
+import webbrowser
+import threading
+import time
+import secrets
+import copy
+import shutil
+import subprocess
+from flask import Flask, request, jsonify, Response
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+with open(os.path.join(HERE, "config.json"), "r", encoding="utf-8") as f:
+    CONFIG = json.load(f)
+
+# Alle relativen Pfade (workspace, memory, custom_tools) stabil zum Agenten-
+# Ordner aufloesen, auch wenn server.py aus einem anderen Ordner gestartet wird.
+CONFIG["_base_dir"] = HERE
+
+# API-Key aus Umgebungsvariable falls nicht in config
+if CONFIG.get("provider", "ollama") == "claude":
+    if not CONFIG.get("claude_api_key", "").strip().startswith("sk-"):
+        env_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if env_key:
+            CONFIG["claude_api_key"] = env_key
+else:
+    if not CONFIG.get("ollama_api_key") and os.environ.get("OLLAMA_API_KEY"):
+        CONFIG["ollama_api_key"] = os.environ["OLLAMA_API_KEY"]
+
+def _support_config():
+    cfg = copy.deepcopy(CONFIG)
+    cfg["agent_id"] = "support"
+    cfg["agent_name"] = CONFIG.get("support_agent_name", "Support-Agent GLM")
+    cfg["workspace_dir"] = CONFIG.get("support_workspace_dir", "agent_workspace_support")
+    cfg["memory_file"] = CONFIG.get("support_memory_file", "memory_support.json")
+    cfg["code_activity_file"] = CONFIG.get("support_code_activity_file", "code_activity_support.jsonl")
+    cfg["autonomy_state_file"] = CONFIG.get("support_autonomy_state_file", "autonomy_state_support.json")
+    cfg["team_exchange_file"] = CONFIG.get("team_exchange_file", "team_exchange.jsonl")
+    cfg["team_exchange_enabled"] = True
+    cfg["ollama_model"] = CONFIG.get("support_ollama_model", "glm-5.2")
+    cfg["ollama_strategist_model"] = CONFIG.get("support_ollama_strategist_model", "glm-5.2")
+    cfg["ollama_coder_model"] = CONFIG.get("support_ollama_coder_model", CONFIG.get("ollama_coder_model", "qwen3-coder-next"))
+    cfg["productivity_percent"] = CONFIG.get("support_productivity_percent", max(125, int(CONFIG.get("productivity_percent", 100) * 0.8)))
+    cfg["max_steps_per_goal"] = CONFIG.get("support_max_steps_per_goal", 50)
+    cfg["autopilot_planner_cooldown_seconds"] = CONFIG.get("support_autopilot_planner_cooldown_seconds", 45)
+    cfg["autopilot_scope"] = CONFIG.get("support_autopilot_scope",
+        "Du bist der zweite Support-Agent. Hilf dem Haupt-Agenten: Aufgaben analysieren, "
+        "Risiken finden, Tests/Reviews vorschlagen, kleine Hilfsdateien im eigenen Workspace "
+        "bauen, Erkenntnisse ins Team-Journal schreiben. Arbeite nicht blind an denselben Dateien "
+        "wie der Haupt-Agent, sondern ergaenze ihn.")
+    return cfg
+
+
+def _hermes_config():
+    cfg = copy.deepcopy(CONFIG)
+    cfg["agent_id"] = "hermes"
+    cfg["agent_name"] = CONFIG.get("hermes_agent_name", "Hermes-Agent")
+    cfg["workspace_dir"] = CONFIG.get("hermes_workspace_dir", "agent_workspace_hermes")
+    cfg["memory_file"] = CONFIG.get("hermes_memory_file", "memory_hermes.json")
+    cfg["code_activity_file"] = CONFIG.get("hermes_code_activity_file", "code_activity_hermes.jsonl")
+    cfg["autonomy_state_file"] = CONFIG.get("hermes_autonomy_state_file", "autonomy_state_hermes.json")
+    cfg["team_exchange_file"] = CONFIG.get("team_exchange_file", "team_exchange.jsonl")
+    cfg["team_exchange_enabled"] = True
+    cfg["ollama_model"] = CONFIG.get("hermes_ollama_model", "glm-5.2")
+    cfg["ollama_strategist_model"] = CONFIG.get("hermes_ollama_strategist_model", CONFIG.get("hermes_ollama_model", "glm-5.2"))
+    cfg["ollama_coder_model"] = CONFIG.get("hermes_ollama_coder_model", CONFIG.get("ollama_coder_model", "qwen3-coder-next"))
+    cfg["productivity_percent"] = CONFIG.get("hermes_productivity_percent", CONFIG.get("productivity_percent", 250))
+    cfg["max_steps_per_goal"] = CONFIG.get("hermes_max_steps_per_goal", 80)
+    cfg["autopilot_planner_cooldown_seconds"] = CONFIG.get("hermes_autopilot_planner_cooldown_seconds", 30)
+    cfg["autopilot_scope"] = CONFIG.get("hermes_autopilot_scope",
+        "Du bist Hermes, der Meta- und Lern-Agent im Agenten-Team. Deine Hauptaufgabe ist: "
+        "Roadmap pflegen, Wiederholungen erkennen, Team-Journal zusammenfassen, sinnvolle "
+        "naechste Verbesserungen vorschlagen, kleine Hilfsdateien im eigenen Hermes-Workspace "
+        "erstellen und dokumentieren. Du veraenderst nicht blind Haupt-Code-Dateien, sondern "
+        "lieferst Plaene, Reviews, Lernnotizen und klare Arbeitsaufteilung fuer Haupt und Support.")
+    return cfg
+
+
+from brain import Brain
+
+try:
+    brain = Brain(CONFIG)
+    _BRAIN_ERROR = None
+except Exception as e:
+    brain = None
+    _BRAIN_ERROR = str(e)
+
+try:
+    support_brain = Brain(_support_config()) if CONFIG.get("support_agent_enabled", True) else None
+    _SUPPORT_ERROR = None
+except Exception as e:
+    support_brain = None
+    _SUPPORT_ERROR = str(e)
+
+try:
+    hermes_brain = Brain(_hermes_config()) if CONFIG.get("hermes_agent_enabled", True) else None
+    _HERMES_ERROR = None
+except Exception as e:
+    hermes_brain = None
+    _HERMES_ERROR = str(e)
+
+app = Flask(__name__)
+_STATUS_CACHE = {}
+
+TEAM_RULES = """# TEAM_RULES
+
+- Haupt-Agent setzt um und veraendert primaer den Haupt-Workspace.
+- Support-Agent nutzt den Support-Workspace, prueft Risiken, recherchiert, testet und reviewed.
+- Hermes-Agent nutzt den Hermes-Workspace, pflegt Roadmap, Anti-Wiederholung, Lernnotizen und Team-Zusammenfassungen.
+- Alle Agenten schreiben wichtige Entscheidungen in das Team-Journal.
+- Headless-VPS: keine GUI-/Display-Aktionen; Shell, Dateien, Web und Self-Coding bevorzugen.
+- Keine gefaehrlichen Loesch- oder Systemaktionen ohne klaren Nutzen und sichere Begrenzung.
+- Nach Code-Aenderungen: Syntax/Test/Ausfuehrung pruefen und Ergebnis sichtbar dokumentieren.
+- Haupt- und Support-Agent duerfen nicht gleichzeitig dieselbe Datei bearbeiten.
+- Hermes darf Haupt-/Support-Dateien nur nach ausdruecklichem Ziel editieren; sonst schreibt er Plaene in seinen Workspace.
+- Speicherbudget: Workspace, Backups und Logs muessen unter den konfigurierten Limits bleiben.
+- Wenn ein Speicherlimit ueberschritten ist, Autopilot pausieren/deaktivieren und erst Diagnose/Fix dokumentieren.
+- Jede produktive Aenderung braucht ein Test-Gate: geschrieben -> Syntax/Run/Test -> Ergebnis dokumentiert.
+- Wiederholte Fehlschlaege fuehren zu Review/Support statt blindem Wiederholen.
+"""
+
+def _ensure_team_rules():
+    path = os.path.join(HERE, "TEAM_RULES.md")
+    if not os.path.exists(path):
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(TEAM_RULES)
+        except Exception:
+            pass
+    else:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                current = f.read()
+            missing = []
+            for line in TEAM_RULES.splitlines():
+                if line.startswith("- ") and line not in current:
+                    missing.append(line)
+            if missing:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.write("\n# Ergaenzte harte Regeln\n" + "\n".join(missing) + "\n")
+        except Exception:
+            pass
+    return path
+
+_ensure_team_rules()
+
+def _team_rule_lines():
+    path = os.path.join(HERE, "TEAM_RULES.md")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = f.read()
+    except Exception:
+        raw = TEAM_RULES
+    rules = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.startswith("- "):
+            rules.append(line[2:].strip())
+    return rules
+
+def _dashboard_auth_ok():
+    if not CONFIG.get("dashboard_auth_enabled", False):
+        return True
+    auth = request.authorization
+    if not auth:
+        return False
+    expected_user = str(CONFIG.get("dashboard_user", ""))
+    expected_pass = str(CONFIG.get("dashboard_password", ""))
+    return (secrets.compare_digest(auth.username or "", expected_user) and
+            secrets.compare_digest(auth.password or "", expected_pass))
+
+
+@app.before_request
+def _require_dashboard_auth():
+    if _dashboard_auth_ok():
+        return None
+    return Response(
+        "Login required",
+        401,
+        {"WWW-Authenticate": 'Basic realm="Local Agent Dashboard"'},
+    )
+
+PAGE = """<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lokaler KI-Agent</title>
+<style>
+  :root{--bg:#0b0f17;--panel:#131a26;--ink:#e6edf6;--muted:#8aa0bf;--acc:#4da3ff;--ok:#37d27a;--warn:#ffb347;--err:#ff6b6b;--line:#23304a}
+  *{box-sizing:border-box} body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  h1{font-size:17px;margin:0} .brain{font-size:24px}
+  .pill{padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600;background:#1d2940;color:var(--muted)}
+  .pill.running{background:#10331f;color:var(--ok)} .pill.paused,.pill.waiting_confirm{background:#3a2e10;color:var(--warn)}
+  .pill.stopped{background:#3a1414;color:var(--err)} .pill.planning{background:#102a3a;color:var(--acc)}
+  main{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px;max-width:1500px;margin:0 auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:0 0 8px}
+  .full{grid-column:1/3}
+  .goalbar{display:grid;grid-template-columns:minmax(260px,1fr) 180px auto;gap:8px;align-items:stretch} input,button{font:inherit}
+  input{flex:1;background:#0d1420;border:1px solid var(--line);color:var(--ink);padding:9px 12px;border-radius:7px}
+  input:focus{outline:1px solid var(--acc)}
+  button{background:var(--acc);border:0;color:#04101f;font-weight:700;padding:9px 14px;border-radius:7px;cursor:pointer}
+  button.ghost{background:#1d2940;color:var(--ink)} button.warn{background:var(--warn);color:#000}
+  button.err{background:var(--err);color:#fff}
+  .controls{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  ul{list-style:none;margin:0;padding:0} li{padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
+  li:last-child{border:0} .ts{color:var(--muted);font-size:10px;margin-right:6px}
+  .task{display:flex;gap:7px;align-items:center}
+  .task .box{width:14px;height:14px;border-radius:3px;border:1px solid var(--line);flex:none}
+  .task.done .box{background:var(--ok);border-color:var(--ok)} .task.done span{color:var(--muted);text-decoration:line-through}
+  .log{max-height:260px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:11px}
+  .confirm{background:#3a2e10;border:1px solid var(--warn);padding:10px;border-radius:8px;margin-top:8px}
+  .goal-current{font-size:15px;font-weight:600}
+  .muted{color:var(--muted)}
+  .error-banner{background:#3a1414;border:1px solid var(--err);padding:14px;border-radius:10px;margin:14px;font-size:13px;white-space:pre-wrap;font-family:monospace}
+  .provider-badge{font-size:10px;padding:2px 7px;border-radius:999px;background:#102a3a;color:var(--acc)}
+  .agent-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+  .agent-item{background:#0d1420;border:1px solid var(--line);border-radius:8px;padding:8px;min-height:74px}
+  .agent-name{font-size:12px;font-weight:700}.agent-role{font-size:11px;color:var(--muted);margin-top:3px}.agent-state{font-size:11px;margin-top:6px;color:var(--ok)}
+  .autonomy-grid{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(280px,1fr) minmax(280px,1fr);gap:10px}
+  .autonomy-box{background:#0d1420;border:1px solid var(--line);border-radius:8px;padding:9px;min-height:150px;overflow:auto}
+  .mini-title{font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:6px}
+  .kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:5px;font-size:12px;margin:4px 0}.kv span:first-child{color:var(--muted)}.kv span:last-child{overflow-wrap:anywhere}
+  .journal-item,.task-item{border-bottom:1px solid var(--line);padding:6px 0;font-size:12px}.journal-item:last-child,.task-item:last-child{border-bottom:0}
+  .status-planned{color:var(--acc)}.status-running{color:var(--warn)}.status-done{color:var(--ok)}.status-blocked,.status-error,.status-stalled{color:var(--err)}
+  .overview{display:grid;grid-template-columns:minmax(170px,.65fr) minmax(280px,1.25fr) minmax(220px,.85fr);gap:10px;margin-top:10px}
+  .overview-panel{background:#0d1420;border:1px solid var(--line);border-radius:8px;padding:9px;min-height:128px}
+  .mission-control{display:grid;grid-template-columns:minmax(240px,.75fr) minmax(360px,1.4fr) minmax(260px,.85fr);gap:10px;margin-bottom:10px}
+  .mission-panel{background:#08111f;border:1px solid #20314f;border-radius:8px;padding:12px;min-height:150px;overflow:auto}
+  .mission-panel.primary{background:#0b1728;border-color:#2d4a76}
+  .mission-score{font-size:34px;line-height:1;font-weight:900;margin:4px 0 6px}
+  .mission-label{font-size:10px;text-transform:uppercase;color:var(--muted)}
+  .mission-title{font-size:13px;font-weight:800;margin-bottom:7px}
+  .mission-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:8px}
+  .signal{background:#0d1420;border:1px solid var(--line);border-radius:7px;padding:8px;min-height:70px}
+  .signal b{display:block;font-size:16px;margin-top:3px}.signal small{color:var(--muted);font-size:10px;text-transform:uppercase}
+  .timeline{max-height:240px;overflow:auto}.timeline-item{border-left:2px solid var(--line);padding:0 0 10px 10px;margin-left:5px;font-size:12px}
+  .timeline-item.good{border-left-color:var(--ok)}.timeline-item.warn{border-left-color:var(--warn)}.timeline-item.bad{border-left-color:var(--err)}
+  .timeline-head{font-weight:800;color:var(--ink)}.timeline-meta{font-size:10px;color:var(--muted);margin-top:2px}
+  .kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kpi{background:#08111f;border:1px solid #1d2a43;border-radius:7px;padding:7px}
+  .kpi .label{font-size:10px;color:var(--muted);text-transform:uppercase}.kpi .value{font-size:20px;font-weight:800;margin-top:2px}.kpi.good .value{color:var(--ok)}.kpi.bad .value{color:var(--err)}
+  .chart-wrap{height:128px;position:relative}.chart-wrap canvas{width:100%;height:100%;display:block}.chart-caption{position:absolute;left:8px;bottom:6px;font-size:10px;color:var(--muted)}
+  .learning-line{font-size:12px;border-bottom:1px solid var(--line);padding:5px 0;overflow-wrap:anywhere}.learning-line:last-child{border-bottom:0}.trend-up{color:var(--ok)}.trend-down{color:var(--err)}.trend-flat{color:var(--warn)}
+  .team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}.team-panel{background:#0d1420;border:1px solid var(--line);border-radius:8px;padding:10px;min-height:260px;overflow:auto}
+  .team-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}.team-name{font-weight:800;font-size:13px}.team-goal{font-size:12px;color:var(--muted);margin-bottom:8px;min-height:34px}
+  .mini-code-feed{max-height:230px;overflow:auto}.mini-code-feed pre{max-height:120px}.team-exchange{margin-top:10px;background:#0d1420;border:1px solid var(--line);border-radius:8px;padding:9px;max-height:220px;overflow:auto}
+  .command-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:10px}
+  .command-box{background:#0d1420;border:1px solid var(--line);border-radius:8px;padding:9px;min-height:128px;min-width:0}
+  .ops-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-top:10px}
+  .ops-box{background:#0d1420;border:1px solid var(--line);border-radius:8px;padding:10px;min-height:150px;min-width:0}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px}.status-dot.ok{background:var(--ok)}.status-dot.warn{background:var(--warn)}.status-dot.bad{background:var(--err)}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:11px;overflow-wrap:anywhere}
+  .assignment{background:#0d1420;border:1px solid var(--line);color:var(--ink);padding:9px;border-radius:7px;max-width:180px}
+  .change-list{max-height:170px;overflow:auto}.change-row{display:grid;grid-template-columns:84px minmax(0,1fr) auto;gap:8px;border-bottom:1px solid var(--line);padding:6px 0;font-size:12px}.change-row span{overflow-wrap:anywhere}.change-row:last-child{border-bottom:0}
+  .gate-ok{color:var(--ok)}.gate-warn{color:var(--warn)}.gate-bad{color:var(--err)}
+  .scope-btn.active{outline:1px solid var(--acc);background:#163453}
+  .code-feed{max-height:360px;overflow:auto}.code-item{border-bottom:1px solid var(--line);padding:8px 0}.code-path{font-size:12px;color:var(--acc);font-weight:700}.code-meta{font-size:10px;color:var(--muted);margin:2px 0 6px}
+  pre.code-preview{margin:0;background:#07101d;border:1px solid var(--line);border-radius:8px;padding:8px;white-space:pre-wrap;overflow:auto;max-height:220px;color:#d8e7ff;font-size:11px}
+  .file-browser{display:grid;grid-template-columns:minmax(260px,0.9fr) minmax(320px,1.4fr);gap:10px;min-height:340px}
+  .file-list,.file-view{background:#0d1420;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:430px}
+  .file-row{display:grid;grid-template-columns:22px 1fr auto;gap:6px;align-items:center;padding:7px 9px;border-bottom:1px solid var(--line);font-size:12px;cursor:pointer}
+  .file-row:hover{background:#122036}.file-row.active{background:#163453}.file-row.coded .file-name{color:var(--ok);font-weight:700}
+  .file-size{color:var(--muted);font-size:10px}.file-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}.file-path{font-size:11px;color:var(--muted)}
+  .file-view-title{padding:8px 10px;border-bottom:1px solid var(--line);font-size:12px;color:var(--acc);font-weight:700}
+  pre.file-content{margin:0;padding:10px;white-space:pre-wrap;color:#d8e7ff;font-size:11px;min-height:300px}
+  @media(max-width:800px){main{grid-template-columns:1fr;padding:10px}.full{grid-column:1}.file-browser,.autonomy-grid,.overview,.mission-control,.mission-grid,.team-grid,.command-grid,.goalbar{grid-template-columns:1fr}.assignment{max-width:none;width:100%}.goalbar button{width:100%}.change-row{grid-template-columns:1fr}.kv{grid-template-columns:90px minmax(0,1fr)}}
+</style></head>
+<body>
+<header>
+  <span class="brain">🧠</span>
+  <h1>Lokaler KI-Agent</h1>
+  <span id="status" class="pill">—</span>
+  <span id="providerBadge" class="provider-badge"></span>
+  <span class="muted" style="font-size:12px" id="model"></span>
+  <span class="muted" style="font-size:12px" id="step"></span>
+</header>
+
+<div id="errorBanner" class="error-banner" style="display:none"></div>
+
+<main>
+  <div class="card full">
+    <h2>Ziel geben</h2>
+    <div class="goalbar">
+      <input id="goal" placeholder="z.B. Oeffne den Browser und suche nach dem Wetter in Berlin"
+             onkeydown="if(event.key==='Enter')addGoal()">
+      <select id="goalTarget" class="assignment" title="Aufgaben-Zuteilung">
+        <option value="both">Team</option>
+        <option value="main">nur Haupt</option>
+        <option value="support">nur Support</option>
+        <option value="hermes">nur Hermes</option>
+        <option value="review">Support Review</option>
+        <option value="research">Support Recherche</option>
+        <option value="meta">Hermes Meta/Roadmap</option>
+      </select>
+      <button onclick="addGoal()">&#9654; Los</button>
+    </div>
+    <div class="controls">
+      <button class="ghost" onclick="cmd('pause')">&#9646;&#9646; Pause</button>
+      <button class="ghost" onclick="cmd('resume')">&#9654; Weiter</button>
+      <button class="err" onclick="cmd('stop')">&#9646; STOP</button>
+    </div>
+    <div class="controls" style="align-items:center">
+      <span class="muted" style="font-size:12px">Produktivitaet</span>
+      <input id="productivity" type="range" min="25" max="300" step="25" value="100" style="max-width:260px" oninput="productivityLabel.textContent=this.value+'%'" onchange="setProductivity(this.value)">
+      <span id="productivityLabel" class="pill">100%</span>
+    </div>
+    <div class="controls" style="align-items:center">
+      <span class="muted" style="font-size:12px">Strategie</span>
+      <select id="strategyMode" onchange="setAgentSettings()" style="background:#0d1420;border:1px solid var(--line);color:var(--ink);padding:7px;border-radius:7px">
+        <option value="fast">schnell</option>
+        <option value="balanced">balanciert</option>
+        <option value="deep">gruendlich</option>
+      </select>
+      <label class="muted"><input type="checkbox" id="agentStrategist" onchange="setAgentSettings()" checked> Stratege</label>
+      <label class="muted"><input type="checkbox" id="agentCoder" onchange="setAgentSettings()" checked> Coder</label>
+      <label class="muted"><input type="checkbox" id="agentReviewer" onchange="setAgentSettings()" checked> Reviewer</label>
+      <label class="muted"><input type="checkbox" id="agentResearch" onchange="setAgentSettings()" checked> Research</label>
+    </div>
+    <div class="mission-control">
+      <div class="mission-panel primary">
+        <div class="mission-label">Mission Control</div>
+        <div id="missionScore" class="mission-score">--</div>
+        <div id="missionHeadline" class="mission-title">warte auf Agentenstatus...</div>
+        <div id="missionSummary" class="muted">Noch keine Bewertung.</div>
+        <div class="mission-grid">
+          <div class="signal"><small>Gate</small><b id="signalGate">?</b></div>
+          <div class="signal"><small>GitHub</small><b id="signalGithub">?</b></div>
+          <div class="signal"><small>CPU</small><b id="signalCpu">?</b></div>
+        </div>
+      </div>
+      <div class="mission-panel">
+        <div class="mini-title">Was der Agent gerade macht</div>
+        <div id="missionTimeline" class="timeline"><div class="muted">warte auf Live-Ablauf...</div></div>
+      </div>
+      <div class="mission-panel">
+        <div class="mini-title">Naechste Reparatur / Adoption</div>
+        <div id="missionNext" class="muted">warte auf Empfehlung...</div>
+      </div>
+    </div>
+    <div class="command-grid">
+      <div class="command-box">
+        <div class="mini-title">Team-Koordinator</div>
+        <div id="coordinatorBox" class="muted">warte auf Teamstatus...</div>
+      </div>
+      <div class="command-box">
+        <div class="mini-title">Naechster sinnvoller Schritt</div>
+        <div id="nextStepBox" class="muted">noch keine Empfehlung</div>
+      </div>
+      <div class="command-box">
+        <div class="mini-title">Aenderungen & Test-Gate</div>
+        <div id="changeGateBox" class="muted">noch keine Aenderungen</div>
+      </div>
+      <div class="command-box">
+        <div class="mini-title">Speicherbudget</div>
+        <div id="storageGuardBox" class="muted">warte auf Messung...</div>
+      </div>
+      <div class="command-box">
+        <div class="mini-title">Harte Team-Regeln</div>
+        <div id="rulesBox" class="muted">lade Regeln...</div>
+      </div>
+    </div>
+    <div class="ops-grid">
+      <div class="ops-box">
+        <div class="mini-title">Hybrid KI</div>
+        <div id="hybridBox" class="muted">warte auf Modellstatus...</div>
+      </div>
+      <div class="ops-box">
+        <div class="mini-title">Auslastung</div>
+        <div id="resourceBox" class="muted">messe Serverlast...</div>
+      </div>
+      <div class="ops-box">
+        <div class="mini-title">GitHub Sync</div>
+        <div id="githubBox" class="muted">warte auf GitHub-Status...</div>
+      </div>
+      <div class="ops-box">
+        <div class="mini-title">Live GitHub Learn</div>
+        <div id="githubLearnLiveBox" class="muted">warte auf Adoption/Intake...</div>
+      </div>
+      <div class="ops-box">
+        <div class="mini-title">GitHub Lernen</div>
+        <div id="researchBox" class="muted">warte auf Research-Loop...</div>
+      </div>
+      <div class="ops-box">
+        <div class="mini-title">Qualitaet / 10</div>
+        <div id="qualityBox" class="muted">werte Qualitaets-Gates aus...</div>
+      </div>
+    </div>
+    <div class="overview" id="productivityOverview">
+      <div class="overview-panel">
+        <div class="mini-title">Produktivitaet</div>
+        <div class="kpi-grid">
+          <div class="kpi good"><div class="label">Fertig</div><div class="value" id="kpiDone">0</div></div>
+          <div class="kpi"><div class="label">Code</div><div class="value" id="kpiCode">0</div></div>
+          <div class="kpi"><div class="label">Gelernt</div><div class="value" id="kpiLearned">0</div></div>
+          <div class="kpi bad"><div class="label">Blockiert</div><div class="value" id="kpiBlocked">0</div></div>
+        </div>
+      </div>
+      <div class="overview-panel">
+        <div class="mini-title">Live-Verlauf</div>
+        <div class="chart-wrap">
+          <canvas id="productivityChart" width="620" height="150"></canvas>
+          <div class="chart-caption" id="chartCaption">warte auf Daten...</div>
+        </div>
+      </div>
+      <div class="overview-panel">
+        <div class="mini-title">Was steigt / faellt</div>
+        <div id="overviewNotes" class="muted">noch keine Bewertung</div>
+      </div>
+    </div>
+    <div id="confirmBox"></div>
+  </div>
+
+  <div class="card full">
+    <h2>Code live</h2>
+    <div id="codeActivity" class="code-feed"><div class="muted">noch keine Code-Aktion</div></div>
+  </div>
+
+  <div class="card full">
+    <h2>Drei-Agenten-Team</h2>
+    <div class="team-grid">
+      <div class="team-panel">
+        <div class="team-head"><div class="team-name">Haupt-Agent</div><span id="mainMiniStatus" class="pill">warte</span></div>
+        <div id="mainMiniGoal" class="team-goal">noch kein Ziel</div>
+        <div id="mainMiniCode" class="mini-code-feed muted">noch keine Live-Aktion</div>
+      </div>
+      <div class="team-panel">
+        <div class="team-head"><div class="team-name">Support-Agent GLM</div><span id="supportMiniStatus" class="pill">warte</span></div>
+        <div id="supportMiniGoal" class="team-goal">noch kein Ziel</div>
+        <div id="supportMiniCode" class="mini-code-feed muted">noch keine Live-Aktion</div>
+      </div>
+      <div class="team-panel">
+        <div class="team-head"><div class="team-name">Hermes-Agent</div><span id="hermesMiniStatus" class="pill">warte</span></div>
+        <div id="hermesMiniGoal" class="team-goal">noch kein Ziel</div>
+        <div id="hermesMiniCode" class="mini-code-feed muted">noch keine Live-Aktion</div>
+      </div>
+    </div>
+    <div class="team-exchange">
+      <div class="mini-title">Gemeinsamer Austausch</div>
+      <div id="teamExchange" class="muted">noch kein Austausch</div>
+    </div>
+  </div>
+
+  <div class="card full" id="fileExplorer">
+    <h2>Dateien live</h2>
+    <div class="file-toolbar">
+      <button id="scopeMain" class="ghost scope-btn active" onclick="setExplorerScope('main')">Haupt</button>
+      <button id="scopeSupport" class="ghost scope-btn" onclick="setExplorerScope('support')">Support</button>
+      <button id="scopeHermes" class="ghost scope-btn" onclick="setExplorerScope('hermes')">Hermes</button>
+      <button id="scopeShared" class="ghost scope-btn" onclick="setExplorerScope('shared')">Team/Logs</button>
+      <button class="ghost" onclick="openExplorerPath('.')">Workspace</button>
+      <button class="ghost" onclick="refreshExplorer(true)">&#8635; Aktualisieren</button>
+      <span id="fileCwd" class="file-path">.</span>
+    </div>
+    <div class="file-browser">
+      <div id="fileList" class="file-list"><div class="muted" style="padding:10px">lade Dateien...</div></div>
+      <div class="file-view">
+        <div id="fileTitle" class="file-view-title">Keine Datei ausgewaehlt</div>
+        <pre id="fileContent" class="file-content muted">Klicke links auf eine Datei.</pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="card full">
+    <h2>Agenten-Team</h2>
+    <div id="agents" class="agent-grid"></div>
+  </div>
+
+  <div class="card full">
+    <h2>Seele / Autonomie</h2>
+    <div class="controls" style="align-items:center">
+      <label class="muted"><input type="checkbox" id="autonomyAutopilot" onchange="setAutonomySettings()" checked> Autopilot</label>
+      <label class="muted"><input type="checkbox" id="autonomyNeverIdle" onchange="setAutonomySettings()" checked> nie einfach aufhoeren</label>
+      <label class="muted"><input type="checkbox" id="autonomyWatchdog" onchange="setAutonomySettings()" checked> Watchdog</label>
+      <span class="muted" style="font-size:12px">Limit</span>
+      <input id="autonomyMaxGoals" type="number" min="1" max="100000" step="1" value="100000" style="max-width:120px" onchange="setAutonomySettings()">
+      <span class="muted" style="font-size:12px">Cooldown</span>
+      <input id="autonomyCooldown" type="number" min="5" max="600" step="5" value="30" style="max-width:100px" onchange="setAutonomySettings()">
+    </div>
+    <div class="autonomy-grid">
+      <div class="autonomy-box">
+        <div class="mini-title">Heartbeat</div>
+        <div id="heartbeatBox" class="muted">warte auf Lebenszeichen...</div>
+      </div>
+      <div class="autonomy-box">
+        <div class="mini-title">Aufgabenbuch</div>
+        <div id="taskBook" class="muted">noch keine Aufgaben</div>
+      </div>
+      <div class="autonomy-box">
+        <div class="mini-title">Entscheidungen / Tagebuch</div>
+        <div id="soulJournal" class="muted">noch keine Eintraege</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card full">
+    <h2>Fahrerassistenz</h2>
+    <div id="trainAssist" class="muted" style="font-size:12px">noch keine Fahranalyse</div>
+  </div>
+
+  <div class="card">
+    <h2>Aktuelles Ziel</h2>
+    <div id="goalCurrent" class="goal-current muted">untaetig</div>
+    <div id="subgoal" class="muted" style="font-size:12px;margin-top:4px"></div>
+    <h2 style="margin-top:12px">Schritte / Plan</h2>
+    <ul id="plan"></ul>
+    <h2 style="margin-top:12px">Warteschlange</h2>
+    <ul id="queue"></ul>
+  </div>
+
+  <div class="card">
+    <h2>Gedanken (live)</h2>
+    <ul id="thoughts" class="log"></ul>
+  </div>
+
+  <div class="card full">
+    <h2>Aktions-Log</h2>
+    <ul id="log" class="log"></ul>
+  </div>
+
+  <div class="card full">
+    <h2>Langzeit-Gedaechtnis &#127807;</h2>
+    <ul id="learnings"></ul>
+  </div>
+</main>
+
+<script>
+function esc(s){return(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+const AGENT_AUTH_HEADER='Basic c2ViaWU6YWdlbnQtZWtCVmVlMTIzaXpkVW9McktN';
+function agentFetch(url, opts){opts=opts||{};opts.headers=Object.assign({}, opts.headers||{}, {'Authorization': AGENT_AUTH_HEADER});opts.credentials='include';const cleanOrigin=window.location.protocol+'//'+window.location.host;const target=(typeof url==='string'&&url.startsWith('/'))?cleanOrigin+url:url;return fetch(target, opts)}
+
+let explorerPath='.';
+let explorerScope='main';
+let selectedFilePath='';
+let lastExplorerFetch=0;
+let lastCodeActivitySig='';
+function fmtSize(n){n=Number(n||0); if(n<1024)return n+' B'; if(n<1048576)return (n/1024).toFixed(1)+' KB'; return (n/1048576).toFixed(1)+' MB'}
+function codedPathSet(codeActivity){
+  const set=new Set();
+  (codeActivity||[]).forEach(c=>{ if(c.path) set.add(String(c.path).replace(/^\/+/,'')); });
+  return set;
+}
+function renderExplorer(data, codeActivity){
+  const list=document.getElementById('fileList'); const cwd=document.getElementById('fileCwd'); if(!list||!data)return;
+  cwd.textContent=data.cwd||'.'; explorerPath=data.cwd||'.';
+  const coded=codedPathSet(codeActivity);
+  const rows=[];
+  if(data.parent!==null && data.parent!==undefined){rows.push(`<div class="file-row" onclick="openExplorerPath('${esc(data.parent)}')"><span>?</span><span class="file-name">..</span><span></span></div>`)}
+  (data.entries||[]).forEach(e=>{
+    const icon=e.type==='dir'?'??':'??';
+    const cls=(e.path===selectedFilePath?' active':'')+(coded.has(e.path)?' coded':'');
+    const action=e.type==='dir'?`openExplorerPath('${esc(e.path)}')`:`openFile('${esc(e.path)}')`;
+    rows.push(`<div class="file-row${cls}" onclick="${action}"><span>${icon}</span><span class="file-name">${esc(e.name)}</span><span class="file-size">${e.type==='file'?fmtSize(e.size):''}</span></div>`);
+  });
+  list.innerHTML=rows.join('')||'<div class="muted" style="padding:10px">leer</div>';
+}
+async function refreshExplorer(force){
+  const now=Date.now(); if(!force && now-lastExplorerFetch<2000)return; lastExplorerFetch=now;
+  try{ const r=await agentFetch('/files/tree?scope='+encodeURIComponent(explorerScope)+'&path='+encodeURIComponent(explorerPath)); renderExplorer(await r.json(), window.allCodeActivity||window.lastCodeActivity||[]); }catch(e){}
+}
+function openExplorerPath(p){ explorerPath=p||'.'; refreshExplorer(true); }
+function setExplorerScope(scope){
+  explorerScope=scope||'main'; explorerPath='.'; selectedFilePath='';
+  ['Main','Support','Hermes','Shared'].forEach(k=>{const el=document.getElementById('scope'+k); if(el)el.classList.toggle('active', explorerScope===k.toLowerCase());});
+  const title=document.getElementById('fileTitle'); const content=document.getElementById('fileContent');
+  if(title)title.textContent='Keine Datei ausgewaehlt'; if(content)content.textContent='Klicke links auf eine Datei.';
+  refreshExplorer(true);
+}
+async function openFile(p){
+  selectedFilePath=p; refreshExplorer(true);
+  const title=document.getElementById('fileTitle'); const content=document.getElementById('fileContent');
+  try{ const data=await (await agentFetch('/files/read?scope='+encodeURIComponent(explorerScope)+'&path='+encodeURIComponent(p))).json(); title.textContent=(data.scope?data.scope+': ':'')+(data.path||p); content.textContent=data.content||''; content.className='file-content'; }
+  catch(e){ title.textContent=p; content.textContent='FEHLER: '+e; }
+}
+
+let lastVisionTs=-1;
+let visionStreamStarted=false;
+function updateVision(s){
+  const ts=s.vision_ts||0;
+  const img=document.getElementById('vision');
+  const ph=document.getElementById('visionPlaceholder');
+  const info=document.getElementById('visionInfo');
+  if(!img || !ph || !info) return;
+  if(ts>0 && ts!==lastVisionTs){
+    lastVisionTs=ts;
+    if((s.vision_mode||'').startsWith('live') && !visionStreamStarted){
+      visionStreamStarted=true;
+      img.src='/vision_stream?t='+Date.now();
+    } else if(!visionStreamStarted) {
+      img.src='/vision.jpg?t='+ts;          // Cache-Buster: nur bei neuem Bild laden
+    }
+    img.style.display='block';
+    ph.style.display='none';
+    const fps=s.vision_fps?(' - '+s.vision_fps+' FPS lokal'):'';
+    const change=(s.vision_change!==undefined)?(' - Aenderung '+s.vision_change):'';
+    info.textContent='Live-Sicht des Agenten'+fps+change+(s.vision_info?(' - '+s.vision_info):'');
+  }
+}
+
+async function addGoal(){
+  const g=document.getElementById('goal').value.trim(); if(!g)return;
+  const target=document.getElementById('goalTarget')?.value||'both';
+  await agentFetch('/goal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal:g,target})});
+  document.getElementById('goal').value='';
+}
+async function cmd(c){await agentFetch('/cmd/'+c,{method:'POST'})}
+async function decide(d){await agentFetch('/confirm/'+d,{method:'POST'})}
+async function setProductivity(v){await agentFetch('/productivity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({percent:Number(v)})})}
+async function setAgentSettings(){const payload={strategy_mode:document.getElementById('strategyMode')?.value||'balanced',enabled_agents:{strategist:!!document.getElementById('agentStrategist')?.checked,coder:!!document.getElementById('agentCoder')?.checked,reviewer:!!document.getElementById('agentReviewer')?.checked,research:!!document.getElementById('agentResearch')?.checked}}; await agentFetch('/agent_settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})}
+async function setAutonomySettings(){const payload={autopilot:!!document.getElementById('autonomyAutopilot')?.checked,autonomy_never_idle:!!document.getElementById('autonomyNeverIdle')?.checked,watchdog_enabled:!!document.getElementById('autonomyWatchdog')?.checked,autopilot_max_goals:Number(document.getElementById('autonomyMaxGoals')?.value||100000),autopilot_planner_cooldown_seconds:Number(document.getElementById('autonomyCooldown')?.value||30)}; await agentFetch('/autonomy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})}
+
+function renderAutonomy(s){
+  const a=s.autonomy||{}; const settings=a.settings||{}; const hb=s.heartbeat||{};
+  const ap=document.getElementById('autonomyAutopilot'); if(ap&&document.activeElement!==ap) ap.checked=!!settings.autopilot;
+  const ni=document.getElementById('autonomyNeverIdle'); if(ni&&document.activeElement!==ni) ni.checked=settings.autonomy_never_idle!==false;
+  const wd=document.getElementById('autonomyWatchdog'); if(wd&&document.activeElement!==wd) wd.checked=settings.watchdog_enabled!==false;
+  const mg=document.getElementById('autonomyMaxGoals'); if(mg&&document.activeElement!==mg) mg.value=settings.autopilot_max_goals||100000;
+  const cd=document.getElementById('autonomyCooldown'); if(cd&&document.activeElement!==cd) cd.value=settings.planner_cooldown_seconds||30;
+  const hbEl=document.getElementById('heartbeatBox');
+  if(hbEl) hbEl.innerHTML=[
+    ['Status', hb.status||s.status||'?'],
+    ['Worker', hb.worker_alive===false?'nicht aktiv':'aktiv'],
+    ['Letztes Signal', hb.last_seen||'?'],
+    ['Watchdog', hb.watchdog_seen||'?'],
+    ['Ziel', hb.current_goal||s.current_goal||'keins']
+  ].map(([k,v])=>`<div class="kv"><span>${esc(k)}</span><span>${esc(String(v))}</span></div>`).join('');
+  const tasks=(a.tasks||[]).slice().reverse().slice(0,12);
+  const tb=document.getElementById('taskBook');
+  if(tb) tb.innerHTML=tasks.length?tasks.map(t=>`<div class="task-item"><div><b class="status-${esc(t.status||'planned')}">${esc(t.status||'planned')}</b> ${esc(t.title||'')}</div><div class="muted">${esc(t.updated_ts||t.created_ts||'')} ${t.source?' - '+esc(t.source):''}</div></div>`).join(''):'<span class="muted">noch keine Aufgaben</span>';
+  const journal=(a.journal||[]).slice().reverse().slice(0,12);
+  const sj=document.getElementById('soulJournal');
+  if(sj) sj.innerHTML=journal.length?journal.map(j=>`<div class="journal-item"><div><span class="ts">${esc(j.ts||'')}</span><b class="status-${esc(j.status||'info')}">${esc(j.kind||'note')}</b></div><div>${esc(j.text||'')}</div>${j.goal?`<div class="muted">${esc(j.goal)}</div>`:''}</div>`).join(''):'<span class="muted">noch keine Eintraege</span>';
+}
+
+function scoreEvent(e){
+  const status=String(e.status||'').toLowerCase();
+  const action=String(e.action||'').toLowerCase();
+  const kind=String(e.kind||'').toLowerCase();
+  if(status==='done') return 10;
+  if(status==='blocked'||status==='error'||status==='stalled') return -8;
+  if(status==='running') return 2;
+  if(status==='selected'||status==='queued'||status==='saved') return 1;
+  if(action==='write_file'||action==='create_tool') return 4;
+  if(action==='run_shell') return 2;
+  if(action==='web_search') return 1;
+  if(kind==='learning') return 3;
+  return 0;
+}
+function drawProductivityChart(points){
+  const canvas=document.getElementById('productivityChart'); if(!canvas)return;
+  const dpr=window.devicePixelRatio||1; const rect=canvas.getBoundingClientRect();
+  const w=Math.max(260, Math.floor(rect.width*dpr)); const h=Math.max(110, Math.floor(rect.height*dpr));
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
+  const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#07101d'; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle='#23304a'; ctx.lineWidth=1*dpr;
+  for(let i=1;i<4;i++){const y=Math.round(h*i/4); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();}
+  if(!points.length){return;}
+  const min=Math.min(...points,0); const max=Math.max(...points,10); const span=Math.max(1,max-min);
+  const xFor=i=>points.length===1?w-10*dpr:(10*dpr)+(i*(w-20*dpr)/(points.length-1));
+  const yFor=v=>(h-12*dpr)-((v-min)*(h-24*dpr)/span);
+  ctx.strokeStyle='#4da3ff'; ctx.lineWidth=2.5*dpr; ctx.beginPath();
+  points.forEach((p,i)=>{const x=xFor(i), y=yFor(p); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);});
+  ctx.stroke();
+  const last=points[points.length-1]; const first=points[0];
+  ctx.fillStyle=last>=first?'#37d27a':'#ff6b6b';
+  ctx.beginPath(); ctx.arc(xFor(points.length-1), yFor(last), 4*dpr, 0, Math.PI*2); ctx.fill();
+}
+function renderProductivityOverview(s){
+  const tasks=(s.autonomy&&s.autonomy.tasks)||[];
+  const journal=(s.autonomy&&s.autonomy.journal)||[];
+  const code=s.code_activity||[];
+  const learnings=(s.memory&&s.memory.learnings)||[];
+  const done=tasks.filter(t=>t.status==='done').length;
+  const blocked=tasks.filter(t=>['blocked','error','stalled'].includes(t.status)).length + journal.filter(j=>['blocked','error','stalled'].includes(j.status)).length;
+  const codeCount=code.filter(c=>['write_file','create_tool','run_shell'].includes(c.action)).length;
+  const learned=learnings.length;
+  const setText=(id,v)=>{const el=document.getElementById(id); if(el)el.textContent=String(v);}
+  setText('kpiDone',done); setText('kpiCode',codeCount); setText('kpiLearned',learned); setText('kpiBlocked',blocked);
+  const events=[
+    ...journal.map(e=>Object.assign({src:'journal'},e)),
+    ...code.slice(-40).map(e=>Object.assign({src:'code'},e)),
+    ...learnings.slice(-12).map(e=>({src:'learning',kind:'learning',status:'learned',text:e.text,ts:e.ts}))
+  ].slice(-50);
+  let total=0; const points=[];
+  events.forEach(e=>{total+=scoreEvent(e); points.push(total);});
+  if(!points.length) points.push(0);
+  drawProductivityChart(points);
+  const delta=points[points.length-1]-points[0];
+  const trendClass=delta>3?'trend-up':(delta<-3?'trend-down':'trend-flat');
+  const caption=document.getElementById('chartCaption');
+  if(caption){caption.innerHTML=`Trend <span class="${trendClass}">${delta>=0?'+':''}${delta}</span> - Produktivitaet ${esc(String(s.productivity_percent||100))}%`;}
+  const recentLearn=learnings.slice(-2).reverse().map(l=>`<div class="learning-line">Gelernt: ${esc(l.text||'')}</div>`).join('');
+  const recentBad=journal.slice().reverse().filter(j=>['blocked','error','stalled'].includes(j.status)).slice(0,2).map(j=>`<div class="learning-line"><span class="trend-down">Achtung:</span> ${esc(j.text||j.goal||'Blockade')}</div>`).join('');
+  const active=(s.current_goal||'').trim();
+  const notes=document.getElementById('overviewNotes');
+  if(notes){
+    notes.innerHTML=
+      `<div class="learning-line"><span class="${trendClass}">${delta>3?'laeuft besser':delta<-3?'braucht Aufmerksamkeit':'stabil'}</span>${active?' - '+esc(active):''}</div>`+
+      (recentBad||'')+
+      (recentLearn||'<div class="learning-line muted">Noch keine neuen Learnings im Verlauf.</div>');
+  }
+}
+
+function mergedCodeEvents(s){
+  const main=(s.code_activity||[]).map(e=>Object.assign({agent:'Haupt'},e));
+  const support=((s.support_agent&&s.support_agent.code_activity)||[]).map(e=>Object.assign({agent:'Support'},e));
+  const hermes=((s.hermes_agent&&s.hermes_agent.code_activity)||[]).map(e=>Object.assign({agent:'Hermes'},e));
+  return main.concat(support).concat(hermes).slice(-100);
+}
+function renderCoordinator(s){
+  const c=s.team_coordinator||{};
+  const support=s.support_agent||{};
+  const hermes=s.hermes_agent||{};
+  const coord=document.getElementById('coordinatorBox');
+  if(coord) coord.innerHTML=[
+    ['Modus', c.mode||'Team'],
+    ['Haupt', (s.status||'?')+' / '+(s.model||'')],
+    ['Support', (support.status||'off')+' / '+(support.model||'')],
+    ['Hermes', (hermes.status||'off')+' / '+(hermes.model||'')],
+    ['Regel', c.rule||'Haupt baut, Support prueft, Hermes plant/lernt']
+  ].map(([k,v])=>`<div class="kv"><span>${esc(k)}</span><span>${esc(String(v||''))}</span></div>`).join('');
+  const next=document.getElementById('nextStepBox');
+  if(next) next.innerHTML=`<div class="learning-line"><span class="trend-up">${esc(c.next_owner||'Team')}</span>: ${esc(c.next_step||'Status beobachten und naechste Aufgabe sauber zuteilen.')}</div>`+
+    `<div class="learning-line muted">Risiko: ${esc(c.risk||'keine akute Warnung')}</div>`;
+  const events=mergedCodeEvents(s).slice().reverse().slice(0,8);
+  const tg=s.test_gate||{}; const gates=tg.agents||[];
+  const gateClass=tg.overall==='blocked'?'gate-bad':(tg.overall==='needs_test'?'gate-warn':'gate-ok');
+  const gateText=tg.overall==='blocked'?'Achtung: Blockaden vorhanden':(tg.overall==='needs_test'?'Aenderungen noch testen':'Test-Gate ok / wartend');
+  const gate=document.getElementById('changeGateBox');
+  const gateLines=gates.map(g=>`<div class="learning-line"><b>${esc(g.agent)}</b>: ${esc(g.message)}${g.last_test_at?' - letzter Test '+esc(g.last_test_at):''}</div>`).join('');
+  if(gate) gate.innerHTML=`<div class="learning-line ${gateClass}">${esc(gateText)}</div>`+
+    gateLines+
+    `<div class="change-list">${events.map(e=>`<div class="change-row"><span>${esc(e.agent||'Agent')}</span><span>${esc(e.title||e.path||e.action||'Aktion')}</span><span class="muted">${esc(e.ts||'')}</span></div>`).join('')||'<div class="muted">noch keine Aenderungen</div>'}</div>`;
+}
+
+function renderStorageAndRules(s){
+  const storage=s.storage_guard_combined||{}; const root=storage.root||{};
+  const cls=storage.ok?'gate-ok':'gate-bad';
+  const box=document.getElementById('storageGuardBox');
+  const main=storage.main?.sizes||{}; const support=storage.support?.sizes||{}; const hermes=storage.hermes?.sizes||{};
+  if(box) box.innerHTML=
+    `<div class="learning-line ${cls}">${storage.ok?'OK':'Budget-Warnung'} - Server ${esc(String(root.used_gb||'?'))}/${esc(String(root.total_gb||'?'))} GB (${esc(String(root.use_percent||'?'))}%)</div>`+
+    `<div class="kv"><span>Haupt</span><span>${esc(String(main.workspace_gb??'?'))} GB Workspace, ${esc(String(main.backups_gb??'?'))} GB Backups</span></div>`+
+    `<div class="kv"><span>Support</span><span>${esc(String(support.workspace_gb??'?'))} GB Workspace, ${esc(String(support.backups_gb??'?'))} GB Backups</span></div>`+
+    `<div class="kv"><span>Hermes</span><span>${esc(String(hermes.workspace_gb??'?'))} GB Workspace, ${esc(String(hermes.backups_gb??'?'))} GB Backups</span></div>`+
+    ((storage.violations||[]).map(v=>`<div class="learning-line gate-bad">${esc(v)}</div>`).join('')||'');
+  const rules=document.getElementById('rulesBox');
+  if(rules){
+    const list=(s.team_rules&&s.team_rules.length?s.team_rules:[
+      'Haupt baut, Support prueft/recherchiert/testet.',
+      'Keine gleiche Datei parallel bearbeiten.',
+      'Headless: keine GUI-/DISPLAY-Aktionen.',
+      'Nach jeder Aenderung Test/Ausfuehrung dokumentieren.',
+      'Speicherlimit stoppt Autopilot.'
+    ]);
+    rules.innerHTML=list.map(x=>`<div class="learning-line">${esc(x)}</div>`).join('');
+  }
+}
+
+function timelineEventHtml(item){
+  const cls=item.level||'warn';
+  return `<div class="timeline-item ${cls}"><div class="timeline-head">${esc(item.title||'Aktion')}</div><div>${esc(item.body||'')}</div><div class="timeline-meta">${esc(item.meta||'')}</div></div>`;
+}
+function renderMissionControl(s){
+  const quality=s.quality_status||{};
+  const github=s.github_status||{};
+  const resources=s.resource_status||{};
+  const research=s.research_status||{};
+  const gate=s.test_gate||{};
+  const load=resources.load||{};
+  const top=(resources.top_processes||[])[0]||{};
+  const score=Number(quality.score??0);
+  const gateOk=gate.overall==='passed'||gate.overall==='waiting';
+  const githubOk=github.state==='clean'||github.state==='pushed';
+  const cpuTop=Number(String(top.cpu_percent||0).replace(',','.'))||0;
+  const cpuTarget=cpuTop>=640&&cpuTop<=760?'zielnah':(cpuTop>760?'zu hoch':(cpuTop>80?'aktiv':'niedrig'));
+  const set=(id,value)=>{const el=document.getElementById(id); if(el)el.textContent=value;}
+  set('missionScore', `${score||'?'} / 10`);
+  set('signalGate', gate.overall||'?');
+  set('signalGithub', github.state||'?');
+  set('signalCpu', cpuTarget);
+  const headline=document.getElementById('missionHeadline');
+  if(headline) headline.textContent = gateOk && githubOk ? 'System bereit fuer naechsten Self-Dev-Schritt' : 'System braucht Reparatur vor Autonomie';
+  const summary=document.getElementById('missionSummary');
+  if(summary){
+    summary.innerHTML =
+      `<div>${dot(gateOk,!gateOk)} Test-Gate: <b>${esc(gate.overall||'?')}</b></div>`+
+      `<div>${dot(githubOk,!githubOk)} GitHub: <b>${esc(github.meaning||github.state||'?')}</b></div>`+
+      `<div>${dot(cpuTop>0,false)} Top CPU: <b>${esc(String(top.name||'?'))} ${esc(String(top.cpu_percent||'?'))}%</b></div>`+
+      `<div class="muted">Load ${esc(String(load.one??'?'))} / ${esc(String(load.five??'?'))} / ${esc(String(load.fifteen??'?'))}</div>`;
+  }
+  const activity=research.learning_activity||{};
+  const events=[];
+  if(s.current_goal) events.push({level:'warn',title:'Aktives Ziel',body:s.current_goal,meta:s.status||''});
+  (s.code_activity||[]).slice(-3).reverse().forEach(e=>events.push({level:e.status==='blocked'?'bad':'good',title:e.title||e.path||e.action,body:e.preview||e.detail||e.action||'',meta:`Haupt ${e.ts||''}`}));
+  (activity.events||[]).slice(-4).reverse().forEach(e=>{
+    if(e.type==='repo_review') events.push({level:e.mode==='code-intake-allowed'?'good':'warn',title:e.repo,body:e.action||e.idea||'',meta:`${e.topic||''} / ${e.license||'?'} / ${e.next_step||''}`});
+    else events.push({level:'warn',title:e.topic||'GitHub Scan',body:e.result||'',meta:e.why||''});
+  });
+  const timeline=document.getElementById('missionTimeline');
+  if(timeline) timeline.innerHTML=events.length?events.slice(0,9).map(timelineEventHtml).join(''):'<div class="muted">noch keine Live-Aktivitaet</div>';
+  const next=document.getElementById('missionNext');
+  if(next){
+    const missing=(quality.next_missing||[])[0];
+    const focus=activity.current_focus||{};
+    const topProc=(resources.top_processes||[])[0]||{};
+    const repair = !gateOk ? 'Test-Gate reparieren: rote Dateien fixen, dann selfdev_repair.py laufen lassen.' :
+      (!githubOk ? 'GitHub synchronisieren: Workspace fast-forward/push sauber machen.' :
+      (topProc.cmd&&String(topProc.cmd).includes('ollama') ? 'Ollama entlasten: lokales Routing auf llama.cpp umstellen und Ollama-Modell entladen.' :
+      'Naechsten GitHub-Kandidaten ueber safe_code_intake stagen und testen.'));
+    next.innerHTML =
+      `<div class="learning-line"><b>${esc(repair)}</b></div>`+
+      (missing?`<div class="learning-line gate-warn">Qualitaetsluecke: ${esc(missing)}</div>`:'')+
+      (focus.repo?`<div class="learning-line">Adoption-Fokus: <b>${esc(focus.repo)}</b><br><span class="muted">${esc(focus.action||focus.idea||'')}</span></div>`:'')+
+      `<div class="learning-line muted">Runtime-Ziel: 8 Kerne sinnvoll auslasten, aber keine endlosen 11434/Ollama-Timeout-Schleifen.</div>`;
+  }
+}
+
+function dot(ok, warn){
+  return `<span class="status-dot ${ok?'ok':(warn?'warn':'bad')}"></span>`;
+}
+function renderOperationalStatus(s){
+  const h=s.hybrid_status||{};
+  const r=s.resource_status||{};
+  const g=s.github_status||{};
+  const research=s.research_status||{};
+  const quality=s.quality_status||{};
+  const hb=document.getElementById('hybridBox');
+  if(hb){
+    const routing=h.routing||{};
+    hb.innerHTML=
+      `<div class="learning-line">${dot(!!h.cloud_primary,false)}<b>${esc(h.mode||'Hybrid')}</b></div>`+
+      `<div class="kv"><span>Haupt</span><span>${esc(h.main_model||'?')}</span></div>`+
+      `<div class="kv"><span>Support</span><span>${esc(h.support_model||'?')}</span></div>`+
+      `<div class="kv"><span>Hermes</span><span>${esc(h.hermes_model||'?')}</span></div>`+
+      `<div class="kv"><span>Coder</span><span>Cloud ${esc(routing.coder_cloud||'?')} / lokal ${esc(routing.coder_local||'?')}</span></div>`+
+      `<div class="kv"><span>Fallback</span><span>${h.local_fallback_to_cloud?'lokal -> Cloud aktiv':'kein Cloud-Fallback'}; lokal geladen: ${h.local_loaded?'ja':'nein'}</span></div>`+
+      `<div class="learning-line muted">${esc(h.explanation||'')}</div>`;
+  }
+  const rb=document.getElementById('resourceBox');
+  if(rb){
+    const gpuOk=!!r.gpu_visible;
+    const load=r.load||{};
+    const top=(r.top_processes||[]).slice(0,4).map(p=>
+      `<div class="kv"><span>${esc(p.name||'?')}</span><span>${esc(String(p.cpu_percent||'?'))}% CPU - ${esc(p.cmd||'')}</span></div>`
+    ).join('');
+    rb.innerHTML=
+      `<div class="learning-line">${dot(true,false)}CPU: ${esc(String(r.cpu_cores||'?'))} Kerne, Prozess-Max ca. ${esc(String(r.max_process_percent||'?'))}%</div>`+
+      `<div class="kv"><span>Agent</span><span>${esc(String(r.agent_cpu_percent??'?'))}% CPU</span></div>`+
+      `<div class="kv"><span>Load</span><span>${esc(String(load.one??'?'))} / ${esc(String(load.five??'?'))} / ${esc(String(load.fifteen??'?'))}</span></div>`+
+      `<div class="kv"><span>GPU</span><span>${gpuOk?'sichtbar':'keine echte GPU sichtbar'}</span></div>`+
+      `<div class="learning-line muted">${esc(r.explanation||'')}</div>`+
+      `<div class="mini-title" style="margin-top:8px">Top-Prozesse</div>`+top;
+  }
+  const gb=document.getElementById('githubBox');
+  if(gb){
+    const ok=g.enabled && (g.state==='clean' || g.state==='pushed');
+    const warn=g.enabled && !ok;
+    const commits=(g.recent_commits||[]).slice(0,3).map(c=>
+      `<div class="learning-line"><span class="mono">${esc(c.hash||'')}</span> ${esc(c.subject||'')} <span class="muted">${esc(c.age||'')}</span></div>`
+    ).join('');
+    const dirty=(g.dirty_preview||[]).map(x=>`<div class="learning-line muted">${esc(x)}</div>`).join('');
+    gb.innerHTML=
+      `<div class="learning-line">${dot(ok,warn)}<b>${esc(g.meaning||g.message||'GitHub Status unbekannt')}</b></div>`+
+      `<div class="kv"><span>Repo</span><span class="mono">${esc(g.remote||g.repo||'?')}</span></div>`+
+      `<div class="kv"><span>Branch</span><span>${esc(g.branch||'?')}</span></div>`+
+      `<div class="kv"><span>Letzter Stand</span><span><span class="mono">${esc(g.head||'?')}</span> ${esc(g.commit_subject||'')}</span></div>`+
+      `<div class="kv"><span>Auto-Sync</span><span>${esc(g.auto_sync||'nicht eingerichtet')}</span></div>`+
+      `<div class="kv"><span>Letzter Check</span><span>${esc((g.last_sync&&g.last_sync.checked_at)||'?')}</span></div>`+
+      (dirty?`<div class="mini-title" style="margin-top:8px">Wartende Dateien</div>${dirty}`:'')+
+      `<div class="mini-title" style="margin-top:8px">Letzte Commits</div>`+(commits||'<div class="muted">noch keine Commits</div>');
+  }
+  const rb2=document.getElementById('researchBox');
+  if(rb2){
+    const ok=research.enabled && research.ok;
+    const warn=research.enabled && !research.ok;
+    const topics=(research.topics_preview||[]).slice(0,4).map(x=>`<div class="learning-line">${esc(x)}</div>`).join('');
+    const ideas=(research.next_improvements||[]).slice(0,5).map(x=>`<div class="learning-line">${esc(x)}</div>`).join('');
+    const errors=(research.errors||[]).slice(0,2).map(x=>`<div class="learning-line gate-bad">${esc(x)}</div>`).join('');
+    rb2.innerHTML=
+      `<div class="learning-line">${dot(ok,warn)}<b>${esc(research.meaning||'Research-Status unbekannt')}</b></div>`+
+      `<div class="kv"><span>Letzter Lauf</span><span>${esc(research.checked_at||'?')}</span></div>`+
+      `<div class="kv"><span>Themen</span><span>${esc(String(research.topics||0))} Themen / ${esc(String(research.repos||0))} Repos</span></div>`+
+      `<div class="learning-line muted">${esc(research.rule||'')}</div>`+
+      (topics?`<div class="mini-title" style="margin-top:8px">Gepruefte Themen</div>${topics}`:'')+
+      (ideas?`<div class="mini-title" style="margin-top:8px">Naechste Verbesserungen</div>${ideas}`:'')+
+      errors;
+  }
+  const glb=document.getElementById('githubLearnLiveBox');
+  if(glb){
+    const activity=research.learning_activity||{};
+    const focus=activity.current_focus||null;
+    const sources=(research.priority_sources||[]).slice(0,6).map(x=>`<div class="learning-line"><span class="mono">${esc(x)}</span></div>`).join('');
+    const events=(activity.events||[]).slice().reverse().slice(0,7).map(e=>{
+      if(e.type==='topic_scan'){
+        return `<div class="learning-line"><b>${esc(e.topic||'Thema')}</b><br><span class="muted">${esc(e.result||'scan')} - ${esc(e.why||'')}</span></div>`;
+      }
+      return `<div class="learning-line"><b>${esc(e.repo||'Repo')}</b> <span class="muted">${esc(e.license||'?')} / ${esc(e.mode||'')}</span><br>`+
+        `<span>${esc(e.action||e.idea||'')}</span><br>`+
+        `<span class="muted">Risiko: ${esc(e.risk||'?')} | Naechster Schritt: ${esc(e.next_step||'?')}</span></div>`;
+    }).join('');
+    const candidates=(activity.candidates||[]).slice(0,5).map(x=>
+      `<div class="learning-line"><b>${esc(x.repo||'Repo')}</b><br><span class="muted">${esc(x.topic||'')} - ${esc(x.idea||'')}</span></div>`
+    ).join('') || (research.intake_candidates||[]).slice(0,5).map(x=>`<div class="learning-line">${esc(x)}</div>`).join('');
+    const focusHtml=focus?(
+      `<div class="learning-line"><b>${esc(focus.repo||'aktueller Fokus')}</b><br>`+
+      `<span>${esc(focus.action||focus.idea||'')}</span><br>`+
+      `<span class="muted">${esc(focus.topic||'')} | ${esc(focus.license||'?')} | ${esc(focus.risk||'')}</span></div>`
+    ):'<div class="learning-line muted">noch kein einzelner Fokus</div>';
+    const last=research.last_intake||null;
+    const lastHtml=last?(
+      `<div class="learning-line">${dot(last.status==='promoted',last.status==='blocked')}<b>${esc(last.name||last.id||'Intake')}</b><br>`+
+      `<span class="muted">${esc(last.status||'staged')} -> ${esc(last.target||'kein Ziel')}</span></div>`
+    ):'<div class="learning-line muted">noch kein externer Code promoted</div>';
+    glb.innerHTML=
+      `<div class="learning-line">${dot(research.enabled&&research.ok,research.enabled&&!research.ok)}<b>${esc(research.live_learning||'GitHub-Lernen bereit')}</b></div>`+
+      `<div class="kv"><span>Adoption</span><span>${esc(research.external_code_mode||'Quelle + Lizenz + Test-Gate')}</span></div>`+
+      `<div class="kv"><span>Aktivitaet</span><span>${esc(activity.summary||'warte auf Detail-Log')}</span></div>`+
+      `<div class="kv"><span>Plan</span><span class="mono">${esc(research.intake_plan||'safe_intake_plan.md')}</span></div>`+
+      `<div class="mini-title" style="margin-top:8px">Gerade im Fokus</div>${focusHtml}`+
+      (events?`<div class="mini-title" style="margin-top:8px">Live Ablauf</div>${events}`:'')+
+      (candidates?`<div class="mini-title" style="margin-top:8px">Adoptions-Kandidaten</div>${candidates}`:'')+
+      (sources?`<div class="mini-title" style="margin-top:8px">Bevorzugte Quellen</div>${sources}`:'')+
+      `<div class="mini-title" style="margin-top:8px">Letzter Intake</div>${lastHtml}`;
+  }
+  const qb=document.getElementById('qualityBox');
+  if(qb){
+    const checks=(quality.checks||[]).map(c=>
+      `<div class="learning-line">${dot(!!c.ok,!c.ok)}<b>${esc(c.name||'Check')}</b><br><span class="muted">${esc(c.detail||'')}</span></div>`
+    ).join('');
+    qb.innerHTML=
+      `<div class="learning-line"><b>${esc(String(quality.score??'?'))}/10</b> - ${esc(quality.meaning||'')}</div>`+
+      checks+
+      ((quality.next_missing||[]).length?`<div class="learning-line gate-warn">Naechstes: ${esc(quality.next_missing[0])}</div>`:'');
+  }
+}
+
+function codeFeedHtml(items, limit){
+  const ca=(items||[]).slice().reverse().slice(0, limit||8);
+  if(!ca.length)return '<div class="muted">noch keine Live-Aktion</div>';
+  return ca.map(c=>`<div class="code-item"><div class="code-path">${esc(c.title||c.path||c.action||'Aktion')}</div><div class="code-meta"><span class="ts">${esc(c.ts||'')}</span>${esc(c.action||'')} ${c.status?'- '+esc(c.status):''}</div><pre class="code-preview">${esc(c.preview||c.detail||'')}</pre></div>`).join('');
+}
+function setPill(id,status){
+  const el=document.getElementById(id); if(!el)return;
+  el.textContent=status||'warte'; el.className='pill '+(status||'');
+}
+function renderTeam(s){
+  const support=s.support_agent||null;
+  const hermes=s.hermes_agent||null;
+  setPill('mainMiniStatus',s.status);
+  const mg=document.getElementById('mainMiniGoal'); if(mg)mg.textContent=s.current_goal||'kein aktives Ziel';
+  const mc=document.getElementById('mainMiniCode'); if(mc)mc.innerHTML=codeFeedHtml(s.code_activity||[],5);
+  setPill('supportMiniStatus',support?support.status:'off');
+  const sg=document.getElementById('supportMiniGoal'); if(sg)sg.textContent=support?(support.current_goal||'wartet / autopilot'):'Support-Agent nicht aktiv';
+  const sc=document.getElementById('supportMiniCode'); if(sc)sc.innerHTML=support&&support.error?('<div class="muted">FEHLER: '+esc(support.error)+'</div>'):codeFeedHtml((support&&support.code_activity)||[],5);
+  setPill('hermesMiniStatus',hermes?hermes.status:'off');
+  const hg=document.getElementById('hermesMiniGoal'); if(hg)hg.textContent=hermes?(hermes.current_goal||'Roadmap / Anti-Wiederholung'):'Hermes-Agent nicht aktiv';
+  const hc=document.getElementById('hermesMiniCode'); if(hc)hc.innerHTML=hermes&&hermes.error?('<div class="muted">FEHLER: '+esc(hermes.error)+'</div>'):codeFeedHtml((hermes&&hermes.code_activity)||[],5);
+  const tx=(s.team_exchange||support?.team_exchange||hermes?.team_exchange||[]).slice().reverse().slice(0,16);
+  const te=document.getElementById('teamExchange');
+  if(te)te.innerHTML=tx.length?tx.map(e=>`<div class="journal-item"><div><span class="ts">${esc(e.ts||'')}</span><b>${esc(e.agent_name||e.agent_id||'Agent')}</b> <span class="muted">${esc(e.kind||'note')}</span></div><div>${esc(e.text||'')}</div>${e.goal?`<div class="muted">${esc(e.goal)}</div>`:''}</div>`).join(''):'<span class="muted">noch kein Austausch</span>';
+}
+
+async function tick(){
+  try{
+    const s=await(await agentFetch('/state')).json();
+    if(s.error){
+      document.getElementById('errorBanner').style.display='block';
+      document.getElementById('errorBanner').textContent='FEHLER: '+s.error;
+      return;
+    }
+    document.getElementById('errorBanner').style.display='none';
+
+    const st=document.getElementById('status');
+    st.textContent=s.status; st.className='pill '+s.status;
+
+    const pb=document.getElementById('providerBadge');
+    pb.textContent=(s.provider||'').toUpperCase();
+
+    document.getElementById('model').textContent=s.model||'';
+    document.getElementById('step').textContent=s.step?('Schritt '+s.step):'';
+    const prod=document.getElementById('productivity'); const prodLabel=document.getElementById('productivityLabel');
+    if(prod && s.productivity_percent && document.activeElement!==prod){prod.value=s.productivity_percent; prodLabel.textContent=s.productivity_percent+'%';}
+    const aset=s.agent_settings||{}; const enabled=aset.enabled_agents||{}; const sm=document.getElementById('strategyMode');
+    if(sm && document.activeElement!==sm) sm.value=aset.strategy_mode||'balanced';
+    [['agentStrategist','strategist'],['agentCoder','coder'],['agentReviewer','reviewer'],['agentResearch','research']].forEach(([id,key])=>{const el=document.getElementById(id); if(el && document.activeElement!==el) el.checked=enabled[key]!==false;});
+    renderAutonomy(s);
+    renderProductivityOverview(s);
+    renderTeam(s);
+    renderCoordinator(s);
+    renderStorageAndRules(s);
+    renderMissionControl(s);
+    renderOperationalStatus(s);
+    updateVision(s);
+    document.getElementById('goalCurrent').textContent=s.current_goal||'untaetig';
+    document.getElementById('goalCurrent').className='goal-current'+(s.current_goal?'':' muted');
+    document.getElementById('subgoal').textContent=(s.subgoal&&s.subgoal!==s.current_goal)?('🧭 Teilziel: '+s.subgoal):'';
+
+    const ta=s.train_assist;
+    document.getElementById('trainAssist').innerHTML=ta
+      ?`Speed <b>${esc(String(ta.current_speed??'?'))}</b> / Limit <b>${esc(String(ta.speed_limit??'?'))}</b> ${esc(ta.speed_unit||'')} &nbsp; Signal <b>${esc(ta.signal||'unknown')}</b> &nbsp; Q <b>${ta.must_press_q?'ja':'nein'}</b><br>`+
+       `Halt: ${esc(ta.next_stop||'?')} ${esc(ta.distance_to_stop||'')}<br>`+
+       `Empfehlung: ${esc(ta.recommended_action||'')}`
+      :'noch keine Fahranalyse';
+
+    const agents=s.agents||[];
+    const agentsEl=document.getElementById('agents');
+    if(agentsEl) agentsEl.innerHTML=agents.length
+      ?agents.map(a=>`<div class="agent-item"><div class="agent-name">${esc(a.name||a.id)}</div><div class="agent-role">${esc(a.role||'')}</div><div class="agent-state">${esc(a.status||'bereit')}${a.detail?' - '+esc(a.detail):''}</div></div>`).join('')
+      :'<div class="muted">keine Agenten-Daten</div>';
+
+    const ca=s.code_activity||[];
+    window.lastCodeActivity=ca;
+    const supportCa=(s.support_agent&&s.support_agent.code_activity)||[];
+    const hermesCa=(s.hermes_agent&&s.hermes_agent.code_activity)||[];
+    const allCa=ca.concat(supportCa).concat(hermesCa);
+    window.allCodeActivity=allCa;
+    const codeSig=allCa.map(c=>(c.ts||'')+(c.title||'')+(c.path||'')).join('|');
+    if(codeSig!==lastCodeActivitySig){lastCodeActivitySig=codeSig; refreshExplorer(true);}
+    const codeEl=document.getElementById('codeActivity');
+    if(codeEl) codeEl.innerHTML=allCa.length
+      ?codeFeedHtml(allCa,100)
+      :'<div class="muted">noch keine Code-Aktion</div>';
+
+    document.getElementById('plan').innerHTML=(s.plan||[]).map(t=>
+      `<li class="task ${t.done?'done':''}"><span class="box"></span><span>${esc(t.text)}</span></li>`
+    ).join('')||'<li class="muted">—</li>';
+
+    document.getElementById('queue').innerHTML=(s.queue||[]).map(q=>`<li>${esc(q)}</li>`).join('')||'<li class="muted">leer</li>';
+
+    document.getElementById('thoughts').innerHTML=(s.thoughts||[]).slice().reverse().map(t=>
+      `<li><span class="ts">${t.ts}</span>${esc(t.text)}</li>`).join('')||'<li class="muted">—</li>';
+
+    document.getElementById('log').innerHTML=(s.log||[]).slice().reverse().map(l=>
+      `<li><span class="ts">${l.ts}</span>${esc(l.text)}</li>`).join('')||'<li class="muted">—</li>';
+
+    const lr=(s.memory&&s.memory.learnings)||[];
+    document.getElementById('learnings').innerHTML=lr.length
+      ?lr.slice().reverse().map(l=>`<li><span class="ts">${l.ts}</span>${esc(l.text)}</li>`).join('')
+      :'<li class="muted">noch nichts gelernt</li>';
+
+    const cb=document.getElementById('confirmBox');
+    if(s.pending_action){
+      cb.innerHTML=`<div class="confirm"><b>Bestaetigung:</b> <code>${esc(s.pending_action.action)}</code> `+
+        `<code>${esc(JSON.stringify(s.pending_action.input))}</code>`+
+        `<div class="controls">`+
+        `<button onclick="decide('approve')">&#10003; Erlauben</button>`+
+        `<button class="err" onclick="decide('reject')">&#10007; Ablehnen</button></div></div>`;
+    } else cb.innerHTML='';
+    refreshExplorer(false);
+  }catch(e){ console.warn('dashboard tick failed', e); const eb=document.getElementById('errorBanner'); if(eb){eb.style.display='block'; eb.textContent='Dashboard-Livefehler: '+e;} }
+}
+setInterval(tick,500); tick();
+</script>
+</body></html>"""
+
+
+@app.route("/")
+def index():
+    return Response(PAGE, mimetype="text/html")
+
+
+@app.route("/state")
+def state():
+    if brain is None:
+        return jsonify({"error": _BRAIN_ERROR, "status": "error"})
+    s = brain.get_state()
+    s["support_agent_enabled"] = bool(CONFIG.get("support_agent_enabled", True))
+    if support_brain is not None:
+        try:
+            s["support_agent"] = support_brain.get_state()
+        except Exception as e:
+            s["support_agent"] = {"error": str(e), "status": "error", "agent_name": "Support-Agent GLM"}
+    elif _SUPPORT_ERROR:
+        s["support_agent"] = {"error": _SUPPORT_ERROR, "status": "error", "agent_name": "Support-Agent GLM"}
+    else:
+        s["support_agent"] = None
+    s["hermes_agent_enabled"] = bool(CONFIG.get("hermes_agent_enabled", True))
+    if hermes_brain is not None:
+        try:
+            s["hermes_agent"] = hermes_brain.get_state()
+        except Exception as e:
+            s["hermes_agent"] = {"error": str(e), "status": "error", "agent_name": "Hermes-Agent"}
+    elif _HERMES_ERROR:
+        s["hermes_agent"] = {"error": _HERMES_ERROR, "status": "error", "agent_name": "Hermes-Agent"}
+    else:
+        s["hermes_agent"] = None
+    if "team_exchange" not in s:
+        s["team_exchange"] = []
+    if not s["team_exchange"]:
+        for extra in (s.get("support_agent"), s.get("hermes_agent")):
+            if extra and extra.get("team_exchange"):
+                s["team_exchange"] = extra.get("team_exchange", [])
+                break
+    s["team_coordinator"] = _team_coordinator_snapshot(s, s.get("support_agent"), s.get("hermes_agent"))
+    s["team_rules"] = _team_rule_lines()
+    s["storage_guard_combined"] = _combined_storage_guard(s, s.get("support_agent"), s.get("hermes_agent"))
+    s["test_gate"] = _test_gate_snapshot(s, s.get("support_agent"), s.get("hermes_agent"))
+    s["hybrid_status"] = _cached_snapshot(
+        "hybrid_status",
+        10,
+        lambda: _hybrid_status_snapshot(s, s.get("support_agent"), s.get("hermes_agent")),
+    )
+    s["resource_status"] = _cached_snapshot("resource_status", 8, _resource_status_snapshot)
+    s["github_status"] = _cached_snapshot("github_status", 20, _github_status_snapshot)
+    s["research_status"] = _cached_snapshot("research_status", 20, _research_status_snapshot)
+    s["quality_status"] = _quality_status_snapshot(s)
+    return jsonify(s)
+
+
+def _cached_snapshot(name, ttl_seconds, maker):
+    now = time.time()
+    hit = _STATUS_CACHE.get(name)
+    if hit and now - hit.get("ts", 0) < ttl_seconds:
+        return hit.get("value")
+    value = maker()
+    _STATUS_CACHE[name] = {"ts": now, "value": value}
+    return value
+
+
+def _run_text(cmd, cwd=None, timeout=5):
+    try:
+        env = os.environ.copy()
+        env.setdefault("HOME", "/root")
+        p = subprocess.run(
+            cmd,
+            cwd=cwd,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+            check=False,
+        )
+        return p.stdout.strip()
+    except Exception as e:
+        return str(e)
+
+
+def _hybrid_status_snapshot(main_state, support_state=None, hermes_state=None):
+    support_state = support_state or {}
+    hermes_state = hermes_state or {}
+    base = str(CONFIG.get("ollama_url", ""))
+    cloud_url = str(CONFIG.get("ollama_cloud_url", "https://ollama.com"))
+    local_url = str(CONFIG.get("ollama_local_url", "http://localhost:11434"))
+    routing = dict(CONFIG.get("model_routing") or {})
+    cloud_primary = base.startswith("https://") or bool(CONFIG.get("hybrid_cloud_coding"))
+    local_enabled = bool(CONFIG.get("use_local_fast", False))
+    fallback_enabled = bool(CONFIG.get("local_fallback_to_cloud", True))
+    ollama_ps = _run_text(["ollama", "ps"], timeout=4)
+    local_loaded = bool(ollama_ps and "NAME" in ollama_ps and len(ollama_ps.splitlines()) > 1)
+    return {
+        "mode": "Cloud primaer + lokal als Reserve" if cloud_primary else "Lokal primaer",
+        "cloud_primary": cloud_primary,
+        "cloud_url": cloud_url,
+        "local_url": local_url,
+        "local_fast_enabled": local_enabled,
+        "local_loaded": local_loaded,
+        "local_fallback_to_cloud": fallback_enabled,
+        "main_model": main_state.get("model") or CONFIG.get("ollama_model", ""),
+        "support_model": support_state.get("model") or CONFIG.get("support_ollama_model", ""),
+        "hermes_model": hermes_state.get("model") or CONFIG.get("hermes_ollama_model", ""),
+        "routing": {
+            "main": routing.get("main_agent", CONFIG.get("ollama_model", "")),
+            "strategist": routing.get("strategist", CONFIG.get("ollama_strategist_model", "")),
+            "coder_cloud": routing.get("cloud_coder", CONFIG.get("ollama_coder_model", "")),
+            "coder_local": routing.get("fast_coder", CONFIG.get("local_fast_model", "")),
+            "reviewer": routing.get("reviewer", CONFIG.get("ollama_reviewer_model", "")),
+            "hermes": routing.get("hermes_meta", CONFIG.get("hermes_ollama_model", "")),
+        },
+        "explanation": "Cloud erledigt die schweren Denk-/Coding-Schritte; lokale Modelle bleiben kurz angebunden als Reserve, damit lokale Timeouts den Autopilot nicht blockieren.",
+    }
+
+
+def _resource_status_snapshot():
+    cores = os.cpu_count() or 1
+    try:
+        load1, load5, load15 = os.getloadavg()
+    except Exception:
+        load1 = load5 = load15 = 0.0
+    proc_rows = []
+    ps_out = _run_text(["ps", "-eo", "pid,pcpu,pmem,comm,args", "--sort=-pcpu"], timeout=5)
+    skip_names = {"ps", "head", "bash", "sh", "grep", "lspci", "command"}
+    for line in ps_out.splitlines()[1:16]:
+        parts = line.split(None, 4)
+        if len(parts) >= 5:
+            if parts[3] in skip_names:
+                continue
+            proc_rows.append({
+                "pid": parts[0],
+                "cpu_percent": parts[1],
+                "mem_percent": parts[2],
+                "name": parts[3],
+                "cmd": parts[4][:140],
+            })
+            if len(proc_rows) >= 7:
+                break
+    agent_cpu = 0.0
+    for row in proc_rows:
+        if "server.py" in row.get("cmd", "") or row.get("name") == "python":
+            try:
+                agent_cpu += float(row.get("cpu_percent") or 0)
+            except ValueError:
+                pass
+    gpu_tools = {
+        "nvidia_smi": bool(_run_text(["bash", "-lc", "command -v nvidia-smi"], timeout=3)),
+        "rocm_smi": bool(_run_text(["bash", "-lc", "command -v rocm-smi"], timeout=3)),
+    }
+    gpu_lines = _run_text(["bash", "-lc", "lspci 2>/dev/null | grep -Ei 'vga compatible|3d controller|display controller|nvidia|advanced micro devices|amd/ati' || true"], timeout=4)
+    gpu_visible = bool(gpu_tools["nvidia_smi"] or gpu_tools["rocm_smi"] or gpu_lines.strip())
+    max_process_percent = cores * 100
+    return {
+        "cpu_cores": cores,
+        "max_process_percent": max_process_percent,
+        "load": {"one": round(load1, 2), "five": round(load5, 2), "fifteen": round(load15, 2)},
+        "top_processes": proc_rows,
+        "agent_cpu_percent": round(agent_cpu, 1),
+        "gpu_visible": gpu_visible,
+        "gpu_tools": gpu_tools,
+        "gpu_devices": gpu_lines.splitlines()[:5],
+        "ollama_ps": _run_text(["ollama", "ps"], timeout=4).splitlines()[:8],
+        "explanation": f"Linux zaehlt CPU pro Kern: 100% ist ein voll genutzter Kern. Dieser Server hat {cores} Kerne, deshalb kann ein Prozess theoretisch bis {max_process_percent}% anzeigen. Eine echte GPU ist auf diesem VPS nicht sichtbar.",
+    }
+
+
+def _github_status_snapshot():
+    repo = os.path.join(HERE, "agent_workspace")
+    status_path = os.path.join(HERE, "github_sync_status.json")
+    data = {}
+    try:
+        with open(status_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+    if not os.path.isdir(os.path.join(repo, ".git")):
+        return {"enabled": False, "message": "Kein Git-Workspace gefunden.", "repo": repo}
+    branch = _run_text(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo, timeout=5)
+    remote = _run_text(["git", "remote", "get-url", "origin"], cwd=repo, timeout=5)
+    head = _run_text(["git", "rev-parse", "--short", "HEAD"], cwd=repo, timeout=5)
+    subject = _run_text(["git", "log", "-1", "--pretty=%s"], cwd=repo, timeout=5)
+    dirty_lines = [x for x in _run_text(["git", "status", "--short"], cwd=repo, timeout=5).splitlines() if x.strip()]
+    ahead_behind = _run_text(["bash", "-lc", "git rev-list --left-right --count @{u}...HEAD 2>/dev/null || echo '0 0'"], cwd=repo, timeout=5)
+    behind = ahead = 0
+    parts = ahead_behind.split()
+    if len(parts) >= 2:
+        try:
+            behind, ahead = int(parts[0]), int(parts[1])
+        except ValueError:
+            behind = ahead = 0
+    recent = _run_text(["git", "log", "--pretty=%h%x09%ar%x09%s", "-5"], cwd=repo, timeout=5)
+    recent_rows = []
+    for line in recent.splitlines():
+        cols = line.split("\t", 2)
+        if len(cols) == 3:
+            recent_rows.append({"hash": cols[0], "age": cols[1], "subject": cols[2]})
+    if dirty_lines:
+        meaning = f"{len(dirty_lines)} lokale Aenderung(en) warten auf den naechsten Auto-Sync."
+        state = "changes_waiting"
+    elif ahead:
+        meaning = f"{ahead} Commit(s) sind lokal fertig und warten auf Push."
+        state = "ahead"
+    elif behind:
+        meaning = f"GitHub ist {behind} Commit(s) voraus; Auto-Sync holt nur konfliktfrei per Fast-forward."
+        state = "behind"
+    else:
+        meaning = "GitHub und Server sind auf demselben Stand."
+        state = data.get("state") or "clean"
+    return {
+        "enabled": True,
+        "repo": repo,
+        "remote": remote,
+        "branch": branch,
+        "head": head,
+        "commit_subject": subject,
+        "dirty_files": len(dirty_lines),
+        "dirty_preview": dirty_lines[:8],
+        "ahead": ahead,
+        "behind": behind,
+        "last_sync": data,
+        "recent_commits": recent_rows,
+        "state": state,
+        "meaning": meaning,
+        "auto_sync": "alle 10 Minuten per cron + flock",
+    }
+
+
+def _read_first_heading_tasks(path, limit=6):
+    tasks = []
+    try:
+        for line in open(path, encoding="utf-8").read().splitlines():
+            stripped = line.strip()
+            if stripped.startswith("- [ ]"):
+                tasks.append(stripped[5:].strip())
+            if len(tasks) >= limit:
+                break
+    except Exception:
+        pass
+    return tasks
+
+
+def _read_markdown_headings(path, prefix="### ", limit=8):
+    items = []
+    try:
+        for line in open(path, encoding="utf-8").read().splitlines():
+            if line.startswith(prefix):
+                items.append(line[len(prefix):].strip())
+            if len(items) >= limit:
+                break
+    except Exception:
+        pass
+    return items
+
+
+def _read_last_intake(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        item = data.get("last_item") or {}
+        return {
+            "id": item.get("id", ""),
+            "name": item.get("name", ""),
+            "status": item.get("status", ""),
+            "target": item.get("target", ""),
+            "source_url": item.get("source_url", ""),
+            "license": item.get("license", ""),
+        }
+    except Exception:
+        return None
+
+
+def _read_learning_activity(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        events = data.get("events", [])
+        candidates = data.get("candidates", [])
+        return {
+            "checked_at": data.get("checked_at", ""),
+            "summary": data.get("summary", ""),
+            "current_focus": data.get("current_focus"),
+            "events": events[-18:] if isinstance(events, list) else [],
+            "candidates": candidates[:12] if isinstance(candidates, list) else [],
+            "errors": data.get("errors", []),
+        }
+    except Exception:
+        return {
+            "checked_at": "",
+            "summary": "",
+            "current_focus": None,
+            "events": [],
+            "candidates": [],
+            "errors": [],
+        }
+
+
+def _research_status_snapshot():
+    repo = os.path.join(HERE, "agent_workspace")
+    status_path = os.path.join(repo, "research_status.json")
+    digest_path = os.path.join(repo, "github_research_digest.md")
+    backlog_path = os.path.join(repo, "improvement_backlog.md")
+    intake_plan_path = os.path.join(repo, "safe_intake_plan.md")
+    intake_report_path = os.path.join(repo, "safe_code_intake_report.json")
+    activity_path = os.path.join(repo, "github_learning_activity.json")
+    data = {}
+    try:
+        with open(status_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+    digest_titles = []
+    try:
+        for line in open(digest_path, encoding="utf-8").read().splitlines():
+            if line.startswith("## ") and not line.startswith("### "):
+                digest_titles.append(line[3:].strip())
+            if len(digest_titles) >= 6:
+                break
+    except Exception:
+        pass
+    backlog = _read_first_heading_tasks(backlog_path, 8)
+    intake_candidates = _read_markdown_headings(intake_plan_path, "### ", 8)
+    learning_activity = _read_learning_activity(activity_path)
+    priority_sources = CONFIG.get("external_code_priority_sources", [])
+    if not isinstance(priority_sources, list):
+        priority_sources = []
+    return {
+        "enabled": os.path.isfile(os.path.join(repo, "github_research_loop.py")),
+        "checked_at": data.get("checked_at", ""),
+        "ok": bool(data.get("ok", False)) if data else False,
+        "topics": data.get("topics", 0),
+        "repos": data.get("repos", 0),
+        "ok_to_study": data.get("ok_to_study", 0),
+        "concept_only": data.get("concept_only", 0),
+        "errors": data.get("errors", []),
+        "digest": digest_path,
+        "backlog": backlog_path,
+        "license_guard": data.get("license_guard", os.path.join(repo, "LICENSE_GUARD.md")),
+        "intake_plan": data.get("intake_plan", intake_plan_path),
+        "learning_activity_file": data.get("learning_activity", activity_path),
+        "learning_activity": learning_activity,
+        "intake_candidates": intake_candidates,
+        "last_intake": _read_last_intake(intake_report_path),
+        "priority_sources": priority_sources,
+        "topics_preview": digest_titles,
+        "next_improvements": backlog,
+        "meaning": (
+            f"{data.get('repos', 0)} GitHub-Repos ausgewertet; Backlog aktualisiert."
+            if data else
+            "Research-Loop ist installiert, aber noch nicht gelaufen."
+        ),
+        "rule": "Fremder Code erlaubt: Quelle/Lizenz -> Staging -> Validate -> Promote-Test -> Rollback bei Fehler.",
+        "external_code_mode": "fremder Code erlaubt, aber nie ungetestet live",
+        "live_learning": f"{len(intake_candidates)} Adoption-Kandidaten aus GitHub-Research",
+    }
+
+
+def _quality_status_snapshot(state):
+    repo = os.path.join(HERE, "agent_workspace")
+    github = state.get("github_status") or {}
+    research = state.get("research_status") or {}
+    checks = [
+        {
+            "name": "Harter Test-Gate",
+            "ok": bool(CONFIG.get("require_test_gate", True)),
+            "detail": "finish wird bei rotem write_file/create_tool-Test blockiert",
+        },
+        {
+            "name": "Aktuelles Test-Gate gruen",
+            "ok": (state.get("test_gate") or {}).get("overall") in {"passed", "waiting"},
+            "detail": "Dashboard-Gate erkennt run_shell, TEST-GATE-Nachweise und Auto-Validierung",
+        },
+        {
+            "name": "Anti-Wiederholung",
+            "ok": int(CONFIG.get("max_same_file_reads_per_goal", 3)) <= 3,
+            "detail": "gleiche Datei pro Ziel begrenzt + read_registry.json",
+        },
+        {
+            "name": "GitHub Research",
+            "ok": bool(research.get("enabled")) and bool(research.get("ok")),
+            "detail": f"{research.get('repos', 0)} Repos ausgewertet",
+        },
+        {
+            "name": "License-Guard",
+            "ok": os.path.isfile(os.path.join(repo, "LICENSE_GUARD.md")),
+            "detail": f"{research.get('ok_to_study', 0)} OK-to-study / {research.get('concept_only', 0)} concept-only",
+        },
+        {
+            "name": "Experiment-Branch Flow",
+            "ok": os.path.isfile(os.path.join(repo, "experiment_branch_flow.sh")),
+            "detail": "riskante Selbstverbesserungen koennen auf experiment/selfdev-* laufen",
+        },
+        {
+            "name": "Safe Code Intake",
+            "ok": os.path.isfile(os.path.join(repo, "safe_code_intake.py")) and os.path.isfile(os.path.join(repo, "EXTERNAL_CODE_POLICY.md")),
+            "detail": "kopierter/fremder Code laeuft ueber stage -> validate -> promote",
+        },
+        {
+            "name": "Lokale Nicht-Ollama Runtime",
+            "ok": CONFIG.get("local_ai_provider") in {"llamacpp", "llama.cpp", "openai_compatible"} and os.path.isfile(os.path.join(repo, "LOCAL_MODEL_RUNTIME_PLAN.md")),
+            "detail": f"lokaler Provider: {CONFIG.get('local_ai_provider', 'ollama')} / {CONFIG.get('llamacpp_url', 'nicht gesetzt')}",
+        },
+        {
+            "name": "GitHub Sync sauber",
+            "ok": bool(github.get("enabled")) and int(github.get("dirty_files") or 0) == 0 and int(github.get("ahead") or 0) == 0,
+            "detail": github.get("meaning", "GitHub-Status unbekannt"),
+        },
+    ]
+    score = round((sum(1 for c in checks if c["ok"]) / max(1, len(checks))) * 10, 1)
+    next_missing = [c["name"] for c in checks if not c["ok"]]
+    return {
+        "score": score,
+        "checks": checks,
+        "next_missing": next_missing,
+        "meaning": "10/10 erreicht" if score >= 10 else f"{score}/10 aktiv; naechste Luecke: {next_missing[0] if next_missing else 'keine'}",
+    }
+
+
+def _combined_storage_guard(main_state, support_state, hermes_state=None):
+    support_state = support_state or {}
+    hermes_state = hermes_state or {}
+    disk = shutil.disk_usage(HERE)
+    root = {
+        "used_gb": round(disk.used / (1024 ** 3), 2),
+        "free_gb": round(disk.free / (1024 ** 3), 2),
+        "total_gb": round(disk.total / (1024 ** 3), 2),
+        "use_percent": round((disk.used / disk.total) * 100, 1) if disk.total else 0,
+    }
+    main_guard = main_state.get("storage_guard") or {}
+    support_guard = support_state.get("storage_guard") or {}
+    hermes_guard = hermes_state.get("storage_guard") or {}
+    ok = (bool(main_guard.get("ok", True)) and bool(support_guard.get("ok", True))
+          and bool(hermes_guard.get("ok", True)) and root["free_gb"] >= float(CONFIG.get("storage_min_free_gb", 10)))
+    violations = []
+    for label, guard in (("Haupt", main_guard), ("Support", support_guard), ("Hermes", hermes_guard)):
+        for item in guard.get("violations", []) or []:
+            violations.append(f"{label}: {item}")
+    if root["free_gb"] < float(CONFIG.get("storage_min_free_gb", 10)):
+        violations.append("Server: freier Speicher unter Limit")
+    return {"ok": ok, "root": root, "main": main_guard, "support": support_guard, "hermes": hermes_guard, "violations": violations}
+
+
+def _test_gate_event_result(event):
+    preview = str(event.get("preview") or event.get("detail") or "")
+    if "TEST-GATE FEHLGESCHLAGEN" in preview:
+        return "failed"
+    if "TEST-GATE:" in preview:
+        return "passed"
+    if event.get("action") == "create_tool" and "Reviewer hat zugestimmt" in preview:
+        return "passed"
+    return ""
+
+
+def _validate_changed_path(path):
+    path = str(path or "").strip()
+    if not path:
+        return {"ok": False, "path": path, "message": "kein Pfad"}
+    try:
+        if not os.path.isabs(path):
+            path = os.path.join(HERE, "agent_workspace", path)
+        path = os.path.abspath(path)
+        if not os.path.exists(path):
+            return {"ok": True, "path": path, "message": "alter Historienpfad fehlt; ignoriert"}
+        if os.path.isdir(path):
+            return {"ok": True, "path": path, "message": "Ordner vorhanden"}
+        if path.endswith(".py"):
+            import py_compile
+            py_compile.compile(path, doraise=True)
+            return {"ok": True, "path": path, "message": "Python-Syntax OK"}
+        if path.endswith(".sh"):
+            r = subprocess.run(["bash", "-n", path], capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                return {"ok": True, "path": path, "message": "Shell-Syntax OK"}
+            return {"ok": False, "path": path, "message": (r.stderr or r.stdout or "bash -n fehlgeschlagen")[:180]}
+        if path.endswith(".json"):
+            with open(path, encoding="utf-8") as f:
+                json.load(f)
+            return {"ok": True, "path": path, "message": "JSON OK"}
+        if os.path.getsize(path) > 0:
+            return {"ok": True, "path": path, "message": "Datei vorhanden/nicht leer"}
+        if path.endswith((".md", ".txt", ".log")):
+            return {"ok": True, "path": path, "message": "leere Notizdatei; kein Syntaxfehler"}
+        return {"ok": False, "path": path, "message": "Datei ist leer"}
+    except Exception as e:
+        return {"ok": False, "path": path, "message": str(e)[:180]}
+
+
+def _auto_validate_pending_paths(paths):
+    uniq = []
+    for p in paths:
+        if p and p not in uniq:
+            uniq.append(p)
+    results = [_validate_changed_path(p) for p in uniq[-12:]]
+    ok = all(r.get("ok") for r in results) if results else True
+    return {"ok": ok, "results": results}
+
+
+def _agent_test_gate(agent_state, label):
+    events = agent_state.get("code_activity") or []
+    journals = agent_state.get("autonomy", {}).get("journal", [])
+    last_test = -1
+    writes_after_test = []
+    failed_checks = []
+    tests = 0
+    for i, e in enumerate(events):
+        action = e.get("action")
+        gate = _test_gate_event_result(e)
+        if gate == "failed":
+            failed_checks.append(e.get("path") or e.get("title") or "Aenderung")
+        if action == "run_shell" or gate == "passed":
+            last_test = i
+            tests += 1
+        if action in {"write_file", "create_tool"} and i > last_test and gate != "passed":
+            writes_after_test.append(e.get("path") or e.get("title") or "Aenderung")
+    blocked = [
+        j for j in journals[-20:]
+        if j.get("status") in {"error", "stalled"}
+        or (j.get("status") == "blocked" and "Maximale Schrittzahl" not in str(j.get("text") or ""))
+    ]
+    auto_validation = _auto_validate_pending_paths(writes_after_test) if writes_after_test else {"ok": True, "results": []}
+    if failed_checks:
+        status = "blocked"
+        message = f"{len(failed_checks)} Test-Gate-Fehler offen"
+    elif blocked:
+        status = "blocked"
+        message = blocked[-1].get("text") or "Blockade vorhanden"
+    elif writes_after_test and not auto_validation.get("ok"):
+        failed = [r for r in auto_validation.get("results", []) if not r.get("ok")]
+        status = "needs_test"
+        message = f"{len(failed) or len(writes_after_test)} Aenderung(en) brauchen Korrektur/Test"
+    elif writes_after_test:
+        status = "passed"
+        message = f"{len(writes_after_test)} Aenderung(en) automatisch geprueft"
+        tests += len(writes_after_test)
+        last_test = max(last_test, len(events) - 1)
+        writes_after_test = []
+    elif tests:
+        status = "passed"
+        message = "Letzte Aenderungen haben Test/Ausfuehrung"
+    else:
+        status = "waiting"
+        message = "Noch keine Testdaten"
+    return {
+        "agent": label,
+        "status": status,
+        "message": message,
+        "tests": tests,
+        "untested": writes_after_test[-6:],
+        "auto_validation": auto_validation,
+        "last_test_at": events[last_test].get("ts") if last_test >= 0 else "",
+    }
+
+
+def _test_gate_snapshot(main_state, support_state, hermes_state=None):
+    support_state = support_state or {}
+    hermes_state = hermes_state or {}
+    gates = [_agent_test_gate(main_state, "Haupt")]
+    if support_state:
+        gates.append(_agent_test_gate(support_state, "Support"))
+    if hermes_state:
+        gates.append(_agent_test_gate(hermes_state, "Hermes"))
+    overall = "passed"
+    if any(g["status"] == "blocked" for g in gates):
+        overall = "blocked"
+    elif any(g["status"] == "needs_test" for g in gates):
+        overall = "needs_test"
+    elif any(g["status"] == "waiting" for g in gates):
+        overall = "waiting"
+    return {"overall": overall, "agents": gates}
+
+
+def _team_coordinator_snapshot(main_state, support_state, hermes_state=None):
+    support_state = support_state or {}
+    hermes_state = hermes_state or {}
+    main_busy = main_state.get("status") in {"running", "planning", "waiting_confirm"}
+    support_busy = support_state.get("status") in {"running", "planning", "waiting_confirm"}
+    hermes_busy = hermes_state.get("status") in {"running", "planning", "waiting_confirm"}
+    main_goal = main_state.get("current_goal") or ""
+    support_goal = support_state.get("current_goal") or ""
+    hermes_goal = hermes_state.get("current_goal") or ""
+    journals = (main_state.get("autonomy", {}).get("journal", []) +
+                support_state.get("autonomy", {}).get("journal", []) +
+                hermes_state.get("autonomy", {}).get("journal", []))
+    recent_bad = [j for j in journals if j.get("status") in {"blocked", "error", "stalled"}]
+    if main_busy and not support_busy and not hermes_busy:
+        owner = "Support"
+        step = "Support-Agent fuer Review, Risikoanalyse oder Testvorschlag auf das aktuelle Haupt-Ziel ansetzen."
+    elif main_busy and support_busy and not hermes_busy:
+        owner = "Hermes"
+        step = "Hermes soll Roadmap, Wiederholungen und Team-Journal pruefen, waehrend Haupt/Support arbeiten."
+    elif support_busy and not main_busy and not hermes_busy:
+        owner = "Haupt"
+        step = "Haupt-Agent kann die Support-Erkenntnisse aufnehmen oder die naechste Umsetzung starten."
+    elif hermes_busy and not main_busy:
+        owner = "Haupt"
+        step = "Haupt-Agent kann Hermes-Plan aufnehmen oder die naechste konkrete Umsetzung starten."
+    elif main_busy and support_busy and hermes_busy:
+        owner = "Team"
+        step = "Alle drei arbeiten parallel; Team-Journal beobachten und doppelte Datei-Arbeit vermeiden."
+    else:
+        owner = "Team"
+        step = "Neue Aufgabe mit passender Zuteilung starten: Team, Haupt, Support, Review, Recherche oder Hermes Meta."
+    risk = recent_bad[-1].get("text") if recent_bad else ""
+    return {
+        "mode": "Haupt + Support + Hermes",
+        "next_owner": owner,
+        "next_step": step,
+        "risk": risk or "keine akute Warnung",
+        "rule": "Haupt baut; Support prueft/testet; Hermes pflegt Roadmap, Anti-Wiederholung und Lernnotizen.",
+        "main_goal": main_goal,
+        "support_goal": support_goal,
+        "hermes_goal": hermes_goal,
+    }
+
+
+@app.route("/vision.jpg")
+def vision():
+    """Das letzte Bild, das der Agent gesehen hat (seine 'Augen')."""
+    data = brain.get_vision_jpeg() if brain else None
+    if not data:
+        return Response(b"", mimetype="image/jpeg", status=204)
+    resp = Response(data, mimetype="image/jpeg")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/vision_stream")
+def vision_stream():
+    """MJPEG-Stream fuer die Live-Vorschau im Dashboard."""
+    fps = max(1, min(int(CONFIG.get("dashboard_vision_fps", 15)), 30))
+    delay = 1.0 / fps
+
+    def gen():
+        last = None
+        while True:
+            data = brain.get_vision_jpeg() if brain else None
+            if data and data != last:
+                last = data
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n"
+                    b"Cache-Control: no-store\r\n\r\n" + data + b"\r\n"
+                )
+            time.sleep(delay)
+
+    return Response(gen(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+def _workspace_root(scope="main"):
+    if scope == "support":
+        root = CONFIG.get("support_workspace_dir", "agent_workspace_support")
+    elif scope == "hermes":
+        root = CONFIG.get("hermes_workspace_dir", "agent_workspace_hermes")
+    elif scope == "shared":
+        root = CONFIG.get("_base_dir", HERE)
+    else:
+        root = CONFIG.get("workspace_dir", "agent_workspace")
+    if not os.path.isabs(root):
+        root = os.path.join(HERE, root)
+    os.makedirs(root, exist_ok=True)
+    return os.path.abspath(root)
+
+
+def _safe_workspace_path(rel="", scope="main"):
+    scope = scope if scope in {"main", "support", "hermes", "shared"} else "main"
+    root = _workspace_root(scope)
+    rel = str(rel or ".").replace("\\", "/").lstrip("/")
+    target = os.path.abspath(os.path.join(root, rel))
+    if os.path.commonpath([root, target]) != root:
+        raise ValueError("Pfad ausserhalb des Workspace")
+    return root, target
+
+
+def _rel_workspace_path(path, scope="main"):
+    root = _workspace_root(scope)
+    rel = os.path.relpath(path, root).replace("\\", "/")
+    return "." if rel == "." else rel
+
+
+@app.route("/files/tree")
+def files_tree():
+    try:
+        scope = request.args.get("scope", "main")
+        root, target = _safe_workspace_path(request.args.get("path", "."), scope)
+        if not os.path.isdir(target):
+            target = os.path.dirname(target)
+        entries = []
+        for name in sorted(os.listdir(target), key=lambda x: (not os.path.isdir(os.path.join(target, x)), x.lower()))[:400]:
+            if name in {".venv", "__pycache__"}:
+                continue
+            if scope == "shared" and name not in {
+                "TEAM_RULES.md", "team_exchange.jsonl", "agent.log", "memory.json",
+                "memory_support.json", "autonomy_state.json", "autonomy_state_support.json",
+                "memory_hermes.json", "autonomy_state_hermes.json",
+                "code_activity.jsonl", "code_activity_support.jsonl", "code_activity_hermes.jsonl", "config.json"
+            }:
+                continue
+            full = os.path.join(target, name)
+            st = os.stat(full)
+            typ = "dir" if os.path.isdir(full) else "file"
+            entries.append({"name": name, "path": _rel_workspace_path(full, scope), "type": typ, "size": st.st_size, "mtime": int(st.st_mtime)})
+        cwd = _rel_workspace_path(target, scope)
+        parent = None if os.path.abspath(target) == os.path.abspath(root) else _rel_workspace_path(os.path.dirname(target), scope)
+        return jsonify({"ok": True, "scope": scope, "root": root, "cwd": cwd, "parent": parent, "entries": entries})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "entries": []}), 400
+
+
+@app.route("/files/read")
+def files_read():
+    try:
+        scope = request.args.get("scope", "main")
+        _root, target = _safe_workspace_path(request.args.get("path", "."), scope)
+        if not os.path.isfile(target):
+            return jsonify({"ok": False, "error": "Keine Datei"}), 400
+        size = os.path.getsize(target)
+        with open(target, "rb") as f:
+            raw = f.read(200000)
+        content = raw.decode("utf-8", errors="replace")
+        if size > len(raw):
+            content += f"\n\n--- gekuerzt: {size-len(raw)} weitere Bytes ---"
+        return jsonify({"ok": True, "scope": scope, "path": _rel_workspace_path(target, scope), "size": size, "content": content})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+
+@app.route("/goal", methods=["POST"])
+def goal():
+    if brain is None:
+        return jsonify({"ok": False, "error": _BRAIN_ERROR})
+    g = (request.json or {}).get("goal", "").strip()
+    target = (request.json or {}).get("target", "both")
+    if g:
+        if target in {"both", "main"}:
+            brain.add_goal(g)
+        if support_brain is not None and target in {"both", "support", "review", "research"}:
+            if target == "review":
+                prefix = "Review-Aufgabe fuer den Support-Agenten: Pruefe Risiken, Tests und moegliche Fehler zu: "
+            elif target == "research":
+                prefix = "Recherche-Aufgabe fuer den Support-Agenten: Sammle Kontext, Alternativen und Hinweise zu: "
+            elif target == "support":
+                prefix = "Support-Aufgabe: "
+            else:
+                prefix = "Support-Aufgabe fuer das gemeinsame Ziel: "
+            support_brain.add_goal(
+                prefix + g
+                + "\nArbeite im eigenen Workspace. Analysiere, plane, teste oder reviewe, "
+                  "was dem Haupt-Agenten hilft. Teile wichtige Erkenntnisse im Team-Journal "
+                  "und vermeide doppelte Arbeit an denselben Dateien."
+            )
+        if hermes_brain is not None and target in {"both", "hermes", "meta"}:
+            if target == "meta":
+                prefix = "Hermes-Meta-Aufgabe: "
+            elif target == "hermes":
+                prefix = "Hermes-Aufgabe: "
+            else:
+                prefix = "Hermes-Aufgabe fuer das gemeinsame Ziel: "
+            hermes_brain.add_goal(
+                prefix + g
+                + "\nArbeite im eigenen Hermes-Workspace. Erstelle Roadmap-/Lern-/Anti-Wiederholungs-Notizen, "
+                  "fasse Team-Kontext zusammen und schlage Haupt/Support klare naechste Schritte vor. "
+                  "Schreibe wichtige Erkenntnisse ins Team-Journal."
+            )
+        if target == "support" and support_brain is None:
+            return jsonify({"ok": False, "error": "Support-Agent ist nicht aktiv"})
+        if target in {"hermes", "meta"} and hermes_brain is None:
+            return jsonify({"ok": False, "error": "Hermes-Agent ist nicht aktiv"})
+    return jsonify({"ok": True, "target": target})
+
+
+@app.route("/cmd/<c>", methods=["POST"])
+def cmd(c):
+    for b in (brain, support_brain, hermes_brain):
+        if b:
+            {"pause": b.pause, "resume": b.resume, "stop": b.stop}.get(c, lambda: None)()
+    return jsonify({"ok": True})
+
+
+@app.route("/productivity", methods=["POST"])
+def productivity():
+    if brain is None:
+        return jsonify({"ok": False, "error": _BRAIN_ERROR})
+    pct = (request.json or {}).get("percent", CONFIG.get("productivity_percent", 100))
+    pct = brain.set_productivity(pct)
+    if support_brain is not None:
+        support_brain.set_productivity(pct)
+    if hermes_brain is not None:
+        hermes_brain.set_productivity(pct)
+    CONFIG["productivity_percent"] = pct
+    CONFIG["support_productivity_percent"] = pct
+    CONFIG["hermes_productivity_percent"] = pct
+    try:
+        with open(os.path.join(HERE, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(CONFIG, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    except Exception as e:
+        return jsonify({"ok": False, "percent": pct, "error": str(e)})
+    return jsonify({"ok": True, "percent": pct})
+
+
+@app.route("/agent_settings", methods=["POST"])
+def agent_settings():
+    if brain is None:
+        return jsonify({"ok": False, "error": _BRAIN_ERROR})
+    settings = brain.set_agent_settings(request.json or {})
+    if support_brain is not None:
+        support_brain.set_agent_settings(request.json or {})
+    if hermes_brain is not None:
+        hermes_brain.set_agent_settings(request.json or {})
+    CONFIG["strategy_mode"] = settings.get("strategy_mode", CONFIG.get("strategy_mode", "balanced"))
+    CONFIG["enabled_agents"] = settings.get("enabled_agents", CONFIG.get("enabled_agents", {}))
+    try:
+        with open(os.path.join(HERE, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(CONFIG, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    except Exception as e:
+        return jsonify({"ok": False, "settings": settings, "error": str(e)})
+    return jsonify({"ok": True, "settings": settings})
+
+
+@app.route("/autonomy", methods=["POST"])
+def autonomy():
+    if brain is None:
+        return jsonify({"ok": False, "error": _BRAIN_ERROR})
+    data = request.json or {}
+    snapshot = brain.set_autonomy_settings(data)
+    if support_brain is not None:
+        support_brain.set_autonomy_settings(data)
+    if hermes_brain is not None:
+        hermes_brain.set_autonomy_settings(data)
+    settings = snapshot.get("settings", {})
+    for key in ("autopilot", "autonomy_never_idle", "watchdog_enabled"):
+        if key in settings:
+            CONFIG[key] = bool(settings[key])
+    if "autopilot_max_goals" in settings:
+        CONFIG["autopilot_max_goals"] = int(settings["autopilot_max_goals"])
+    if "planner_cooldown_seconds" in settings:
+        CONFIG["autopilot_planner_cooldown_seconds"] = int(settings["planner_cooldown_seconds"])
+    try:
+        with open(os.path.join(HERE, "config.json"), "w", encoding="utf-8") as f:
+            json.dump(CONFIG, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    except Exception as e:
+        return jsonify({"ok": False, "autonomy": snapshot, "error": str(e)})
+    return jsonify({"ok": True, "autonomy": snapshot})
+
+
+@app.route("/confirm/<d>", methods=["POST"])
+def confirm(d):
+    for b in (brain, support_brain, hermes_brain):
+        if b:
+            b.confirm(d)
+    return jsonify({"ok": True})
+
+
+if __name__ == "__main__":
+    port = CONFIG.get("dashboard_port", 7860)
+    url = f"http://localhost:{port}"
+    provider = CONFIG.get("provider", "ollama")
+    model = CONFIG.get("claude_model" if provider == "claude" else "ollama_model",
+                       CONFIG.get("model", "?"))
+
+    print("=" * 58)
+    print("  Lokaler KI-Agent")
+    print(f"  Dashboard : {url}")
+    print(f"  Anbieter  : {provider.upper()}")
+    print(f"  Modell    : {model}")
+    print("=" * 58)
+
+    if _BRAIN_ERROR:
+        print()
+        print("  FEHLER beim Starten des Agenten:")
+        print(f"  {_BRAIN_ERROR}")
+        print()
+        if "Key" in _BRAIN_ERROR or "api_key" in _BRAIN_ERROR:
+            print("  -> Trage deinen Anthropic-Key in config.json ein:")
+            print('     "claude_api_key": "sk-ant-..."')
+            print("  -> Key gibt es auf: console.anthropic.com")
+        print()
+        print("  Das Dashboard oeffnet sich trotzdem und zeigt den Fehler an.")
+    else:
+        if provider == "claude":
+            print("  Claude API: bereit (Vision + Tool Use aktiv)")
+        else:
+            try:
+                ok, msg = brain._check_ollama()
+                print(f"  Ollama: {msg}")
+                if not ok:
+                    print("  -> Problem loesen, dann START.bat neu starten.")
+            except Exception as e:
+                print(f"  Ollama-Pruefung fehlgeschlagen: {e}")
+
+    print("=" * 58)
+    print("  Zum Beenden: dieses Fenster schliessen / Strg+C")
+    print("=" * 58)
+
+    _host = CONFIG.get("dashboard_host", "127.0.0.1")
+    # Browser nur lokal mit Display automatisch oeffnen (nicht auf headless Server)
+    if _host in ("127.0.0.1", "localhost") and (os.name == "nt" or os.environ.get("DISPLAY")):
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+    try:
+        app.run(host=_host, port=port, threaded=True)
+    except OSError as e:
+        print(f"\n  FEHLER: Port {port} ist belegt ({e}).")
+        print("  Schliesse andere Agent-Fenster oder starte den PC neu.")
+        try:
+            input("\n  Mit Enter schliessen... ")
+        except Exception:
+            pass
