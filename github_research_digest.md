@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-27 20:00:07 UTC
+Last run: 2026-06-27 20:30:05 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -211,8 +211,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8302
-- Updated: 2026-06-27T19:57:54Z
+- Stars: 8303
+- Updated: 2026-06-27T20:06:57Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
