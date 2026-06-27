@@ -1,0 +1,2 @@
+# Verfängliche Ports
+PORTS_TO_BLOCK=[445, 137, 139, 138, 136]

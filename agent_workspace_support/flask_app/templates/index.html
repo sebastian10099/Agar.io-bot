@@ -1,0 +1,4 @@
+<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Flask Dashboard</title></head><body><h1>Welcome to the Flask Dashboard</h1><p>The timeout value is set to <span id='timeout-display'></span>.</p><script>
+    const timeoutDisplay = document.getElementById('timeout-display');
+    timeoutDisplay.textContent = '{{ timeout }}';
+</script></body></html>

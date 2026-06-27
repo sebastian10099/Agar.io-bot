@@ -1,0 +1,11 @@
+<html><body><h1>JSON Values</h1>
+<p>Please add content to display JSON values here.</p>
+<pre>{% raw %}
+<script>
+function showJsonValues() {
+    const jsonDisplay = document.querySelector('#json-display');
+    jsonDisplay.innerHTML = {{ json_values | safe }};
+}
+</script>
+{% endraw %}
+</pre></body></html>

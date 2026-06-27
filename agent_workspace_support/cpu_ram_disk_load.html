@@ -1,0 +1,3 @@
+<!DOCTYPE html><html><head><title>System Status</title></head><body><h1>System Status</h1><table border='1'><tr><th>CPU</th><th>RAM</th><th>Disk</th><th>Load</th></tr><% for item in system_data: %>
+<tr><td>${item.cpu}</td><td>${item.ram}</td><td>${item.disk}</td><td>${item.load}</td></tr>
+<% end_for %></table></body></html>

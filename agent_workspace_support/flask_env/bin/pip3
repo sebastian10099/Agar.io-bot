@@ -1,0 +1,3 @@
+#!/bin/sh
+export USER_PIP_COMMAND='pip3'
+exec $USER_PIP_COMMAND "$@"

@@ -1,0 +1,1 @@
+$(cat /root/local_agent/agent_workspace_support/hilfe.txt | bash -c 'curl -I https://www.example.com' | tee /root/local_agent/agent_workspace_support/test_http_request_output.txt && echo $?)

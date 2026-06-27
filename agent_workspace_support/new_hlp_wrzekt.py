@@ -1,0 +1,1 @@
+print('Neues Hilfswerkzeug in Entwicklung...')

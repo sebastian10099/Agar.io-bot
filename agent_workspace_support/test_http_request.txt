@@ -1,0 +1,2 @@
+curl -I https://www.example.com
+exit 0

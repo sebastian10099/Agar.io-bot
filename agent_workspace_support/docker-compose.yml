@@ -1,0 +1,7 @@
+version: '3'
+
+services:
+  flask_dashboard:
+    image: nginx:latest
+    ports:
+      - "8085:80"

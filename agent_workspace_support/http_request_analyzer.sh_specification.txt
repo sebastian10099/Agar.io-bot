@@ -1,0 +1,6 @@
+# Spezifikation für das HTTP Request Analyzer-Skript
+
+- **Name**: http_request_analyzer.sh
+- **Beschreibung**: Ein einfaches Script zum Ausführen einer HTTP-Request und zu lesen der Antwort.
+- **Parameter**: Eine URL, die beim Aufruf des Skripts übergeben werden muss.
+- **Ausgabe**: Die ausführte HTTP-Request und die entsprechende Antwort.

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Agent Status</title>
+</head>
+<body>
+<h1>Status der Agent-Aktivitäten</h1>
+
+<p>Die JSON-Werte werden hier angezeigt.</p>
+
+<script>
+fetch('/api/json_values').then(response => response.json()).then(data => {
+    document.body.innerHTML = data.values.join('<br>');
+}).catch(error => console.error('Fehler:', error));
+</script>
+
+</body>
+</html>

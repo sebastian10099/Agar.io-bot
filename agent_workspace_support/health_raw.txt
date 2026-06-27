@@ -1,0 +1,38 @@
+=== DISK ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1       193G   14G  180G   7% /
+
+=== RAM ===
+               total        used        free      shared  buff/cache   available
+Mem:           15992         789        5855           0        9686       15203
+Swap:             99          44          55
+
+=== UPTIME ===
+ 20:58:51 up 2 days,  1:06,  0 user,  load average: 0.00, 0.00, 0.00
+
+=== SUPPORT DOCS ===
+-rw-r--r-- 1 root root   5114 Jun 18 16:19 /root/local_agent/agent_workspace_support/backup_cleanup_recommendation.md
+-rw-r--r-- 1 root root   2025 Jun 18 18:51 /root/local_agent/agent_workspace_support/blockade_analysis_20260618.md
+-rw-r--r-- 1 root root   1276 Jun 18 19:56 /root/local_agent/agent_workspace_support/blockade_resolution.md
+-rw-r--r-- 1 root root    900 Jun 18 18:53 /root/local_agent/agent_workspace_support/blockade_summary_for_hermes.md
+-rw-r--r-- 1 root root 217107 Jun 18 20:48 /root/local_agent/agent_workspace_support/cleanup_dryrun_result.md
+-rw-r--r-- 1 root root   1187 Jun 18 20:52 /root/local_agent/agent_workspace_support/cleanup_execution_result.md
+-rw-r--r-- 1 root root   5504 Jun 18 20:57 /root/local_agent/agent_workspace_support/cron_scripts_verification.md
+-rw-r--r-- 1 root root    971 Jun 18 20:55 /root/local_agent/agent_workspace_support/cron_status_check.md
+-rw-r--r-- 1 root root   1958 Jun 18 18:54 /root/local_agent/agent_workspace_support/current_state_check.md
+-rw-r--r-- 1 root root   3594 Jun 18 15:58 /root/local_agent/agent_workspace_support/disk_usage_investigation.md
+-rw-r--r-- 1 root root   2229 Jun 18 17:49 /root/local_agent/agent_workspace_support/final_stall_diagnosis.md
+-rw-r--r-- 1 root root   5240 Jun 18 15:56 /root/local_agent/agent_workspace_support/health_check_log_review.md
+-rw-r--r-- 1 root root   1237 Jun 18 20:46 /root/local_agent/agent_workspace_support/main_agent_progress_check.md
+-rw-r--r-- 1 root root    438 Jun 18 19:57 /root/local_agent/agent_workspace_support/next_actions_brief.md
+-rw-r--r-- 1 root root   2598 Jun 18 15:54 /root/local_agent/agent_workspace_support/recent_changes_audit.md
+-rw-r--r-- 1 root root   2962 Jun 18 16:26 /root/local_agent/agent_workspace_support/stall_analysis_summary.md
+-rw-r--r-- 1 root root   2330 Jun 18 20:41 /root/local_agent/agent_workspace_support/support_files_audit.md
+-rw-r--r-- 1 root root   2521 Jun 18 20:41 /root/local_agent/agent_workspace_support/support_files_index.md
+-rw-r--r-- 1 root root   2751 Jun 18 14:18 /root/local_agent/agent_workspace_support/system_health_check_review.md
+-rw-r--r-- 1 root root   3536 Jun 18 20:58 /root/local_agent/agent_workspace_support/team_journal.md
+-rw-r--r-- 1 root root    729 Jun 18 20:40 /root/local_agent/agent_workspace_support/timeout_config.md
+-rw-r--r-- 1 root root   2693 Jun 18 15:53 /root/local_agent/agent_workspace_support/vergleich_zielanalyse_vs_dashboard_review.md
+-rw-r--r-- 1 root root   2943 Jun 18 15:48 /root/local_agent/agent_workspace_support/workspace_dashboard_review.md
+COUNT:
+23

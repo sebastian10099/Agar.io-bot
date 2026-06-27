@@ -1,0 +1,5 @@
+Status: Agent-Kommunikation getestet.
+Zeit: 2026-07-18
+Beobachtung: Nach erfolgreicher Aktion (run_all_tests.sh) keine weitere JSON-Aktion.
+Ursache: JSON-Formatierungsfehler blockieren Executor.
+Massnahme: Nächster Schritt als einfache write_file/Shell-Aktion, um Blockade zu lösen.

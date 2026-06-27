@@ -1,0 +1,1 @@
+bash: line 1: ./test_timeout.py: Permission denied

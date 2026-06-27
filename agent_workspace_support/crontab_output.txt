@@ -1,0 +1,8 @@
+*/5 * * * * /root/workspace/cpu_monitor.sh >> /root/workspace/cpu_monitor.log 2>&1
+0 */6 * * * /root/workspace/run_all_tests.sh >> /root/workspace/run_all_tests.log 2>&1
+*/10 * * * * /root/workspace/memory_monitor.sh >> /root/workspace/memory_monitor.log 2>&1
+*/10 * * * * /root/workspace/disk_space_monitor.sh >> /root/workspace/disk_space_monitor.log 2>&1
+0 2 * * * /root/local_agent/agent_workspace_support/workspace/backup_workspace.sh >> /root/local_agent/agent_workspace_support/workspace/backup.log 2>&1
+0 3 * * * /root/local_agent/agent_workspace_support/workspace/cleanup_old_backups.sh >> /root/local_agent/agent_workspace_support/workspace/cleanup.log 2>&1
+*/10 * * * * /root/workspace/health_check.sh >> /root/workspace/health_check.log 2>&1
+0 * * * * /root/workspace/ssh_security_monitor.sh
