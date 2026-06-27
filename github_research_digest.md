@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-27 01:00:06 UTC
+Last run: 2026-06-27 01:30:04 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -131,8 +131,8 @@ Why: Use permissive templates as candidate personalities, roles, and workflows.
 ### mergisi/awesome-openclaw-agents
 
 - URL: https://github.com/mergisi/awesome-openclaw-agents
-- Stars: 3732
-- Updated: 2026-06-26T17:26:24Z
+- Stars: 3733
+- Updated: 2026-06-27T01:03:09Z
 - License: mit (OK to study)
 - Summary: 162 production-ready AI agent templates for OpenClaw. SOUL.md configs across 19 categories. Submit yours!
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
@@ -211,8 +211,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### MervinPraison/PraisonAI
 
 - URL: https://github.com/MervinPraison/PraisonAI
-- Stars: 8294
-- Updated: 2026-06-27T00:25:53Z
+- Stars: 8295
+- Updated: 2026-06-27T01:00:43Z
 - License: mit (OK to study)
 - Summary: PraisonAI 🦞 — Hire a 24/7 AI Workforce. Stop writing boilerplate and start shipping autonomous self-improving agents that research, plan, code, and execute tasks. Deployed in 5 lines of code with built-in memory, RAG, and support for 100+ LLMs.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.

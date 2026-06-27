@@ -1,2 +1,5 @@
 #!/usr/bin/env python3
-print('Hilfswerkzeug verfügbar.') # Dokumentation: Datei existiert und ist aktiv.
+import hilfswerkzeug
+
+def update_documentation():
+    print('Hilfswerkzeug verfügbar.') # Dokumentation: Datei aktualisiert.
