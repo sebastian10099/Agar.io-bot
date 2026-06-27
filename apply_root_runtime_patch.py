@@ -190,6 +190,46 @@ def run_selfdev_repair() -> dict:
     return {"ok": proc.returncode == 0, "returncode": proc.returncode, "stdout": proc.stdout[-2000:], "stderr": proc.stderr[-1000:]}
 
 
+def run_github_adoption() -> dict:
+    tool = WORKSPACE / "github_adoption_engine.py"
+    if not tool.exists():
+        return {"ok": False, "message": "github_adoption_engine.py missing"}
+    proc = subprocess.run(
+        ["python3", str(tool), "--limit", "2"],
+        cwd=str(WORKSPACE),
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    report = WORKSPACE / "github_adoption_report.json"
+    summary = {}
+    if report.exists():
+        try:
+            data = json.loads(report.read_text(encoding="utf-8"))
+            summary = {
+                "count": data.get("count", 0),
+                "errors": data.get("errors", [])[:3],
+                "repos": [
+                    {
+                        "repo": row.get("repo"),
+                        "license": row.get("license"),
+                        "files": len(row.get("files", [])),
+                        "ready": sum(1 for f in row.get("files", []) if f.get("safe_code_intake_command")),
+                    }
+                    for row in data.get("results", [])[:5]
+                ],
+            }
+        except Exception as exc:
+            summary = {"report_error": str(exc)[:300]}
+    return {
+        "ok": proc.returncode == 0,
+        "returncode": proc.returncode,
+        "summary": summary,
+        "stdout": proc.stdout[-2000:],
+        "stderr": proc.stderr[-1000:],
+    }
+
+
 def main() -> int:
     results = {
         "checked_at": utc(),
@@ -197,6 +237,7 @@ def main() -> int:
         "config": patch_config(),
         "ollama_unload": stop_ollama_model(),
         "selfdev_repair": run_selfdev_repair(),
+        "github_adoption": run_github_adoption(),
     }
     REPORT.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(results, indent=2, ensure_ascii=False))
