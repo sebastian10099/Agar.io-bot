@@ -1,6 +1,6 @@
 # Safe Intake Plan
 
-Updated: 2026-06-28 05:00:04 UTC
+Updated: 2026-06-28 05:30:05 UTC
 
 Purpose: turn GitHub research into small implementation candidates, including external code, without letting untested code go live.
 
@@ -156,5 +156,50 @@ Purpose: turn GitHub research into small implementation candidates, including ex
 - Mode: code-intake-allowed
 - Safe idea: Add stronger automatic test/evaluation checks before commit.
 - Source: https://github.com/ttgaillc/Quant-Tools-2026
+- License: mit
+- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
+
+### MervinPraison/PraisonAI
+
+- Topic: self improving coding agent
+- Mode: code-intake-allowed
+- Safe idea: Improve long-term memory with concise summaries and duplicate detection.
+- Source: https://github.com/MervinPraison/PraisonAI
+- License: mit
+- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
+
+### MaximeRobeyns/self_improving_coding_agent
+
+- Topic: self improving coding agent
+- Mode: code-intake-allowed
+- Safe idea: Add a safer tool-selection loop: plan, act once, verify, then continue.
+- Source: https://github.com/MaximeRobeyns/self_improving_coding_agent
+- License: mit
+- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
+
+### BetterForAll/self-improving-agents
+
+- Topic: self improving coding agent
+- Mode: code-intake-allowed
+- Safe idea: Add a safer tool-selection loop: plan, act once, verify, then continue.
+- Source: https://github.com/BetterForAll/self-improving-agents
+- License: mit
+- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
+
+### PrismorSec/immunity-agent
+
+- Topic: self improving coding agent
+- Mode: code-intake-allowed
+- Safe idea: Add a safer tool-selection loop: plan, act once, verify, then continue.
+- Source: https://github.com/PrismorSec/immunity-agent
+- License: apache-2.0
+- Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
+
+### YiShu5/claude-skills
+
+- Topic: self improving coding agent
+- Mode: code-intake-allowed
+- Safe idea: Add a safer tool-selection loop: plan, act once, verify, then continue.
+- Source: https://github.com/YiShu5/claude-skills
 - License: mit
 - Integration rule: implement or copy one small local patch, validate, then promote/test before replacing anything.
