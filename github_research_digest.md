@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-28 15:30:04 UTC
+Last run: 2026-06-28 16:00:04 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -66,7 +66,7 @@ Why: Import useful self-coding, skills, memory, channel, and live-canvas pattern
 
 - URL: https://github.com/zeroclaw-labs/zeroclaw
 - Stars: 32082
-- Updated: 2026-06-28T15:28:07Z
+- Updated: 2026-06-28T15:49:09Z
 - License: apache-2.0 (OK to study)
 - Summary: Fast, small, and fully autonomous AI personal assistant infrastructure, any OS, any platform — deploy anywhere, swap anything 🦀
 - Safe takeaway: Review the project concept for OpenClaw core autonomy and extract one small local improvement.
@@ -75,8 +75,8 @@ Why: Import useful self-coding, skills, memory, channel, and live-canvas pattern
 ### beancookie/xiaoclaw
 
 - URL: https://github.com/beancookie/xiaoclaw
-- Stars: 34
-- Updated: 2026-06-24T14:02:24Z
+- Stars: 35
+- Updated: 2026-06-28T15:44:40Z
 - License: mit (OK to study)
 - Summary: Local AI Agent firmware running on ESP32-S3, integrating offline voice wake-up with cloud TTS, supporting local LLM inference, tool calling, long-term memory storage and autonomous task execution.
 - Safe takeaway: Improve long-term memory with concise summaries and duplicate detection.
