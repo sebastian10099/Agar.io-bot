@@ -1,6 +1,6 @@
 # License Guard
 
-Updated: 2026-06-28 08:30:04 UTC
+Updated: 2026-06-28 09:00:04 UTC
 
 Policy: external code is allowed, but never goes live directly. License, source URL, attribution, fit, validation, target-side test, and rollback must be reviewed before reuse.
 
