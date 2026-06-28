@@ -30,6 +30,14 @@ write_status() {
 EOF
 }
 
+commit_local_changes() {
+  local label="${1:-pre-pull}"
+  if [[ -n "$(git status --short)" ]]; then
+    git add -A
+    git commit -m "PROMETHEUS: Auto-Sync ${label} $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || true
+  fi
+}
+
 run_post_pull_maintenance() {
   local head marker last status_file
   head="$(git rev-parse --short HEAD 2>/dev/null || true)"
@@ -107,25 +115,27 @@ fi
 
 git fetch "$REMOTE" "$BRANCH" || git fetch "$REMOTE" "$BASE_BRANCH" || true
 
+commit_local_changes "pre-pull"
+
 if git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
   behind="$(git rev-list --count HEAD..@{u} 2>/dev/null || echo 0)"
   if [[ "$behind" != "0" ]]; then
-    if [[ -z "$(git status --short)" ]]; then
-      git pull --ff-only
+    if git pull --ff-only; then
       echo "[$(ts)] Fast-forward von GitHub geholt."
       run_post_pull_maintenance
     else
-      echo "[$(ts)] Remote ist voraus, lokale Aenderungen vorhanden; Pull uebersprungen."
+      echo "[$(ts)] Fast-forward nicht moeglich; versuche rebase auf Remote."
+      git pull --rebase
+      echo "[$(ts)] Rebase von GitHub geholt."
+      run_post_pull_maintenance
     fi
   fi
 fi
 
 run_post_pull_maintenance
 
-if [[ -n "$(git status --short)" ]]; then
-  git add -A
-  git commit -m "PROMETHEUS: Auto-Sync $(date -u +'%Y-%m-%d %H:%M:%S UTC')" || true
-else
+commit_local_changes "post-maintenance"
+if [[ -z "$(git status --short)" ]]; then
   echo "[$(ts)] Keine lokalen Aenderungen zum Committen."
 fi
 
