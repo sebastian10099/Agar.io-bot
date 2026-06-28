@@ -1,6 +1,6 @@
 # Improvement Backlog
 
-Updated: 2026-06-28 16:00:04 UTC
+Updated: 2026-06-28 16:30:03 UTC
 
 Only one small improvement should be implemented per cycle.
 
@@ -16,4 +16,3 @@ Only one small improvement should be implemented per cycle.
 - [ ] P5: Add a safer tool-selection loop: plan, act once, verify, then continue.
 - [ ] P6: Improve long-term memory with concise summaries and duplicate detection.
 - [ ] P7: Review the project concept for OpenClaw core autonomy and extract one small local improvement.
-- [ ] P8: Add stronger automatic test/evaluation checks before commit.
