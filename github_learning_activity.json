@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-06-28 09:30:04 UTC",
+  "checked_at": "2026-06-28 10:00:04 UTC",
   "summary": "10 Themen, 21 Repo-Kandidaten, 0 Fehler",
   "current_focus": {
     "type": "repo_review",
@@ -364,8 +364,8 @@
       "topic": "self improving coding agent",
       "repo": "YiShu5/claude-skills",
       "url": "https://github.com/YiShu5/claude-skills",
-      "stars": 96,
-      "updated_at": "2026-06-28T08:51:16Z",
+      "stars": 97,
+      "updated_at": "2026-06-28T09:34:27Z",
       "license": "mit",
       "mode": "code-intake-allowed",
       "idea": "Add a safer tool-selection loop: plan, act once, verify, then continue.",
@@ -667,8 +667,8 @@
       "topic": "self improving coding agent",
       "repo": "YiShu5/claude-skills",
       "url": "https://github.com/YiShu5/claude-skills",
-      "stars": 96,
-      "updated_at": "2026-06-28T08:51:16Z",
+      "stars": 97,
+      "updated_at": "2026-06-28T09:34:27Z",
       "license": "mit",
       "mode": "code-intake-allowed",
       "idea": "Add a safer tool-selection loop: plan, act once, verify, then continue.",

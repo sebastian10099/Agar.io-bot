@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-28 09:30:04 UTC
+Last run: 2026-06-28 10:00:04 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -251,8 +251,8 @@ Why: Collect safe patterns for plan, experiment, test, and learn loops.
 ### YiShu5/claude-skills
 
 - URL: https://github.com/YiShu5/claude-skills
-- Stars: 96
-- Updated: 2026-06-28T08:51:16Z
+- Stars: 97
+- Updated: 2026-06-28T09:34:27Z
 - License: mit (OK to study)
 - Summary: 🧩 通用 Claude Code Skills 集合 · 即插即用 · 包含 clawd-animation、self-improving-agent、wechat-article-publisher 等
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
