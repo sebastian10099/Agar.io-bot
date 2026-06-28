@@ -1,6 +1,6 @@
 # GitHub Research Digest
 
-Last run: 2026-06-28 06:30:05 UTC
+Last run: 2026-06-28 07:00:05 UTC
 
 Rule: external code is allowed after license/source/attribution review and safe_code_intake validation.
 
@@ -65,8 +65,8 @@ Why: Import useful self-coding, skills, memory, channel, and live-canvas pattern
 ### zeroclaw-labs/zeroclaw
 
 - URL: https://github.com/zeroclaw-labs/zeroclaw
-- Stars: 32075
-- Updated: 2026-06-28T05:39:57Z
+- Stars: 32076
+- Updated: 2026-06-28T06:49:15Z
 - License: apache-2.0 (OK to study)
 - Summary: Fast, small, and fully autonomous AI personal assistant infrastructure, any OS, any platform — deploy anywhere, swap anything 🦀
 - Safe takeaway: Review the project concept for OpenClaw core autonomy and extract one small local improvement.
@@ -131,8 +131,8 @@ Why: Use permissive templates as candidate personalities, roles, and workflows.
 ### mergisi/awesome-openclaw-agents
 
 - URL: https://github.com/mergisi/awesome-openclaw-agents
-- Stars: 3736
-- Updated: 2026-06-27T19:03:37Z
+- Stars: 3737
+- Updated: 2026-06-28T06:45:20Z
 - License: mit (OK to study)
 - Summary: 162 production-ready AI agent templates for OpenClaw. SOUL.md configs across 19 categories. Submit yours!
 - Safe takeaway: Add a safer tool-selection loop: plan, act once, verify, then continue.
