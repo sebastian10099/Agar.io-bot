@@ -1,6 +1,6 @@
 {
-  "checked_at": "2026-06-28 18:00:05 UTC",
-  "summary": "10 Themen, 21 Repo-Kandidaten, 0 Fehler",
+  "checked_at": "2026-06-28 18:30:04 UTC",
+  "summary": "10 Themen, 21 Repo-Kandidaten, 1 Fehler",
   "current_focus": {
     "type": "repo_review",
     "topic": "OpenClaw / OpenClout autonomous agent",
@@ -677,5 +677,7 @@
       "next_step": "safe_code_intake stage/validate/promote"
     }
   ],
-  "errors": []
+  "errors": [
+    "safe external code intake: HTTP Error 403: rate limit exceeded"
+  ]
 }
