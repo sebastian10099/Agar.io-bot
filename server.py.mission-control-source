@@ -836,6 +836,7 @@ function renderOperationalStatus(s){
   const hb=document.getElementById('hybridBox');
   if(hb){
     const routing=h.routing||{};
+    const budget=h.budget||{};
     hb.innerHTML=
       `<div class="learning-line">${dot(!!h.cloud_primary,false)}<b>${esc(h.mode||'Hybrid')}</b></div>`+
       `<div class="kv"><span>Haupt</span><span>${esc(h.main_model||'?')}</span></div>`+
@@ -843,6 +844,9 @@ function renderOperationalStatus(s){
       `<div class="kv"><span>Hermes</span><span>${esc(h.hermes_model||'?')}</span></div>`+
       `<div class="kv"><span>Coder</span><span>Cloud ${esc(routing.coder_cloud||'?')} / lokal ${esc(routing.coder_local||'?')}</span></div>`+
       `<div class="kv"><span>Fallback</span><span>${h.local_fallback_to_cloud?'lokal -> Cloud aktiv':'kein Cloud-Fallback'}; lokal geladen: ${h.local_loaded?'ja':'nein'}</span></div>`+
+      `<div class="kv"><span>Ollama Budget</span><span>${budget.enabled?'aktiv':'aus'} / ${esc(budget.profile||'normal')}</span></div>`+
+      `<div class="kv"><span>Token-Limits</span><span>ctx ${esc(String(budget.num_ctx||'?'))}, json ${esc(String(budget.json_num_predict||'?'))}, lokal ${esc(String(budget.local_num_predict||'?'))}, cloud ${esc(String(budget.cloud_num_predict||'?'))}</span></div>`+
+      `<div class="kv"><span>Prompt-Limit</span><span>${esc(String(budget.max_prompt_chars||'?'))} Zeichen, keep ${esc(String(budget.keep_alive||'?'))}</span></div>`+
       `<div class="learning-line muted">${esc(h.explanation||'')}</div>`;
   }
   const rb=document.getElementById('resourceBox');
@@ -896,9 +900,15 @@ function renderOperationalStatus(s){
   }
   const glb=document.getElementById('githubLearnLiveBox');
   if(glb){
+    const adoption=s.github_adoption||{};
     const activity=research.learning_activity||{};
     const focus=activity.current_focus||null;
     const sources=(research.priority_sources||[]).slice(0,6).map(x=>`<div class="learning-line"><span class="mono">${esc(x)}</span></div>`).join('');
+    const adopted=(adoption.repos||[]).slice(0,6).map(x=>
+      `<div class="learning-line">${dot(!!x.license_ok,!x.license_ok)}<b>${esc(x.repo||'Repo')}</b><br>`+
+      `<span class="muted">${esc(x.license||'?')} | Dateien: ${esc(String(x.files||0))} | ready: ${esc(String(x.ready||0))}</span></div>`
+    ).join('');
+    const adoptionErrors=(adoption.errors||[]).slice(0,3).map(x=>`<div class="learning-line gate-bad">${esc(x)}</div>`).join('');
     const events=(activity.events||[]).slice().reverse().slice(0,7).map(e=>{
       if(e.type==='topic_scan'){
         return `<div class="learning-line"><b>${esc(e.topic||'Thema')}</b><br><span class="muted">${esc(e.result||'scan')} - ${esc(e.why||'')}</span></div>`;
@@ -924,8 +934,11 @@ function renderOperationalStatus(s){
       `<div class="learning-line">${dot(research.enabled&&research.ok,research.enabled&&!research.ok)}<b>${esc(research.live_learning||'GitHub-Lernen bereit')}</b></div>`+
       `<div class="kv"><span>Adoption</span><span>${esc(research.external_code_mode||'Quelle + Lizenz + Test-Gate')}</span></div>`+
       `<div class="kv"><span>Aktivitaet</span><span>${esc(activity.summary||'warte auf Detail-Log')}</span></div>`+
+      `<div class="kv"><span>Staging</span><span>${esc(adoption.meaning||'noch kein Adoption-Report')}</span></div>`+
       `<div class="kv"><span>Plan</span><span class="mono">${esc(research.intake_plan||'safe_intake_plan.md')}</span></div>`+
       `<div class="mini-title" style="margin-top:8px">Gerade im Fokus</div>${focusHtml}`+
+      (adopted?`<div class="mini-title" style="margin-top:8px">Gestagte Adoption</div>${adopted}`:'')+
+      adoptionErrors+
       (events?`<div class="mini-title" style="margin-top:8px">Live Ablauf</div>${events}`:'')+
       (candidates?`<div class="mini-title" style="margin-top:8px">Adoptions-Kandidaten</div>${candidates}`:'')+
       (sources?`<div class="mini-title" style="margin-top:8px">Bevorzugte Quellen</div>${sources}`:'')+
@@ -1112,6 +1125,8 @@ def state():
     s["resource_status"] = _cached_snapshot("resource_status", 8, _resource_status_snapshot)
     s["github_status"] = _cached_snapshot("github_status", 20, _github_status_snapshot)
     s["research_status"] = _cached_snapshot("research_status", 20, _research_status_snapshot)
+    s["runtime_maintenance"] = _cached_snapshot("runtime_maintenance", 20, _runtime_maintenance_snapshot)
+    s["github_adoption"] = _cached_snapshot("github_adoption", 20, _github_adoption_snapshot)
     s["quality_status"] = _quality_status_snapshot(s)
     return jsonify(s)
 
@@ -1155,6 +1170,18 @@ def _hybrid_status_snapshot(main_state, support_state=None, hermes_state=None):
     cloud_primary = base.startswith("https://") or bool(CONFIG.get("hybrid_cloud_coding"))
     local_enabled = bool(CONFIG.get("use_local_fast", False))
     fallback_enabled = bool(CONFIG.get("local_fallback_to_cloud", True))
+    budget = {
+        "enabled": bool(CONFIG.get("ollama_budget_mode", False)),
+        "profile": CONFIG.get("ollama_budget_profile", "normal"),
+        "num_ctx": CONFIG.get("ollama_num_ctx", ""),
+        "num_predict": CONFIG.get("ollama_num_predict", ""),
+        "json_num_predict": CONFIG.get("ollama_json_num_predict", ""),
+        "local_num_predict": CONFIG.get("ollama_local_num_predict", ""),
+        "cloud_num_predict": CONFIG.get("ollama_cloud_num_predict", ""),
+        "max_prompt_chars": CONFIG.get("ollama_max_prompt_chars", ""),
+        "max_message_chars": CONFIG.get("ollama_max_message_chars", ""),
+        "keep_alive": CONFIG.get("ollama_keep_alive", ""),
+    }
     ollama_ps = _run_text(["ollama", "ps"], timeout=4)
     local_loaded = bool(ollama_ps and "NAME" in ollama_ps and len(ollama_ps.splitlines()) > 1)
     return {
@@ -1165,6 +1192,9 @@ def _hybrid_status_snapshot(main_state, support_state=None, hermes_state=None):
         "local_fast_enabled": local_enabled,
         "local_loaded": local_loaded,
         "local_fallback_to_cloud": fallback_enabled,
+        "budget": budget,
+        "local_provider": CONFIG.get("local_ai_provider", ""),
+        "preferred_local_engine": CONFIG.get("preferred_local_engine", ""),
         "main_model": main_state.get("model") or CONFIG.get("ollama_model", ""),
         "support_model": support_state.get("model") or CONFIG.get("support_ollama_model", ""),
         "hermes_model": hermes_state.get("model") or CONFIG.get("hermes_ollama_model", ""),
@@ -1419,6 +1449,91 @@ def _research_status_snapshot():
         "external_code_mode": "fremder Code erlaubt, aber nie ungetestet live",
         "live_learning": f"{len(intake_candidates)} Adoption-Kandidaten aus GitHub-Research",
     }
+
+
+def _runtime_maintenance_snapshot():
+    paths = [
+        os.path.join(HERE, "runtime_maintenance_status.json"),
+        os.path.join(HERE, "root_runtime_patch_report.json"),
+        os.path.join(HERE, "agent_workspace", "root_runtime_patch_report.json"),
+    ]
+    out = {
+        "ok": False,
+        "checked_at": "",
+        "head": "",
+        "messages": [],
+        "reports": [p for p in paths if os.path.isfile(p)],
+        "meaning": "Runtime-Maintenance wurde noch nicht nachgewiesen.",
+    }
+    for path in paths:
+        try:
+            if not os.path.isfile(path):
+                continue
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if "checked_at" in data:
+                out["checked_at"] = data.get("checked_at", out["checked_at"])
+            if "head" in data:
+                out["head"] = data.get("head", out["head"])
+            if "messages" in data:
+                out["messages"] = data.get("messages") or []
+            if "config" in data:
+                cfg = data.get("config") or {}
+                brain = data.get("brain") or {}
+                adoption = data.get("github_adoption") or {}
+                out["messages"] = [
+                    "config " + ("changed" if cfg.get("changed") else "ok"),
+                    "brain " + ("changed" if brain.get("changed") else "ok"),
+                    "github_adoption " + ("ok" if adoption.get("ok") else "missing/failed"),
+                ]
+            out["ok"] = bool(data.get("ok", True)) or bool(data.get("config", {}).get("ok"))
+            out["meaning"] = "Runtime-Maintenance Report gefunden: " + os.path.basename(path)
+            return out
+        except Exception as e:
+            out["messages"].append(str(e)[:160])
+    return out
+
+
+def _github_adoption_snapshot():
+    repo = os.path.join(HERE, "agent_workspace")
+    report = os.path.join(repo, "github_adoption_report.json")
+    md = os.path.join(repo, "github_adoption_report.md")
+    out = {
+        "ok": False,
+        "checked_at": "",
+        "count": 0,
+        "staging": os.path.join(repo, "github_adoption_staging"),
+        "repos": [],
+        "errors": [],
+        "report": report,
+        "markdown": md,
+        "meaning": "GitHub-Adoption wurde noch nicht ausgefuehrt.",
+    }
+    try:
+        with open(report, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        repos = []
+        for row in data.get("results", [])[:8]:
+            files = row.get("files", []) or []
+            repos.append({
+                "repo": row.get("repo"),
+                "license": row.get("license"),
+                "license_ok": bool(row.get("license_ok")),
+                "files": len(files),
+                "ready": sum(1 for item in files if item.get("safe_code_intake_command")),
+            })
+        out.update({
+            "ok": bool(data.get("ok")) or bool(repos),
+            "checked_at": data.get("checked_at", ""),
+            "count": data.get("count", len(repos)),
+            "staging": data.get("staging", out["staging"]),
+            "repos": repos,
+            "errors": data.get("errors", []),
+            "meaning": f"{len(repos)} GitHub-Repos als Adoption-Kandidaten gestaged.",
+        })
+    except Exception as e:
+        out["errors"] = [str(e)[:160]]
+    return out
 
 
 def _quality_status_snapshot(state):
