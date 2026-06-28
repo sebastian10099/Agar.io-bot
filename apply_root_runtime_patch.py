@@ -21,6 +21,7 @@ from pathlib import Path
 WORKSPACE = Path(__file__).resolve().parent
 ROOT = WORKSPACE.parent
 REPORT = WORKSPACE / "root_runtime_patch_report.json"
+ROOT_REPORT = ROOT / "root_runtime_patch_report.json"
 
 
 OPENAI_COMPAT_BLOCK = r'''
@@ -99,6 +100,59 @@ OLLAMA_LOCAL_ROUTER = '''        local_provider = str(self.cfg.get("local_ai_pro
 '''
 
 
+OLLAMA_BUDGET_BLOCK = '''        if self.cfg.get("ollama_budget_mode", False):
+            max_chars = int(self.cfg.get("ollama_max_prompt_chars", 12000) or 12000)
+            max_msg_chars = int(self.cfg.get("ollama_max_message_chars", 3500) or 3500)
+            trimmed = []
+            remaining = max_chars
+            for msg in reversed(request_messages):
+                item = dict(msg)
+                content = str(item.get("content", ""))
+                if len(content) > max_msg_chars:
+                    content = content[:1200] + "\\n...[gekuerzt fuer Ollama-Budget]...\\n" + content[-(max_msg_chars - 1235):]
+                if len(content) > remaining and trimmed:
+                    continue
+                if len(content) > remaining:
+                    content = content[-remaining:]
+                item["content"] = content
+                trimmed.append(item)
+                remaining -= len(content)
+                if remaining <= 0:
+                    break
+            request_messages = list(reversed(trimmed)) or request_messages[-2:]
+'''
+
+
+OLLAMA_OPTIONS_OLD = '''        options = {"temperature": self.cfg.get("temperature", 0.5)}
+        if self.cfg.get("ollama_num_predict"):
+            try:
+                options["num_predict"] = int(self.cfg.get("ollama_num_predict"))
+            except Exception:
+                pass
+'''
+
+
+OLLAMA_OPTIONS_BUDGET = '''        options = {"temperature": self.cfg.get("temperature", 0.5)}
+        if self.cfg.get("ollama_num_ctx"):
+            try:
+                options["num_ctx"] = int(self.cfg.get("ollama_num_ctx"))
+            except Exception:
+                pass
+        predict_key = "ollama_num_predict"
+        if force_json and self.cfg.get("ollama_json_num_predict"):
+            predict_key = "ollama_json_num_predict"
+        elif local and self.cfg.get("ollama_local_num_predict"):
+            predict_key = "ollama_local_num_predict"
+        elif cloud and self.cfg.get("ollama_cloud_num_predict"):
+            predict_key = "ollama_cloud_num_predict"
+        if self.cfg.get(predict_key):
+            try:
+                options["num_predict"] = int(self.cfg.get(predict_key))
+            except Exception:
+                pass
+'''
+
+
 def utc() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -132,6 +186,37 @@ def patch_brain() -> dict:
             backups.append(backup(path))
         text = text.replace(router_marker, router_marker + OLLAMA_LOCAL_ROUTER, 1)
         changed = True
+    budget_marker = "        if self.cfg.get(\"ollama_disable_thinking\", False) and str(active_model).startswith(\"qwen3\"):\n"
+    section_start = text.find("def _ollama_request(")
+    section_end = text.find("def _parse_json", section_start)
+    section = text[section_start:section_end]
+    if "ollama_budget_mode" not in section:
+        if budget_marker not in text:
+            return {"file": str(path), "ok": False, "message": "ollama budget marker not found"}
+        if not backups:
+            backups.append(backup(path))
+        text = text.replace(budget_marker, OLLAMA_BUDGET_BLOCK + budget_marker, 1)
+        changed = True
+    section_start = text.find("def _ollama_request(")
+    section_end = text.find("def _parse_json", section_start)
+    section = text[section_start:section_end]
+    if "ollama_json_num_predict" not in section and OLLAMA_OPTIONS_OLD in text:
+        if not backups:
+            backups.append(backup(path))
+        text = text.replace(OLLAMA_OPTIONS_OLD, OLLAMA_OPTIONS_BUDGET, 1)
+        changed = True
+    if '"keep_alive"' not in section:
+        payload_marker = '''        if force_json:
+            payload["format"] = "json"
+'''
+        keep_alive_block = '''        if self.cfg.get("ollama_keep_alive"):
+            payload["keep_alive"] = str(self.cfg.get("ollama_keep_alive"))
+'''
+        if payload_marker in text:
+            if not backups:
+                backups.append(backup(path))
+            text = text.replace(payload_marker, keep_alive_block + payload_marker, 1)
+            changed = True
     if changed:
         path.write_text(text, encoding="utf-8")
         py_compile.compile(str(path), doraise=True)
@@ -142,17 +227,32 @@ def patch_config() -> dict:
     path = ROOT / "config.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     before = json.dumps(data, sort_keys=True)
-    data["local_ai_provider"] = "llamacpp"
-    data["preferred_local_engine"] = "llamacpp"
+    data["provider"] = "ollama"
+    data["local_ai_provider"] = "ollama"
+    data["preferred_local_engine"] = "ollama_budget"
+    data["use_local_fast"] = True
     data["llamacpp_url"] = "http://127.0.0.1:8081/v1"
     data["llamacpp_model"] = data.get("llamacpp_model") or "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
     data["llamacpp_timeout_seconds"] = int(data.get("llamacpp_timeout_seconds") or 25)
-    data["local_fast_model"] = data["llamacpp_model"]
-    data["ollama_fast_coder_model"] = data["llamacpp_model"]
-    data["ollama_coder_models"] = ["qwen3-coder-next", "deepseek-v4-pro", data["llamacpp_model"]]
+    data["local_fast_model"] = "qwen2.5:3b"
+    data["ollama_budget_mode"] = True
+    data["ollama_budget_profile"] = "sparsam"
+    data["ollama_num_ctx"] = int(data.get("ollama_num_ctx") or 2048)
+    data["ollama_num_predict"] = min(int(data.get("ollama_num_predict") or 256), 256)
+    data["ollama_json_num_predict"] = int(data.get("ollama_json_num_predict") or 220)
+    data["ollama_cloud_num_predict"] = int(data.get("ollama_cloud_num_predict") or 320)
+    data["ollama_local_num_predict"] = int(data.get("ollama_local_num_predict") or 160)
+    data["ollama_max_prompt_chars"] = int(data.get("ollama_max_prompt_chars") or 12000)
+    data["ollama_max_message_chars"] = int(data.get("ollama_max_message_chars") or 3500)
+    data["ollama_keep_alive"] = data.get("ollama_keep_alive") or "2m"
+    data["ollama_fast_coder_model"] = "qwen2.5:3b"
+    data["ollama_cloud_coder_model"] = "qwen3-coder-next"
+    data["ollama_coder_models"] = ["qwen3-coder-next", "deepseek-v4-pro", "qwen2.5:3b"]
     routing = data.setdefault("model_routing", {})
-    routing["fast_coder"] = data["llamacpp_model"]
-    routing["backup_coder"] = data["llamacpp_model"]
+    routing["fast_coder"] = "qwen2.5:3b"
+    routing["backup_coder"] = "qwen2.5:3b"
+    routing["cloud_coder"] = "qwen3-coder-next"
+    data["strategy_mode"] = "balanced"
     data["allow_external_code_reuse"] = True
     data["external_code_policy"] = "allowed_with_source_license_stage_validate_promote_test_rollback"
     data.setdefault("external_code_priority_sources", [
@@ -180,6 +280,26 @@ def stop_ollama_model() -> dict:
         "stdout": proc.stdout.strip()[-500:],
         "stderr": proc.stderr.strip()[-500:],
     }
+
+
+def install_root_auto_sync() -> dict:
+    src = WORKSPACE / "github_auto_sync.sh"
+    dst = ROOT / "github_auto_sync.sh"
+    if not src.exists():
+        return {"ok": False, "message": "github_auto_sync.sh missing"}
+    backups = []
+    changed = True
+    if dst.exists():
+        try:
+            changed = src.read_text(encoding="utf-8") != dst.read_text(encoding="utf-8")
+        except Exception:
+            changed = True
+    if changed:
+        if dst.exists():
+            backups.append(backup(dst))
+        shutil.copy2(src, dst)
+        dst.chmod(0o755)
+    return {"ok": True, "changed": changed, "file": str(dst), "backups": backups}
 
 
 def run_selfdev_repair() -> dict:
@@ -235,11 +355,13 @@ def main() -> int:
         "checked_at": utc(),
         "brain": patch_brain(),
         "config": patch_config(),
+        "root_auto_sync": install_root_auto_sync(),
         "ollama_unload": stop_ollama_model(),
         "selfdev_repair": run_selfdev_repair(),
         "github_adoption": run_github_adoption(),
     }
     REPORT.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+    ROOT_REPORT.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(results, indent=2, ensure_ascii=False))
     return 0 if all(v.get("ok", False) for k, v in results.items() if isinstance(v, dict)) else 2
 
