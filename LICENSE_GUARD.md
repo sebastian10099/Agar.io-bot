@@ -1,10 +1,10 @@
 # License Guard
 
-Updated: 2026-06-28 00:30:05 UTC
+Updated: 2026-06-28 01:00:07 UTC
 
 Policy: external code is allowed, but never goes live directly. License, source URL, attribution, fit, validation, target-side test, and rollback must be reviewed before reuse.
 
-- OK-to-study repositories: 16
+- OK-to-study repositories: 6
 - Concept-only repositories: 5
 
 | Topic | Repository | License | Allowed use |
@@ -20,13 +20,3 @@ Policy: external code is allowed, but never goes live directly. License, source 
 | OpenClaw core autonomy | shaoxiang/awesome-openclaw | unknown | concept only; no code reuse |
 | OpenClaw core autonomy | jonathanprocter/openclaw-config | unknown | concept only; no code reuse |
 | Awesome OpenClaw agent templates | mergisi/awesome-openclaw-agents | mit | code reuse allowed through safe_code_intake with attribution/review |
-| agent framework tool testing | vstorm-co/pydantic-ai-backend | mit | code reuse allowed through safe_code_intake with attribution/review |
-| agent framework tool testing | eth-sri/ToolFuzz | mit | code reuse allowed through safe_code_intake with attribution/review |
-| agent framework tool testing | hleliofficiel/ExaAiAgent | apache-2.0 | code reuse allowed through safe_code_intake with attribution/review |
-| agent framework tool testing | taoq-ai/ziran | apache-2.0 | code reuse allowed through safe_code_intake with attribution/review |
-| agent framework tool testing | ttgaillc/Quant-Tools-2026 | mit | code reuse allowed through safe_code_intake with attribution/review |
-| self improving coding agent | MervinPraison/PraisonAI | mit | code reuse allowed through safe_code_intake with attribution/review |
-| self improving coding agent | MaximeRobeyns/self_improving_coding_agent | mit | code reuse allowed through safe_code_intake with attribution/review |
-| self improving coding agent | BetterForAll/self-improving-agents | mit | code reuse allowed through safe_code_intake with attribution/review |
-| self improving coding agent | PrismorSec/immunity-agent | apache-2.0 | code reuse allowed through safe_code_intake with attribution/review |
-| self improving coding agent | YiShu5/claude-skills | mit | code reuse allowed through safe_code_intake with attribution/review |
