@@ -11,6 +11,7 @@ The script is idempotent and backs up every root file before changing it.
 from __future__ import annotations
 
 import json
+import os
 import py_compile
 import shutil
 import subprocess
@@ -329,7 +330,8 @@ def patch_config() -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
     before = json.dumps(data, sort_keys=True)
     data["provider"] = "openai_compatible"
-    data["openai_compatible_url"] = data.get("openai_compatible_url") or "https://api.openai.com/v1"
+    data["openai_compatible_url"] = data.get("openai_compatible_url") or os.environ.get("OPENAI_COMPATIBLE_BASE_URL", "") or os.environ.get("OPENAI_BASE_URL", "")
+    data["openai_compatible_base_url_env"] = data.get("openai_compatible_base_url_env") or "OPENAI_COMPATIBLE_BASE_URL"
     data["openai_compatible_api_key_env"] = data.get("openai_compatible_api_key_env") or "OPENAI_API_KEY"
     data["openai_compatible_model"] = "glm-5.2"
     data["openai_compatible_fast_model"] = "kimi-2.7-code"

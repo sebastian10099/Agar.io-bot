@@ -32,6 +32,11 @@ if CONFIG.get("provider", "ollama") == "claude":
         if env_key:
             CONFIG["claude_api_key"] = env_key
 else:
+    if not CONFIG.get("openai_compatible_url"):
+        base_env = CONFIG.get("openai_compatible_base_url_env", "OPENAI_COMPATIBLE_BASE_URL")
+        base_url = os.environ.get(base_env, "") or os.environ.get("OPENAI_BASE_URL", "")
+        if base_url:
+            CONFIG["openai_compatible_url"] = base_url
     if not CONFIG.get("openai_compatible_api_key"):
         env_name = CONFIG.get("openai_compatible_api_key_env", "OPENAI_API_KEY")
         env_key = os.environ.get(env_name, "") or os.environ.get("OPENAI_API_KEY", "")

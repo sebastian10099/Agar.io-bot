@@ -4,6 +4,8 @@ Run this once on the server when SSH or provider console is available:
 
 ```bash
 cd /root/local_agent/agent_workspace
+export OPENAI_COMPATIBLE_BASE_URL="https://DEIN-GLM-KIMI-ROUTER/v1"
+export OPENAI_API_KEY="DEIN_API_KEY"
 git fetch origin prometheus
 git pull --ff-only origin prometheus
 bash prometheus_apply_now.sh
@@ -12,7 +14,8 @@ bash prometheus_apply_now.sh
 What it does:
 
 - updates `/root/local_agent/github_auto_sync.sh` from the repository copy
-- switches local fallback to the llama.cpp/OpenAI-compatible runtime
+- switches the agent to the OpenAI-compatible Codex-style runtime
+- routes planner/reviewer/main work to GLM-5.2 and coding work to Kimi/QiMi Code
 - unloads the CPU-burning Ollama model best-effort
 - repairs known broken test-gate files
 - runs the GitHub adoption worker and writes adoption reports
