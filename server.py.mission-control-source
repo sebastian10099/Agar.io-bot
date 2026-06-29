@@ -213,16 +213,16 @@ PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PROMETHEUS Codex Workbench</title>
 <style>
-  :root{--bg:#0b0f17;--panel:#131a26;--ink:#e6edf6;--muted:#8aa0bf;--acc:#4da3ff;--ok:#37d27a;--warn:#ffb347;--err:#ff6b6b;--line:#23304a}
-  *{box-sizing:border-box} body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
-  header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  h1{font-size:17px;margin:0} .brain{font-size:24px}
+  :root{--bg:#080b10;--panel:#111823;--panel2:#0d131d;--ink:#eaf1fb;--muted:#91a4bd;--acc:#6db7ff;--acc2:#8ee6c8;--ok:#37d27a;--warn:#ffbd59;--err:#ff6b6b;--line:#263348;--line2:#34445e}
+  *{box-sizing:border-box} body{margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif;background:radial-gradient(circle at 18% -10%,rgba(109,183,255,.17),transparent 34%),linear-gradient(180deg,#0a0f16 0%,#080b10 46%,#0b0f14 100%);color:var(--ink)}
+  header{position:sticky;top:0;z-index:20;padding:12px 22px;border-bottom:1px solid rgba(148,163,184,.16);display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:rgba(8,11,16,.82);backdrop-filter:blur(16px)}
+  h1{font-size:16px;margin:0;letter-spacing:.2px}.brain{font-size:0;font-weight:900;color:var(--acc2);letter-spacing:.6px}.brain::after{content:'PROM';font-size:14px}
   .pill{padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600;background:#1d2940;color:var(--muted)}
   .pill.running{background:#10331f;color:var(--ok)} .pill.paused,.pill.waiting_confirm{background:#3a2e10;color:var(--warn)}
   .pill.stopped{background:#3a1414;color:var(--err)} .pill.planning{background:#102a3a;color:var(--acc)}
-  main{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px;max-width:1500px;margin:0 auto}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
-  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:0 0 8px}
+  main{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px;max-width:1540px;margin:0 auto}
+  .card{background:linear-gradient(180deg,rgba(17,24,35,.98),rgba(13,19,29,.98));border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0;box-shadow:0 12px 40px rgba(0,0,0,.18)}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:0 0 8px}
   .full{grid-column:1/3}
   .goalbar{display:grid;grid-template-columns:minmax(260px,1fr) 180px auto;gap:8px;align-items:stretch} input,button{font:inherit}
   input{flex:1;background:#0d1420;border:1px solid var(--line);color:var(--ink);padding:9px 12px;border-radius:7px}
@@ -291,7 +291,28 @@ PAGE = """<!doctype html>
   .file-size{color:var(--muted);font-size:10px}.file-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}.file-path{font-size:11px;color:var(--muted)}
   .file-view-title{padding:8px 10px;border-bottom:1px solid var(--line);font-size:12px;color:var(--acc);font-weight:700}
   pre.file-content{margin:0;padding:10px;white-space:pre-wrap;color:#d8e7ff;font-size:11px;min-height:300px}
-  @media(max-width:800px){main{grid-template-columns:1fr;padding:10px}.full{grid-column:1}.file-browser,.autonomy-grid,.overview,.mission-control,.mission-grid,.team-grid,.command-grid,.goalbar{grid-template-columns:1fr}.assignment{max-width:none;width:100%}.goalbar button{width:100%}.change-row{grid-template-columns:1fr}.kv{grid-template-columns:90px minmax(0,1fr)}}
+  .workbench-hero{display:grid;grid-template-columns:minmax(420px,1.18fr) minmax(340px,.82fr);gap:12px;align-items:stretch}
+  .hero-left{background:linear-gradient(135deg,rgba(15,24,38,.98),rgba(10,17,27,.98));border:1px solid var(--line2);border-radius:8px;padding:14px;min-width:0}
+  .hero-title{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+  .hero-title h2{font-size:24px;line-height:1.08;text-transform:none;letter-spacing:0;color:var(--ink);margin:0;max-width:720px}
+  .hero-title p{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:1.45;max-width:720px}
+  .hero-right{display:grid;grid-template-columns:1fr 1fr;gap:10px;min-width:0}
+  .status-tile{background:#0b111b;border:1px solid var(--line);border-radius:8px;padding:10px;min-height:100px;overflow:hidden}
+  .status-tile.wide{grid-column:1/3}.status-tile .label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}.status-tile .value{font-size:18px;font-weight:800;margin-top:4px;overflow-wrap:anywhere}.status-tile .detail{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.35}
+  .start-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(260px,.9fr);gap:12px;margin-top:12px}
+  .quick-panel{background:#0b111b;border:1px solid var(--line);border-radius:8px;padding:10px;min-width:0}
+  .quick-panel h3{margin:0 0 8px;font-size:11px;color:var(--muted);letter-spacing:.7px;text-transform:uppercase}
+  .role-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+  .role-chip{border:1px solid var(--line);background:#0b111b;border-radius:8px;padding:9px;min-height:72px}
+  .role-chip b{font-size:12px}.role-chip span{display:block;color:var(--muted);font-size:11px;margin-top:4px;line-height:1.35}
+  .first-live{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);gap:12px;margin-top:12px}
+  .live-board{background:#080e17;border:1px solid var(--line);border-radius:8px;padding:10px;min-height:286px;overflow:hidden}
+  .live-board .code-feed{max-height:245px}.live-board pre.code-preview{max-height:110px}
+  .live-mini{display:grid;gap:10px}
+  .live-mini .ops-box{min-height:132px;margin:0}
+  .header-spacer{margin-left:auto}
+  @media(max-width:1100px){.workbench-hero,.start-grid,.first-live{grid-template-columns:1fr}.hero-right{grid-template-columns:repeat(2,minmax(0,1fr))}.role-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:800px){main{grid-template-columns:1fr;padding:10px}.full{grid-column:1}.file-browser,.autonomy-grid,.overview,.mission-control,.mission-grid,.team-grid,.command-grid,.goalbar,.hero-right,.role-strip{grid-template-columns:1fr}.assignment{max-width:none;width:100%}.goalbar button{width:100%}.change-row{grid-template-columns:1fr}.kv{grid-template-columns:90px minmax(0,1fr)}.hero-title{display:block}.hero-title h2{font-size:20px}.status-tile.wide{grid-column:auto}}
 </style></head>
 <body>
 <header>
@@ -301,48 +322,99 @@ PAGE = """<!doctype html>
   <span id="providerBadge" class="provider-badge"></span>
   <span class="muted" style="font-size:12px" id="model"></span>
   <span class="muted" style="font-size:12px" id="step"></span>
+  <span class="header-spacer"></span>
+  <span class="muted" style="font-size:12px">Hybrid: GLM + Kimi Code</span>
 </header>
 
 <div id="errorBanner" class="error-banner" style="display:none"></div>
 
 <main>
   <div class="card full">
-    <h2>Ziel geben</h2>
-    <div class="goalbar">
-      <input id="goal" placeholder="z.B. Oeffne den Browser und suche nach dem Wetter in Berlin"
-             onkeydown="if(event.key==='Enter')addGoal()">
-      <select id="goalTarget" class="assignment" title="Aufgaben-Zuteilung">
-        <option value="both">Team</option>
-        <option value="main">nur Haupt</option>
-        <option value="support">nur Support</option>
-        <option value="hermes">nur Hermes</option>
-        <option value="review">Support Review</option>
-        <option value="research">Support Recherche</option>
-        <option value="meta">Hermes Meta/Roadmap</option>
-      </select>
-      <button onclick="addGoal()">&#9654; Los</button>
+    <div class="workbench-hero">
+      <div class="hero-left">
+        <div class="hero-title">
+          <div>
+            <h2>Autonomer Codex-Startplatz fuer deinen lokalen KI-Agenten</h2>
+            <p>Ziel eingeben, Team steuern, Live-Code sehen, GitHub-Adoption pruefen und nur getestete Aenderungen uebernehmen.</p>
+          </div>
+          <span class="pill running">online-ready</span>
+        </div>
+        <div class="goalbar">
+          <input id="goal" placeholder="Was soll PROMETHEUS als Naechstes bauen, reparieren oder lernen?"
+                 onkeydown="if(event.key==='Enter')addGoal()">
+          <select id="goalTarget" class="assignment" title="Aufgaben-Zuteilung">
+            <option value="both">Team</option>
+            <option value="main">nur Haupt</option>
+            <option value="support">nur Support</option>
+            <option value="hermes">nur Hermes</option>
+            <option value="review">Support Review</option>
+            <option value="research">Support Recherche</option>
+            <option value="meta">Hermes Meta/Roadmap</option>
+          </select>
+          <button onclick="addGoal()">Start</button>
+        </div>
+        <div class="controls">
+          <button class="ghost" onclick="cmd('pause')">Pause</button>
+          <button class="ghost" onclick="cmd('resume')">Weiter</button>
+          <button class="err" onclick="cmd('stop')">Stop</button>
+        </div>
+        <div class="start-grid">
+          <div class="quick-panel">
+            <h3>Leistung & Strategie</h3>
+            <div class="controls" style="align-items:center">
+              <span class="muted" style="font-size:12px">Produktivitaet</span>
+              <input id="productivity" type="range" min="25" max="300" step="25" value="100" style="max-width:260px" oninput="productivityLabel.textContent=this.value+'%'" onchange="setProductivity(this.value)">
+              <span id="productivityLabel" class="pill">100%</span>
+            </div>
+            <div class="controls" style="align-items:center">
+              <span class="muted" style="font-size:12px">Strategie</span>
+              <select id="strategyMode" onchange="setAgentSettings()" style="background:#0d1420;border:1px solid var(--line);color:var(--ink);padding:7px;border-radius:7px">
+                <option value="fast">schnell</option>
+                <option value="balanced">balanciert</option>
+                <option value="deep">gruendlich</option>
+              </select>
+              <label class="muted"><input type="checkbox" id="agentStrategist" onchange="setAgentSettings()" checked> Stratege</label>
+              <label class="muted"><input type="checkbox" id="agentCoder" onchange="setAgentSettings()" checked> Coder</label>
+              <label class="muted"><input type="checkbox" id="agentReviewer" onchange="setAgentSettings()" checked> Reviewer</label>
+              <label class="muted"><input type="checkbox" id="agentResearch" onchange="setAgentSettings()" checked> Research</label>
+            </div>
+          </div>
+          <div class="quick-panel">
+            <h3>Aktueller Auftrag</h3>
+            <div id="heroCurrentGoal" class="goal-current muted">untaetig</div>
+            <div id="heroSubgoal" class="muted" style="font-size:12px;margin-top:6px">kein Teilziel</div>
+          </div>
+        </div>
+        <div class="role-strip">
+          <div class="role-chip"><b>Planner</b><span>GLM plant Ziele, Checks und Reihenfolge.</span></div>
+          <div class="role-chip"><b>Coder</b><span>Kimi Code schreibt und ersetzt nur getestete Patches.</span></div>
+          <div class="role-chip"><b>Reviewer</b><span>Support prueft Gate, Risiken und offene Fehler.</span></div>
+          <div class="role-chip"><b>Hermes</b><span>Meta-Gehirn gegen Wiederholung und Stillstand.</span></div>
+        </div>
+      </div>
+      <div class="hero-right">
+        <div class="status-tile"><div class="label">Qualitaet</div><div class="value" id="heroQuality">-- / 10</div><div class="detail" id="heroQualityDetail">warte auf Gate</div></div>
+        <div class="status-tile"><div class="label">GitHub</div><div class="value" id="heroGithub">--</div><div class="detail" id="heroGithubDetail">warte auf Sync</div></div>
+        <div class="status-tile"><div class="label">Ressourcen</div><div class="value" id="heroResource">--</div><div class="detail" id="heroResourceDetail">messe Serverlast</div></div>
+        <div class="status-tile"><div class="label">Modelle</div><div class="value" id="heroModels">GLM / Kimi</div><div class="detail" id="heroModelsDetail">OpenAI-kompatibel</div></div>
+        <div class="status-tile wide"><div class="label">Naechste sichere Aktion</div><div class="value" id="heroNextAction">warte...</div><div class="detail" id="heroNextActionDetail">Safe-Intake, Tests und GitHub-Sync bleiben das Gate.</div></div>
+      </div>
     </div>
-    <div class="controls">
-      <button class="ghost" onclick="cmd('pause')">&#9646;&#9646; Pause</button>
-      <button class="ghost" onclick="cmd('resume')">&#9654; Weiter</button>
-      <button class="err" onclick="cmd('stop')">&#9646; STOP</button>
-    </div>
-    <div class="controls" style="align-items:center">
-      <span class="muted" style="font-size:12px">Produktivitaet</span>
-      <input id="productivity" type="range" min="25" max="300" step="25" value="100" style="max-width:260px" oninput="productivityLabel.textContent=this.value+'%'" onchange="setProductivity(this.value)">
-      <span id="productivityLabel" class="pill">100%</span>
-    </div>
-    <div class="controls" style="align-items:center">
-      <span class="muted" style="font-size:12px">Strategie</span>
-      <select id="strategyMode" onchange="setAgentSettings()" style="background:#0d1420;border:1px solid var(--line);color:var(--ink);padding:7px;border-radius:7px">
-        <option value="fast">schnell</option>
-        <option value="balanced">balanciert</option>
-        <option value="deep">gruendlich</option>
-      </select>
-      <label class="muted"><input type="checkbox" id="agentStrategist" onchange="setAgentSettings()" checked> Stratege</label>
-      <label class="muted"><input type="checkbox" id="agentCoder" onchange="setAgentSettings()" checked> Coder</label>
-      <label class="muted"><input type="checkbox" id="agentReviewer" onchange="setAgentSettings()" checked> Reviewer</label>
-      <label class="muted"><input type="checkbox" id="agentResearch" onchange="setAgentSettings()" checked> Research</label>
+    <div class="first-live">
+      <div class="live-board">
+        <div class="mini-title">Live Code Stream</div>
+        <div id="heroCodeActivity" class="code-feed"><div class="muted">noch keine Code-Aktion</div></div>
+      </div>
+      <div class="live-mini">
+        <div class="ops-box">
+          <div class="mini-title">Team-Koordinator</div>
+          <div id="coordinatorBox" class="muted">warte auf Teamstatus...</div>
+        </div>
+        <div class="ops-box">
+          <div class="mini-title">Live GitHub Learn</div>
+          <div id="githubLearnLiveBox" class="muted">warte auf Adoption/Intake...</div>
+        </div>
+      </div>
     </div>
     <div class="mission-control">
       <div class="mission-panel primary">
@@ -368,7 +440,7 @@ PAGE = """<!doctype html>
     <div class="command-grid">
       <div class="command-box">
         <div class="mini-title">Team-Koordinator</div>
-        <div id="coordinatorBox" class="muted">warte auf Teamstatus...</div>
+        <div class="muted">Oben im Startplatz sichtbar.</div>
       </div>
       <div class="command-box">
         <div class="mini-title">Naechster sinnvoller Schritt</div>
@@ -402,7 +474,7 @@ PAGE = """<!doctype html>
       </div>
       <div class="ops-box">
         <div class="mini-title">Live GitHub Learn</div>
-        <div id="githubLearnLiveBox" class="muted">warte auf Adoption/Intake...</div>
+        <div class="muted">Oben im Startplatz sichtbar.</div>
       </div>
       <div class="ops-box">
         <div class="mini-title">GitHub Lernen</div>
@@ -844,6 +916,32 @@ function renderMissionControl(s){
   }
 }
 
+function renderHeroSummary(s){
+  const quality=s.quality_status||{};
+  const github=s.github_status||{};
+  const resources=s.resource_status||{};
+  const hybrid=s.hybrid_status||{};
+  const gate=s.test_gate||{};
+  const top=(resources.top_processes||[])[0]||{};
+  const load=resources.load||{};
+  const setText=(id,value)=>{const el=document.getElementById(id); if(el)el.textContent=value;};
+  setText('heroQuality', `${quality.score??'?'} / 10`);
+  setText('heroQualityDetail', quality.meaning || `Gate: ${gate.overall||'unbekannt'}`);
+  setText('heroGithub', github.state || (github.enabled?'aktiv':'aus'));
+  setText('heroGithubDetail', github.meaning || github.commit_subject || 'warte auf Sync');
+  setText('heroResource', top.cpu_percent ? `${top.cpu_percent}% CPU` : `${resources.cpu_cores||'?'} Kerne`);
+  setText('heroResourceDetail', top.name ? `${top.name} | Load ${load.one??'?'} / ${load.five??'?'}` : (resources.explanation||'messe Serverlast'));
+  setText('heroModels', `${hybrid.main_model||s.model||'GLM'} / ${hybrid.support_model||'Kimi Code'}`);
+  setText('heroModelsDetail', `${hybrid.provider_family||s.provider||'openai-kompatibel'} ${hybrid.cloud_url||''}`.trim());
+  const gateOk=gate.overall==='passed'||gate.overall==='waiting';
+  const githubOk=github.state==='clean'||github.state==='pushed';
+  const next=!gateOk ? 'Test-Gate reparieren' : (!githubOk ? 'GitHub Sync sauber machen' : 'Naechsten sicheren Patch testen');
+  setText('heroNextAction', next);
+  setText('heroNextActionDetail', (quality.next_missing&&quality.next_missing[0]) || 'Safe-Intake, Tests und GitHub-Sync bleiben das Gate.');
+  setText('heroCurrentGoal', s.current_goal||'untaetig');
+  setText('heroSubgoal', (s.subgoal&&s.subgoal!==s.current_goal)?`Teilziel: ${s.subgoal}`:'kein Teilziel');
+}
+
 function dot(ok, warn){
   return `<span class="status-dot ${ok?'ok':(warn?'warn':'bad')}"></span>`;
 }
@@ -1035,6 +1133,7 @@ async function tick(){
     renderStorageAndRules(s);
     renderMissionControl(s);
     renderOperationalStatus(s);
+    renderHeroSummary(s);
     updateVision(s);
     document.getElementById('goalCurrent').textContent=s.current_goal||'untaetig';
     document.getElementById('goalCurrent').className='goal-current'+(s.current_goal?'':' muted');
@@ -1064,6 +1163,10 @@ async function tick(){
     const codeEl=document.getElementById('codeActivity');
     if(codeEl) codeEl.innerHTML=allCa.length
       ?codeFeedHtml(allCa,100)
+      :'<div class="muted">noch keine Code-Aktion</div>';
+    const heroCodeEl=document.getElementById('heroCodeActivity');
+    if(heroCodeEl) heroCodeEl.innerHTML=allCa.length
+      ?codeFeedHtml(allCa,8)
       :'<div class="muted">noch keine Code-Aktion</div>';
 
     document.getElementById('plan').innerHTML=(s.plan||[]).map(t=>
