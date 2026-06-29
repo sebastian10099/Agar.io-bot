@@ -32,6 +32,11 @@ if CONFIG.get("provider", "ollama") == "claude":
         if env_key:
             CONFIG["claude_api_key"] = env_key
 else:
+    if not CONFIG.get("openai_compatible_api_key"):
+        env_name = CONFIG.get("openai_compatible_api_key_env", "OPENAI_API_KEY")
+        env_key = os.environ.get(env_name, "") or os.environ.get("OPENAI_API_KEY", "")
+        if env_key:
+            CONFIG["openai_compatible_api_key"] = env_key
     if not CONFIG.get("ollama_api_key") and os.environ.get("OLLAMA_API_KEY"):
         CONFIG["ollama_api_key"] = os.environ["OLLAMA_API_KEY"]
 
@@ -48,6 +53,11 @@ def _support_config():
     cfg["ollama_model"] = CONFIG.get("support_ollama_model", "glm-5.2")
     cfg["ollama_strategist_model"] = CONFIG.get("support_ollama_strategist_model", "glm-5.2")
     cfg["ollama_coder_model"] = CONFIG.get("support_ollama_coder_model", CONFIG.get("ollama_coder_model", "qwen3-coder-next"))
+    cfg["openai_compatible_model"] = cfg["ollama_model"]
+    cfg["openai_compatible_planner_model"] = cfg["ollama_strategist_model"]
+    cfg["openai_compatible_reviewer_model"] = cfg["ollama_strategist_model"]
+    cfg["openai_compatible_coder_model"] = cfg["ollama_coder_model"]
+    cfg["openai_compatible_fast_model"] = cfg["ollama_coder_model"]
     cfg["productivity_percent"] = CONFIG.get("support_productivity_percent", max(125, int(CONFIG.get("productivity_percent", 100) * 0.8)))
     cfg["max_steps_per_goal"] = CONFIG.get("support_max_steps_per_goal", 50)
     cfg["autopilot_planner_cooldown_seconds"] = CONFIG.get("support_autopilot_planner_cooldown_seconds", 45)
@@ -72,6 +82,11 @@ def _hermes_config():
     cfg["ollama_model"] = CONFIG.get("hermes_ollama_model", "glm-5.2")
     cfg["ollama_strategist_model"] = CONFIG.get("hermes_ollama_strategist_model", CONFIG.get("hermes_ollama_model", "glm-5.2"))
     cfg["ollama_coder_model"] = CONFIG.get("hermes_ollama_coder_model", CONFIG.get("ollama_coder_model", "qwen3-coder-next"))
+    cfg["openai_compatible_model"] = cfg["ollama_model"]
+    cfg["openai_compatible_planner_model"] = cfg["ollama_strategist_model"]
+    cfg["openai_compatible_reviewer_model"] = cfg["ollama_strategist_model"]
+    cfg["openai_compatible_coder_model"] = cfg["ollama_coder_model"]
+    cfg["openai_compatible_fast_model"] = cfg["ollama_coder_model"]
     cfg["productivity_percent"] = CONFIG.get("hermes_productivity_percent", CONFIG.get("productivity_percent", 250))
     cfg["max_steps_per_goal"] = CONFIG.get("hermes_max_steps_per_goal", 80)
     cfg["autopilot_planner_cooldown_seconds"] = CONFIG.get("hermes_autopilot_planner_cooldown_seconds", 30)
@@ -191,7 +206,7 @@ def _require_dashboard_auth():
 PAGE = """<!doctype html>
 <html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lokaler KI-Agent</title>
+<title>PROMETHEUS Codex Workbench</title>
 <style>
   :root{--bg:#0b0f17;--panel:#131a26;--ink:#e6edf6;--muted:#8aa0bf;--acc:#4da3ff;--ok:#37d27a;--warn:#ffb347;--err:#ff6b6b;--line:#23304a}
   *{box-sizing:border-box} body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
@@ -276,7 +291,7 @@ PAGE = """<!doctype html>
 <body>
 <header>
   <span class="brain">🧠</span>
-  <h1>Lokaler KI-Agent</h1>
+  <h1>PROMETHEUS Codex Workbench</h1>
   <span id="status" class="pill">—</span>
   <span id="providerBadge" class="provider-badge"></span>
   <span class="muted" style="font-size:12px" id="model"></span>
@@ -839,10 +854,13 @@ function renderOperationalStatus(s){
     const budget=h.budget||{};
     hb.innerHTML=
       `<div class="learning-line">${dot(!!h.cloud_primary,false)}<b>${esc(h.mode||'Hybrid')}</b></div>`+
+      `<div class="kv"><span>Provider</span><span>${esc(h.provider_family||h.provider||'?')} ${esc(h.cloud_url||'')}</span></div>`+
       `<div class="kv"><span>Haupt</span><span>${esc(h.main_model||'?')}</span></div>`+
       `<div class="kv"><span>Support</span><span>${esc(h.support_model||'?')}</span></div>`+
       `<div class="kv"><span>Hermes</span><span>${esc(h.hermes_model||'?')}</span></div>`+
-      `<div class="kv"><span>Coder</span><span>Cloud ${esc(routing.coder_cloud||'?')} / lokal ${esc(routing.coder_local||'?')}</span></div>`+
+      `<div class="kv"><span>Planner</span><span>${esc(routing.strategist||'?')}</span></div>`+
+      `<div class="kv"><span>Coder</span><span>${esc(routing.coder_cloud||'?')} / fast ${esc(routing.coder_local||'?')}</span></div>`+
+      `<div class="kv"><span>Reviewer</span><span>${esc(routing.reviewer||'?')}</span></div>`+
       `<div class="kv"><span>Fallback</span><span>${h.local_fallback_to_cloud?'lokal -> Cloud aktiv':'kein Cloud-Fallback'}; lokal geladen: ${h.local_loaded?'ja':'nein'}</span></div>`+
       `<div class="kv"><span>Ollama Budget</span><span>${budget.enabled?'aktiv':'aus'} / ${esc(budget.profile||'normal')}</span></div>`+
       `<div class="kv"><span>Token-Limits</span><span>ctx ${esc(String(budget.num_ctx||'?'))}, json ${esc(String(budget.json_num_predict||'?'))}, lokal ${esc(String(budget.local_num_predict||'?'))}, cloud ${esc(String(budget.cloud_num_predict||'?'))}</span></div>`+
@@ -1163,11 +1181,14 @@ def _run_text(cmd, cwd=None, timeout=5):
 def _hybrid_status_snapshot(main_state, support_state=None, hermes_state=None):
     support_state = support_state or {}
     hermes_state = hermes_state or {}
+    provider = str(CONFIG.get("provider", "ollama"))
+    openai_mode = provider.lower() in {"openai", "openai_compatible", "openai-compatible", "openai_compat", "glm", "zhipu", "kimi", "moonshot"}
     base = str(CONFIG.get("ollama_url", ""))
+    openai_url = str(CONFIG.get("openai_compatible_url", CONFIG.get("openai_base_url", "")))
     cloud_url = str(CONFIG.get("ollama_cloud_url", "https://ollama.com"))
     local_url = str(CONFIG.get("ollama_local_url", "http://localhost:11434"))
     routing = dict(CONFIG.get("model_routing") or {})
-    cloud_primary = base.startswith("https://") or bool(CONFIG.get("hybrid_cloud_coding"))
+    cloud_primary = openai_mode or base.startswith("https://") or bool(CONFIG.get("hybrid_cloud_coding"))
     local_enabled = bool(CONFIG.get("use_local_fast", False))
     fallback_enabled = bool(CONFIG.get("local_fallback_to_cloud", True))
     budget = {
@@ -1185,9 +1206,11 @@ def _hybrid_status_snapshot(main_state, support_state=None, hermes_state=None):
     ollama_ps = _run_text(["ollama", "ps"], timeout=4)
     local_loaded = bool(ollama_ps and "NAME" in ollama_ps and len(ollama_ps.splitlines()) > 1)
     return {
-        "mode": "Cloud primaer + lokal als Reserve" if cloud_primary else "Lokal primaer",
+        "mode": "Codex/OpenAI-kompatibel" if openai_mode else ("Cloud primaer + lokal als Reserve" if cloud_primary else "Lokal primaer"),
+        "provider": provider,
+        "provider_family": "openai_compatible" if openai_mode else "ollama",
         "cloud_primary": cloud_primary,
-        "cloud_url": cloud_url,
+        "cloud_url": openai_url if openai_mode else cloud_url,
         "local_url": local_url,
         "local_fast_enabled": local_enabled,
         "local_loaded": local_loaded,
@@ -1195,18 +1218,22 @@ def _hybrid_status_snapshot(main_state, support_state=None, hermes_state=None):
         "budget": budget,
         "local_provider": CONFIG.get("local_ai_provider", ""),
         "preferred_local_engine": CONFIG.get("preferred_local_engine", ""),
-        "main_model": main_state.get("model") or CONFIG.get("ollama_model", ""),
+        "main_model": main_state.get("model") or CONFIG.get("openai_compatible_model") or CONFIG.get("ollama_model", ""),
         "support_model": support_state.get("model") or CONFIG.get("support_ollama_model", ""),
         "hermes_model": hermes_state.get("model") or CONFIG.get("hermes_ollama_model", ""),
         "routing": {
-            "main": routing.get("main_agent", CONFIG.get("ollama_model", "")),
-            "strategist": routing.get("strategist", CONFIG.get("ollama_strategist_model", "")),
-            "coder_cloud": routing.get("cloud_coder", CONFIG.get("ollama_coder_model", "")),
-            "coder_local": routing.get("fast_coder", CONFIG.get("local_fast_model", "")),
-            "reviewer": routing.get("reviewer", CONFIG.get("ollama_reviewer_model", "")),
+            "main": routing.get("main_agent", CONFIG.get("openai_compatible_model", CONFIG.get("ollama_model", ""))),
+            "strategist": routing.get("strategist", CONFIG.get("openai_compatible_planner_model", CONFIG.get("ollama_strategist_model", ""))),
+            "coder_cloud": routing.get("cloud_coder", CONFIG.get("openai_compatible_coder_model", CONFIG.get("ollama_coder_model", ""))),
+            "coder_local": routing.get("fast_coder", CONFIG.get("openai_compatible_fast_model", CONFIG.get("local_fast_model", ""))),
+            "reviewer": routing.get("reviewer", CONFIG.get("openai_compatible_reviewer_model", CONFIG.get("ollama_reviewer_model", ""))),
             "hermes": routing.get("hermes_meta", CONFIG.get("hermes_ollama_model", "")),
         },
-        "explanation": "Cloud erledigt die schweren Denk-/Coding-Schritte; lokale Modelle bleiben kurz angebunden als Reserve, damit lokale Timeouts den Autopilot nicht blockieren.",
+        "explanation": (
+            "Codex-artiger Provider-Layer: GLM plant/reviewt, Kimi/QiMi schreibt Code, Tools/Test-Gates bleiben lokal kontrolliert."
+            if openai_mode else
+            "Cloud erledigt die schweren Denk-/Coding-Schritte; lokale Modelle bleiben kurz angebunden als Reserve, damit lokale Timeouts den Autopilot nicht blockieren."
+        ),
     }
 
 
@@ -1577,9 +1604,9 @@ def _quality_status_snapshot(state):
             "detail": "kopierter/fremder Code laeuft ueber stage -> validate -> promote",
         },
         {
-            "name": "Lokale Nicht-Ollama Runtime",
-            "ok": CONFIG.get("local_ai_provider") in {"llamacpp", "llama.cpp", "openai_compatible"} and os.path.isfile(os.path.join(repo, "LOCAL_MODEL_RUNTIME_PLAN.md")),
-            "detail": f"lokaler Provider: {CONFIG.get('local_ai_provider', 'ollama')} / {CONFIG.get('llamacpp_url', 'nicht gesetzt')}",
+            "name": "OpenAI-kompatibler Codex-Kern",
+            "ok": str(CONFIG.get("provider", "")).lower() in {"openai", "openai_compatible", "openai-compatible", "openai_compat", "glm", "zhipu", "kimi", "moonshot"},
+            "detail": f"{CONFIG.get('openai_compatible_model', CONFIG.get('ollama_model', '?'))} + Coder {CONFIG.get('openai_compatible_coder_model', CONFIG.get('ollama_coder_model', '?'))}",
         },
         {
             "name": "GitHub Sync sauber",
@@ -2043,7 +2070,7 @@ if __name__ == "__main__":
                        CONFIG.get("model", "?"))
 
     print("=" * 58)
-    print("  Lokaler KI-Agent")
+    print("  PROMETHEUS Codex Workbench")
     print(f"  Dashboard : {url}")
     print(f"  Anbieter  : {provider.upper()}")
     print(f"  Modell    : {model}")

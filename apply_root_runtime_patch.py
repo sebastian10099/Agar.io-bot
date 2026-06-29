@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the non-Ollama local runtime patch to /root/local_agent.
+"""Apply the OpenAI-compatible runtime patch to /root/local_agent.
 
 Run from `/root/local_agent/agent_workspace` after pulling this workspace:
 
@@ -24,33 +24,100 @@ REPORT = WORKSPACE / "root_runtime_patch_report.json"
 ROOT_REPORT = ROOT / "root_runtime_patch_report.json"
 
 
+OPENAI_CHECK_BLOCK = r'''
+    def _check_openai_compatible(self):
+        base = (
+            self.cfg.get("openai_compatible_url")
+            or self.cfg.get("openai_base_url")
+            or self.cfg.get("llamacpp_url")
+            or ""
+        ).rstrip("/")
+        model = self._model_name
+        if not base:
+            return False, "OpenAI-kompatibler Endpoint fehlt: openai_compatible_url setzen."
+        if not model:
+            return False, "OpenAI-kompatibles Modell fehlt: openai_compatible_model setzen."
+        if self.cfg.get("openai_compatible_require_key", True):
+            key = (
+                self.cfg.get("openai_compatible_api_key")
+                or self.cfg.get("openai_api_key")
+                or self.cfg.get("api_key")
+                or os.environ.get("OPENAI_API_KEY", "")
+            )
+            if not key and "127.0.0.1" not in base and "localhost" not in base:
+                return False, "OpenAI-kompatibler API-Key fehlt."
+        if self.cfg.get("openai_compatible_check_models", False):
+            headers = {}
+            key = (
+                self.cfg.get("openai_compatible_api_key")
+                or self.cfg.get("openai_api_key")
+                or self.cfg.get("api_key")
+                or os.environ.get("OPENAI_API_KEY", "")
+            )
+            if key:
+                headers["Authorization"] = "Bearer " + key
+            url = base + ("/models" if base.endswith("/v1") else "/v1/models")
+            try:
+                r = requests.get(url, headers=headers, timeout=10)
+                r.raise_for_status()
+            except Exception as e:
+                return False, f"OpenAI-kompatibler Endpoint nicht erreichbar ({base}): {e}"
+        return True, f"OpenAI-kompatibel OK. Modell '{model}' ueber {base}."
+
+'''
+
+
 OPENAI_COMPAT_BLOCK = r'''
     def _openai_compat_request(self, messages, force_json=True, model=None, base_url=None, api_key="", timeout=None):
-        base = (base_url or self.cfg.get("openai_compatible_url") or self.cfg.get("llamacpp_url") or "").rstrip("/")
+        base = (
+            base_url
+            or self.cfg.get("openai_compatible_url")
+            or self.cfg.get("openai_base_url")
+            or self.cfg.get("llamacpp_url")
+            or ""
+        ).rstrip("/")
         if not base:
             raise ValueError("openai compatible base_url missing")
         if base.endswith("/v1"):
             url = base + "/chat/completions"
         else:
             url = base + "/v1/chat/completions"
-        active_model = model or self.cfg.get("llamacpp_model") or self.cfg.get("local_fast_model") or self._model_name
+        active_model = (
+            model
+            or self.cfg.get("openai_compatible_model")
+            or self.cfg.get("glm_model")
+            or self.cfg.get("llamacpp_model")
+            or self.cfg.get("local_fast_model")
+            or self._model_name
+        )
         payload = {
             "model": active_model,
             "messages": list(messages),
             "stream": False,
             "temperature": self.cfg.get("temperature", 0.5),
         }
-        if self.cfg.get("ollama_num_predict"):
+        max_tokens = (
+            self.cfg.get("openai_compatible_max_tokens")
+            or self.cfg.get("ollama_num_predict")
+        )
+        if max_tokens:
             try:
-                payload["max_tokens"] = int(self.cfg.get("ollama_num_predict"))
+                payload["max_tokens"] = int(max_tokens)
             except Exception:
                 pass
         if force_json:
             payload["response_format"] = {"type": "json_object"}
         headers = {"Content-Type": "application/json"}
+        if not api_key:
+            api_key = (
+                self.cfg.get("openai_compatible_api_key")
+                or self.cfg.get("openai_api_key")
+                or self.cfg.get("api_key")
+                or os.environ.get("OPENAI_API_KEY", "")
+            )
         if api_key:
             headers["Authorization"] = "Bearer " + api_key
-        timeout = int(timeout or self.cfg.get("llamacpp_timeout_seconds", self.cfg.get("ollama_local_timeout_seconds", 30)))
+        timeout = int(timeout or self.cfg.get("openai_compatible_timeout_seconds", self.cfg.get("llamacpp_timeout_seconds", self.cfg.get("ollama_local_timeout_seconds", 30))))
         try:
             r = requests.post(url, json=payload, headers=headers, timeout=timeout)
             if r.status_code >= 400 and force_json:
@@ -63,7 +130,7 @@ OPENAI_COMPAT_BLOCK = r'''
                 return ((choices[0].get("message") or {}).get("content") or "").strip()
             return ""
         except Exception:
-            if self.cfg.get("local_fallback_to_cloud", True):
+            if self.cfg.get("local_fallback_to_cloud", False):
                 fallback_model = self.cfg.get("cloud_json_fallback_model") if force_json else self.cfg.get("ollama_coder_model")
                 return self._ollama_request(
                     messages,
@@ -79,24 +146,38 @@ OPENAI_COMPAT_BLOCK = r'''
 
 OLLAMA_LOCAL_ROUTER = '''        local_provider = str(self.cfg.get("local_ai_provider") or self.cfg.get("preferred_local_engine") or "").lower()
         main_provider = str(self.cfg.get("provider") or "").lower()
-        if not cloud and (local_provider in {"llamacpp", "llama.cpp", "openai_compatible"} and local):
+        openai_providers = {"llamacpp", "llama.cpp", "openai", "openai_compatible", "openai-compatible", "openai_compat", "glm", "zhipu", "kimi", "moonshot"}
+        if not cloud and (local_provider in openai_providers and local):
             return self._openai_compat_request(
                 messages,
                 force_json=force_json,
-                model=model or self.cfg.get("llamacpp_model") or self.cfg.get("local_fast_model"),
-                base_url=self.cfg.get("llamacpp_url", "http://127.0.0.1:8081/v1"),
-                api_key=self.cfg.get("llamacpp_api_key", ""),
-                timeout=self.cfg.get("llamacpp_timeout_seconds"),
+                model=model or self.cfg.get("openai_compatible_fast_model") or self.cfg.get("kimi_code_model") or self.cfg.get("local_fast_model"),
+                base_url=self.cfg.get("openai_compatible_url") or self.cfg.get("llamacpp_url", "http://127.0.0.1:8081/v1"),
+                api_key=self.cfg.get("openai_compatible_api_key") or self.cfg.get("llamacpp_api_key", ""),
+                timeout=self.cfg.get("openai_compatible_timeout_seconds") or self.cfg.get("llamacpp_timeout_seconds"),
             )
-        if not cloud and main_provider in {"llamacpp", "llama.cpp", "openai_compatible"}:
+        if not cloud and main_provider in openai_providers:
             return self._openai_compat_request(
                 messages,
                 force_json=force_json,
-                model=model or self.cfg.get("llamacpp_model") or self._model_name,
-                base_url=self.cfg.get("llamacpp_url", "http://127.0.0.1:8081/v1"),
-                api_key=self.cfg.get("llamacpp_api_key", ""),
-                timeout=self.cfg.get("llamacpp_timeout_seconds"),
+                model=model or self.cfg.get("openai_compatible_model") or self.cfg.get("glm_model") or self._model_name,
+                base_url=self.cfg.get("openai_compatible_url") or self.cfg.get("llamacpp_url", "http://127.0.0.1:8081/v1"),
+                api_key=self.cfg.get("openai_compatible_api_key") or self.cfg.get("llamacpp_api_key", ""),
+                timeout=self.cfg.get("openai_compatible_timeout_seconds") or self.cfg.get("llamacpp_timeout_seconds"),
             )
+'''
+
+
+RUN_GOAL_CHECK_OLD = '''    def _run_goal_ollama(self, goal):
+        ok, msg = self._check_ollama()
+'''
+
+
+RUN_GOAL_CHECK_OPENAI = '''    def _run_goal_ollama(self, goal):
+        if str(self.cfg.get("provider", "")).lower() in {"openai", "openai_compatible", "openai-compatible", "openai_compat", "glm", "zhipu", "kimi", "moonshot"}:
+            ok, msg = self._check_openai_compatible()
+        else:
+            ok, msg = self._check_ollama()
 '''
 
 
@@ -169,11 +250,26 @@ def patch_brain() -> dict:
     text = path.read_text(encoding="utf-8")
     changed = False
     backups = []
+    if "def _check_openai_compatible(" not in text:
+        marker = "    def _openai_compat_request("
+        if marker not in text:
+            marker = "    def _ollama_request(self, messages, force_json=True, model=None, local=False, cloud=False):\n"
+            if marker not in text:
+                return {"file": str(path), "ok": False, "message": "openai check marker not found"}
+            if not backups:
+                backups.append(backup(path))
+            text = text.replace(marker, OPENAI_CHECK_BLOCK + marker, 1)
+        else:
+            if not backups:
+                backups.append(backup(path))
+            text = text.replace(marker, OPENAI_CHECK_BLOCK + marker, 1)
+        changed = True
     if "def _openai_compat_request(" not in text:
         marker = "    def _ollama_request(self, messages, force_json=True, model=None, local=False, cloud=False):\n"
         if marker not in text:
             return {"file": str(path), "ok": False, "message": "ollama_request marker not found"}
-        backups.append(backup(path))
+        if not backups:
+            backups.append(backup(path))
         text = text.replace(marker, OPENAI_COMPAT_BLOCK + marker, 1)
         changed = True
     router_marker = "        # local=True -> lokales Ollama; cloud=True -> Ollama-Cloud (Bearer-Key); sonst ollama_url.\n"
@@ -217,6 +313,11 @@ def patch_brain() -> dict:
                 backups.append(backup(path))
             text = text.replace(payload_marker, keep_alive_block + payload_marker, 1)
             changed = True
+    if RUN_GOAL_CHECK_OLD in text:
+        if not backups:
+            backups.append(backup(path))
+        text = text.replace(RUN_GOAL_CHECK_OLD, RUN_GOAL_CHECK_OPENAI, 1)
+        changed = True
     if changed:
         path.write_text(text, encoding="utf-8")
         py_compile.compile(str(path), doraise=True)
@@ -227,14 +328,27 @@ def patch_config() -> dict:
     path = ROOT / "config.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     before = json.dumps(data, sort_keys=True)
-    data["provider"] = "ollama"
-    data["local_ai_provider"] = "ollama"
-    data["preferred_local_engine"] = "ollama_budget"
+    data["provider"] = "openai_compatible"
+    data["openai_compatible_url"] = data.get("openai_compatible_url") or "https://api.openai.com/v1"
+    data["openai_compatible_api_key_env"] = data.get("openai_compatible_api_key_env") or "OPENAI_API_KEY"
+    data["openai_compatible_model"] = "glm-5.2"
+    data["openai_compatible_fast_model"] = "kimi-2.7-code"
+    data["openai_compatible_coder_model"] = "kimi-2.7-code"
+    data["openai_compatible_reviewer_model"] = "glm-5.2"
+    data["openai_compatible_planner_model"] = "glm-5.2"
+    data["openai_compatible_timeout_seconds"] = int(data.get("openai_compatible_timeout_seconds") or 90)
+    data["openai_compatible_max_tokens"] = int(data.get("openai_compatible_max_tokens") or 900)
+    data["openai_compatible_check_models"] = bool(data.get("openai_compatible_check_models", False))
+    data["openai_compatible_require_key"] = bool(data.get("openai_compatible_require_key", True))
+    data["glm_model"] = "glm-5.2"
+    data["kimi_code_model"] = "kimi-2.7-code"
+    data["local_ai_provider"] = "openai_compatible"
+    data["preferred_local_engine"] = "openai_compatible"
     data["use_local_fast"] = True
     data["llamacpp_url"] = "http://127.0.0.1:8081/v1"
     data["llamacpp_model"] = data.get("llamacpp_model") or "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
     data["llamacpp_timeout_seconds"] = int(data.get("llamacpp_timeout_seconds") or 25)
-    data["local_fast_model"] = "qwen2.5:3b"
+    data["local_fast_model"] = "kimi-2.7-code"
     data["ollama_budget_mode"] = True
     data["ollama_budget_profile"] = "sparsam"
     data["ollama_num_ctx"] = int(data.get("ollama_num_ctx") or 2048)
@@ -245,13 +359,23 @@ def patch_config() -> dict:
     data["ollama_max_prompt_chars"] = int(data.get("ollama_max_prompt_chars") or 12000)
     data["ollama_max_message_chars"] = int(data.get("ollama_max_message_chars") or 3500)
     data["ollama_keep_alive"] = data.get("ollama_keep_alive") or "2m"
-    data["ollama_fast_coder_model"] = "qwen2.5:3b"
-    data["ollama_cloud_coder_model"] = "qwen3-coder-next"
-    data["ollama_coder_models"] = ["qwen3-coder-next", "deepseek-v4-pro", "qwen2.5:3b"]
+    data["ollama_model"] = "glm-5.2"
+    data["ollama_strategist_model"] = "glm-5.2"
+    data["ollama_coder_model"] = "kimi-2.7-code"
+    data["ollama_reviewer_model"] = "glm-5.2"
+    data["ollama_fast_coder_model"] = "kimi-2.7-code"
+    data["ollama_strong_coder_model"] = "kimi-2.7-code"
+    data["ollama_cloud_coder_model"] = "kimi-2.7-code"
+    data["ollama_coder_models"] = ["kimi-2.7-code", "glm-5.2"]
+    data["ollama_reviewer_models"] = ["glm-5.2", "kimi-2.7-code"]
     routing = data.setdefault("model_routing", {})
-    routing["fast_coder"] = "qwen2.5:3b"
-    routing["backup_coder"] = "qwen2.5:3b"
-    routing["cloud_coder"] = "qwen3-coder-next"
+    routing["main_agent"] = "glm-5.2"
+    routing["strategist"] = "glm-5.2"
+    routing["fast_coder"] = "kimi-2.7-code"
+    routing["backup_coder"] = "glm-5.2"
+    routing["cloud_coder"] = "kimi-2.7-code"
+    routing["reviewer"] = "glm-5.2"
+    routing["hermes_meta"] = "glm-5.2"
     data["strategy_mode"] = "balanced"
     data["allow_external_code_reuse"] = True
     data["external_code_policy"] = "allowed_with_source_license_stage_validate_promote_test_rollback"
