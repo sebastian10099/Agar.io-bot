@@ -14,6 +14,7 @@ import secrets
 import copy
 import shutil
 import subprocess
+import datetime
 from flask import Flask, request, jsonify, Response
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -484,6 +485,10 @@ PAGE = """<!doctype html>
         <div class="mini-title">Qualitaet / 10</div>
         <div id="qualityBox" class="muted">werte Qualitaets-Gates aus...</div>
       </div>
+      <div class="ops-box">
+        <div class="mini-title">Ollama Modellberater</div>
+        <div id="ollamaAdvisorBox" class="muted">pruefe beste lokale Modelle...</div>
+      </div>
     </div>
     <div class="overview" id="productivityOverview">
       <div class="overview-panel">
@@ -951,6 +956,7 @@ function renderOperationalStatus(s){
   const g=s.github_status||{};
   const research=s.research_status||{};
   const quality=s.quality_status||{};
+  const advisor=s.ollama_model_advisor||{};
   const hb=document.getElementById('hybridBox');
   if(hb){
     const routing=h.routing||{};
@@ -1074,6 +1080,25 @@ function renderOperationalStatus(s){
       `<div class="learning-line"><b>${esc(String(quality.score??'?'))}/10</b> - ${esc(quality.meaning||'')}</div>`+
       checks+
       ((quality.next_missing||[]).length?`<div class="learning-line gate-warn">Naechstes: ${esc(quality.next_missing[0])}</div>`:'');
+  }
+  const ob=document.getElementById('ollamaAdvisorBox');
+  if(ob){
+    const route=advisor.recommended_route||{};
+    const configured=advisor.configured||{};
+    const candidates=(advisor.candidates||[]).slice(0,6).map(c=>
+      `<div class="learning-line"><b>${esc(c.model||'Modell')}</b> <span class="muted">${esc(c.role||'')}</span><br>`+
+      `<span>${esc(c.fit||'')}</span><br>`+
+      `<span class="mono">${esc(c.command||'')}</span></div>`
+    ).join('');
+    const sources=(advisor.sources||[]).slice(0,6).map(x=>`<div class="learning-line mono">${esc(x)}</div>`).join('');
+    ob.innerHTML=
+      `<div class="learning-line">${dot(true,false)}<b>${esc(advisor.profile||'unbekannt')}</b> Profil bei ${esc(String(advisor.memory_gb??'?'))} GB RAM</div>`+
+      `<div class="learning-line">${esc(advisor.recommendation||'')}</div>`+
+      `<div class="kv"><span>Aktuell</span><span>Planner ${esc(configured.planner||'?')} / Coder ${esc(configured.coder||'?')}</span></div>`+
+      `<div class="kv"><span>Route</span><span>Planner ${esc(route.planner||'?')} | Coder ${esc(route.coder||'?')} | Fast ${esc(route.fast_coder||'?')}</span></div>`+
+      `<div class="learning-line gate-warn">${esc(advisor.safety_rule||'')}</div>`+
+      (candidates?`<div class="mini-title" style="margin-top:8px">Beste Kandidaten</div>${candidates}`:'')+
+      (sources?`<div class="mini-title" style="margin-top:8px">Quellen</div>${sources}`:'');
   }
 }
 
@@ -1253,6 +1278,7 @@ def state():
     s["research_status"] = _cached_snapshot("research_status", 20, _research_status_snapshot)
     s["runtime_maintenance"] = _cached_snapshot("runtime_maintenance", 20, _runtime_maintenance_snapshot)
     s["github_adoption"] = _cached_snapshot("github_adoption", 20, _github_adoption_snapshot)
+    s["ollama_model_advisor"] = _cached_snapshot("ollama_model_advisor", 60, _ollama_model_advisor_snapshot)
     s["quality_status"] = _quality_status_snapshot(s)
     return jsonify(s)
 
@@ -1342,6 +1368,109 @@ def _hybrid_status_snapshot(main_state, support_state=None, hermes_state=None):
             if openai_mode else
             "Cloud erledigt die schweren Denk-/Coding-Schritte; lokale Modelle bleiben kurz angebunden als Reserve, damit lokale Timeouts den Autopilot nicht blockieren."
         ),
+    }
+
+
+def _system_memory_gb():
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            meminfo = f.read().splitlines()
+        for line in meminfo:
+            if line.startswith("MemTotal:"):
+                kb = float(line.split()[1])
+                return round(kb / 1024 / 1024, 1)
+    except Exception:
+        return None
+    return None
+
+
+def _ollama_model_advisor_snapshot():
+    """Static, source-linked model guidance for safe local/Ollama routing."""
+    mem_gb = _system_memory_gb()
+    configured = {
+        "main": CONFIG.get("ollama_model", ""),
+        "planner": CONFIG.get("ollama_strategist_model", ""),
+        "coder": CONFIG.get("ollama_coder_model", ""),
+        "reviewer": CONFIG.get("ollama_reviewer_model", ""),
+        "fast": CONFIG.get("ollama_fast_coder_model", CONFIG.get("local_fast_model", "")),
+    }
+    candidates = [
+        {
+            "model": "qwen3-coder:30b",
+            "role": "Coder / Integrator",
+            "fit": "beste praktische Ollama-Code-Route, wenn genug RAM/VRAM vorhanden ist",
+            "local_class": "stark",
+            "command": "ollama run qwen3-coder:30b",
+            "source": "https://ollama.com/library/qwen3-coder",
+        },
+        {
+            "model": "qwen3-coder-next",
+            "role": "Agentic Coder",
+            "fit": "optimiert fuer agentische Coding-Workflows und lokale Entwicklung",
+            "local_class": "stark",
+            "command": "ollama run qwen3-coder-next",
+            "source": "https://ollama.com/library/qwen3-coder-next",
+        },
+        {
+            "model": "qwen3.6",
+            "role": "Planner / Researcher",
+            "fit": "agentisches Coding und Thinking Preservation fuer laengere Aufgaben",
+            "local_class": "mittel bis stark",
+            "command": "ollama run qwen3.6",
+            "source": "https://ollama.com/library/qwen3.6",
+        },
+        {
+            "model": "devstral-small-2",
+            "role": "Fast Coder / Reviewer",
+            "fit": "agentic coding mit gutem Tempo als lokaler Arbeits-Coder",
+            "local_class": "mittel",
+            "command": "ollama run devstral-small-2",
+            "source": "https://ollama.com/library/devstral-small-2",
+        },
+        {
+            "model": "glm-5.1",
+            "role": "Planner / Reviewer",
+            "fit": "starker Engineering-Planer, gut als Kontroll- und Review-Modell",
+            "local_class": "cloud/stark",
+            "command": "ollama run glm-5.1",
+            "source": "https://ollama.com/library/glm-5.1",
+        },
+        {
+            "model": "deepseek-coder-v2:16b",
+            "role": "Coder Fallback",
+            "fit": "bewaehrte Code-Alternative, wenn Qwen/Kimi nicht verfuegbar ist",
+            "local_class": "mittel",
+            "command": "ollama run deepseek-coder-v2:16b",
+            "source": "https://ollama.com/library/deepseek-coder-v2",
+        },
+    ]
+    if mem_gb is None:
+        profile = "unbekannt"
+        recommendation = "RAM nicht messbar; starke Modelle erst nach manuellem Check ziehen."
+    elif mem_gb < 24:
+        profile = "sparsam"
+        recommendation = "Bei unter 24 GB RAM lokale Modelle klein halten; Cloud/OpenAI-kompatibel fuer schwere Coding-Schritte bevorzugen."
+    elif mem_gb < 64:
+        profile = "balanced"
+        recommendation = "Qwen3-Coder 30B oder Devstral als lokale Coder testen; sehr grosse 480B/Cloud-Varianten vermeiden."
+    else:
+        profile = "stark"
+        recommendation = "Grosse Coding-Modelle sind realistischer; trotzdem Test-Gate und Speicherlimit vor Pull/Run beachten."
+    return {
+        "checked_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "memory_gb": mem_gb,
+        "profile": profile,
+        "configured": configured,
+        "recommended_route": {
+            "planner": "glm-5.1 oder qwen3.6",
+            "coder": "qwen3-coder:30b oder qwen3-coder-next",
+            "fast_coder": "devstral-small-2",
+            "fallback": "deepseek-coder-v2:16b",
+        },
+        "recommendation": recommendation,
+        "safety_rule": "Keine grossen Ollama-Modelle automatisch pullen; erst Speicherbudget pruefen, dann Test-Gate laufen lassen.",
+        "candidates": candidates,
+        "sources": sorted({c["source"] for c in candidates}),
     }
 
 
