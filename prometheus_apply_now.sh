@@ -45,6 +45,12 @@ if [[ -f "$REPO/prometheus_fix_agentzero_ollama_connection.sh" ]]; then
   run chmod +x "$ROOT/prometheus_fix_agentzero_ollama_connection.sh"
 fi
 
+if [[ -x "$ROOT/prometheus_configure_openclaw_agentzero_ollama.sh" && -n "${OLLAMA_API_KEY:-}" ]]; then
+  run "$ROOT/prometheus_configure_openclaw_agentzero_ollama.sh"
+elif [[ -x "$ROOT/prometheus_configure_openclaw_agentzero_ollama.sh" ]]; then
+  echo "[$(ts)] OLLAMA_API_KEY not set; copied OpenClaw/Agent Zero Ollama script but did not run it." | tee -a "$LOG"
+fi
+
 if [[ -f "$REPO/apply_root_runtime_patch.py" ]]; then
   run python3 "$REPO/apply_root_runtime_patch.py"
 fi

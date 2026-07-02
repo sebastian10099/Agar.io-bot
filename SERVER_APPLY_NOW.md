@@ -51,10 +51,18 @@ systemctl restart local-agent.service
 Configure OpenClaw and Agent Zero to use Ollama GLM 5.2:
 
 ```bash
-export OLLAMA_API_KEY="DEIN_OLLAMA_KEY"  # optional for Ollama Cloud; omit for purely local Ollama
+export OLLAMA_API_KEY="DEIN_OLLAMA_KEY"
 export PROMETHEUS_OLLAMA_MODEL="glm-5.2:cloud"
+export OLLAMA_BASE_URL="https://ollama.com"
 bash /root/local_agent/prometheus_configure_openclaw_agentzero_ollama.sh
 ```
+
+OpenClaw is patched to use native Ollama Cloud, not OpenAI-compatible `/v1` mode:
+
+- Provider ref: `ollama/glm-5.2:cloud`
+- Provider API: `ollama`
+- Base URL: `https://ollama.com`
+- API key source: `OLLAMA_API_KEY`
 
 If Agent Zero runs in Docker, open its model settings and use:
 
