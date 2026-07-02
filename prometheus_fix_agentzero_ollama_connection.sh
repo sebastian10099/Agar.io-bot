@@ -37,6 +37,11 @@ OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
 OLLAMA_API_BASE=${OLLAMA_BASE_URL}
 OLLAMA_MODEL=${MODEL}
 LITELLM_MODEL=ollama/${MODEL}
+MODEL_PROVIDER=ollama
+CHAT_MODEL=ollama/${MODEL}
+UTILITY_MODEL=ollama/${MODEL}
+BROWSER_MODEL=ollama/${MODEL}
+RESPONSE_MODEL=ollama/${MODEL}
 AGENT_ZERO_PROVIDER=ollama
 AGENT_ZERO_CHAT_MODEL=${MODEL}
 AGENT_ZERO_UTILITY_MODEL=${MODEL}
@@ -56,10 +61,11 @@ payload = {
     "chat_model": model,
     "utility_model": model,
     "browser_model": model,
+    "response_model": model,
     "api_base": base,
     "base_url": base,
     "litellm_model": f"ollama/{model}",
-    "note": "Use Ollama Cloud, not host.docker.internal:11434. Requires OLLAMA_API_KEY in runtime env.",
+    "note": "Use Ollama Cloud, not host.docker.internal local Ollama/vLLM or OpenRouter. Requires OLLAMA_API_KEY in runtime env.",
     "updated_by": "prometheus_fix_agentzero_ollama_connection",
     "updated_at": int(time.time()),
 }
@@ -79,12 +85,24 @@ patch_text_configs() {
   local root="$1"
   python3 - "$root" "$MODEL" "$OLLAMA_BASE_URL" <<'PY'
 from pathlib import Path
-import sys, time
+import re, sys, time
 root = Path(sys.argv[1])
 model = sys.argv[2]
 base = sys.argv[3]
 exts = {".env", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf"}
-needles = ["host.docker.internal:11434", "127.0.0.1:11434", "localhost:11434"]
+needles = [
+    "host.docker.internal",
+    "127.0.0.1:11434",
+    "localhost:11434",
+    "127.0.0.1:8080",
+    "localhost:8080",
+    "hosted_vllm",
+    "hosted-vllm",
+    "openrouter.ai",
+    "openrouter/",
+    "OpenRouter",
+    "openrouter",
+]
 patched = []
 for path in root.rglob("*"):
     if not path.is_file() or path.suffix.lower() not in exts:
@@ -96,11 +114,29 @@ for path in root.rglob("*"):
     if not any(n in text for n in needles) and "glm-5.2" not in text and "ollama/" not in text:
         continue
     new = text
-    for n in needles:
-        new = new.replace(f"http://{n}", base).replace(n, base.replace("https://", "").replace("http://", ""))
+    new = re.sub(r"https?://host\.docker\.internal:\d+", base, new)
+    new = re.sub(r"host\.docker\.internal:\d+", base.replace("https://", "").replace("http://", ""), new)
+    new = re.sub(r"https?://127\.0\.0\.1:(11434|8080)", base, new)
+    new = re.sub(r"https?://localhost:(11434|8080)", base, new)
+    new = re.sub(r"127\.0\.0\.1:(11434|8080)", base.replace("https://", "").replace("http://", ""), new)
+    new = re.sub(r"localhost:(11434|8080)", base.replace("https://", "").replace("http://", ""), new)
+    new = re.sub(r"https?://openrouter\.ai[^\"'\s,\]}]*", base, new, flags=re.IGNORECASE)
+    new = new.replace("hosted_vllm/", "ollama/")
+    new = new.replace("hosted-vllm/", "ollama/")
+    new = new.replace("hosted_vllm", "ollama")
+    new = new.replace("hosted-vllm", "ollama")
+    new = re.sub(r"openrouter/", "ollama/", new, flags=re.IGNORECASE)
+    new = re.sub(
+        r"((?:model_)?provider|llm_provider|provider_name)([\"']?\s*[:=]\s*[\"']?)openrouter",
+        r"\1\2ollama",
+        new,
+        flags=re.IGNORECASE,
+    )
+    new = new.replace("OpenRouter", "Ollama")
     new = new.replace("glm-5.2:latest", model)
     new = new.replace("glm-5.2", model)
     new = new.replace("ollama/glm-5.2:cloud:cloud", f"ollama/{model}")
+    new = re.sub(r"ollama/[^\"'\s,\]}]+", f"ollama/{model}", new)
     if new != text:
         backup = path.with_name(path.name + f".bak.agentzero-ollama.{int(time.time())}")
         backup.write_text(text, encoding="utf-8")
@@ -134,9 +170,12 @@ for name in ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compos
         "      LITELLM_MODEL: ollama/" + model + "\n"
     )
     new = text
-    if "host.docker.internal:11434" in new:
-        new = new.replace("http://host.docker.internal:11434", base)
-        new = new.replace("host.docker.internal:11434", base.replace("https://", "").replace("http://", ""))
+    import re
+    if "host.docker.internal" in new or "127.0.0.1:8080" in new or "localhost:8080" in new:
+        new = re.sub(r"https?://host\.docker\.internal:\d+", base, new)
+        new = re.sub(r"host\.docker\.internal:\d+", base.replace("https://", "").replace("http://", ""), new)
+        new = re.sub(r"https?://127\.0\.0\.1:(11434|8080)", base, new)
+        new = re.sub(r"https?://localhost:(11434|8080)", base, new)
     if "OLLAMA_BASE_URL:" not in new and "environment:" in new:
         new = new.replace("environment:\n", "environment:\n" + insert, 1)
     if new != text:
@@ -177,4 +216,4 @@ for root in "${roots[@]}"; do
   restart_agent_zero "$root"
 done
 
-log "Done. Agent Zero should no longer use host.docker.internal:11434. Verify logs for absence of APIConnectionError."
+log "Done. Agent Zero should no longer use host.docker.internal local Ollama/vLLM endpoints. Verify logs for absence of APIConnectionError/InternalServerError."

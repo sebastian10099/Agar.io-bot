@@ -62,7 +62,7 @@ If Agent Zero runs in Docker, open its model settings and use:
 - Base URL: `https://ollama.com`
 - Model: `glm-5.2:cloud`
 
-Fix Agent Zero `host.docker.internal:11434` connection errors:
+Fix Agent Zero `host.docker.internal:11434`, `host.docker.internal:8080`, `Hosted_vllm`, or OpenRouter 401 connection errors:
 
 ```bash
 export OLLAMA_API_KEY="DEIN_OLLAMA_KEY"

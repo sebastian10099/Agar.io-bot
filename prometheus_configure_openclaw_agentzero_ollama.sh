@@ -170,7 +170,14 @@ patch_agent_zero_files() {
 
   cat >"$root/prometheus_ollama_glm52.env" <<EOF
 OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+OLLAMA_API_BASE=${OLLAMA_BASE_URL}
 OLLAMA_MODEL=${MODEL}
+LITELLM_MODEL=ollama/${MODEL}
+MODEL_PROVIDER=ollama
+CHAT_MODEL=ollama/${MODEL}
+UTILITY_MODEL=ollama/${MODEL}
+BROWSER_MODEL=ollama/${MODEL}
+RESPONSE_MODEL=ollama/${MODEL}
 AGENT_ZERO_PROVIDER=ollama
 AGENT_ZERO_CHAT_MODEL=${MODEL}
 AGENT_ZERO_UTILITY_MODEL=${MODEL}
@@ -190,6 +197,9 @@ payload = {
     "chat_model": model,
     "utility_model": model,
     "browser_model": model,
+    "response_model": model,
+    "litellm_model": f"ollama/{model}",
+    "api_base": base,
     "embedding_provider": "local",
     "updated_by": "prometheus_configure_openclaw_agentzero_ollama",
     "updated_at": int(time.time()),
