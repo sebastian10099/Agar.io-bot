@@ -26,14 +26,14 @@ with open(path, "r", encoding="utf-8") as f:
 # local fallback remains possible when local models are available.
 cfg["provider"] = "ollama"
 cfg["ollama_url"] = cfg.get("ollama_cloud_url", "https://ollama.com")
-cfg["ollama_model"] = "glm-5.2"
-cfg["ollama_strategist_model"] = "glm-5.2"
-cfg["ollama_reviewer_model"] = "glm-5.2"
-cfg["ollama_coder_model"] = "glm-5.2"
-cfg["ollama_cloud_coder_model"] = "glm-5.2"
+cfg["ollama_model"] = "glm-5.2:cloud"
+cfg["ollama_strategist_model"] = "glm-5.2:cloud"
+cfg["ollama_reviewer_model"] = "glm-5.2:cloud"
+cfg["ollama_coder_model"] = "glm-5.2:cloud"
+cfg["ollama_cloud_coder_model"] = "glm-5.2:cloud"
 cfg["ollama_fast_coder_model"] = "devstral-small-2"
-cfg["ollama_strong_coder_model"] = "glm-5.2"
-cfg["cloud_json_fallback_model"] = "glm-5.2"
+cfg["ollama_strong_coder_model"] = "glm-5.2:cloud"
+cfg["cloud_json_fallback_model"] = "glm-5.2:cloud"
 cfg["local_ai_provider"] = "ollama"
 cfg["preferred_local_engine"] = "ollama"
 cfg["local_fast_model"] = "devstral-small-2"
@@ -48,26 +48,26 @@ cfg["ollama_cloud_num_predict"] = 512
 cfg["ollama_local_num_predict"] = 192
 cfg["ollama_keep_alive"] = "2m"
 cfg["model_routing"] = {
-    "main_agent": "glm-5.2",
-    "strategist": "glm-5.2",
+    "main_agent": "glm-5.2:cloud",
+    "strategist": "glm-5.2:cloud",
     "fast_coder": "devstral-small-2",
-    "cloud_coder": "glm-5.2",
-    "reviewer": "glm-5.2",
-    "hermes_meta": "glm-5.2",
+    "cloud_coder": "glm-5.2:cloud",
+    "reviewer": "glm-5.2:cloud",
+    "hermes_meta": "glm-5.2:cloud",
 }
 cfg["ollama_coder_models"] = [
-    "glm-5.2",
+    "glm-5.2:cloud",
     "qwen3-coder:30b",
     "devstral-small-2",
     "deepseek-coder-v2:16b",
 ]
 cfg["ollama_reviewer_models"] = [
-    "glm-5.2",
+    "glm-5.2:cloud",
     "qwen3.6",
     "devstral-small-2",
 ]
 cfg["_kommentar"] = (
-    "Ollama-Profil ohne OpenAI/Hostinger-Credits: GLM-5.2 fuer Planung, Review und Coding, "
+    "Ollama-Profil ohne OpenAI/Hostinger-Credits: GLM-5.2 Cloud fuer Planung, Review und Coding, "
     "Devstral lokal als schneller Reserve-Coder. "
     "OLLAMA_API_KEY liegt in systemd Environment, nicht in Git."
 )
@@ -88,8 +88,8 @@ EOF
 fi
 
 echo "Ollama profile configured:"
-echo "  Planner/Reviewer: glm-5.2"
-echo "  Strong coder    : glm-5.2"
+echo "  Planner/Reviewer: glm-5.2:cloud"
+echo "  Strong coder    : glm-5.2:cloud"
 echo "  Fast local coder: devstral-small-2"
 echo
 echo "Next:"

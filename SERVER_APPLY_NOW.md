@@ -52,7 +52,7 @@ Configure OpenClaw and Agent Zero to use Ollama GLM 5.2:
 
 ```bash
 export OLLAMA_API_KEY="DEIN_OLLAMA_KEY"  # optional for Ollama Cloud; omit for purely local Ollama
-export PROMETHEUS_OLLAMA_MODEL="glm-5.2"
+export PROMETHEUS_OLLAMA_MODEL="glm-5.2:cloud"
 bash /root/local_agent/prometheus_configure_openclaw_agentzero_ollama.sh
 ```
 
@@ -60,4 +60,4 @@ If Agent Zero runs in Docker, open its model settings and use:
 
 - Provider: `Ollama`
 - Base URL: `http://host.docker.internal:11434`
-- Model: `glm-5.2`
+- Model: `glm-5.2:cloud`

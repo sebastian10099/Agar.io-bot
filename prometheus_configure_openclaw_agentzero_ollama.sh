@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-MODEL="${PROMETHEUS_OLLAMA_MODEL:-glm-5.2}"
+MODEL="${PROMETHEUS_OLLAMA_MODEL:-glm-5.2:cloud}"
 ROOT="${PROMETHEUS_ROOT:-/root/local_agent}"
 OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
 OPENCLAW_CONFIG="${OPENCLAW_CONFIG:-/root/.openclaw/openclaw.json}"
