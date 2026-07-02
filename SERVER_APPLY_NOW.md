@@ -21,6 +21,7 @@ What it does:
 - runs the GitHub adoption worker and writes adoption reports
 - compiles the important Python files
 - restarts `local-agent.service`
+- installs `prometheus-dashboard-watchdog.timer`, which checks `/state` every minute and restarts the service if the dashboard stops responding
 - runs one GitHub auto-sync pass so the dashboard shows the result
 
 Expected evidence afterward:
@@ -28,4 +29,13 @@ Expected evidence afterward:
 - `/root/local_agent/root_runtime_patch_report.json`
 - `/root/local_agent/runtime_maintenance_status.json`
 - `/root/local_agent/agent_workspace/github_adoption_report.md`
+- `/root/local_agent/prometheus_dashboard_watchdog.log`
 - Dashboard hybrid status no longer points local work at `127.0.0.1:11434`
+
+Emergency recovery when the site is unavailable:
+
+```bash
+systemctl restart local-agent.service
+systemctl status local-agent.service --no-pager
+bash /root/local_agent/prometheus_dashboard_watchdog.sh
+```
