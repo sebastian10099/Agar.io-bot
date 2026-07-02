@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 MODEL="${PROMETHEUS_OLLAMA_MODEL:-glm-5.2:cloud}"
 ROOT="${PROMETHEUS_ROOT:-/root/local_agent}"
-OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
+OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-https://ollama.com}"
 OPENCLAW_CONFIG="${OPENCLAW_CONFIG:-/root/.openclaw/openclaw.json}"
 LITELLM_CONFIG="${LITELLM_CONFIG:-/etc/litellm/openclaw-router.yaml}"
 LITELLM_ENV="${LITELLM_ENV:-/etc/litellm/openclaw-router.env}"
@@ -207,7 +207,7 @@ for target in targets:
 PY
 
   if [[ -f "$root/docker-compose.yml" || -f "$root/compose.yml" ]]; then
-    log "Agent Zero appears Docker-based. In its UI set provider=Ollama, base URL=http://host.docker.internal:11434 (or host gateway), model=${MODEL}."
+    log "Agent Zero appears Docker-based. In its UI set provider=Ollama, base URL=${OLLAMA_BASE_URL}, model=${MODEL}."
   else
     log "Agent Zero profile file written. If Agent Zero stores settings in UI DB, apply the same values in Settings."
   fi

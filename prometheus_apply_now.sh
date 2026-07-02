@@ -40,6 +40,11 @@ if [[ -f "$REPO/prometheus_configure_openclaw_agentzero_ollama.sh" ]]; then
   run chmod +x "$ROOT/prometheus_configure_openclaw_agentzero_ollama.sh"
 fi
 
+if [[ -f "$REPO/prometheus_fix_agentzero_ollama_connection.sh" ]]; then
+  run cp "$REPO/prometheus_fix_agentzero_ollama_connection.sh" "$ROOT/prometheus_fix_agentzero_ollama_connection.sh"
+  run chmod +x "$ROOT/prometheus_fix_agentzero_ollama_connection.sh"
+fi
+
 if [[ -f "$REPO/apply_root_runtime_patch.py" ]]; then
   run python3 "$REPO/apply_root_runtime_patch.py"
 fi
