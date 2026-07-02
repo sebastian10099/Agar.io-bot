@@ -39,3 +39,11 @@ systemctl restart local-agent.service
 systemctl status local-agent.service --no-pager
 bash /root/local_agent/prometheus_dashboard_watchdog.sh
 ```
+
+Switch to the Ollama no-OpenAI-credits profile:
+
+```bash
+export OLLAMA_API_KEY="DEIN_OLLAMA_KEY"
+bash /root/local_agent/prometheus_configure_ollama_profile.sh
+systemctl restart local-agent.service
+```
