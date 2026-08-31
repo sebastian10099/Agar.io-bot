@@ -21,7 +21,8 @@ $script:Skripte = @(
     'omniroute-menu.ps1',
     'omniroute-setup.ps1',
     'omniroute-desktop.ps1',
-    'omniroute-diagnose.ps1'
+    'omniroute-diagnose.ps1',
+    'omniroute-test.ps1'
 )
 
 $script:Fails = 0

@@ -12,7 +12,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('1', '2', '3', '4', '5')]
+    [ValidateSet('1', '2', '3', '4', '5', '6')]
     [string]$Auswahl
 )
 
@@ -75,6 +75,9 @@ function Show-Menu {
     Write-Host ""
     Write-Host "    [5]  Server im Vordergrund starten (Meldungen sichtbar)" -ForegroundColor White
     Write-Host ""
+    Write-Host "    [6]  Verbindung testen" -ForegroundColor White
+    Write-Host "         Warum nimmt Codex die Verbindung nicht an? Das hier sagt es"
+    Write-Host ""
     Write-Host "    [0]  Beenden" -ForegroundColor DarkGray
     Write-Host ""
 }
@@ -99,6 +102,7 @@ function Invoke-Auswahl {
             & $omni
             return $LASTEXITCODE
         }
+        '6' { return Invoke-Teil 'omniroute-test.ps1' }
         default { return 0 }
     }
 }
@@ -118,8 +122,8 @@ try {
         $wahl = $wahl.Trim()
 
         if ($wahl -eq '0' -or $wahl -eq '') { break }
-        if ($wahl -notin @('1', '2', '3', '4', '5')) {
-            Write-Warn2 "Bitte eine Zahl von 0 bis 5 eingeben."
+        if ($wahl -notin @('1', '2', '3', '4', '5', '6')) {
+            Write-Warn2 "Bitte eine Zahl von 0 bis 6 eingeben."
             continue
         }
 

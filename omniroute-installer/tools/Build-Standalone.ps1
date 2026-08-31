@@ -32,7 +32,8 @@ $dateien = @(
     'omniroute-menu.ps1',
     'omniroute-setup.ps1',
     'omniroute-desktop.ps1',
-    'omniroute-diagnose.ps1'
+    'omniroute-diagnose.ps1',
+    'omniroute-test.ps1'
 )
 
 Write-Host "Packe folgende Dateien ein:" -ForegroundColor Cyan

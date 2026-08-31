@@ -89,7 +89,8 @@ try {
         'omniroute-menu.ps1',
         'omniroute-setup.ps1',
         'omniroute-desktop.ps1',
-        'omniroute-diagnose.ps1'
+        'omniroute-diagnose.ps1',
+        'omniroute-test.ps1'
     )
 
     Write-Host "`nEnthaltene Skripte" -ForegroundColor Cyan
@@ -109,7 +110,7 @@ try {
     Write-Host "`nInhaltliche Pruefung" -ForegroundColor Cyan
     $menu = Get-Content (Join-Path $ziel 'omniroute-menu.ps1') -Raw
     Check -Name "Menue bindet omniroute-common.ps1 ein" -Condition ($menu -match 'omniroute-common\.ps1')
-    foreach ($d in @('omniroute-setup.ps1', 'omniroute-desktop.ps1', 'omniroute-diagnose.ps1')) {
+    foreach ($d in @('omniroute-setup.ps1', 'omniroute-desktop.ps1', 'omniroute-diagnose.ps1', 'omniroute-test.ps1')) {
         Check -Name "Menue ruft $d auf" -Condition ($menu -match [regex]::Escape($d))
     }
 
