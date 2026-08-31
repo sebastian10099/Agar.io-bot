@@ -12,7 +12,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('1', '2', '3', '4', '5', '6')]
+    [ValidateSet('1', '2', '3', '4', '5', '6', '7')]
     [string]$Auswahl
 )
 
@@ -78,6 +78,9 @@ function Show-Menu {
     Write-Host "    [6]  Verbindung testen" -ForegroundColor White
     Write-Host "         Warum nimmt Codex die Verbindung nicht an? Das hier sagt es"
     Write-Host ""
+    Write-Host "    [7]  Speicherplatz anzeigen und aufraeumen" -ForegroundColor White
+    Write-Host "         OmniRoute belegt ueber 400 MB - hier steht, wo der Platz hin ist"
+    Write-Host ""
     Write-Host "    [0]  Beenden" -ForegroundColor DarkGray
     Write-Host ""
 }
@@ -103,6 +106,7 @@ function Invoke-Auswahl {
             return $LASTEXITCODE
         }
         '6' { return Invoke-Teil 'omniroute-test.ps1' }
+        '7' { return Invoke-Teil 'omniroute-speicher.ps1' @{ Aufraeumen = $true } }
         default { return 0 }
     }
 }
@@ -122,8 +126,8 @@ try {
         $wahl = $wahl.Trim()
 
         if ($wahl -eq '0' -or $wahl -eq '') { break }
-        if ($wahl -notin @('1', '2', '3', '4', '5', '6')) {
-            Write-Warn2 "Bitte eine Zahl von 0 bis 6 eingeben."
+        if ($wahl -notin @('1', '2', '3', '4', '5', '6', '7')) {
+            Write-Warn2 "Bitte eine Zahl von 0 bis 7 eingeben."
             continue
         }
 
