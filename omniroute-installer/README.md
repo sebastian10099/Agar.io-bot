@@ -6,76 +6,58 @@ Modelle selbst aus und schaltet bei aufgebrauchtem Kontingent auf einen anderen 
 
 ## Loslegen
 
-1. Diesen Ordner herunterladen
+1. Diesen Ordner herunterladen und entpacken – alle Dateien müssen zusammen bleiben
 2. Doppelklick auf **`OmniRoute-Setup.bat`**
 3. Beim Passwort einfach Enter drücken (dann wird eins erzeugt) oder ein eigenes eintippen
 4. Warten – der Rest läuft allein
 5. **Alle Terminals neu öffnen**, damit Claude Code und Codex die neue Konfiguration sehen
 
 Danach im Dashboard (`http://localhost:20128/dashboard`) unter **Providers** mindestens
-einen Anbieter hinzufügen. Ohne Provider hat OmniRoute nichts, wohin es routen kann.
+einen Anbieter hinzufügen. Ohne Provider hat OmniRoute nichts, wohin es routen kann – das
+ist der Punkt, an dem es sonst aussieht, als würde nichts funktionieren.
 
-## Was das Setup macht
+## Die Desktop-App startet schwarz
 
-| Schritt | Aktion |
-|---|---|
-| 1 | Prüft Node.js (nötig: `>=22.22.2 <23` oder `>=24 <27`), installiert es bei Bedarf per `winget` |
-| 2 | `npm install -g omniroute` |
-| 3 | `omniroute setup --non-interactive --password …` |
-| 4 | Startet den Server und wartet, bis Port 20128 antwortet |
-| 5 | `omniroute setup-claude` und `omniroute setup-codex` |
-| 6 | Legt eine Verknüpfung im Autostart an, damit der Server nach der Anmeldung läuft |
+**Dafür ist `OmniRoute-Desktop.bat` da.** Nicht die App direkt starten, sondern diese Datei.
 
-Schlägt Schritt 5 fehl, öffnet das Skript das Dashboard und sagt dir am Ende genau,
-was noch von Hand zu tun ist. Das Setup ist wiederholbar – ein zweiter Durchlauf
-überschreibt einfach den ersten.
+Der Grund: Die App ist nicht kaputt, sie startet nur zu früh. Sie lädt beim Start
+`http://localhost:20128`, bekommt keine Antwort, landet auf einer Fehlerseite – und die ist
+schwarz. In den Fehlerberichten des Projekts steht genau das als Konsolenfehler:
 
-## Die Dateien
-
-| Datei | Zweck |
-|---|---|
-| `OmniRoute-Setup.bat` | **Hier draufklicken.** Startet die Installation |
-| `omniroute-setup.ps1` | Die eigentliche Logik (PowerShell 5.1+) |
-| `OmniRoute-Start.bat` | Server später von Hand starten |
-| `OmniRoute-Entfernen.bat` | Autostart und gesetzte Umgebungsvariablen zurücknehmen |
-| `Exe-Bauen.bat` | Baut daraus eine echte `OmniRoute-Setup.exe` (siehe unten) |
-
-## Parameter
-
-Das PowerShell-Skript nimmt Argumente entgegen, die `OmniRoute-Setup.bat` durchreicht:
-
-```powershell
-.\omniroute-setup.ps1 -Password "geheim"   # Passwort nicht abfragen
-.\omniroute-setup.ps1 -NoAutostart         # keine Autostart-Verknüpfung
-.\omniroute-setup.ps1 -SkipNodeInstall     # Node nur prüfen, nicht installieren
-.\omniroute-setup.ps1 -Remove              # Änderungen zurücknehmen
-.\omniroute-setup.ps1 -Remove -Purge       # zusätzlich npm-Paket entfernen
+```
+Unsafe attempt to load URL http://localhost:20128/ from frame
+with URL chrome-error://chromewebdata/
 ```
 
-## Warum keine fertige `.exe` dabei liegt
+([#1253](https://github.com/diegosouzapw/OmniRoute/issues/1253),
+[#1270](https://github.com/diegosouzapw/OmniRoute/issues/1270) – beide geschlossen, betrafen 3.6.5)
 
-Eine unsignierte `.exe` aus dem Internet wird von Windows SmartScreen blockiert und ist
-für dich nicht nachprüfbar – du siehst nicht, was drinsteckt. `OmniRoute-Setup.bat` macht
-exakt dasselbe per Doppelklick, ist aber lesbar.
+`OmniRoute-Desktop.bat` dreht die Reihenfolge um: erst den Server starten, warten bis Port
+20128 wirklich antwortet, **dann** die App öffnen. Antwortet der Server nicht, wird die App
+gar nicht erst gestartet – stattdessen steht im Fenster, woran es liegt.
 
-Wenn du trotzdem eine `.exe` willst: **`Exe-Bauen.bat`** doppelklicken. Das installiert
-`ps2exe` und kompiliert das Skript **auf deinem Rechner** zu `OmniRoute-Setup.exe`.
+Es gibt drei Optionen im Menü:
 
-## Wenn etwas klemmt
+| | |
+|---|---|
+| **1** | Normal starten |
+| **2** | Mit `--disable-gpu` – falls das Fenster *trotz* laufendem Server schwarz bleibt (Grafiktreiber) |
+| **3** | Nur den Browser öffnen – dieselbe Oberfläche, ohne App |
 
-**Die Desktop-App zeigt nur ein schwarzes Fenster.**
-Bekanntes Problem der Electron-App
-([#1270](https://github.com/diegosouzapw/OmniRoute/issues/1270),
-[#1253](https://github.com/diegosouzapw/OmniRoute/issues/1253), beide geschlossen, betrafen 3.6.5).
-Die Konsole meldet dort
-`Unsafe attempt to load URL http://localhost:20128/ from frame with URL chrome-error://chromewebdata/` –
-das heißt: der lokale Server läuft nicht, das Fenster lädt ins Leere. Das schwarze Fenster ist
-das Symptom, nicht die Ursache.
+## Wenn es nicht läuft
 
-Deshalb setzt dieses Setup auf die CLI-Variante und nicht auf die Desktop-App: der Server läuft
-in einem sichtbaren Fenster und zeigt seine Fehlermeldungen an, statt sie zu verstecken.
+Doppelklick auf **`Diagnose.bat`**. Das schreibt `OmniRoute-Diagnose.txt` auf den Desktop
+und öffnet sie: Windows- und Node-Version, ob OmniRoute installiert ist, wer auf Port 20128
+lauscht, ob die Desktop-App gefunden wird, die Datenverzeichnisse, `omniroute doctor` und die
+letzten 60 Zeilen des Setup-Protokolls.
 
-Vorgehen zum Eingrenzen:
+Passwörter und API-Schlüssel stehen **nicht** darin – nur ob sie gesetzt sind. Die Datei
+kann also weitergegeben werden.
+
+Jeder Setup-Durchlauf protokolliert außerdem nach
+`%LOCALAPPDATA%\OmniRouteInstaller\logs`.
+
+Von Hand eingrenzen geht auch:
 
 ```powershell
 omniroute doctor                    # eingebauter Selbsttest
@@ -87,16 +69,72 @@ Läuft der Server und das Dashboard bleibt trotzdem leer, hilft laut Issue-Track
 Mittel das Löschen von `%USERPROFILE%\.omniroute\storage.sqlite` – **damit sind die
 Provider-Einstellungen weg.**
 
-**Der erste Aufruf des Dashboards dauert lange.**
-Normal. OmniRoute baut seine Oberfläche beim ersten Start, das kann ein paar Minuten dauern.
+Der allererste Aufruf des Dashboards dauert übrigens lange. OmniRoute baut seine Oberfläche
+beim ersten Start, das kann ein paar Minuten brauchen.
+
+## Die Dateien
+
+| Datei | Zweck |
+|---|---|
+| `OmniRoute-Setup.bat` | **Hier anfangen.** Installiert alles |
+| `OmniRoute-Desktop.bat` | Desktop-App in der richtigen Reihenfolge starten |
+| `Diagnose.bat` | Bericht erzeugen, wenn etwas klemmt |
+| `OmniRoute-Start.bat` | Server von Hand starten, mit sichtbarer Ausgabe |
+| `OmniRoute-Entfernen.bat` | Autostart und gesetzte Umgebungsvariablen zurücknehmen |
+| `Exe-Bauen.bat` | Baut daraus eine echte `OmniRoute-Setup.exe` |
+| `omniroute-common.ps1` | Gemeinsame Funktionen der Skripte |
+| `omniroute-setup.ps1` | Die Installationslogik |
+| `omniroute-desktop.ps1` | Die Startlogik der Desktop-App |
+| `omniroute-diagnose.ps1` | Die Diagnoselogik |
+| `tests/Run-Tests.ps1` | Syntaxprüfung und Logiktests |
+
+Die `.bat`-Dateien sind nur Starthilfen für die gleichnamigen `.ps1`-Dateien. Sie müssen
+deshalb im selben Ordner liegen.
+
+## Was das Setup macht
+
+| Schritt | Aktion |
+|---|---|
+| 1 | Prüft Node.js (nötig: `>=22.22.2 <23` oder `>=24 <27`), installiert es bei Bedarf per `winget` |
+| 2 | `npm install -g omniroute` |
+| 3 | `omniroute setup --non-interactive --password …` |
+| 4 | Startet den Server und wartet, bis Port 20128 antwortet |
+| 5 | `omniroute setup-claude` und `omniroute setup-codex` |
+| 6 | Legt eine Verknüpfung im Autostart an |
+
+Schlägt Schritt 5 fehl, bricht nichts ab: das Setup läuft zu Ende, öffnet das Dashboard und
+sagt am Schluss genau, was noch von Hand fehlt. Ein zweiter Durchlauf überschreibt einfach
+den ersten.
+
+## Parameter
+
+```powershell
+.\omniroute-setup.ps1 -Password "geheim"   # Passwort nicht abfragen
+.\omniroute-setup.ps1 -NoAutostart         # keine Autostart-Verknüpfung
+.\omniroute-setup.ps1 -SkipNodeInstall     # Node nur prüfen, nicht installieren
+.\omniroute-setup.ps1 -Remove              # Änderungen zurücknehmen
+.\omniroute-setup.ps1 -Remove -Purge       # zusätzlich npm-Paket entfernen
+
+.\omniroute-desktop.ps1 -DisableGpu        # App ohne GPU-Beschleunigung
+.\omniroute-desktop.ps1 -BrowserOnly       # nur Dashboard im Browser
+```
+
+## Warum keine fertige `.exe` dabei liegt
+
+Eine unsignierte `.exe` aus dem Internet wird von Windows SmartScreen blockiert und ist für
+dich nicht nachprüfbar – du siehst nicht, was drinsteckt. `OmniRoute-Setup.bat` macht exakt
+dasselbe per Doppelklick, ist aber lesbar.
+
+Wenn du trotzdem eine `.exe` willst: **`Exe-Bauen.bat`** doppelklicken. Das installiert
+`ps2exe` und kompiliert das Skript **auf deinem Rechner**.
 
 ## Bitte vorher wissen
 
 - OmniRoute leitet deine Prompts und deinen Code an fremde Anbieter weiter. Kostenlose
-  Tarife protokollieren häufig mit. Für private oder geschäftliche Projekte lohnt ein
-  Blick in die Bedingungen des jeweiligen Anbieters.
+  Tarife protokollieren häufig mit. Für private oder geschäftliche Projekte lohnt ein Blick
+  in die Bedingungen des jeweiligen Anbieters.
 - Der Server lauscht auf `localhost:20128`, ist also nur lokal erreichbar.
 - Wird ein Zufallspasswort erzeugt, landet es im Klartext in
   `%APPDATA%\omniroute\dashboard-passwort.txt`. Notieren und die Datei danach gern löschen.
-- OmniRoute ist ein Drittprojekt (MIT-Lizenz) und gehört nicht zu diesem Repository.
-  Dieser Ordner enthält nur das Setup-Skript.
+- OmniRoute ist ein Drittprojekt (MIT-Lizenz) und gehört nicht zu diesem Repository. Dieser
+  Ordner enthält nur die Setup-Skripte.

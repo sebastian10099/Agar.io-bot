@@ -12,6 +12,10 @@
       5. Claude Code und Codex automatisch auf OmniRoute umbiegen
       6. Optional: Autostart bei der Windows-Anmeldung einrichten
 
+    Jeder Durchlauf schreibt ein Protokoll nach
+    %LOCALAPPDATA%\OmniRouteInstaller\logs. Bei Problemen ist das die Datei,
+    die weiterhilft.
+
 .PARAMETER Password
     Dashboard-Passwort. Ohne Angabe wird danach gefragt; leer lassen erzeugt ein Zufallspasswort.
 
@@ -46,19 +50,30 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$script:Port         = 20128
-$script:BaseUrl      = "http://localhost:$($script:Port)/v1"
-$script:HealthUrl    = "http://127.0.0.1:$($script:Port)/"
-$script:DashboardUrl = "http://localhost:$($script:Port)/dashboard"
-$script:Failures     = @()
+. (Join-Path $PSScriptRoot 'omniroute-common.ps1')
 
-# ---------------------------------------------------------------- Ausgabe ----
+$script:Failures = @()
+$script:LogFile  = $null
 
-function Write-Step  { param($m) Write-Host ""; Write-Host "==> $m" -ForegroundColor Cyan }
-function Write-Ok    { param($m) Write-Host "    [ok] $m" -ForegroundColor Green }
-function Write-Info  { param($m) Write-Host "    $m" -ForegroundColor Gray }
-function Write-Warn2 { param($m) Write-Host "    [!]  $m" -ForegroundColor Yellow }
-function Write-Err2  { param($m) Write-Host "    [x]  $m" -ForegroundColor Red }
+# ------------------------------------------------------------- Protokoll ----
+
+function Start-Log {
+    try {
+        if (-not (Test-Path $script:LogDir)) {
+            New-Item -ItemType Directory -Path $script:LogDir -Force | Out-Null
+        }
+        $script:LogFile = Join-Path $script:LogDir ("setup-{0:yyyy-MM-dd_HH-mm-ss}.log" -f (Get-Date))
+        Start-Transcript -Path $script:LogFile -Force | Out-Null
+    } catch {
+        $script:LogFile = $null   # Ohne Protokoll weitermachen ist besser als abzubrechen
+    }
+}
+
+function Stop-Log {
+    if ($script:LogFile) {
+        try { Stop-Transcript | Out-Null } catch { }
+    }
+}
 
 function Add-Failure {
     param($Titel, $Hinweis)
@@ -72,74 +87,7 @@ function Show-Banner {
     Write-Host "  -------------------------------------------------" -ForegroundColor DarkGray
 }
 
-# ------------------------------------------------------------- Hilfsmittel ----
-
-function Update-PathFromRegistry {
-    $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-    $user    = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $env:Path = (@($machine, $user) | Where-Object { $_ }) -join ';'
-}
-
-function Get-CommandPath {
-    param([string]$Name)
-    $c = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($c) { return $c.Source }
-    return $null
-}
-
-function Get-NpmPath {
-    $npm = Get-CommandPath 'npm.cmd'
-    if (-not $npm) { $npm = Get-CommandPath 'npm' }
-    return $npm
-}
-
-function Invoke-External {
-    # Fuehrt ein externes Programm aus und liefert Exitcode samt Ausgabe zurueck.
-    param(
-        [Parameter(Mandatory)][string]$File,
-        [string[]]$Arguments = @(),
-        [switch]$Quiet
-    )
-    # npm und winget schreiben Fortschritt und Warnungen auf stderr. Mit
-    # ErrorActionPreference 'Stop' wuerde das eine Ausnahme ausloesen, statt
-    # uns den Exitcode auswerten zu lassen. Die Zuweisung gilt nur in dieser
-    # Funktion, der Rest des Skripts bleibt streng.
-    $ErrorActionPreference = 'Continue'
-
-    $out = & $File @Arguments 2>&1
-    $code = $LASTEXITCODE
-    if (-not $Quiet) { $out | ForEach-Object { Write-Info $_ } }
-    return [pscustomobject]@{ ExitCode = $code; Output = ($out -join [Environment]::NewLine) }
-}
-
-function New-RandomPassword {
-    param([int]$Length = 20)
-    $alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#%^*_-'
-    $bytes = New-Object byte[] $Length
-    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
-    -join ($bytes | ForEach-Object { $alphabet[$_ % $alphabet.Length] })
-}
-
 # ------------------------------------------------------------------ Node ----
-
-function Get-NodeVersion {
-    if (-not (Get-CommandPath 'node')) { return $null }
-    $raw = (& node -v) 2>$null
-    if ($raw -match 'v(\d+)\.(\d+)\.(\d+)') {
-        return [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
-    }
-    return $null
-}
-
-function Test-NodeSupported {
-    # OmniRoute engines: >=22.22.2 <23 || >=24.0.0 <27
-    param([version]$Version)
-    if (-not $Version) { return $false }
-    if ($Version.Major -eq 22) { return $Version -ge [version]'22.22.2' }
-    if ($Version.Major -ge 24 -and $Version.Major -lt 27) { return $true }
-    return $false
-}
 
 function Install-Node {
     if (-not (Get-CommandPath 'winget')) {
@@ -195,8 +143,7 @@ function Install-OmniRoute {
     }
     Update-PathFromRegistry
 
-    $omni = Get-CommandPath 'omniroute.cmd'
-    if (-not $omni) { $omni = Get-CommandPath 'omniroute' }
+    $omni = Get-OmniRoutePath
     if (-not $omni) {
         # npm-Prefix direkt nachschlagen, falls der PATH noch nicht aktualisiert ist
         $p = Invoke-External -File $npm -Arguments @('prefix', '-g') -Quiet
@@ -250,40 +197,6 @@ function Initialize-OmniRoute {
         Write-Host "    Gespeichert in: $file" -ForegroundColor Yellow
         Write-Host "    Bitte notieren - die Datei liegt im Klartext auf der Platte." -ForegroundColor Yellow
     }
-}
-
-function Test-OmniRouteReachable {
-    try {
-        $null = Invoke-WebRequest -Uri $script:HealthUrl -UseBasicParsing -TimeoutSec 5
-        return $true
-    } catch {
-        # Auch 401/403/404 heissen: es lauscht etwas. Nur Verbindungsfehler zaehlen als "nicht da".
-        if ($_.Exception.Response) { return $true }
-        return $false
-    }
-}
-
-function Start-OmniRouteServer {
-    param([string]$Omni)
-    Write-Step "Schritt 4/6 - Server starten"
-
-    if (Test-OmniRouteReachable) {
-        Write-Ok "OmniRoute laeuft bereits auf Port $($script:Port)."
-        return
-    }
-
-    Start-Process -FilePath $Omni -WindowStyle Minimized | Out-Null
-    Write-Info "Warte darauf, dass der Server auf Port $($script:Port) antwortet..."
-
-    $deadline = (Get-Date).AddSeconds(120)
-    while ((Get-Date) -lt $deadline) {
-        if (Test-OmniRouteReachable) {
-            Write-Ok "Server ist erreichbar: $($script:DashboardUrl)"
-            return
-        }
-        Start-Sleep -Seconds 2
-    }
-    throw "Der Server hat nach 120 Sekunden nicht geantwortet. Bitte 'omniroute' einmal manuell in einem Terminal starten und die Meldungen pruefen."
 }
 
 # ------------------------------------------------------- Clients verbinden ----
@@ -414,6 +327,9 @@ function Show-Summary {
     Write-Host "  und schaltet bei aufgebrauchtem Kontingent selbst auf einen"
     Write-Host "  anderen Anbieter um."
     Write-Host ""
+    Write-Host "  Die Desktop-App startest du am besten mit OmniRoute-Desktop.bat -"
+    Write-Host "  die sorgt dafuer, dass der Server vorher laeuft."
+    Write-Host ""
     Write-Host "  Wichtig: neue Terminalfenster oeffnen, damit die Aenderungen greifen."
     Write-Host ""
 }
@@ -421,8 +337,11 @@ function Show-Summary {
 # ------------------------------------------------------------------ Main ----
 
 try {
+    Start-Log
+
     if ($Remove) {
         Invoke-Removal
+        Stop-Log
         exit 0
     }
 
@@ -430,10 +349,18 @@ try {
     Confirm-Node
     $omni = Install-OmniRoute
     Initialize-OmniRoute -Omni $omni
-    Start-OmniRouteServer -Omni $omni
+
+    Write-Step "Schritt 4/6 - Server starten"
+    if (-not (Start-OmniRouteServer -Omni $omni)) {
+        throw "Der Server hat nicht geantwortet. Bitte 'omniroute' einmal manuell in einem Terminal starten (oder OmniRoute-Start.bat) und die Meldungen lesen."
+    }
+
     Connect-Clients -Omni $omni
     Set-Autostart -Omni $omni
     Show-Summary
+
+    if ($script:LogFile) { Write-Host "  Protokoll: $($script:LogFile)" -ForegroundColor DarkGray; Write-Host "" }
+    Stop-Log
     exit 0
 }
 catch {
@@ -443,6 +370,12 @@ catch {
     Write-Host "  Setup abgebrochen. Es bleibt nichts halbfertig zurueck, das ein"
     Write-Host "  erneuter Durchlauf nicht ueberschreiben wuerde - du kannst dieses"
     Write-Host "  Skript einfach nochmal ausfuehren."
+    if ($script:LogFile) {
+        Write-Host ""
+        Write-Host "  Protokoll fuer die Fehlersuche: $($script:LogFile)" -ForegroundColor Yellow
+    }
+    Write-Host "  Fuer einen vollstaendigen Bericht: Diagnose.bat ausfuehren." -ForegroundColor Yellow
     Write-Host ""
+    Stop-Log
     exit 1
 }

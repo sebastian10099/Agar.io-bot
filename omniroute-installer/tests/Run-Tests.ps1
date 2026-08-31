@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Prueft omniroute-setup.ps1 auf Syntaxfehler und testet die reine Logik.
+    Prueft die Skripte im Ordner auf Syntaxfehler und testet die reine Logik.
 
 .DESCRIPTION
     Laeuft auf Windows PowerShell 5.1 und PowerShell 7 (auch unter Linux/macOS).
-    Es wird nichts installiert und nichts am System veraendert - aus dem Setup
+    Es wird nichts installiert und nichts am System veraendert - aus den Skripten
     werden nur die Funktionsdefinitionen geladen, der Hauptteil bleibt aussen vor.
 
 .EXAMPLE
@@ -15,11 +15,13 @@ param()
 
 $ErrorActionPreference = 'Stop'
 
-$script:Path = Join-Path (Split-Path $PSScriptRoot -Parent) 'omniroute-setup.ps1'
-if (-not (Test-Path $script:Path)) {
-    Write-Host "omniroute-setup.ps1 nicht gefunden unter $($script:Path)" -ForegroundColor Red
-    exit 1
-}
+$script:Root = Split-Path $PSScriptRoot -Parent
+$script:Skripte = @(
+    'omniroute-common.ps1',
+    'omniroute-setup.ps1',
+    'omniroute-desktop.ps1',
+    'omniroute-diagnose.ps1'
+)
 
 $script:Fails = 0
 function Check {
@@ -32,38 +34,70 @@ function Check {
     }
 }
 
+function Get-Ast {
+    param([string]$Pfad)
+    $tokens = $null; $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Pfad, [ref]$tokens, [ref]$errors)
+    return [pscustomobject]@{ Ast = $ast; Errors = $errors }
+}
+
 # ------------------------------------------------------------ Syntaxpruefung ----
 
 Write-Host "`nSyntaxpruefung" -ForegroundColor Cyan
-$tokens = $null; $errors = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile($script:Path, [ref]$tokens, [ref]$errors)
-
-if ($errors -and $errors.Count -gt 0) {
-    Write-Host "  FAIL  $($errors.Count) Parse-Fehler" -ForegroundColor Red
-    foreach ($e in $errors) {
-        Write-Host ("        Zeile {0}, Spalte {1}: {2}" -f $e.Extent.StartLineNumber, $e.Extent.StartColumnNumber, $e.Message) -ForegroundColor Red
+$alleAsts = @{}
+foreach ($name in $script:Skripte) {
+    $pfad = Join-Path $script:Root $name
+    if (-not (Test-Path $pfad)) {
+        Check -Name "$name vorhanden" -Condition $false
+        continue
     }
+    $res = Get-Ast $pfad
+    if ($res.Errors -and $res.Errors.Count -gt 0) {
+        Check -Name "$name ohne Syntaxfehler" -Condition $false -Detail "($($res.Errors.Count) Fehler)"
+        foreach ($e in $res.Errors) {
+            Write-Host ("        Zeile {0}, Spalte {1}: {2}" -f $e.Extent.StartLineNumber, $e.Extent.StartColumnNumber, $e.Message) -ForegroundColor Red
+        }
+        continue
+    }
+    Check -Name "$name ohne Syntaxfehler" -Condition $true
+    $alleAsts[$name] = $res.Ast
+}
+
+if ($script:Fails -gt 0) {
+    Write-Host "`nSyntaxfehler - weitere Tests werden uebersprungen." -ForegroundColor Red
     exit 1
 }
-Check -Name "keine Syntaxfehler" -Condition $true
 
-$funcs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)
-$defined = $funcs | ForEach-Object { $_.Name }
-
-# Alle aufgerufenen Kommandos muessen entweder im Skript definiert oder verfuegbar sein.
-$unknown = @()
-$calls = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) |
-    ForEach-Object { $_.GetCommandName() } | Where-Object { $_ } | Sort-Object -Unique
-foreach ($c in $calls) {
-    if ($defined -contains $c) { continue }
-    if (Get-Command $c -ErrorAction SilentlyContinue) { continue }
-    $unknown += $c
+# Funktionen aus allen Skripten einsammeln
+$definiert = @()
+foreach ($ast in $alleAsts.Values) {
+    $definiert += $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true) |
+        ForEach-Object { $_.Name }
 }
-Check -Name "alle aufgerufenen Kommandos aufloesbar" -Condition ($unknown.Count -eq 0) -Detail "($($unknown -join ', '))"
+$definiert = $definiert | Sort-Object -Unique
 
-# Nur die Funktionen laden, den Hauptteil des Setups nicht ausfuehren.
-. ([scriptblock]::Create((($funcs | ForEach-Object { $_.Extent.Text }) -join "`n")))
-$script:Port = 20128
+# Jedes aufgerufene Kommando muss definiert oder verfuegbar sein.
+# Windows-eigene Cmdlets fehlen unter Linux/macOS. Die Skripte fangen das
+# jeweils ab (try/catch mit Ersatzweg), also sind sie hier erlaubt.
+$nurWindows = @('Get-NetTCPConnection', 'Get-CimInstance')
+
+Write-Host "`nAufloesbarkeit der Aufrufe" -ForegroundColor Cyan
+foreach ($name in $alleAsts.Keys) {
+    $unbekannt = @()
+    $calls = $alleAsts[$name].FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) |
+        ForEach-Object { $_.GetCommandName() } | Where-Object { $_ } | Sort-Object -Unique
+    foreach ($c in $calls) {
+        if ($definiert -contains $c) { continue }
+        if ($nurWindows -contains $c) { continue }
+        if (Get-Command $c -ErrorAction SilentlyContinue) { continue }
+        $unbekannt += $c
+    }
+    Check -Name "$name - alle Aufrufe aufloesbar" -Condition ($unbekannt.Count -eq 0) -Detail "($($unbekannt -join ', '))"
+}
+
+# omniroute-common.ps1 ganz einbinden: die Datei enthaelt nur Definitionen und
+# Konstanten, kein Hauptprogramm. So wird geprueft, was die Skripte wirklich laden.
+. (Join-Path $script:Root 'omniroute-common.ps1')
 
 # ------------------------------------------------------- Test-NodeSupported ----
 
@@ -100,14 +134,15 @@ Check -Name "Laenge parametrierbar" -Condition ((New-RandomPassword -Length 40).
 # ---------------------------------------------------------- Get-CommandPath ----
 
 Write-Host "`nGet-CommandPath" -ForegroundColor Cyan
-$vorhanden = if ($IsWindows -or $PSVersionTable.PSVersion.Major -le 5) { 'cmd' } else { 'bash' }
+$istWindows = $IsWindows -or $PSVersionTable.PSVersion.Major -le 5
+$vorhanden = if ($istWindows) { 'cmd' } else { 'bash' }
 Check -Name "findet vorhandenen Befehl ($vorhanden)" -Condition ($null -ne (Get-CommandPath $vorhanden))
 Check -Name "liefert null bei unbekanntem Befehl" -Condition ($null -eq (Get-CommandPath 'gibtesnichtxyz123'))
 
 # ----------------------------------------------------------- Invoke-External ----
 
 Write-Host "`nInvoke-External" -ForegroundColor Cyan
-if ($IsWindows -or $PSVersionTable.PSVersion.Major -le 5) {
+if ($istWindows) {
     $shell = 'cmd.exe'
     $argsFehler = @('/c', 'echo hallo& echo problem 1>&2& exit /b 3')
     $argsOk     = @('/c', 'exit /b 0')
@@ -133,14 +168,45 @@ if (-not $threw) {
 Check -Name "Exitcode 0 bei Erfolg" -Condition ((Invoke-External -File $shell -Arguments $argsOk -Quiet).ExitCode -eq 0)
 Check -Name "ErrorActionPreference des Aufrufers bleibt Stop" -Condition ($ErrorActionPreference -eq 'Stop') -Detail "(ist $ErrorActionPreference)"
 
-# ---------------------------------------------------------------- Add-Failure ----
+# ------------------------------------------------- Find-OmniRouteDesktopApp ----
 
-Write-Host "`nAdd-Failure" -ForegroundColor Cyan
-$script:Failures = @()
-Add-Failure -Titel 'Claude Code' -Hinweis 'Hinweistext'
-Add-Failure -Titel 'Codex CLI'   -Hinweis 'Anderer Text'
-Check -Name "sammelt beide Eintraege" -Condition ($script:Failures.Count -eq 2) -Detail "(bekam $($script:Failures.Count))"
-Check -Name "Titel bleibt erhalten" -Condition ($script:Failures[0].Titel -eq 'Claude Code')
+# Regression: Join-Path wirft bei leerer Basis. ProgramFiles(x86) fehlt auf
+# 32-Bit- und ARM-Systemen, alle Basen fehlen ausserhalb von Windows.
+Write-Host "`nFind-OmniRouteDesktopApp" -ForegroundColor Cyan
+$threw = $false
+$app = $null
+try { $app = Find-OmniRouteDesktopApp }
+catch { $threw = $true; Write-Host "        Ausnahme: $($_.Exception.Message)" -ForegroundColor DarkRed }
+Check -Name "wirft nicht bei fehlenden Umgebungsvariablen" -Condition (-not $threw)
+if (-not $threw -and -not $istWindows) {
+    Check -Name "liefert null, wenn nichts installiert ist" -Condition ($null -eq $app) -Detail "(bekam $app)"
+}
+
+# --------------------------------------------------------- Get-PortListener ----
+
+Write-Host "`nGet-PortListener" -ForegroundColor Cyan
+$threw = $false
+$pids = $null
+try { $pids = Get-PortListener }
+catch { $threw = $true; Write-Host "        Ausnahme: $($_.Exception.Message)" -ForegroundColor DarkRed }
+Check -Name "wirft nicht, auch ohne Get-NetTCPConnection" -Condition (-not $threw)
+Check -Name "liefert eine Sammlung" -Condition ($pids -is [array] -or $null -eq $pids)
+
+# ----------------------------------------------------------- Test-Reachable ----
+
+Write-Host "`nTest-OmniRouteReachable" -ForegroundColor Cyan
+$threw = $false
+$erreichbar = $null
+try { $erreichbar = Test-OmniRouteReachable }
+catch { $threw = $true; Write-Host "        Ausnahme: $($_.Exception.Message)" -ForegroundColor DarkRed }
+Check -Name "wirft nicht, wenn nichts lauscht" -Condition (-not $threw)
+Check -Name "liefert einen Wahrheitswert" -Condition ($erreichbar -is [bool])
+
+# ------------------------------------------------------------------ LogDir ----
+
+Write-Host "`nKonstanten" -ForegroundColor Cyan
+Check -Name "Port ist 20128" -Condition ($script:Port -eq 20128)
+Check -Name "LogDir ist gesetzt" -Condition (-not [string]::IsNullOrWhiteSpace($script:LogDir)) -Detail "($($script:LogDir))"
 
 # -------------------------------------------------------------------- Fazit ----
 
