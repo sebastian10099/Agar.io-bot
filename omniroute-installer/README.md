@@ -61,6 +61,35 @@ exakt dasselbe per Doppelklick, ist aber lesbar.
 Wenn du trotzdem eine `.exe` willst: **`Exe-Bauen.bat`** doppelklicken. Das installiert
 `ps2exe` und kompiliert das Skript **auf deinem Rechner** zu `OmniRoute-Setup.exe`.
 
+## Wenn etwas klemmt
+
+**Die Desktop-App zeigt nur ein schwarzes Fenster.**
+Bekanntes Problem der Electron-App
+([#1270](https://github.com/diegosouzapw/OmniRoute/issues/1270),
+[#1253](https://github.com/diegosouzapw/OmniRoute/issues/1253), beide geschlossen, betrafen 3.6.5).
+Die Konsole meldet dort
+`Unsafe attempt to load URL http://localhost:20128/ from frame with URL chrome-error://chromewebdata/` –
+das heißt: der lokale Server läuft nicht, das Fenster lädt ins Leere. Das schwarze Fenster ist
+das Symptom, nicht die Ursache.
+
+Deshalb setzt dieses Setup auf die CLI-Variante und nicht auf die Desktop-App: der Server läuft
+in einem sichtbaren Fenster und zeigt seine Fehlermeldungen an, statt sie zu verstecken.
+
+Vorgehen zum Eingrenzen:
+
+```powershell
+omniroute doctor                    # eingebauter Selbsttest
+omniroute                           # Server starten und Ausgabe lesen
+netstat -ano | findstr :20128       # lauscht überhaupt etwas auf dem Port?
+```
+
+Läuft der Server und das Dashboard bleibt trotzdem leer, hilft laut Issue-Tracker als letztes
+Mittel das Löschen von `%USERPROFILE%\.omniroute\storage.sqlite` – **damit sind die
+Provider-Einstellungen weg.**
+
+**Der erste Aufruf des Dashboards dauert lange.**
+Normal. OmniRoute baut seine Oberfläche beim ersten Start, das kann ein paar Minuten dauern.
+
 ## Bitte vorher wissen
 
 - OmniRoute leitet deine Prompts und deinen Code an fremde Anbieter weiter. Kostenlose
