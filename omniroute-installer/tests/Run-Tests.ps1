@@ -82,7 +82,7 @@ $definiert = $definiert | Sort-Object -Unique
 # Jedes aufgerufene Kommando muss definiert oder verfuegbar sein.
 # Windows-eigene Cmdlets fehlen unter Linux/macOS. Die Skripte fangen das
 # jeweils ab (try/catch mit Ersatzweg), also sind sie hier erlaubt.
-$nurWindows = @('Get-NetTCPConnection', 'Get-CimInstance')
+$nurWindows = @('Get-NetTCPConnection', 'Get-CimInstance', 'Clear-RecycleBin')
 
 Write-Host "`nAufloesbarkeit der Aufrufe" -ForegroundColor Cyan
 foreach ($name in $alleAsts.Keys) {
