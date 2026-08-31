@@ -2,6 +2,22 @@
 setlocal
 title OmniRoute-Setup.exe bauen
 
+rem Ohne die zugehoerige .ps1 daneben kann diese Datei nichts tun.
+if not exist "%~dp0omniroute-setup.ps1" (
+    echo.
+    echo   FEHLER: Die Datei omniroute-setup.ps1 fehlt in diesem Ordner.
+    echo.
+    echo   Diese .bat ist nur eine Starthilfe - sie braucht die
+    echo   gleichnamige .ps1 direkt daneben. Es reicht nicht,
+    echo   nur die .bat herunterzuladen.
+    echo.
+    echo   Einfachste Loesung: OmniRoute.bat verwenden.
+    echo   Da stecken alle Skripte in einer einzigen Datei.
+    echo.
+    pause
+    exit /b 1
+)
+
 echo Baut OmniRoute-Setup.exe aus omniroute-setup.ps1 mit ps2exe.
 echo Die EXE entsteht dabei auf deinem eigenen Rechner - so laedst du
 echo keine fremde, unsignierte Datei aus dem Internet herunter.

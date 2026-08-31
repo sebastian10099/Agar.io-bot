@@ -2,6 +2,22 @@
 setlocal
 title OmniRoute Desktop starten
 
+rem Ohne die zugehoerige .ps1 daneben kann diese Datei nichts tun.
+if not exist "%~dp0omniroute-desktop.ps1" (
+    echo.
+    echo   FEHLER: Die Datei omniroute-desktop.ps1 fehlt in diesem Ordner.
+    echo.
+    echo   Diese .bat ist nur eine Starthilfe - sie braucht die
+    echo   gleichnamige .ps1 direkt daneben. Es reicht nicht,
+    echo   nur die .bat herunterzuladen.
+    echo.
+    echo   Einfachste Loesung: OmniRoute.bat verwenden.
+    echo   Da stecken alle Skripte in einer einzigen Datei.
+    echo.
+    pause
+    exit /b 1
+)
+
 echo.
 echo   OmniRoute Desktop starten
 echo   -------------------------------------------------

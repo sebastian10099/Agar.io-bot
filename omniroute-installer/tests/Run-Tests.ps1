@@ -18,6 +18,7 @@ $ErrorActionPreference = 'Stop'
 $script:Root = Split-Path $PSScriptRoot -Parent
 $script:Skripte = @(
     'omniroute-common.ps1',
+    'omniroute-menu.ps1',
     'omniroute-setup.ps1',
     'omniroute-desktop.ps1',
     'omniroute-diagnose.ps1'
