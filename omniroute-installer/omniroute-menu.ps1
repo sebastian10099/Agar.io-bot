@@ -12,7 +12,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('1', '2', '3', '4', '5', '6', '7')]
+    [ValidateSet('1', '2', '3', '4', '5', '6', '7', '8')]
     [string]$Auswahl
 )
 
@@ -65,6 +65,9 @@ function Show-Menu {
     Write-Host "    [1]  Installieren / reparieren" -ForegroundColor White
     Write-Host "         Node.js, OmniRoute, Claude Code und Codex einrichten"
     Write-Host ""
+    Write-Host "    [8]  Anbieter einrichten  <<< ohne das laeuft nichts" -ForegroundColor Yellow
+    Write-Host "         OmniRoute hat keine eigene KI. Erst ein Anbieter macht es nutzbar."
+    Write-Host ""
     Write-Host "    [2]  Desktop-App starten" -ForegroundColor White
     Write-Host "         Erst den Server, dann die App - gegen das schwarze Fenster"
     Write-Host ""
@@ -107,6 +110,7 @@ function Invoke-Auswahl {
         }
         '6' { return Invoke-Teil 'omniroute-test.ps1' }
         '7' { return Invoke-Teil 'omniroute-speicher.ps1' @{ Aufraeumen = $true } }
+        '8' { return Invoke-Teil 'omniroute-anbieter.ps1' }
         default { return 0 }
     }
 }
@@ -126,8 +130,8 @@ try {
         $wahl = $wahl.Trim()
 
         if ($wahl -eq '0' -or $wahl -eq '') { break }
-        if ($wahl -notin @('1', '2', '3', '4', '5', '6', '7')) {
-            Write-Warn2 "Bitte eine Zahl von 0 bis 7 eingeben."
+        if ($wahl -notin @('1', '2', '3', '4', '5', '6', '7', '8')) {
+            Write-Warn2 "Bitte eine Zahl von 0 bis 8 eingeben."
             continue
         }
 
