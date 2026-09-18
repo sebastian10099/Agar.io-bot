@@ -28,3 +28,15 @@ https://www.youtube.com/watch?v=x2-DFRnEFBU - Android Tutorial.
 * Press 'D' to toggle the dark mode.
 * Press 'F' to toggle the show mass option.
 * Press 'ESC' for the option menu.
+
+#Agenten
+
+Der Ordner `agents/` enthaelt eine Kette von LLM-Agenten (ueber OpenRouter),
+die das Projekt eigenstaendig weiterentwickeln kann:
+Scout -> Critic -> Implementer <-> Reviewer -> Curator.
+
+    export OPENROUTER_API_KEY=sk-or-...
+    node agents/run.js
+
+Standardmaessig ist das ein Probelauf, der nichts aendert. Details, Grenzen und
+Einrichtung als Hintergrundjob: [agents/README.md](agents/README.md).

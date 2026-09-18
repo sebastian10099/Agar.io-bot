@@ -1,0 +1,20 @@
+{
+  "models": {
+    "scout": null,
+    "critic": null,
+    "implementer": null,
+    "reviewer": null,
+    "curator": null
+  },
+  "editablePaths": [
+    "bot.user.js",
+    "beta.user.js",
+    "launcher.user.js",
+    "README.md"
+  ],
+  "limits": {
+    "budgetUsd": 1.0,
+    "maxReviewRounds": 2,
+    "maxStepsPerAgent": 14
+  }
+}

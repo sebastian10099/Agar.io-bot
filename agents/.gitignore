@@ -1,0 +1,4 @@
+# Laufprotokolle und Probelauf-Patches sind lokal, nicht Teil des Repos.
+logs/
+out/
+STOP
