@@ -103,7 +103,7 @@ final class AppController: ObservableObject {
 
     private func observeSystem() {
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.handleWake() }
+            Task { @MainActor [weak self] in self?.handleWake() }
         }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.shutdown() }
@@ -185,7 +185,7 @@ final class AppController: ObservableObject {
         let stream = stream
         tasks.append(Task.detached { [weak self] in
             await stream.run(onEvent: { continuation.yield($0) }, onStatus: { text in
-                Task { @MainActor in self?.status.stream = text }
+                Task { @MainActor [weak self] in self?.status.stream = text }
             })
             continuation.finish()
         })
@@ -535,7 +535,7 @@ final class AppController: ObservableObject {
         saveTask?.cancel()
         stateStore.saveAsync(bot.stored) { [weak self] error in
             guard let error else { return }
-            Task { @MainActor in self?.status.notice = "Speichern fehlgeschlagen: \(error.localizedDescription)" }
+            Task { @MainActor [weak self] in self?.status.notice = "Speichern fehlgeschlagen: \(error.localizedDescription)" }
         }
     }
 
@@ -833,7 +833,7 @@ final class AppController: ObservableObject {
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             do { try write(url) } catch {
-                Task { @MainActor in self?.status.notice = "Export fehlgeschlagen: \(error.localizedDescription)" }
+                Task { @MainActor [weak self] in self?.status.notice = "Export fehlgeschlagen: \(error.localizedDescription)" }
             }
         }
     }
