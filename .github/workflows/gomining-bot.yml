@@ -50,10 +50,11 @@ jobs:
         run: |
           export GOMINING_DATA_DIR="$RUNNER_TEMP/gomining-data"
           export GOMINING_SMOKE_OUT="$PWD/smoke-report.txt"
-          rm -f "$GOMINING_SMOKE_OUT"
+          export GOMINING_SMOKE_SHOTS="$PWD/smoke-shots"
+          rm -rf "$GOMINING_SMOKE_OUT" "$GOMINING_SMOKE_SHOTS"
           "dist/GoMining Bot.app/Contents/MacOS/GoMiningBot" > "$RUNNER_TEMP/app.log" 2>&1 &
           APP_PID=$!
-          for i in $(seq 1 60); do
+          for i in $(seq 1 240); do
             [ -f "$GOMINING_SMOKE_OUT" ] && break
             kill -0 $APP_PID 2>/dev/null || break
             sleep 1
@@ -64,6 +65,15 @@ jobs:
           tail -n 30 "$RUNNER_TEMP/app.log" || true
           kill $APP_PID 2>/dev/null || true
           [ -f "$GOMINING_SMOKE_OUT" ]
+
+      - name: Bilder der Oberfläche hochladen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoMining-Bot-Bilder
+          path: GoMiningBot/smoke-shots
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: ZIP hochladen
         uses: actions/upload-artifact@v4

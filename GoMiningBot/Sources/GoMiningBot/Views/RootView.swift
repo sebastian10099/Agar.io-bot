@@ -44,7 +44,7 @@ struct RootView: View {
             ToolbarItem(placement: .principal) {
                 Picker("Ansicht", selection: $tab) {
                     ForEach(AppTab.allCases) { t in
-                        Label(t.rawValue, systemImage: t.icon).tag(t)
+                        Text(t.rawValue).tag(t)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -60,6 +60,9 @@ struct RootView: View {
             }
         }
         .task { controller.start() }
+        .onChange(of: controller.forcedTab) { _, newValue in
+            if let newValue, let forced = AppTab(rawValue: newValue) { tab = forced }
+        }
     }
 
     @ViewBuilder

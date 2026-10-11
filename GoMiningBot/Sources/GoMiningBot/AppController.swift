@@ -22,6 +22,8 @@ final class AppController: ObservableObject {
     let backtest = BacktestStore()
     let prefs = Preferences()
     let paths: AppPaths
+    /// Nur fuer den Rauchtest: erzwingt eine Seite der Oberflaeche.
+    @Published var forcedTab: String?
 
     private let stateStore: StateStore
     private let journal: MarketJournal
@@ -103,17 +105,66 @@ final class AppController: ObservableObject {
         scheduleSmokeReportIfRequested()
     }
 
-    /// Rauchtest fuer die CI: Mit `GOMINING_SMOKE_OUT=<Datei>` schreibt die App nach 25 s einen Bericht
-    /// (Verbindung, Livestream, Marktdaten, Fehler) und beendet sich.
+    /// Rauchtest fuer die CI: Mit `GOMINING_SMOKE_OUT=<Datei>` laeuft die App ein kurzes Skript
+    /// (Seiten durchschalten, optional Bilder nach `GOMINING_SMOKE_SHOTS`, Backtest und Optimierer mit echten
+    /// Kerzen), schreibt einen Bericht und beendet sich.
     private func scheduleSmokeReportIfRequested() {
         guard let out = ProcessInfo.processInfo.environment["GOMINING_SMOKE_OUT"], !out.isEmpty else { return }
         tasks.append(Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 25_000_000_000)
-            guard let self else { return }
-            let report = self.diagnosticsText()
-            try? report.write(toFile: out, atomically: true, encoding: .utf8)
-            NSApp.terminate(nil)
+            await self?.runSmokeScript(out: out)
         })
+    }
+
+    private func runSmokeScript(out: String) async {
+        let shots = ProcessInfo.processInfo.environment["GOMINING_SMOKE_SHOTS"] ?? ""
+        var extra: [String] = []
+        if !shots.isEmpty { try? FileManager.default.createDirectory(atPath: shots, withIntermediateDirectories: true) }
+        func shot(_ name: String) {
+            guard !shots.isEmpty else { return }
+            saveScreenshot(to: "\(shots)/\(name).png")
+        }
+        try? await Task.sleep(nanoseconds: 12_000_000_000)
+
+        for (index, tab) in AppTab.allCases.enumerated() {
+            if tab == .backtest {
+                backtest.days = 2
+                runBacktest()
+                await waitUntil(timeout: 90) { !self.backtest.running }
+                extra.append("Backtest (2 Tage, echte Kerzen): \(backtest.message)")
+                if let r = backtest.result {
+                    extra.append("  Kerzen \(r.candleCount) · Käufe \(r.buys) · Verkäufe \(r.sells) · Ergebnis \(String(format: "%.2f", r.netPnL)) USDT · Max. Rückgang \(String(format: "%.2f", r.maxDrawdownUSDT)) USDT")
+                }
+                backtest.axes = [.minNetProfitBps: "30, 80", .stopLossFraction: "0.02, 0.05"]
+                runOptimizer()
+                await waitUntil(timeout: 120) { !self.backtest.optimizing }
+                extra.append("Optimierer: \(backtest.message) · \(backtest.entries.count) Ergebnisse")
+                if let best = backtest.entries.first {
+                    extra.append("  Bestes Training \(String(format: "%.2f", best.train.netPnL)) USDT · Test \(best.test.map { String(format: "%.2f", $0.netPnL) } ?? "—") USDT")
+                }
+            }
+            forcedTab = tab.rawValue
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            shot("\(index + 1)-\(tab.rawValue)")
+        }
+
+        let report = diagnosticsText() + "\n" + extra.joined(separator: "\n")
+        try? report.write(toFile: out, atomically: true, encoding: .utf8)
+        NSApp.terminate(nil)
+    }
+
+    private func waitUntil(timeout: Double, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline { try? await Task.sleep(nanoseconds: 500_000_000) }
+    }
+
+    private func saveScreenshot(to path: String) {
+        guard let window = NSApp.windows.first(where: { $0.title == "GoMining Bot" }) ?? NSApp.windows.first(where: { $0.contentView != nil }),
+              let content = window.contentView else { return }
+        let view = content.superview ?? content
+        let bounds = view.bounds
+        guard bounds.width > 10, let rep = view.bitmapImageRepForCachingDisplay(in: bounds) else { return }
+        view.cacheDisplay(in: bounds, to: rep)
+        if let data = rep.representation(using: .png, properties: [:]) { try? data.write(to: URL(fileURLWithPath: path)) }
     }
 
     private func observeSystem() {
@@ -539,16 +590,19 @@ final class AppController: ObservableObject {
 
     // MARK: - Speichern
 
+    /// Merkt eine Aenderung vor und speichert spaetestens nach 3 s (nicht bei jeder Kursbewegung neu).
     private func markDirty() {
-        saveTask?.cancel()
+        guard saveTask == nil else { return }
         saveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            if !Task.isCancelled { self?.saveNow() }
+            guard !Task.isCancelled else { return }
+            self?.saveNow()
         }
     }
 
     private func saveNow() {
         saveTask?.cancel()
+        saveTask = nil
         stateStore.saveAsync(bot.stored) { [weak self] error in
             guard let error else { return }
             Task { @MainActor [weak self] in self?.status.notice = "Speichern fehlgeschlagen: \(error.localizedDescription)" }
