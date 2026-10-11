@@ -9,6 +9,10 @@ der Quellcode wurde daraus rekonstruiert (Datenmodell, Einstellungen, Endpunkte,
 weiterentwickelt. Er ist deshalb *nicht* Byte für Byte identisch mit 3.9 – die Strategie ist dieselbe Familie
 (adaptiver Kauf- und Verkaufsabstand aus Spread, Gebühren und Volatilität), aber mit Verbesserungen, siehe unten.
 
+![Übersicht](docs/screens/1-uebersicht.png)
+
+*Die Oberfläche mit Live-Daten von BingX (automatisch von der CI aufgenommen).*
+
 ## App bekommen
 
 **Variante A – fertig gebaut von GitHub (kein Xcode nötig)**

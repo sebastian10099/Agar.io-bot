@@ -10,6 +10,17 @@ enum AppTab: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// ASCII-Name fuer Dateinamen (Rauchtest-Bilder).
+    var slug: String {
+        switch self {
+        case .overview: return "uebersicht"
+        case .trades: return "handel"
+        case .stats: return "statistik"
+        case .backtest: return "backtest"
+        case .settings: return "einstellungen"
+        }
+    }
+
     var icon: String {
         switch self {
         case .overview: return "gauge.with.dots.needle.50percent"
@@ -39,7 +50,7 @@ struct RootView: View {
         }
         .frame(minWidth: 980, minHeight: 720)
         .navigationTitle("GoMining Bot")
-        .navigationSubtitle("BingX Spot · GOMINING / USDT · adaptive Simulation")
+        .navigationSubtitle("BingX Spot · GOMINING / USDT")
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Picker("Ansicht", selection: $tab) {

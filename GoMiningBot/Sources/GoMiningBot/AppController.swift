@@ -127,24 +127,26 @@ final class AppController: ObservableObject {
 
         for (index, tab) in AppTab.allCases.enumerated() {
             if tab == .backtest {
-                backtest.days = 2
+                backtest.days = 7
+                let started = Date()
                 runBacktest()
-                await waitUntil(timeout: 90) { !self.backtest.running }
-                extra.append("Backtest (2 Tage, echte Kerzen): \(backtest.message)")
+                await waitUntil(timeout: 120) { !self.backtest.running }
+                extra.append("Backtest (7 Tage, echte Kerzen) in \(String(format: "%.1f", Date().timeIntervalSince(started))) s: \(backtest.message)")
                 if let r = backtest.result {
                     extra.append("  Kerzen \(r.candleCount) · Käufe \(r.buys) · Verkäufe \(r.sells) · Ergebnis \(String(format: "%.2f", r.netPnL)) USDT · Max. Rückgang \(String(format: "%.2f", r.maxDrawdownUSDT)) USDT")
                 }
-                backtest.axes = [.minNetProfitBps: "30, 80", .stopLossFraction: "0.02, 0.05"]
+                backtest.axes = [.minNetProfitBps: "30, 50, 80, 120", .stopLossFraction: "0.02, 0.03, 0.05"]
+                let optimizerStarted = Date()
                 runOptimizer()
-                await waitUntil(timeout: 120) { !self.backtest.optimizing }
-                extra.append("Optimierer: \(backtest.message) · \(backtest.entries.count) Ergebnisse")
+                await waitUntil(timeout: 180) { !self.backtest.optimizing }
+                extra.append("Optimierer (12 Kombinationen x Training+Test) in \(String(format: "%.1f", Date().timeIntervalSince(optimizerStarted))) s: \(backtest.message) · \(backtest.entries.count) Ergebnisse")
                 if let best = backtest.entries.first {
                     extra.append("  Bestes Training \(String(format: "%.2f", best.train.netPnL)) USDT · Test \(best.test.map { String(format: "%.2f", $0.netPnL) } ?? "—") USDT")
                 }
             }
             forcedTab = tab.rawValue
             try? await Task.sleep(nanoseconds: 2_500_000_000)
-            shot("\(index + 1)-\(tab.rawValue)")
+            shot("\(index + 1)-\(tab.slug)")
         }
 
         let report = diagnosticsText() + "\n" + extra.joined(separator: "\n")

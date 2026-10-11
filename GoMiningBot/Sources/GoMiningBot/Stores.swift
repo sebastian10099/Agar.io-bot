@@ -130,7 +130,7 @@ final class Preferences: ObservableObject {
 final class BacktestStore: ObservableObject {
     // Eingaben
     @Published var days = 7
-    @Published var spreadBps = 40.0
+    @Published var spreadBps = 20.0
     @Published var depthUSDT = 3_000.0
     @Published var seedStartPosition = false
     // Ausgaben

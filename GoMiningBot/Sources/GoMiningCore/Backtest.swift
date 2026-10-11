@@ -3,7 +3,7 @@ import Foundation
 /// Annahmen fuer den Kerzen-Backtest. Echte Orderbuecher liegen fuer die Vergangenheit nicht vor;
 /// darum wird pro Kerze ein synthetisches Buch mit konstantem Spread und konstanter Tiefe erzeugt.
 public struct BacktestConfig: Sendable, Equatable {
-    public var spreadBps: Double = 40
+    public var spreadBps: Double = 20
     /// Sichtbare Tiefe pro Seite in USDT (ueber alle Stufen).
     public var depthUSDT: Double = 3_000
     public var levelCount: Int = 10

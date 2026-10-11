@@ -29,6 +29,7 @@ struct OverviewView: View {
                     fastTradesCard
                     calculatorCard
                 }
+                simulationRulesCard
             }
             .padding(16)
         }
@@ -302,6 +303,19 @@ struct OverviewView: View {
                 }
             }
         }
+    }
+
+    // MARK: Regeln der Simulation
+
+    private var simulationRulesCard: some View {
+        Card("Regeln der Simulation", systemImage: "info.circle") {
+            Text("Der Bot berechnet Kaufabstand und Verkaufsziel bei jedem Marktdurchlauf aus Spread, Kursbewegung und angenommenen Kosten neu. Er handelt nur bei einem Signal und innerhalb der Grenzen.")
+            Text("Gebühren lassen sich nicht abschaffen. Normale Verkäufe benötigen einen Überschuss nach Kauf- und Verkaufsgebühr; ein Stop-Loss kann trotzdem Verlust auslösen. Live-Orders sind deaktiviert.")
+            Text("Der einmalige virtuelle Startkauf kann über dem Bestandslimit für automatische Neukäufe liegen. „Gegenüber Halten“ vergleicht den Bot mit dem unveränderten virtuellen Startbestand zum aktuellen Bid; die vollständige Ausführung dieser Menge im Orderbuch ist nicht garantiert.")
+            Text("Echte BingX-Marktdaten · anonyme Trades · Käufe und Verkäufe des Bots bleiben simuliert · echte Gebühren können anfallen.")
+                .foregroundStyle(.secondary)
+        }
+        .font(.callout)
     }
 
     // MARK: Handelsrechner

@@ -78,8 +78,8 @@ struct SettingsView: View {
                 Button("Verbindung entfernen", role: .destructive) { controller.disconnectAccount() }
             } else {
                 Text(status.account).foregroundStyle(.secondary)
-                TextField("API-Schlüssel", text: $apiKey)
-                SecureField("Secret Key", text: $secretKey)
+                TextField("API-Schlüssel", text: $apiKey, prompt: Text("hier einfügen"))
+                SecureField("Secret Key", text: $secretKey, prompt: Text("hier einfügen"))
                 HStack {
                     Button("Verbinden") {
                         let key = apiKey, secret = secretKey
