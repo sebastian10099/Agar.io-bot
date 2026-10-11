@@ -136,10 +136,10 @@ jobs:
           {
             echo ""
             echo "---"
-            echo "**Installation (am einfachsten):** Programm *Terminal* öffnen, diese Zeile einfügen und Enter drücken – die App landet auf dem Desktop und startet:"
+            echo "**Installation (am einfachsten):** Programm *Terminal* öffnen, diese Zeile einfügen und Enter drücken – die App landet auf dem Desktop und startet (eine ältere „GoMining Bot“-App dort wird in „GoMining Bot (alt …)“ umbenannt, nichts wird gelöscht):"
             echo ""
             echo '```bash'
-            echo 'curl -L -o ~/Desktop/GoMining-Bot.zip https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k ~/Desktop/GoMining-Bot.zip ~/Desktop && rm ~/Desktop/GoMining-Bot.zip && xattr -dr com.apple.quarantine ~/Desktop/"GoMining Bot.app" && open ~/Desktop/"GoMining Bot.app"'
+            echo 'T="$(mktemp -d)" && curl -fL -o "$T/app.zip" https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k "$T/app.zip" "$T" && { [ ! -e ~/Desktop/"GoMining Bot.app" ] || mv ~/Desktop/"GoMining Bot.app" ~/Desktop/"GoMining Bot (alt $(date +%H%M%S)).app"; } && mv "$T/GoMining Bot.app" ~/Desktop/ && { xattr -cr ~/Desktop/"GoMining Bot.app"; open ~/Desktop/"GoMining Bot.app"; }'
             echo '```'
             echo ""
             echo "Per Browser geladen? Die App ist nicht notarisiert (kein Apple-Entwicklerkonto), macOS bietet deshalb nur *In den Papierkorb legen* an. Dann: *Fertig* klicken → *Systemeinstellungen → Datenschutz & Sicherheit* → ganz unten *Dennoch öffnen* → mit Passwort bestätigen."

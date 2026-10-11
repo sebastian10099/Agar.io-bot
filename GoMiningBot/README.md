@@ -19,10 +19,11 @@ weiterentwickelt. Er ist deshalb *nicht* Byte für Byte identisch mit 3.9 – di
 https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip
 (alle Versionen und Neuerungen: https://github.com/sebastian10099/Agar.io-bot/releases)
 
-Mit einem Befehl auf den Desktop legen und starten (Programm *Terminal* öffnen, einfügen, Enter):
+Mit einem Befehl auf den Desktop legen und starten (Programm *Terminal* öffnen, einfügen, Enter). Liegt dort schon eine
+„GoMining Bot“-App (z. B. eine andere Version), wird sie in „GoMining Bot (alt …)“ umbenannt – gelöscht wird nichts:
 
 ```bash
-curl -L -o ~/Desktop/GoMining-Bot.zip https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k ~/Desktop/GoMining-Bot.zip ~/Desktop && rm ~/Desktop/GoMining-Bot.zip && xattr -dr com.apple.quarantine ~/Desktop/"GoMining Bot.app" && open ~/Desktop/"GoMining Bot.app"
+T="$(mktemp -d)" && curl -fL -o "$T/app.zip" https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k "$T/app.zip" "$T" && { [ ! -e ~/Desktop/"GoMining Bot.app" ] || mv ~/Desktop/"GoMining Bot.app" ~/Desktop/"GoMining Bot (alt $(date +%H%M%S)).app"; } && mv "$T/GoMining Bot.app" ~/Desktop/ && { xattr -cr ~/Desktop/"GoMining Bot.app"; open ~/Desktop/"GoMining Bot.app"; }
 ```
 
 Oder von Hand: ZIP im Browser laden, per Doppelklick entpacken, App auf den Desktop oder in *Programme* ziehen. Die App
@@ -32,8 +33,8 @@ Papierkorb legen* an. So geht es trotzdem:
 - **macOS 15 und neuer:** *Fertig* klicken → *Systemeinstellungen → Datenschutz & Sicherheit* → ganz unten bei
   „GoMining Bot wurde blockiert“ auf **Dennoch öffnen** → mit Passwort bestätigen → **Trotzdem öffnen**.
 - **macOS 14:** Rechtsklick auf die App → **Öffnen** → **Öffnen**.
-- **Meldung „ist beschädigt“:** im Terminal `xattr -dr com.apple.quarantine ` eingeben (mit Leerzeichen am Ende), die App
-  ins Terminal-Fenster ziehen, Enter drücken, App normal öffnen.
+- **Meldung „ist beschädigt“:** im Terminal `xattr -cr ` eingeben (mit Leerzeichen am Ende), die App ins
+  Terminal-Fenster ziehen, Enter drücken, App normal öffnen.
 
 Der Terminal-Befehl oben umgeht das alles, weil `curl` keine Download-Sperre setzt. Updates aus der App heraus sind
 ebenfalls nicht betroffen.

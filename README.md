@@ -1,4 +1,39 @@
-# Agar.io-bot
+# GoMining Bot für macOS
+
+Papierhandel-Bot für **GOMINING/USDT** auf BingX Spot: echte Live-Kurse, Orderbuch und Trades, aber **nur simulierte
+Orders** – es wird nie echtes Geld gehandelt.
+
+### ⬇️ [App herunterladen (neueste Version)](https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip)
+
+Am einfachsten: Programm **Terminal** öffnen (Cmd + Leertaste, „Terminal“, Enter), diese Zeile einfügen, Enter drücken.
+Die App landet auf dem Desktop und startet sofort:
+
+```bash
+T="$(mktemp -d)" && curl -fL -o "$T/app.zip" https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k "$T/app.zip" "$T" && { [ ! -e ~/Desktop/"GoMining Bot.app" ] || mv ~/Desktop/"GoMining Bot.app" ~/Desktop/"GoMining Bot (alt $(date +%H%M%S)).app"; } && mv "$T/GoMining Bot.app" ~/Desktop/ && { xattr -cr ~/Desktop/"GoMining Bot.app"; open ~/Desktop/"GoMining Bot.app"; }
+```
+
+Alle Versionen und Neuerungen: [Releases](https://github.com/sebastian10099/Agar.io-bot/releases) ·
+Anleitung, Funktionen und Grenzen: [GoMiningBot/README.md](GoMiningBot/README.md) ·
+Was als Nächstes kommt: [Roadmap](GoMiningBot/ROADMAP.md)
+
+| Übersicht | Handel |
+|---|---|
+| ![Übersicht](GoMiningBot/docs/screens/1-uebersicht.png) | ![Handel](GoMiningBot/docs/screens/2-handel.png) |
+| **Statistik** | **Backtest** |
+| ![Statistik](GoMiningBot/docs/screens/3-statistik.png) | ![Backtest](GoMiningBot/docs/screens/4-backtest.png) |
+
+*Bilder mit Live-Daten von BingX, automatisch bei jedem Build aufgenommen.*
+
+Im Browser geladen und macOS lässt die App nicht starten („In den Papierkorb legen“)? *Fertig* klicken →
+*Systemeinstellungen → Datenschutz & Sicherheit* → ganz unten **Dennoch öffnen**. Spätere Updates installiert die App
+selbst (Banner „Update verfügbar“).
+
+---
+
+<details>
+<summary>Ursprüngliches Projekt in diesem Repository: Agar.io-bot</summary>
+
+## Agar.io-bot
 The aim of the project is to create a bot that can play Agar.io
 
 The full coding process is streamed live on http://www.twitch.tv/apostolique
@@ -29,6 +64,4 @@ https://www.youtube.com/watch?v=x2-DFRnEFBU - Android Tutorial.
 * Press 'F' to toggle the show mass option.
 * Press 'ESC' for the option menu.
 
-# GoMining Bot (macOS-App)
-Im Ordner [`GoMiningBot/`](GoMiningBot/README.md) liegt der Swift-Quellcode der **GoMining Bot**-App (Papierhandel-Bot für
-GOMINING/USDT auf BingX). Ein GitHub-Actions-Workflow baut daraus die macOS-App – siehe [GoMiningBot/README.md](GoMiningBot/README.md).
+</details>
