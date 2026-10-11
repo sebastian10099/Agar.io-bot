@@ -3,6 +3,24 @@
 Jede Version erscheint automatisch als GitHub-Release mit der fertigen App (`GoMining-Bot.zip`).
 Die Abschnitte hier werden als Release-Notizen und in der App unter „Was ist neu“ angezeigt.
 
+## 4.1.1 – 11.10.2026
+
+**Dringende Korrektur: Die App heißt jetzt „GoMining Bot Pro“ und wird nicht mehr mit der alten App verwechselt**
+- Bis 4.1 hatte die App denselben Namen, dieselbe Bundle-ID, dasselbe Programm und dasselbe Symbol wie die alte
+  „GoMining Bot“ 3.9. macOS hielt beide für dieselbe App: Beim Öffnen sprang oft die alte an, besonders wenn sie noch
+  im Hintergrund oder in der Menüleiste lief.
+- Neu: eigener Name **GoMining Bot Pro**, eigene Bundle-ID, eigenes Programm und ein neues Symbol (blau-violett mit
+  Kerzen und goldenem „PRO“). Die alte App kann daneben liegen bleiben oder in den Papierkorb.
+- Eigener Datenordner (`~/Library/Application Support/GoMining Bot Pro/`): Beim ersten Start werden Papierkonto, Verlauf,
+  Sicherungen und Einstellungen aus dem bisherigen Ordner **kopiert**. Der alte Ordner bleibt unverändert, damit sich die
+  beiden Apps nicht gegenseitig überschreiben.
+- Der Installationsbefehl beendet eine laufende „GoMining Bot Pro“, ersetzt sie durch die neueste und startet sie;
+  die alte „GoMining Bot“ fasst er nicht an. Beendet die App ein Signal (z. B. der Installationsbefehl), speichert sie
+  vorher wie beim normalen Beenden.
+- Der Updater erkennt die App im Archiv an der Bundle-ID statt am Dateinamen.
+- Hinweis: Version 4.1 kann sich wegen der neuen Bundle-ID nicht selbst auf 4.1.1 aktualisieren. Einmal den
+  Installationsbefehl von der Startseite benutzen; ab 4.1.1 laufen Updates wieder aus der App.
+
 ## 4.1 – 11.10.2026
 
 **Updates direkt aus der App**

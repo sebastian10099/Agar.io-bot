@@ -50,7 +50,7 @@ struct RootView: View {
             statusBar
         }
         .frame(minWidth: 980, minHeight: 720)
-        .navigationTitle("GoMining Bot")
+        .navigationTitle(AppController.appName)
         .navigationSubtitle("BingX Spot · GOMINING / USDT")
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -95,7 +95,7 @@ struct RootView: View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.down.app.fill").foregroundStyle(.green)
             VStack(alignment: .leading, spacing: 1) {
-                Text("GoMining Bot \(update.version.description) ist verfügbar").font(.callout.weight(.semibold))
+                Text("\(AppController.appName) \(update.version.description) ist verfügbar").font(.callout.weight(.semibold))
                 Text(status.updateBusy ? status.updateStatus : "Installiert: \(AppController.version) · Dein Papierkonto bleibt erhalten.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -152,7 +152,7 @@ struct WhatsNewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Was ist neu in GoMining Bot \(AppController.version)", systemImage: "sparkles").font(.title2.weight(.semibold))
+            Label("Was ist neu in \(AppController.appName) \(AppController.version)", systemImage: "sparkles").font(.title2.weight(.semibold))
             ScrollView {
                 Text(attributed).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
             }

@@ -9,6 +9,7 @@ Grundsätze, die für jede Version gelten:
 - Jede Änderung an der Strategie wird mit echten BingX-Kerzen belegt (Rauchtest „Strategievergleich“), nicht nach Gefühl.
 - Alle Tests grün, Rauchtest gegen die Live-Schnittstelle bestanden, Bilder der Oberfläche geprüft – erst dann Release.
 - Bestehende Daten (`simulation.json`, Einstellungen, Schlüsselbund) werden immer übernommen.
+- Ausnahme vom Bündeln: dringende Fehlerbehebungen (z. B. App startet nicht) erscheinen sofort als x.y.z-Version.
 
 ## Paket 4.2 – Realistischere Simulation und Auswertung
 - [ ] Backtest mit echten Spreads und Orderbuchtiefen aus dem eigenen Marktprotokoll (Replay statt Annahmen).

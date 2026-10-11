@@ -125,6 +125,40 @@ final class PersistenceTests: XCTestCase {
         XCTAssertTrue(backups.contains { $0.hasPrefix("simulation-vor-update-") })
     }
 
+    func testLegacyDataIsCopiedOnceAndOldFolderStays() throws {
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent("gomining-import-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: base) }
+        let legacy = base.appendingPathComponent(AppPaths.legacyFolderName, isDirectory: true)
+        let root = base.appendingPathComponent(AppPaths.folderName, isDirectory: true)
+        try fm.createDirectory(at: legacy.appendingPathComponent("backups"), withIntermediateDirectories: true)
+        try Data("alt".utf8).write(to: legacy.appendingPathComponent("simulation.json"))
+        try Data("b".utf8).write(to: legacy.appendingPathComponent("backups/eins.json"))
+
+        XCTAssertTrue(AppPaths.importLegacyData(from: legacy, to: root))
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("simulation.json"), encoding: .utf8), "alt")
+        XCTAssertTrue(fm.fileExists(atPath: root.appendingPathComponent("backups/eins.json").path))
+        XCTAssertTrue(fm.fileExists(atPath: legacy.appendingPathComponent("simulation.json").path))
+        XCTAssertFalse(fm.fileExists(atPath: root.path + ".import"))
+
+        // Zweiter Start: eigener Ordner existiert, nichts wird ueberschrieben.
+        try Data("neu".utf8).write(to: root.appendingPathComponent("simulation.json"))
+        XCTAssertFalse(AppPaths.importLegacyData(from: legacy, to: root))
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("simulation.json"), encoding: .utf8), "neu")
+    }
+
+    func testLegacyImportSkipsFoldersWithoutAccount() throws {
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent("gomining-import-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: base) }
+        let legacy = base.appendingPathComponent(AppPaths.legacyFolderName, isDirectory: true)
+        try fm.createDirectory(at: legacy, withIntermediateDirectories: true)
+        let root = base.appendingPathComponent(AppPaths.folderName, isDirectory: true)
+        XCTAssertFalse(AppPaths.importLegacyData(from: legacy, to: root))
+        XCTAssertFalse(AppPaths.importLegacyData(from: base.appendingPathComponent("fehlt"), to: root))
+        XCTAssertFalse(fm.fileExists(atPath: root.path))
+    }
+
     func testCandleCacheMergeDropsOldAndDuplicates() {
         let now = 1_760_000_000.0
         let old = PriceCandle(openedAt: now - 60 * 86_400, close: 1, volume: 1)

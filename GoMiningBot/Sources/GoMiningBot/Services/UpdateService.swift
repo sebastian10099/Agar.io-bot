@@ -19,7 +19,7 @@ enum UpdateError: LocalizedError {
 struct UpdateService: Sendable {
     static let repository = "sebastian10099/Agar.io-bot"
     static let releasesPage = URL(string: "https://github.com/\(repository)/releases/latest")!
-    static let bundleIdentifier = "com.sebastian.gominingbot"
+    static let bundleIdentifier = "com.sebastian.gominingbot.pro"
 
     private let session: URLSession
 
@@ -61,8 +61,10 @@ struct UpdateService: Sendable {
         guard try run("/usr/bin/ditto", ["-x", "-k", zip.path, unpacked.path]) == 0 else {
             throw UpdateError.invalidDownload("Archiv lässt sich nicht entpacken")
         }
-        let app = unpacked.appendingPathComponent("GoMining Bot.app", isDirectory: true)
-        guard let bundle = Bundle(url: app), bundle.bundleIdentifier == Self.bundleIdentifier else {
+        // Die App im Archiv wird an der Bundle-ID erkannt, nicht am Namen.
+        let candidates = (try? FileManager.default.contentsOfDirectory(at: unpacked, includingPropertiesForKeys: nil)) ?? []
+        guard let app = candidates.first(where: { $0.pathExtension == "app" && Bundle(url: $0)?.bundleIdentifier == Self.bundleIdentifier }),
+              let bundle = Bundle(url: app) else {
             throw UpdateError.invalidDownload("unerwarteter Inhalt")
         }
         let newVersion = (bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String).flatMap(AppVersion.init)

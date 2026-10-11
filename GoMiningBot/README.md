@@ -1,4 +1,4 @@
-# GoMining Bot (macOS)
+# GoMining Bot Pro (macOS)
 
 Papierhandel-Bot für **GOMINING/USDT** auf BingX Spot, mit echten Marktdaten (Orderbuch, Trades, Kerzen) und
 **ausschließlich simulierten Orders**. Die App sendet keine Orders an BingX – auch dann nicht, wenn ein API-Schlüssel
@@ -19,11 +19,11 @@ weiterentwickelt. Er ist deshalb *nicht* Byte für Byte identisch mit 3.9 – di
 https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip
 (alle Versionen und Neuerungen: https://github.com/sebastian10099/Agar.io-bot/releases)
 
-Mit einem Befehl auf den Desktop legen und starten (Programm *Terminal* öffnen, einfügen, Enter). Liegt dort schon eine
-„GoMining Bot“-App (z. B. eine andere Version), wird sie in „GoMining Bot (alt …)“ umbenannt – gelöscht wird nichts:
+Mit einem Befehl auf den Desktop legen und starten (Programm *Terminal* öffnen, einfügen, Enter). Eine vorhandene
+„GoMining Bot Pro“ wird beendet und durch die neueste ersetzt; eine alte „GoMining Bot“-App bleibt unberührt:
 
 ```bash
-T="$(mktemp -d)" && curl -fL -o "$T/app.zip" https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k "$T/app.zip" "$T" && { [ ! -e ~/Desktop/"GoMining Bot.app" ] || mv ~/Desktop/"GoMining Bot.app" ~/Desktop/"GoMining Bot (alt $(date +%H%M%S)).app"; } && mv "$T/GoMining Bot.app" ~/Desktop/ && { xattr -cr ~/Desktop/"GoMining Bot.app"; open ~/Desktop/"GoMining Bot.app"; }
+pkill -x GoMiningBotPro; T="$(mktemp -d)" && curl -fL -o "$T/app.zip" https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k "$T/app.zip" "$T" && rm -rf ~/Desktop/"GoMining Bot Pro.app" && mv "$T/GoMining Bot Pro.app" ~/Desktop/ && { xattr -cr ~/Desktop/"GoMining Bot Pro.app"; open ~/Desktop/"GoMining Bot Pro.app"; }
 ```
 
 Oder von Hand: ZIP im Browser laden, per Doppelklick entpacken, App auf den Desktop oder in *Programme* ziehen. Die App
@@ -31,7 +31,7 @@ ist nicht notarisiert (kein Apple-Entwicklerkonto), deshalb blockiert macOS den 
 Papierkorb legen* an. So geht es trotzdem:
 
 - **macOS 15 und neuer:** *Fertig* klicken → *Systemeinstellungen → Datenschutz & Sicherheit* → ganz unten bei
-  „GoMining Bot wurde blockiert“ auf **Dennoch öffnen** → mit Passwort bestätigen → **Trotzdem öffnen**.
+  „GoMining Bot Pro wurde blockiert“ auf **Dennoch öffnen** → mit Passwort bestätigen → **Trotzdem öffnen**.
 - **macOS 14:** Rechtsklick auf die App → **Öffnen** → **Öffnen**.
 - **Meldung „ist beschädigt“:** im Terminal `xattr -cr ` eingeben (mit Leerzeichen am Ende), die App ins
   Terminal-Fenster ziehen, Enter drücken, App normal öffnen.
@@ -50,15 +50,24 @@ mit der fertigen App; die Neuerungen stehen im [CHANGELOG](CHANGELOG.md).
 
 ```bash
 cd GoMiningBot
-./build_app.sh          # erzeugt dist/GoMining Bot.app und dist/GoMining-Bot.zip (Apple Silicon + Intel)
+./build_app.sh          # erzeugt dist/GoMining Bot Pro.app und dist/GoMining-Bot.zip (Apple Silicon + Intel)
 swift test              # Unit-Tests der Kernbibliothek
 ```
 
-## Daten aus Version 3.9
+## Eigene App neben der alten „GoMining Bot“
 
-Die App nutzt denselben Ordner wie 3.9: `~/Library/Application Support/GoMining Bot/`. Beim ersten Start wird
-`simulation.json` gelesen und automatisch ins neue Format überführt; **vorher** wird eine Kopie der alten Datei in
-`backups/` abgelegt. Der gespeicherte BingX-Schlüssel (Schlüsselbund-Dienst `com.sebastian.gominingbot.bingx.readonly`)
+Seit 4.1.1 heißt die App **GoMining Bot Pro** und hat eine eigene Bundle-ID (`com.sebastian.gominingbot.pro`), ein
+eigenes Symbol (blau-violett mit „PRO“) und einen eigenen Datenordner. Bis 4.1 hatte sie denselben Namen und dieselbe
+Bundle-ID wie die alte App 3.9 – macOS hielt beide für dieselbe App und öffnete oft die alte. Die alte App kann
+jetzt gefahrlos daneben liegen oder in den Papierkorb.
+
+## Daten aus Version 3.9 und 4.0/4.1
+
+Datenordner: `~/Library/Application Support/GoMining Bot Pro/`. Beim ersten Start wird der bisherige Ordner
+`~/Library/Application Support/GoMining Bot/` (alte App 3.9 und diese App bis 4.1) einmalig **kopiert**; der alte Ordner
+bleibt unverändert, damit sich die beiden Apps nicht gegenseitig das Papierkonto überschreiben. Einstellungen wie
+Mitteilungen und Preisalarme werden ebenfalls übernommen. Liegt dort noch eine `simulation.json` im Format von 3.9,
+wird sie automatisch ins neue Format überführt; **vorher** wird eine Kopie der alten Datei in `backups/` abgelegt. Der gespeicherte BingX-Schlüssel (Schlüsselbund-Dienst `com.sebastian.gominingbot.bingx.readonly`)
 wird weiterverwendet; macOS fragt beim ersten Zugriff einmal nach der Erlaubnis („Immer erlauben“).
 
 Einmalige Anpassung: Der alte Standard für gleichzeitige Positionen (4 bzw. 8) wird auf **10** angehoben; bewusst

@@ -1,20 +1,54 @@
 import Foundation
 
-/// Speicherorte. Gleicher Ordner wie die bisherige App, damit `simulation.json` weiter genutzt wird:
-/// `~/Library/Application Support/GoMining Bot/`
+/// Speicherorte: `~/Library/Application Support/GoMining Bot Pro/`.
+/// Bis 4.1 teilte sich die App den Ordner `GoMining Bot` mit der alten App 3.9; der wird beim ersten Start kopiert
+/// (siehe `importLegacyData`) und bleibt selbst unveraendert, damit beide Apps sich nicht gegenseitig ueberschreiben.
 public struct AppPaths: Sendable {
+    public static let folderName = "GoMining Bot Pro"
+    public static let legacyFolderName = "GoMining Bot"
+
     public let root: URL
 
     public init(root: URL) { self.root = root }
 
-    public static func standard() -> AppPaths {
-        // Fuer Tests und den Rauchtest in der CI: Datenordner ueber die Umgebung festlegen.
-        if let override = ProcessInfo.processInfo.environment["GOMINING_DATA_DIR"], !override.isEmpty {
-            return AppPaths(root: URL(fileURLWithPath: override, isDirectory: true))
-        }
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    /// Datenordner ueber die Umgebung (Tests, Rauchtest in der CI).
+    public static var overrideRoot: URL? {
+        guard let override = ProcessInfo.processInfo.environment["GOMINING_DATA_DIR"], !override.isEmpty else { return nil }
+        return URL(fileURLWithPath: override, isDirectory: true)
+    }
+
+    static var applicationSupport: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        return AppPaths(root: base.appendingPathComponent("GoMining Bot", isDirectory: true))
+    }
+
+    public static func standard() -> AppPaths {
+        if let root = overrideRoot { return AppPaths(root: root) }
+        return AppPaths(root: applicationSupport.appendingPathComponent(folderName, isDirectory: true))
+    }
+
+    /// Ordner der alten App (3.9) und dieser App bis Version 4.1.
+    public static var legacyRoot: URL { applicationSupport.appendingPathComponent(legacyFolderName, isDirectory: true) }
+
+    /// Kopiert beim ersten Start den bisherigen Datenordner nach `root`, wenn es `root` noch nicht gibt und der alte
+    /// Ordner ein Papierkonto enthaelt. Der alte Ordner bleibt unveraendert. Kopiert wird erst in einen Nachbarordner
+    /// und dann umbenannt, damit ein Abbruch keinen halben Ordner hinterlaesst. Gibt `true` zurueck, wenn kopiert wurde.
+    @discardableResult
+    public static func importLegacyData(from legacy: URL, to root: URL) -> Bool {
+        let fm = FileManager.default
+        guard !fm.fileExists(atPath: root.path),
+              fm.fileExists(atPath: legacy.appendingPathComponent("simulation.json").path) else { return false }
+        let staging = root.deletingLastPathComponent().appendingPathComponent(root.lastPathComponent + ".import", isDirectory: true)
+        do {
+            try fm.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if fm.fileExists(atPath: staging.path) { try fm.removeItem(at: staging) }
+            try fm.copyItem(at: legacy, to: staging)
+            try fm.moveItem(at: staging, to: root)
+            return true
+        } catch {
+            try? fm.removeItem(at: staging)
+            return false
+        }
     }
 
     public var stateFile: URL { root.appendingPathComponent("simulation.json") }

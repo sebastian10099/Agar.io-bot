@@ -1,4 +1,4 @@
-# GoMining Bot für macOS
+# GoMining Bot Pro für macOS
 
 Papierhandel-Bot für **GOMINING/USDT** auf BingX Spot: echte Live-Kurse, Orderbuch und Trades, aber **nur simulierte
 Orders** – es wird nie echtes Geld gehandelt.
@@ -6,10 +6,10 @@ Orders** – es wird nie echtes Geld gehandelt.
 ### ⬇️ [App herunterladen (neueste Version)](https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip)
 
 Am einfachsten: Programm **Terminal** öffnen (Cmd + Leertaste, „Terminal“, Enter), diese Zeile einfügen, Enter drücken.
-Die App landet auf dem Desktop und startet sofort:
+Die App **GoMining Bot Pro** (blau-violettes Symbol mit „PRO“) landet auf dem Desktop und startet sofort:
 
 ```bash
-T="$(mktemp -d)" && curl -fL -o "$T/app.zip" https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k "$T/app.zip" "$T" && { [ ! -e ~/Desktop/"GoMining Bot.app" ] || mv ~/Desktop/"GoMining Bot.app" ~/Desktop/"GoMining Bot (alt $(date +%H%M%S)).app"; } && mv "$T/GoMining Bot.app" ~/Desktop/ && { xattr -cr ~/Desktop/"GoMining Bot.app"; open ~/Desktop/"GoMining Bot.app"; }
+pkill -x GoMiningBotPro; T="$(mktemp -d)" && curl -fL -o "$T/app.zip" https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k "$T/app.zip" "$T" && rm -rf ~/Desktop/"GoMining Bot Pro.app" && mv "$T/GoMining Bot Pro.app" ~/Desktop/ && { xattr -cr ~/Desktop/"GoMining Bot Pro.app"; open ~/Desktop/"GoMining Bot Pro.app"; }
 ```
 
 Alle Versionen und Neuerungen: [Releases](https://github.com/sebastian10099/Agar.io-bot/releases) ·
@@ -27,6 +27,9 @@ Was als Nächstes kommt: [Roadmap](GoMiningBot/ROADMAP.md)
 Im Browser geladen und macOS lässt die App nicht starten („In den Papierkorb legen“)? *Fertig* klicken →
 *Systemeinstellungen → Datenschutz & Sicherheit* → ganz unten **Dennoch öffnen**. Spätere Updates installiert die App
 selbst (Banner „Update verfügbar“).
+
+Hast du noch die alte **GoMining Bot** (dunkles Symbol mit Linie) auf dem Mac? Das ist eine andere, ältere App. Sie kann
+in den Papierkorb – Papierkonto und Einstellungen hat GoMining Bot Pro beim ersten Start übernommen.
 
 ---
 

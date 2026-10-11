@@ -42,8 +42,13 @@ jobs:
         working-directory: GoMiningBot/dist
         run: |
           ls -la
-          codesign -dv "GoMining Bot.app" 2>&1 | head -5
-          lipo -info "GoMining Bot.app/Contents/MacOS/GoMiningBot"
+          codesign -dv "GoMining Bot Pro.app" 2>&1 | head -5
+          lipo -info "GoMining Bot Pro.app/Contents/MacOS/GoMiningBotPro"
+          # Eigene Identitaet, damit macOS die App nicht mit der alten "GoMining Bot" 3.9 verwechselt.
+          ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "GoMining Bot Pro.app/Contents/Info.plist")"
+          echo "Bundle-ID: $ID"
+          [ "$ID" = "com.sebastian.gominingbot.pro" ]
+          unzip -l GoMining-Bot.zip | grep -q "GoMining Bot Pro.app/Contents/MacOS/GoMiningBotPro"
 
       - name: Rauchtest (App starten, 25 s Live-Daten von BingX prüfen)
         continue-on-error: true
@@ -53,7 +58,7 @@ jobs:
           export GOMINING_SMOKE_OUT="$PWD/smoke-report.txt"
           export GOMINING_SMOKE_SHOTS="$PWD/smoke-shots"
           rm -rf "$GOMINING_SMOKE_OUT" "$GOMINING_SMOKE_SHOTS"
-          "dist/GoMining Bot.app/Contents/MacOS/GoMiningBot" > "$RUNNER_TEMP/app.log" 2>&1 &
+          "dist/GoMining Bot Pro.app/Contents/MacOS/GoMiningBotPro" > "$RUNNER_TEMP/app.log" 2>&1 &
           APP_PID=$!
           for i in $(seq 1 240); do
             [ -f "$GOMINING_SMOKE_OUT" ] && break
@@ -136,10 +141,10 @@ jobs:
           {
             echo ""
             echo "---"
-            echo "**Installation (am einfachsten):** Programm *Terminal* öffnen, diese Zeile einfügen und Enter drücken – die App landet auf dem Desktop und startet (eine ältere „GoMining Bot“-App dort wird in „GoMining Bot (alt …)“ umbenannt, nichts wird gelöscht):"
+            echo "**Installation (am einfachsten):** Programm *Terminal* öffnen, diese Zeile einfügen und Enter drücken – die App landet auf dem Desktop und startet (eine vorhandene „GoMining Bot Pro“ wird ersetzt, eine alte „GoMining Bot“-App bleibt unberührt):"
             echo ""
             echo '```bash'
-            echo 'T="$(mktemp -d)" && curl -fL -o "$T/app.zip" https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k "$T/app.zip" "$T" && { [ ! -e ~/Desktop/"GoMining Bot.app" ] || mv ~/Desktop/"GoMining Bot.app" ~/Desktop/"GoMining Bot (alt $(date +%H%M%S)).app"; } && mv "$T/GoMining Bot.app" ~/Desktop/ && { xattr -cr ~/Desktop/"GoMining Bot.app"; open ~/Desktop/"GoMining Bot.app"; }'
+            echo 'pkill -x GoMiningBotPro; T="$(mktemp -d)" && curl -fL -o "$T/app.zip" https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k "$T/app.zip" "$T" && rm -rf ~/Desktop/"GoMining Bot Pro.app" && mv "$T/GoMining Bot Pro.app" ~/Desktop/ && { xattr -cr ~/Desktop/"GoMining Bot Pro.app"; open ~/Desktop/"GoMining Bot Pro.app"; }'
             echo '```'
             echo ""
             echo "Per Browser geladen? Die App ist nicht notarisiert (kein Apple-Entwicklerkonto), macOS bietet deshalb nur *In den Papierkorb legen* an. Dann: *Fertig* klicken → *Systemeinstellungen → Datenschutz & Sicherheit* → ganz unten *Dennoch öffnen* → mit Passwort bestätigen."

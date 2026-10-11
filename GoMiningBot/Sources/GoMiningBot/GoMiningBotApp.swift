@@ -7,7 +7,7 @@ struct GoMiningBotApp: App {
     @StateObject private var controller = AppController()
 
     var body: some Scene {
-        Window("GoMining Bot", id: "main") {
+        Window(AppController.appName, id: "main") {
             RootView()
                 .environmentObject(controller)
                 .environmentObject(controller.market)

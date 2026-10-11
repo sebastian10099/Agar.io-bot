@@ -15,12 +15,13 @@ private struct LiveBook {
 final class AppController: ObservableObject {
     static let symbol = "GOMINING-USDT"
     static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "4.0"
+    static let appName = "GoMining Bot Pro"
 
     let market = MarketStore()
     let bot: BotStore
     let status = StatusStore()
     let backtest = BacktestStore()
-    let prefs = Preferences()
+    let prefs: Preferences
     let paths: AppPaths
     /// Nur fuer den Rauchtest: erzwingt eine Seite der Oberflaeche.
     @Published var forcedTab: String?
@@ -31,6 +32,7 @@ final class AppController: ObservableObject {
     private let privateAPI = BingXPrivateAPI()
     private let updates = UpdateService()
     private var lastUpdateCheck = 0.0
+    private var terminationSource: DispatchSourceSignal?
     private let stream: BingXStream
 
     // Live-Daten (nicht veroeffentlicht)
@@ -63,6 +65,9 @@ final class AppController: ObservableObject {
     private var lastDecisionKey = ""
 
     init() {
+        // Vor dem ersten Lesen von Einstellungen und Datenordner (alte Bundle-ID/alter Ordner -> eigene).
+        AppMigration.run()
+        prefs = Preferences()
         let paths = AppPaths.standard()
         try? paths.prepare()
         let store = StateStore(paths: paths)
@@ -98,7 +103,7 @@ final class AppController: ObservableObject {
         guard !started else { return }
         started = true
         activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep],
-                                                         reason: "GoMining Bot beobachtet den Markt")
+                                                         reason: "\(Self.appName) beobachtet den Markt")
         Notifier.shared.requestAuthorizationIfNeeded()
         observeSystem()
         loadCredentials()
@@ -190,7 +195,7 @@ final class AppController: ObservableObject {
     }
 
     private func saveScreenshot(to path: String) {
-        guard let window = NSApp.windows.first(where: { $0.title == "GoMining Bot" }) ?? NSApp.windows.first(where: { $0.contentView != nil }),
+        guard let window = NSApp.windows.first(where: { $0.title == Self.appName }) ?? NSApp.windows.first(where: { $0.contentView != nil }),
               let content = window.contentView else { return }
         let view = content.superview ?? content
         let bounds = view.bounds
@@ -206,6 +211,12 @@ final class AppController: ObservableObject {
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.shutdown() }
         }
+        // SIGTERM (z. B. vom Installationsbefehl oder `kill`) wie "Beenden" behandeln, damit vorher gespeichert wird.
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler { MainActor.assumeIsolated { NSApp.terminate(nil) } }
+        source.resume()
+        terminationSource = source
     }
 
     private func handleWake() {
@@ -783,12 +794,12 @@ final class AppController: ObservableObject {
                 status.updateStatus = "Version \(info.version) ist verfügbar (installiert: \(Self.version))."
                 if isNew { status.updateBannerHidden = false }
                 if isNew, !manual {
-                    Notifier.shared.post(title: "GoMining Bot \(info.version) verfügbar",
+                    Notifier.shared.post(title: "\(Self.appName) \(info.version) verfügbar",
                                          body: "Ein Update steht bereit. In der App auf „Jetzt aktualisieren“ klicken.", sound: false)
                 }
             } else {
                 status.availableUpdate = nil
-                status.updateStatus = "GoMining Bot ist aktuell (Version \(Self.version))."
+                status.updateStatus = "\(Self.appName) ist aktuell (Version \(Self.version))."
             }
         } catch {
             if manual {
@@ -1038,7 +1049,7 @@ final class AppController: ObservableObject {
 
     func diagnosticsText() -> String {
         var lines: [String] = []
-        lines.append("GoMining Bot \(Self.version) · macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
+        lines.append("\(Self.appName) \(Self.version) · Bundle \(Bundle.main.bundleIdentifier ?? "?") · macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
         lines.append("Verbindung: \(status.connection)")
         lines.append("Livestream: \(status.stream) · letzte Daten vor \(lastStreamAt > 0 ? String(Int(nowTs() - lastStreamAt)) : "—") s")
         lines.append("Konto: \(status.account)")
