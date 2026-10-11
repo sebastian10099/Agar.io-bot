@@ -110,6 +110,7 @@ final class TrendFilterTests: XCTestCase {
     func testDowntrendBlocksBuyingOnlyWhenEnabled() {
         var s = Fixture.settings()
         s.useMoveDetector = false
+        s.trendFilterEnabled = false
         let candles = falling(dropPercent: 5)
         let price = candles.last!.close * 0.985
         let snap = Fixture.snapshot(mid: price, candles: candles)
@@ -140,6 +141,13 @@ final class TrendFilterTests: XCTestCase {
         }
         let r = BotEngine.step(Fixture.snapshot(mid: 1.03, candles: candles), state: &state, settings: s, fastMoveBps: 0, now: now)
         XCTAssertEqual(r.kind, .sell, r.reason)
+    }
+
+    func testTrendFilterIsOnByDefault() {
+        XCTAssertTrue(BotSettings().trendFilterEnabled)
+        // Auch fuer alte Dateien ohne den Schluessel.
+        let decoded = try? JSONDecoder().decode(BotSettings.self, from: Data("{}".utf8))
+        XCTAssertEqual(decoded?.trendFilterEnabled, true)
     }
 
     func testSettingsKeepFastBelowSlow() {

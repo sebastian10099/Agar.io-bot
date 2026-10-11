@@ -12,9 +12,12 @@ Die Abschnitte hier werden als Release-Notizen und in der App unter „Was ist n
   Papierkonto, Einstellungen und Verlauf bleiben erhalten; schlägt etwas fehl, bleibt die alte App unverändert.
 - Nach einem Update zeigt „Was ist neu“ einmalig die Neuerungen.
 
-**Trendfilter (neu, abschaltbar)**
-- Vergleicht einen schnellen und einen langsamen gleitenden Durchschnitt (Standard 30/120 Minuten). Im Abwärtstrend
-  löst der Bot keine Neukäufe aus; Verkäufe und Stop-Loss laufen normal weiter. Anzeige des Trends in der Übersicht.
+**Trendfilter (neu, standardmäßig an, abschaltbar)**
+- Vergleicht einen schnellen und einen langsamen gleitenden Durchschnitt (30/120 Minuten). Im Abwärtstrend löst der
+  Bot keine Neukäufe aus; Verkäufe und Stop-Loss laufen normal weiter. Anzeige des Trends in der Übersicht.
+- Gemessen auf 7 Tagen echter GOMINING-Kerzen (Halten: −7,3 %): Ergebnis −3,88 statt −5,19 USDT, größter Rückgang
+  6,43 statt 8,87 USDT, in beiden Hälften des Zeitraums mindestens gleich gut. Kein Gewinnversprechen – der Filter
+  begrenzt vor allem Verluste in fallenden Phasen. Abschalten: Einstellungen → Trendfilter.
 - Backtest und Optimierer berücksichtigen den Trendfilter; der Rauchtest vergleicht die Varianten auf echten Kerzen.
 
 **Verlauf und Backtest**

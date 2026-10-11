@@ -223,7 +223,7 @@ public struct BotSettings: Codable, Equatable, Sendable {
     public var moveMaxRetracePercent: Double = 60
 
     // Trendfilter: kein Nachkaufen, solange der schnelle EMA deutlich unter dem langsamen liegt.
-    public var trendFilterEnabled: Bool = false
+    public var trendFilterEnabled: Bool = true
     public var trendFastMinutes: Int = 30
     public var trendSlowMinutes: Int = 120
     public var trendTolerancePercent: Double = 0.2
