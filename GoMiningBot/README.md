@@ -25,8 +25,18 @@ Mit einem Befehl auf den Desktop legen und starten (Programm *Terminal* öffnen,
 curl -L -o ~/Desktop/GoMining-Bot.zip https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k ~/Desktop/GoMining-Bot.zip ~/Desktop && rm ~/Desktop/GoMining-Bot.zip && xattr -dr com.apple.quarantine ~/Desktop/"GoMining Bot.app" && open ~/Desktop/"GoMining Bot.app"
 ```
 
-Oder von Hand: ZIP laden, per Doppelklick entpacken, App auf den Desktop oder in *Programme* ziehen. Die App ist nicht
-notarisiert (kein Apple-Entwicklerkonto): beim ersten Start Rechtsklick auf die App → **Öffnen** → **Öffnen**.
+Oder von Hand: ZIP im Browser laden, per Doppelklick entpacken, App auf den Desktop oder in *Programme* ziehen. Die App
+ist nicht notarisiert (kein Apple-Entwicklerkonto), deshalb blockiert macOS den ersten Start und bietet nur *In den
+Papierkorb legen* an. So geht es trotzdem:
+
+- **macOS 15 und neuer:** *Fertig* klicken → *Systemeinstellungen → Datenschutz & Sicherheit* → ganz unten bei
+  „GoMining Bot wurde blockiert“ auf **Dennoch öffnen** → mit Passwort bestätigen → **Trotzdem öffnen**.
+- **macOS 14:** Rechtsklick auf die App → **Öffnen** → **Öffnen**.
+- **Meldung „ist beschädigt“:** im Terminal `xattr -dr com.apple.quarantine ` eingeben (mit Leerzeichen am Ende), die App
+  ins Terminal-Fenster ziehen, Enter drücken, App normal öffnen.
+
+Der Terminal-Befehl oben umgeht das alles, weil `curl` keine Download-Sperre setzt. Updates aus der App heraus sind
+ebenfalls nicht betroffen.
 
 **Updates:** Ab Version 4.1 sucht die App selbst nach neuen Versionen, zeigt ein Banner und installiert das Update auf
 Knopfdruck (Einstellungen → Updates). Papierkonto und Einstellungen bleiben dabei erhalten.

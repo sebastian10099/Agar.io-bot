@@ -136,8 +136,15 @@ jobs:
           {
             echo ""
             echo "---"
-            echo "**Installation:** \`GoMining-Bot.zip\` herunterladen, entpacken und die App auf den Desktop oder in *Programme* ziehen. Erster Start: Rechtsklick auf die App, dann *Öffnen* (nicht notarisiert)."
-            echo "Ab Version 4.1 findet die App neue Versionen selbst und aktualisiert sich auf Knopfdruck."
+            echo "**Installation (am einfachsten):** Programm *Terminal* öffnen, diese Zeile einfügen und Enter drücken – die App landet auf dem Desktop und startet:"
+            echo ""
+            echo '```bash'
+            echo 'curl -L -o ~/Desktop/GoMining-Bot.zip https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k ~/Desktop/GoMining-Bot.zip ~/Desktop && rm ~/Desktop/GoMining-Bot.zip && xattr -dr com.apple.quarantine ~/Desktop/"GoMining Bot.app" && open ~/Desktop/"GoMining Bot.app"'
+            echo '```'
+            echo ""
+            echo "Per Browser geladen? Die App ist nicht notarisiert (kein Apple-Entwicklerkonto), macOS bietet deshalb nur *In den Papierkorb legen* an. Dann: *Fertig* klicken → *Systemeinstellungen → Datenschutz & Sicherheit* → ganz unten *Dennoch öffnen* → mit Passwort bestätigen."
+            echo ""
+            echo "Ab Version 4.1 findet die App neue Versionen selbst und aktualisiert sich auf Knopfdruck – ohne diese Abfrage."
           } >> notes.md
           gh release create "$TAG" dist/GoMining-Bot.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "GoMining Bot $VERSION" --notes-file notes.md --latest

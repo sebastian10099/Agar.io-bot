@@ -36,4 +36,4 @@ echo "→ Packe ZIP …"
 
 lipo -info "$APP/Contents/MacOS/$EXEC" || true
 echo "Fertig: $APP"
-echo "Erster Start: Rechtsklick auf die App → Öffnen (die App ist nicht notarisiert)."
+echo "Erster Start (nicht notarisiert): Systemeinstellungen → Datenschutz & Sicherheit → Dennoch öffnen (macOS 14: Rechtsklick → Öffnen)."
