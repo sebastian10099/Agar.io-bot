@@ -15,22 +15,25 @@ weiterentwickelt. Er ist deshalb *nicht* Byte für Byte identisch mit 3.9 – di
 
 ## App bekommen
 
-**Variante A – fertig gebaut von GitHub (kein Xcode nötig)**
+**Neueste Version direkt herunterladen:**
+https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip
+(alle Versionen und Neuerungen: https://github.com/sebastian10099/Agar.io-bot/releases)
 
-1. Auf GitHub: Reiter **Actions** → Workflow **„GoMining Bot (macOS-App)“** → den neuesten grünen Lauf öffnen.
-2. Unten unter **Artifacts** `GoMining-Bot-macOS` herunterladen und entpacken. Darin liegt `GoMining-Bot.zip`; ein
-   Doppelklick darauf ergibt `GoMining Bot.app`.
-3. App in den Ordner *Programme* ziehen.
-4. **Erster Start:** Die App ist nicht notarisiert (kein Apple-Entwicklerkonto). Rechtsklick auf die App → **Öffnen** →
-   **Öffnen**. Falls macOS sie als „beschädigt“ meldet: im Terminal
-   `xattr -dr com.apple.quarantine "/Applications/GoMining Bot.app"` ausführen.
-
-**Variante A2 – fertige Datei im Repository:** `GoMiningBot/release/GoMining-Bot.zip` (wird von der CI nur auf Wunsch
-aktualisiert, wenn die Commit-Nachricht `[app]` enthält). In Terminal auf den Desktop legen und starten:
+Mit einem Befehl auf den Desktop legen und starten (Programm *Terminal* öffnen, einfügen, Enter):
 
 ```bash
-cd ~/Downloads && ditto -x -k GoMining-Bot.zip ~/Desktop && xattr -dr com.apple.quarantine ~/Desktop/"GoMining Bot.app" && open ~/Desktop/"GoMining Bot.app"
+curl -L -o ~/Desktop/GoMining-Bot.zip https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip && ditto -x -k ~/Desktop/GoMining-Bot.zip ~/Desktop && rm ~/Desktop/GoMining-Bot.zip && xattr -dr com.apple.quarantine ~/Desktop/"GoMining Bot.app" && open ~/Desktop/"GoMining Bot.app"
 ```
+
+Oder von Hand: ZIP laden, per Doppelklick entpacken, App auf den Desktop oder in *Programme* ziehen. Die App ist nicht
+notarisiert (kein Apple-Entwicklerkonto): beim ersten Start Rechtsklick auf die App → **Öffnen** → **Öffnen**.
+
+**Updates:** Ab Version 4.1 sucht die App selbst nach neuen Versionen, zeigt ein Banner und installiert das Update auf
+Knopfdruck (Einstellungen → Updates). Papierkonto und Einstellungen bleiben dabei erhalten.
+
+**So entstehen neue Versionen:** Die Weiterentwicklung folgt der [Roadmap](ROADMAP.md) in gebündelten Paketen. Sobald
+in `VERSION` eine neue Nummer steht und alle Prüfungen grün sind, veröffentlicht GitHub Actions automatisch ein Release
+mit der fertigen App; die Neuerungen stehen im [CHANGELOG](CHANGELOG.md).
 
 **Variante B – selbst bauen** (macOS 14+, Xcode oder `xcode-select --install`)
 

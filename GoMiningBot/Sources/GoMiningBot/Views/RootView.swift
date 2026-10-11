@@ -43,6 +43,7 @@ struct RootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let update = status.availableUpdate, !status.updateBannerHidden { updateBanner(update) }
             if let notice = status.notice { noticeBanner(notice) }
             content
             Divider()
@@ -71,6 +72,9 @@ struct RootView: View {
             }
         }
         .task { controller.start() }
+        .sheet(isPresented: Binding(get: { status.whatsNew != nil }, set: { if !$0 { status.whatsNew = nil } })) {
+            WhatsNewView(text: status.whatsNew ?? "") { status.whatsNew = nil }
+        }
         .onChange(of: controller.forcedTab) { _, newValue in
             if let newValue, let forced = AppTab(rawValue: newValue) { tab = forced }
         }
@@ -85,6 +89,28 @@ struct RootView: View {
         case .backtest: BacktestView()
         case .settings: SettingsView()
         }
+    }
+
+    private func updateBanner(_ update: ReleaseInfo) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.down.app.fill").foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("GoMining Bot \(update.version.description) ist verfügbar").font(.callout.weight(.semibold))
+                Text(status.updateBusy ? status.updateStatus : "Installiert: \(AppController.version) · Dein Papierkonto bleibt erhalten.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if status.updateBusy {
+                ProgressView().controlSize(.small)
+            } else {
+                Button("Neuerungen") { status.whatsNew = update.notes.isEmpty ? "Siehe Download-Seite." : update.notes }
+                Button("Jetzt aktualisieren") { controller.installUpdate() }.buttonStyle(.borderedProminent)
+                Button { status.updateBannerHidden = true } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.green.opacity(0.1))
     }
 
     private func noticeBanner(_ text: String) -> some View {
@@ -111,5 +137,31 @@ struct RootView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
+    }
+}
+
+/// Neuerungen einer Version (aus CHANGELOG.md bzw. den Release-Notizen).
+struct WhatsNewView: View {
+    let text: String
+    let close: () -> Void
+
+    private var attributed: AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Was ist neu in GoMining Bot \(AppController.version)", systemImage: "sparkles").font(.title2.weight(.semibold))
+            ScrollView {
+                Text(attributed).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+            }
+            HStack {
+                Spacer()
+                Button("Weiter", action: close).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 560, height: 460)
     }
 }

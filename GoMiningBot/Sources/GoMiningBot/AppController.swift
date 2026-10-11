@@ -29,6 +29,8 @@ final class AppController: ObservableObject {
     private let journal: MarketJournal
     private let api: BingXPublicAPI
     private let privateAPI = BingXPrivateAPI()
+    private let updates = UpdateService()
+    private var lastUpdateCheck = 0.0
     private let stream: BingXStream
 
     // Live-Daten (nicht veroeffentlicht)
@@ -101,6 +103,7 @@ final class AppController: ObservableObject {
         observeSystem()
         loadCredentials()
         status.dataFolderBytes = journal.diskUsageBytes()
+        prepareWhatsNew()
         tasks.append(Task { [weak self] in await self?.bootstrap() })
         scheduleSmokeReportIfRequested()
     }
@@ -149,9 +152,36 @@ final class AppController: ObservableObject {
             shot("\(index + 1)-\(tab.slug)")
         }
 
+        await checkForUpdates(manual: true)
+        extra.append("Update-Prüfung: \(status.updateStatus)")
+        await compareStrategies(into: &extra)
+
         let report = diagnosticsText() + "\n" + extra.joined(separator: "\n")
         try? report.write(toFile: out, atomically: true, encoding: .utf8)
         NSApp.terminate(nil)
+    }
+
+    /// Rauchtest: vergleicht Strategie-Varianten auf den echten Kerzen der letzten 7 Tage
+    /// (ganzer Zeitraum sowie erste 60 % / letzte 40 %), damit Aenderungen an der Strategie belegt sind.
+    private func compareStrategies(into extra: inout [String]) async {
+        guard let candles = await prepareHistory(days: 7) else { return }
+        let cfg = backtest.config(rules: rules)
+        let split = Int(Double(candles.count) * 0.6)
+        func variant(_ name: String, _ edit: (inout BotSettings) -> Void) -> String {
+            var s = BotSettings()
+            edit(&s)
+            let all = Backtester.run(candles: candles, settings: s, config: cfg, collect: false)
+            let first = Backtester.run(candles: Array(candles[0..<split]), settings: s, config: cfg, collect: false)
+            let last = Backtester.run(candles: candles, settings: s, config: cfg, startIndex: split, collect: false)
+            return String(format: "  %@: gesamt %+.2f (dd %.2f, %ld/%ld) · Teil 1 %+.2f · Teil 2 %+.2f", name, all.netPnL,
+                          all.maxDrawdownUSDT, all.buys, all.sells, first.netPnL, last.netPnL)
+        }
+        let hold = Backtester.run(candles: candles, settings: BotSettings(), config: cfg, collect: false).holdReturnFraction
+        extra.append(String(format: "Strategievergleich (7 Tage, Halten %+.1f%%):", hold * 100))
+        extra.append(variant("Standard", { _ in }))
+        extra.append(variant("Trendfilter 30/120", { $0.trendFilterEnabled = true }))
+        extra.append(variant("Trendfilter 60/240", { $0.trendFilterEnabled = true; $0.trendFastMinutes = 60; $0.trendSlowMinutes = 240 }))
+        extra.append(variant("Trendfilter 30/120 + Ziel 30", { $0.trendFilterEnabled = true; $0.minNetProfitBps = 30 }))
     }
 
     private func waitUntil(timeout: Double, _ condition: () -> Bool) async {
@@ -200,6 +230,12 @@ final class AppController: ObservableObject {
     }
 
     private func bootstrap() async {
+        if prefs.autoCheckUpdates {
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                await self?.checkForUpdates(manual: false)
+            }
+        }
         await refreshRules()
         await refreshCandles()
         await refreshBookAndTrades()
@@ -222,7 +258,7 @@ final class AppController: ObservableObject {
 
     private func refreshCandles() async {
         do {
-            let fetched = try await api.klines(limit: 150)
+            let fetched = try await api.klines(limit: min(1_000, bot.stored.settings.requiredCandles + 20))
             restCandles = Indicators.fillGaps(fetched)
             candlesFetchedAt = nowTs()
             Indicators.mergeTail(&history, fetched)
@@ -378,6 +414,10 @@ final class AppController: ObservableObject {
             journal.prune(now: now)
         }
         if prefs.chartMinutes > 1, now - lastLongRebuild >= 30 { rebuildLongCandles() }
+        if prefs.autoCheckUpdates, lastUpdateCheck > 0, now - lastUpdateCheck >= 6 * 3_600 {
+            lastUpdateCheck = now
+            Task { await checkForUpdates(manual: false) }
+        }
     }
 
     private func sampleEquity(now: Double) {
@@ -727,6 +767,77 @@ final class AppController: ObservableObject {
             status.accountConnected = false
             status.account = "Gespeicherter API-Schlüssel konnte nicht geprüft werden: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Updates
+
+    /// Fragt GitHub nach der neuesten veroeffentlichten Version.
+    func checkForUpdates(manual: Bool) async {
+        lastUpdateCheck = nowTs()
+        if manual { status.updateStatus = "Suche nach Updates …" }
+        do {
+            let info = try await updates.latestRelease()
+            if let current = AppVersion(Self.version), info.version > current {
+                let isNew = status.availableUpdate?.tag != info.tag
+                status.availableUpdate = info
+                status.updateStatus = "Version \(info.version) ist verfügbar (installiert: \(Self.version))."
+                if isNew { status.updateBannerHidden = false }
+                if isNew, !manual {
+                    Notifier.shared.post(title: "GoMining Bot \(info.version) verfügbar",
+                                         body: "Ein Update steht bereit. In der App auf „Jetzt aktualisieren“ klicken.", sound: false)
+                }
+            } else {
+                status.availableUpdate = nil
+                status.updateStatus = "GoMining Bot ist aktuell (Version \(Self.version))."
+            }
+        } catch {
+            if manual {
+                status.updateStatus = "Update-Prüfung fehlgeschlagen: \(error.localizedDescription)"
+                status.note("Update-Prüfung", error)
+            }
+        }
+    }
+
+    /// Laedt die neue Version, prueft sie und tauscht die App nach dem Beenden aus.
+    func installUpdate() {
+        guard let info = status.availableUpdate, !status.updateBusy else { return }
+        let target = Bundle.main.bundleURL
+        guard info.downloadURL != nil, UpdateInstaller.canReplace(appAt: target) else {
+            NSWorkspace.shared.open(info.pageURL)
+            status.updateStatus = "Automatisches Update an diesem Ort nicht möglich – die Download-Seite wurde geöffnet."
+            return
+        }
+        status.updateBusy = true
+        let updates = updates
+        let status = status
+        Task {
+            defer { status.updateBusy = false }
+            do {
+                let app = try await updates.download(info) { text in
+                    Task { @MainActor in status.updateStatus = text }
+                }
+                try updates.scheduleInstall(newApp: app, replacing: target)
+                status.updateStatus = "Version \(info.version) wird installiert, die App startet neu …"
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                NSApp.terminate(nil)
+            } catch {
+                status.updateStatus = "Update fehlgeschlagen: \(error.localizedDescription)"
+                status.note("Update", error)
+            }
+        }
+    }
+
+    /// Zeigt nach einem Update einmal die Neuerungen dieser Version.
+    private func prepareWhatsNew() {
+        let current = Self.version
+        defer { prefs.lastSeenVersion = current }
+        // Im Rauchtest der CI kein Dialog ueber der Oberflaeche.
+        guard ProcessInfo.processInfo.environment["GOMINING_SMOKE_OUT"] == nil else { return }
+        if let last = AppVersion(prefs.lastSeenVersion), let now = AppVersion(current), !(now > last) { return }
+        guard let url = Bundle.main.url(forResource: "CHANGELOG", withExtension: "md"),
+              let markdown = try? String(contentsOf: url, encoding: .utf8),
+              let section = ReleaseParser.changelogSection(markdown, version: current) else { return }
+        status.whatsNew = section
     }
 
     // MARK: - Diagramm

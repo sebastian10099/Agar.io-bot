@@ -87,7 +87,8 @@ public enum Backtester {
         result.lastTime = candles[candles.count - 1].openedAt + 60
 
         var state = BotState.fresh(settings, at: candles[start].openedAt)
-        var window = Array(candles[max(0, start - windowCandles)..<start])
+        let windowSize = max(windowCandles, settings.requiredCandles)
+        var window = Array(candles[max(0, start - windowSize)..<start])
         var seeded = !config.seedStartPosition
 
         let half = config.spreadBps / 2 / 10_000
@@ -153,7 +154,7 @@ public enum Backtester {
             }
             // Kerze abgeschlossen.
             window.append(c)
-            if window.count > windowCandles { window.removeFirst(window.count - windowCandles) }
+            if window.count > windowSize { window.removeFirst(window.count - windowSize) }
             let closeBid = c.close * (1 - half)
             let equity = state.equity(atBid: closeBid)
             if equity > peak { peak = equity }

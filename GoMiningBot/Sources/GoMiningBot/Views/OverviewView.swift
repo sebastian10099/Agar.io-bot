@@ -240,6 +240,12 @@ struct OverviewView: View {
             KeyValueRow(title: "Nettoziel je Verkauf", value: Fmt.bps(m?.exitBps ?? 0))
             KeyValueRow(title: "Volatilität (1 Min.)", value: Fmt.bps(m?.volatilityBps ?? 0, digits: 1))
             KeyValueRow(title: "Käuferanteil (60 s)", value: m?.pressure.map { Fmt.percent($0, digits: 0) } ?? "—")
+            if let fast = m?.trendFast, let slow = m?.trendSlow {
+                KeyValueRow(title: "Trend (EMA \(settings.trendFastMinutes)/\(settings.trendSlowMinutes))",
+                            value: (m?.downtrend ?? false) ? "fallend" : (fast > slow ? "steigend" : "seitwärts"),
+                            color: (m?.downtrend ?? false) ? .candleDown : (fast > slow ? .candleUp : .secondary),
+                            help: settings.trendFilterEnabled ? "Trendfilter aktiv: im Abwärtstrend keine Neukäufe" : "Trendfilter aus (Einstellungen)")
+            }
             KeyValueRow(title: "Kosten Hin- und Rückweg", value: Fmt.bps(m?.roundTripCostBps ?? 0, digits: 1),
                         help: "Sofort kaufen und zurückverkaufen: so viel Kursanstieg braucht es bis zur Kostendeckung")
             if !(m?.moves.isEmpty ?? true) {

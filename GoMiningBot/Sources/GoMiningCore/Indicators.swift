@@ -19,6 +19,22 @@ public enum Indicators {
         return changes[changes.count / 2]
     }
 
+    /// Exponentieller gleitender Durchschnitt der Schlusskurse (Periode in Kerzen).
+    /// Rechnet ueber die letzten 3 x Periode Kerzen; nil, wenn weniger als `period` Kerzen vorliegen.
+    public static func ema(_ candles: [PriceCandle], period: Int) -> Double? {
+        let n = candles.count
+        guard period >= 2, n >= period else { return nil }
+        let start = max(0, n - period * 3)
+        let alpha = 2.0 / Double(period + 1)
+        var value = candles[start].close
+        var i = start + 1
+        while i < n {
+            value += alpha * (candles[i].close - value)
+            i += 1
+        }
+        return value
+    }
+
     /// Hoechstes Hoch und tiefstes Tief der letzten `bars` Kerzen.
     public static func highLow(_ candles: [PriceCandle], bars: Int) -> (high: Double, low: Double)? {
         guard !candles.isEmpty else { return nil }

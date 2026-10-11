@@ -35,7 +35,6 @@ jobs:
       - name: App bauen (universal, ad-hoc signiert)
         working-directory: GoMiningBot
         env:
-          APP_VERSION: '4.0'
           APP_BUILD: ${{ github.run_number }}
         run: ./build_app.sh
 
@@ -90,20 +89,6 @@ jobs:
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
-      - name: App-ZIP ins Repository übernehmen (nur bei [app] in der Commit-Nachricht)
-        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[app]')
-        continue-on-error: true
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          mkdir -p GoMiningBot/release
-          cp GoMiningBot/dist/GoMining-Bot.zip GoMiningBot/release/GoMining-Bot.zip
-          git add GoMiningBot/release/GoMining-Bot.zip
-          if git diff --cached --quiet; then echo "keine Änderungen"; exit 0; fi
-          git commit -m "CI: fertig gebaute App (GoMining-Bot.zip) aktualisiert [skip ci]"
-          git pull --rebase origin "${GITHUB_REF_NAME}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-
       - name: Bilder der Oberfläche hochladen
         if: always()
         uses: actions/upload-artifact@v4
@@ -121,23 +106,38 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  # Bei einem Tag "gomining-bot-v*" (z. B. gomining-bot-v4.0) wird die fertige App als GitHub-Release
-  # veroeffentlicht und ist dann ohne Anmeldung herunterladbar.
+  # Neue Versionsnummer in GoMiningBot/VERSION => automatisch ein GitHub-Release mit der fertigen App.
+  # Zwischenstaende mit "[no-release]" in der Commit-Nachricht werden nicht veroeffentlicht.
+  # Fester Download-Link fuer die jeweils neueste Version:
+  # https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip
   release:
-    if: startsWith(github.ref, 'refs/tags/gomining-bot-v')
     needs: build
+    if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[no-release]') && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/claude/friendly-goldberg-31l8fp')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: GoMining-Bot-macOS
-      - name: Release erstellen
+          path: dist
+      - name: Release veröffentlichen (nur wenn die Version neu ist)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" GoMining-Bot.zip \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "GoMining Bot ${GITHUB_REF_NAME#gomining-bot-v}" \
-            --notes "Fertig gebaute App (Apple Silicon + Intel, nicht notarisiert). Erster Start: Rechtsklick auf die App, dann Öffnen. Details: GoMiningBot/README.md"
+          VERSION="$(tr -d ' \n\r' < GoMiningBot/VERSION)"
+          TAG="gomining-bot-v$VERSION"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG gibt es schon - nichts zu tun."
+            exit 0
+          fi
+          awk -v v="$VERSION" '/^## / { if (found) exit; if ($2 == v) { found = 1; next } } found { print }' GoMiningBot/CHANGELOG.md > notes.md
+          {
+            echo ""
+            echo "---"
+            echo "**Installation:** \`GoMining-Bot.zip\` herunterladen, entpacken und die App auf den Desktop oder in *Programme* ziehen. Erster Start: Rechtsklick auf die App, dann *Öffnen* (nicht notarisiert)."
+            echo "Ab Version 4.1 findet die App neue Versionen selbst und aktualisiert sich auf Knopfdruck."
+          } >> notes.md
+          gh release create "$TAG" dist/GoMining-Bot.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "GoMining Bot $VERSION" --notes-file notes.md --latest

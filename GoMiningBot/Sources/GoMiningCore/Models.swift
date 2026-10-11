@@ -222,6 +222,12 @@ public struct BotSettings: Codable, Equatable, Sendable {
     public var moveRequireConfirmation: Bool = true
     public var moveMaxRetracePercent: Double = 60
 
+    // Trendfilter: kein Nachkaufen, solange der schnelle EMA deutlich unter dem langsamen liegt.
+    public var trendFilterEnabled: Bool = false
+    public var trendFastMinutes: Int = 30
+    public var trendSlowMinutes: Int = 120
+    public var trendTolerancePercent: Double = 0.2
+
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
@@ -231,6 +237,7 @@ public struct BotSettings: Codable, Equatable, Sendable {
         case maxDailyLossFraction, maxDrawdownFraction, minSecondsBetweenTrades, cooldownAfterStopSeconds
         case maxSpreadBps, maxBookParticipation, maxBookAgeSeconds, maxCandleAgeSeconds
         case useMoveDetector, moveWindows, moveRequireConfirmation, moveMaxRetracePercent
+        case trendFilterEnabled, trendFastMinutes, trendSlowMinutes, trendTolerancePercent
     }
 
     public init(from decoder: Decoder) throws {
@@ -262,7 +269,14 @@ public struct BotSettings: Codable, Equatable, Sendable {
         moveWindows = c.value(.moveWindows, d.moveWindows)
         moveRequireConfirmation = c.value(.moveRequireConfirmation, d.moveRequireConfirmation)
         moveMaxRetracePercent = c.value(.moveMaxRetracePercent, d.moveMaxRetracePercent)
+        trendFilterEnabled = c.value(.trendFilterEnabled, d.trendFilterEnabled)
+        trendFastMinutes = c.value(.trendFastMinutes, d.trendFastMinutes)
+        trendSlowMinutes = c.value(.trendSlowMinutes, d.trendSlowMinutes)
+        trendTolerancePercent = c.value(.trendTolerancePercent, d.trendTolerancePercent)
     }
+
+    /// So viele 1-Minuten-Kerzen braucht die Engine mindestens (60-Minuten-Fenster, langsamer EMA).
+    public var requiredCandles: Int { max(130, trendSlowMinutes + 10) }
 
     /// Wirksames Positionslimit (mindestens 1).
     public var openPositionLimit: Int { max(1, maxOpenPositions ?? BotSettings.defaultMaxOpenPositions) }
@@ -302,6 +316,9 @@ public struct BotSettings: Codable, Equatable, Sendable {
             .map { MoveWindow(minutes: min(720, max(2, $0.minutes)), thresholdPercent: clamp($0.thresholdPercent, 0.1, 100)) }
             .sorted { $0.minutes < $1.minutes }
         if s.moveWindows.isEmpty { s.moveWindows = MoveDetector.defaultWindows }
+        s.trendSlowMinutes = min(720, max(20, s.trendSlowMinutes))
+        s.trendFastMinutes = min(s.trendSlowMinutes - 5, max(5, s.trendFastMinutes))
+        s.trendTolerancePercent = clamp(s.trendTolerancePercent, 0, 10)
         return s
     }
 }

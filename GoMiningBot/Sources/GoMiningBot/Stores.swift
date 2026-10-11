@@ -72,6 +72,13 @@ final class StatusStore: ObservableObject {
     @Published var dataFolderBytes: Int64 = 0
     /// Letzte Fehler (neueste zuerst) fuer die Diagnose.
     @Published var errors: [String] = []
+    // Updates
+    @Published var availableUpdate: ReleaseInfo?
+    @Published var updateStatus = ""
+    @Published var updateBusy = false
+    @Published var updateBannerHidden = false
+    /// Text fuer "Was ist neu" nach einem Update (nil = nicht anzeigen).
+    @Published var whatsNew: String?
 
     func note(_ context: String, _ error: Error) {
         let line = "\(Fmt.time(Date().timeIntervalSince1970)) \(context): \(error.localizedDescription)"
@@ -99,6 +106,9 @@ final class Preferences: ObservableObject {
     @Published var showMenuBar: Bool { didSet { defaults.set(showMenuBar, forKey: "showMenuBar") } }
     @Published var chartMinutes: Int { didSet { defaults.set(chartMinutes, forKey: "chartMinutes") } }
     @Published var journalDays: Int { didSet { defaults.set(journalDays, forKey: "journalDays") } }
+    @Published var autoCheckUpdates: Bool { didSet { defaults.set(autoCheckUpdates, forKey: "autoCheckUpdates") } }
+    /// Zuletzt gestartete Version (fuer "Was ist neu").
+    @Published var lastSeenVersion: String { didSet { defaults.set(lastSeenVersion, forKey: "lastSeenVersion") } }
     @Published var alerts: [PriceAlert] {
         didSet {
             if let data = try? JSONEncoder().encode(alerts) { defaults.set(data, forKey: "priceAlerts") }
@@ -116,6 +126,8 @@ final class Preferences: ObservableObject {
         chartMinutes = minutes == 0 ? 1 : minutes
         let days = UserDefaults.standard.integer(forKey: "journalDays")
         journalDays = days == 0 ? 7 : days
+        autoCheckUpdates = flag("autoCheckUpdates", true)
+        lastSeenVersion = UserDefaults.standard.string(forKey: "lastSeenVersion") ?? ""
         if let data = UserDefaults.standard.data(forKey: "priceAlerts"),
            let list = try? JSONDecoder().decode([PriceAlert].self, from: data) {
             alerts = list

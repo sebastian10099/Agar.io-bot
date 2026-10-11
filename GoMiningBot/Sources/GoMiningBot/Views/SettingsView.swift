@@ -25,9 +25,11 @@ struct SettingsView: View {
             entrySection
             exitSection
             moveSection
+            trendSection
             qualitySection
             notificationSection
             dataSection
+            updateSection
             aboutSection
         }
         .formStyle(.grouped)
@@ -197,6 +199,44 @@ struct SettingsView: View {
                 SliderRow(title: "Nicht mehr einsteigen ab Rücklauf von", value: controller.binding(\.moveMaxRetracePercent), range: 10...100, step: 5,
                           format: { "\(Int($0)) %" })
             }
+        }
+    }
+
+    // MARK: Trendfilter
+
+    private var trendSection: some View {
+        Section("Trendfilter") {
+            Toggle("Im Abwärtstrend nicht nachkaufen", isOn: controller.binding(\.trendFilterEnabled))
+            Text("Vergleicht einen schnellen mit einem langsamen gleitenden Durchschnitt (EMA) der 1-Minuten-Schlusskurse. Liegt der schnelle deutlich darunter, werden keine neuen Käufe ausgelöst – Verkäufe und Stop-Loss laufen normal weiter.")
+                .font(.caption).foregroundStyle(.secondary)
+            if s.trendFilterEnabled {
+                SliderRow(title: "Schneller EMA", value: intBinding(\.trendFastMinutes), range: 5...120, step: 5, format: { "\(Int($0)) Minuten" })
+                SliderRow(title: "Langsamer EMA", value: intBinding(\.trendSlowMinutes), range: 30...480, step: 10, format: { "\(Int($0)) Minuten" })
+                SliderRow(title: "Toleranz", value: controller.binding(\.trendTolerancePercent), range: 0...2, step: 0.05,
+                          format: { "\(Fmt.usdt($0, digits: 2)) %" }, help: "So weit darf der schnelle EMA unter dem langsamen liegen, bevor der Filter greift.")
+            }
+        }
+    }
+
+    // MARK: Updates
+
+    private var updateSection: some View {
+        Section("Updates") {
+            Toggle("Automatisch nach neuen Versionen suchen", isOn: $prefs.autoCheckUpdates)
+            HStack {
+                Button("Jetzt nach Updates suchen") { Task { await controller.checkForUpdates(manual: true) } }
+                    .disabled(status.updateBusy)
+                if let update = status.availableUpdate {
+                    Button("Version \(update.version.description) installieren") { controller.installUpdate() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(status.updateBusy)
+                }
+                Spacer()
+                Link("Alle Versionen auf GitHub", destination: URL(string: "https://github.com/\(UpdateService.repository)/releases")!)
+            }
+            if !status.updateStatus.isEmpty { Text(status.updateStatus).font(.caption).foregroundStyle(.secondary) }
+            Text("Neue Versionen erscheinen als GitHub-Release. Beim Aktualisieren wird die neue App geladen, geprüft und an derselben Stelle eingesetzt; Papierkonto, Einstellungen und Verlauf bleiben erhalten.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 

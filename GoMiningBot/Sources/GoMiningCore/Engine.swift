@@ -22,6 +22,11 @@ public struct EngineMetrics: Sendable {
     public var nextSellPrice: Double?
     /// Kosten fuer sofortiges Kaufen und Zurueckverkaufen in bp (Spread + Gebuehren + Slippage).
     public var roundTripCostBps: Double = 0
+    /// Schneller und langsamer EMA (nur mit genug Kerzen).
+    public var trendFast: Double?
+    public var trendSlow: Double?
+    /// Schneller EMA liegt um mehr als die Toleranz unter dem langsamen.
+    public var downtrend: Bool = false
 }
 
 public struct StepResult: Sendable {
@@ -151,6 +156,13 @@ public enum BotEngine {
             if hl.low > 0, bid > 0 { m.riseBps = max(0, (bid - hl.low) / hl.low * 10_000) }
         }
         m.pressure = Indicators.marketPressure(snap.trades, now: now) ?? snap.pressureHint
+
+        if let fast = Indicators.ema(snap.candles, period: s.trendFastMinutes),
+           let slow = Indicators.ema(snap.candles, period: s.trendSlowMinutes), slow > 0 {
+            m.trendFast = fast
+            m.trendSlow = slow
+            m.downtrend = fast < slow * (1 - s.trendTolerancePercent / 100)
+        }
 
         if s.useMoveDetector {
             let detector = MoveDetector(settings: s)
@@ -423,6 +435,9 @@ public enum BotEngine {
 
         if m.moveSignal?.action == .sell {
             return result(.wait, "Anstieg erkannt: kein Kauf in den Pump (\(m.moveSignal?.reason ?? ""))")
+        }
+        if s.trendFilterEnabled, m.downtrend {
+            return result(.wait, verbose ? "Abwärtstrend (EMA \(s.trendFastMinutes) unter EMA \(s.trendSlowMinutes)): kein Nachkauf" : "Abwärtstrend")
         }
 
         var trigger: String?
