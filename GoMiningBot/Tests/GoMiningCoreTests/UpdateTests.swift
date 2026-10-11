@@ -90,7 +90,9 @@ final class TrendFilterTests: XCTestCase {
 
     /// 150 Kerzen, die stetig um insgesamt `dropPercent` fallen (letzte schliesst kurz vor `now`).
     private func falling(dropPercent: Double) -> [PriceCandle] {
-        let closes = (0..<150).map { 1.0 * (1 - dropPercent / 100 * Double($0) / 149) }
+        let stepFraction: Double = dropPercent / 100 / 149
+        var closes: [Double] = []
+        for i in 0..<150 { closes.append(1.0 - stepFraction * Double(i)) }
         return MoveDetectorTests.candles(closes, endingAt: now - 70)
     }
 
