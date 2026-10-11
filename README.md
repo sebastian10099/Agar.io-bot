@@ -28,3 +28,7 @@ https://www.youtube.com/watch?v=x2-DFRnEFBU - Android Tutorial.
 * Press 'D' to toggle the dark mode.
 * Press 'F' to toggle the show mass option.
 * Press 'ESC' for the option menu.
+
+# GoMining Bot (macOS-App)
+Im Ordner [`GoMiningBot/`](GoMiningBot/README.md) liegt der Swift-Quellcode der **GoMining Bot**-App (Papierhandel-Bot für
+GOMINING/USDT auf BingX). Ein GitHub-Actions-Workflow baut daraus die macOS-App – siehe [GoMiningBot/README.md](GoMiningBot/README.md).

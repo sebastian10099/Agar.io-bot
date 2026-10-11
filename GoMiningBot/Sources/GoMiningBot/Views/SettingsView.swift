@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 import GoMiningCore
 
 @MainActor
@@ -13,6 +14,7 @@ struct SettingsView: View {
     @State private var showReset = false
     @State private var alertPrice = ""
     @State private var alertAbove = true
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     private var s: BotSettings { bot.stored.settings }
 
@@ -256,6 +258,7 @@ struct SettingsView: View {
 
     private var dataSection: some View {
         Section("Daten & Wartung") {
+            Toggle("Beim Anmelden automatisch starten", isOn: Binding(get: { launchAtLogin }, set: { setLaunchAtLogin($0) }))
             Stepper("Marktprotokoll: \(prefs.journalDays) Tage aufbewahren", value: $prefs.journalDays, in: 1...30)
             Text("Belegt aktuell \(Fmt.bytes(status.dataFolderBytes)) · \(status.journal)").font(.caption).foregroundStyle(.secondary)
             HStack {
@@ -268,6 +271,15 @@ struct SettingsView: View {
             Text("1.000 USDT virtuell in GOMINING anlegen: nach dem Zurücksetzen „Mit Startkauf“ wählen.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    private func setLaunchAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        } catch {
+            status.notice = "Autostart konnte nicht geändert werden: \(error.localizedDescription)"
+        }
+        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
     private var aboutSection: some View {

@@ -98,7 +98,22 @@ final class AppController: ObservableObject {
         Notifier.shared.requestAuthorizationIfNeeded()
         observeSystem()
         loadCredentials()
+        status.dataFolderBytes = journal.diskUsageBytes()
         tasks.append(Task { [weak self] in await self?.bootstrap() })
+        scheduleSmokeReportIfRequested()
+    }
+
+    /// Rauchtest fuer die CI: Mit `GOMINING_SMOKE_OUT=<Datei>` schreibt die App nach 25 s einen Bericht
+    /// (Verbindung, Livestream, Marktdaten, Fehler) und beendet sich.
+    private func scheduleSmokeReportIfRequested() {
+        guard let out = ProcessInfo.processInfo.environment["GOMINING_SMOKE_OUT"], !out.isEmpty else { return }
+        tasks.append(Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 25_000_000_000)
+            guard let self else { return }
+            let report = self.diagnosticsText()
+            try? report.write(toFile: out, atomically: true, encoding: .utf8)
+            NSApp.terminate(nil)
+        })
     }
 
     private func observeSystem() {
@@ -183,9 +198,10 @@ final class AppController: ObservableObject {
     private func startStream() {
         let (events, continuation) = AsyncStream<StreamEvent>.makeStream(bufferingPolicy: .bufferingNewest(2_000))
         let stream = stream
-        tasks.append(Task.detached { [weak self] in
+        let status = status
+        tasks.append(Task.detached {
             await stream.run(onEvent: { continuation.yield($0) }, onStatus: { text in
-                Task { @MainActor [weak self] in self?.status.stream = text }
+                Task { @MainActor in status.stream = text }
             })
             continuation.finish()
         })
@@ -842,24 +858,32 @@ final class AppController: ObservableObject {
         NSWorkspace.shared.open(paths.root)
     }
 
-    func copyDiagnostics() {
+    func diagnosticsText() -> String {
         var lines: [String] = []
         lines.append("GoMining Bot \(Self.version) · macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
         lines.append("Verbindung: \(status.connection)")
-        lines.append("Livestream: \(status.stream) · letzte Daten vor \(Int(nowTs() - lastStreamAt)) s")
+        lines.append("Livestream: \(status.stream) · letzte Daten vor \(lastStreamAt > 0 ? String(Int(nowTs() - lastStreamAt)) : "—") s")
         lines.append("Konto: \(status.account)")
-        lines.append("Handelsregeln: minQty \(rules.minQuantity), minNotional \(rules.minNotional), step \(rules.stepSize), verifiziert \(rules.verified)")
+        lines.append("Handelsregeln: minQty \(rules.minQuantity), minNotional \(rules.minNotional), step \(rules.stepSize), verifiziert \(rules.verified), Kauf \(rules.buyEnabled), Verkauf \(rules.sellEnabled)")
         if let s = market.snapshot {
             lines.append("Buch: bid \(s.bid) ask \(s.ask) · Spread \(String(format: "%.1f", s.spreadBps)) bp · \(s.bids.count)/\(s.asks.count) Stufen")
-            lines.append("Kerzen: \(s.candles.count) geschlossen · Trades: \(s.trades.count)")
+            lines.append("Kerzen: \(s.candles.count) geschlossen (letzte \(s.candles.last.map { Fmt.dateTime($0.openedAt) } ?? "—")) · Trades: \(s.trades.count)")
+            if let c = s.candles.last { lines.append("Letzte Kerze: O \(c.open) H \(c.high) L \(c.low) C \(c.close) V \(c.volume)") }
+        } else {
+            lines.append("Noch kein Marktbild")
         }
+        lines.append("REST-Kerzen: \(restCandles.count) · Verlauf lokal: \(history.count) · Trades im Speicher: \(trades.count)")
         let st = bot.stored.state
         lines.append("Konto-Zustand: Bargeld \(st.cashUSDT) · Bestand \(st.tokens) · \(st.lots.count) Lose · läuft \(st.running)")
+        if let d = bot.decisions.first { lines.append("Letzte Entscheidung: \(d.kind): \(d.reason)") }
         lines.append("Fehler:")
-        lines.append(contentsOf: status.errors.map { "  " + $0 })
-        let text = lines.joined(separator: "\n")
+        lines.append(contentsOf: status.errors.isEmpty ? ["  keine"] : status.errors.map { "  " + $0 })
+        return lines.joined(separator: "\n")
+    }
+
+    func copyDiagnostics() {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.general.setString(diagnosticsText(), forType: .string)
         status.notice = "Diagnose in die Zwischenablage kopiert."
     }
 }

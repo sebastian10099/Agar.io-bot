@@ -8,6 +8,10 @@ public struct AppPaths: Sendable {
     public init(root: URL) { self.root = root }
 
     public static func standard() -> AppPaths {
+        // Fuer Tests und den Rauchtest in der CI: Datenordner ueber die Umgebung festlegen.
+        if let override = ProcessInfo.processInfo.environment["GOMINING_DATA_DIR"], !override.isEmpty {
+            return AppPaths(root: URL(fileURLWithPath: override, isDirectory: true))
+        }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return AppPaths(root: base.appendingPathComponent("GoMining Bot", isDirectory: true))

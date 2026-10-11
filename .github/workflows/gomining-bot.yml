@@ -44,6 +44,27 @@ jobs:
           codesign -dv "GoMining Bot.app" 2>&1 | head -5
           lipo -info "GoMining Bot.app/Contents/MacOS/GoMiningBot"
 
+      - name: Rauchtest (App starten, 25 s Live-Daten von BingX prüfen)
+        continue-on-error: true
+        working-directory: GoMiningBot
+        run: |
+          export GOMINING_DATA_DIR="$RUNNER_TEMP/gomining-data"
+          export GOMINING_SMOKE_OUT="$PWD/smoke-report.txt"
+          rm -f "$GOMINING_SMOKE_OUT"
+          "dist/GoMining Bot.app/Contents/MacOS/GoMiningBot" > "$RUNNER_TEMP/app.log" 2>&1 &
+          APP_PID=$!
+          for i in $(seq 1 60); do
+            [ -f "$GOMINING_SMOKE_OUT" ] && break
+            kill -0 $APP_PID 2>/dev/null || break
+            sleep 1
+          done
+          echo "---- Bericht der App ----"
+          cat "$GOMINING_SMOKE_OUT" 2>/dev/null || echo "(kein Bericht - die App ist vorzeitig beendet)"
+          echo "---- Ausgabe der App (letzte Zeilen) ----"
+          tail -n 30 "$RUNNER_TEMP/app.log" || true
+          kill $APP_PID 2>/dev/null || true
+          [ -f "$GOMINING_SMOKE_OUT" ]
+
       - name: ZIP hochladen
         uses: actions/upload-artifact@v4
         with:
@@ -51,3 +72,24 @@ jobs:
           path: GoMiningBot/dist/GoMining-Bot.zip
           if-no-files-found: error
           retention-days: 30
+
+  # Bei einem Tag "gomining-bot-v*" (z. B. gomining-bot-v4.0) wird die fertige App als GitHub-Release
+  # veroeffentlicht und ist dann ohne Anmeldung herunterladbar.
+  release:
+    if: startsWith(github.ref, 'refs/tags/gomining-bot-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: GoMining-Bot-macOS
+      - name: Release erstellen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" GoMining-Bot.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "GoMining Bot ${GITHUB_REF_NAME#gomining-bot-v}" \
+            --notes "Fertig gebaute App (Apple Silicon + Intel, nicht notarisiert). Erster Start: Rechtsklick auf die App, dann Öffnen. Details: GoMiningBot/README.md"
