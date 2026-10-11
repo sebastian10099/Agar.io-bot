@@ -106,6 +106,6 @@ passen, sonst bleibt die 10. Position wegen "zu wenig USDT" gesperrt.
 ## 6. Pruefen
 
 1. Cmd+B baut ohne Fehler (bei Fehlern: Meldung an mich schicken, ich passe es an).
-2. Cmd+U: 14 Tests (Erkennung, Kerze einlesen, alte Daten laden, Limit 10).
+2. Cmd+U: 13 Tests (Erkennung, Kerze einlesen, alte Daten laden, Limit 10).
 3. Erst im **Papierhandel** laufen lassen und im Chart pruefen, ob Verkauf nach
    Anstiegen und Kauf nach Faellen passt. Echtgeld erst danach.
