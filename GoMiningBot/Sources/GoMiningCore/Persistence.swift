@@ -117,26 +117,32 @@ public final class StateStore: @unchecked Sendable {
         try? paths.prepare()
         guard fm.fileExists(atPath: paths.stateFile.path) else { return LoadOutcome(stored: nil, note: nil) }
 
-        if let data = try? Data(contentsOf: paths.stateFile), let stored = try? JSONDecoder().decode(StoredBot.self, from: data) {
-            var note: String?
-            if (stored.version ?? 0) < StoredBot.currentVersion {
-                // Vor dem Ueberschreiben mit dem neuen Format eine Kopie der alten Datei sichern.
-                let backup = paths.backupsDirectory.appendingPathComponent("simulation-vor-update-\(fileStamp()).json")
-                try? data.write(to: backup, options: .atomic)
-                note = "Gespeicherter Zustand aus einer älteren Version geladen; eine Kopie liegt im Ordner „backups“."
+        var decodeProblem = "Datei nicht lesbar"
+        if let data = try? Data(contentsOf: paths.stateFile) {
+            do {
+                let stored = try JSONDecoder().decode(StoredBot.self, from: data)
+                var note: String?
+                if (stored.version ?? 0) < StoredBot.currentVersion {
+                    // Vor dem Ueberschreiben mit dem neuen Format eine Kopie der alten Datei sichern.
+                    let backup = paths.backupsDirectory.appendingPathComponent("simulation-vor-update-\(fileStamp()).json")
+                    try? data.write(to: backup, options: .atomic)
+                    note = "Gespeicherter Zustand aus einer älteren Version geladen; eine Kopie liegt im Ordner „backups“."
+                }
+                return LoadOutcome(stored: stored, note: note)
+            } catch {
+                decodeProblem = String(String(describing: error).prefix(240))
             }
-            return LoadOutcome(stored: stored, note: note)
         }
 
-        // Beschaedigt: beiseitelegen und Sicherung versuchen.
+        // Nicht lesbar: beiseitelegen und Sicherung versuchen.
         let corrupt = paths.root.appendingPathComponent("simulation.beschaedigt-\(fileStamp()).json")
         try? fm.moveItem(at: paths.stateFile, to: corrupt)
         for url in backupFiles() {
             if let data = try? Data(contentsOf: url), let stored = try? JSONDecoder().decode(StoredBot.self, from: data) {
-                return LoadOutcome(stored: stored, note: "simulation.json war beschädigt; die Sicherung \(url.lastPathComponent) wurde wiederhergestellt.")
+                return LoadOutcome(stored: stored, note: "simulation.json war nicht lesbar (\(decodeProblem)); die Sicherung \(url.lastPathComponent) wurde wiederhergestellt. Die Originaldatei liegt als \(corrupt.lastPathComponent) im Datenordner.")
             }
         }
-        return LoadOutcome(stored: nil, note: "simulation.json war beschädigt und keine Sicherung war lesbar; die Datei wurde beiseitegelegt.")
+        return LoadOutcome(stored: nil, note: "simulation.json war nicht lesbar (\(decodeProblem)) und keine Sicherung war verfügbar. Die Originaldatei liegt als \(corrupt.lastPathComponent) im Datenordner – bitte nicht löschen. Es wurde ein neues Papierkonto angelegt.")
     }
 
     private func saveLocked(_ stored: StoredBot) throws {
