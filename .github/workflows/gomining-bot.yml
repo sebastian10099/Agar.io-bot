@@ -53,6 +53,7 @@ jobs:
           export GOMINING_DATA_DIR="$RUNNER_TEMP/gomining-data"
           export GOMINING_SMOKE_OUT="$PWD/smoke-report.txt"
           export GOMINING_SMOKE_SHOTS="$PWD/smoke-shots"
+          export GOMINING_SMOKE_EXPLORE=1
           rm -rf "$GOMINING_SMOKE_OUT" "$GOMINING_SMOKE_SHOTS"
           "dist/GoMining Bot.app/Contents/MacOS/GoMiningBot" > "$RUNNER_TEMP/app.log" 2>&1 &
           APP_PID=$!
