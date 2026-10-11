@@ -1,4 +1,4 @@
-# GoMining Bot 4.0 (macOS)
+# GoMining Bot (macOS)
 
 Papierhandel-Bot für **GOMINING/USDT** auf BingX Spot, mit echten Marktdaten (Orderbuch, Trades, Kerzen) und
 **ausschließlich simulierten Orders**. Die App sendet keine Orders an BingX – auch dann nicht, wenn ein API-Schlüssel
@@ -53,7 +53,9 @@ wird weiterverwendet; macOS fragt beim ersten Zugriff einmal nach der Erlaubnis 
 Einmalige Anpassung: Der alte Standard für gleichzeitige Positionen (4 bzw. 8) wird auf **10** angehoben; bewusst
 andere Werte bleiben unverändert.
 
-## Neu in 4.0
+## Neu in 4.0 und 4.1
+
+Neuerungen ab 4.1 (Updates aus der App, Trendfilter, „Was ist neu“) stehen im [CHANGELOG](CHANGELOG.md).
 
 **Schneller und robuster**
 
@@ -118,8 +120,9 @@ simulierten Trade ein.
 - **Backtest ≠ Zukunft.** Im Backtest gibt es keine historischen Orderbücher; Spread und Tiefe sind Annahmen, und es
   fehlen die Einzeltrades (Käuferanteil). Der Optimierer findet auch im Zufall „gute“ Werte – der Testabschnitt zeigt,
   ob sie halten.
-- Die BingX-Parser sind gegen Beispielantworten getestet, nicht gegen die Live-Schnittstelle (die CI hat keinen Zugriff
-  auf BingX). Falls die App „Marktdaten eingeschränkt“ meldet: *Einstellungen → Diagnose kopieren* und mitschicken.
+- Die BingX-Parser sind gegen Beispielantworten getestet und werden bei jedem Build zusätzlich in einem Rauchtest gegen
+  die Live-Schnittstelle geprüft. Falls die App trotzdem „Marktdaten eingeschränkt“ meldet: *Einstellungen → Diagnose
+  kopieren* und mitschicken.
 - Keine Anlageberatung.
 
 ## Entwicklung
