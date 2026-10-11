@@ -17,6 +17,8 @@ permissions:
 jobs:
   build:
     runs-on: macos-14
+    permissions:
+      contents: write
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -65,6 +67,28 @@ jobs:
           tail -n 30 "$RUNNER_TEMP/app.log" || true
           kill $APP_PID 2>/dev/null || true
           [ -f "$GOMINING_SMOKE_OUT" ]
+
+      - name: Bilder verkleinern
+        if: always()
+        working-directory: GoMiningBot
+        run: |
+          ls -la smoke-shots 2>/dev/null || echo "(keine Bilder)"
+          for f in smoke-shots/*.png; do [ -f "$f" ] && sips -Z 1500 "$f" >/dev/null; done || true
+          ls -la smoke-shots 2>/dev/null || true
+
+      - name: Bilder ins Repository übernehmen (nur bei [shots] in der Commit-Nachricht)
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[shots]')
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p GoMiningBot/docs/screens
+          cp GoMiningBot/smoke-shots/*.png GoMiningBot/docs/screens/
+          git add GoMiningBot/docs/screens
+          if git diff --cached --quiet; then echo "keine Änderungen"; exit 0; fi
+          git commit -m "CI: Bilder der Oberfläche aktualisiert [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Bilder der Oberfläche hochladen
         if: always()

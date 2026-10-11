@@ -226,12 +226,13 @@ public enum OptimizerParameter: String, CaseIterable, Sendable, Identifiable, Ha
     }
 
     public func apply(_ value: Double, to s: inout BotSettings) {
+        guard value.isFinite else { return }
         switch self {
         case .minNetProfitBps: s.minNetProfitBps = value
         case .stopLossFraction: s.stopLossFraction = value
         case .maxTradeUSDT: s.maxTradeUSDT = value
         case .gridDropBps: s.gridDropBps = value
-        case .maxOpenPositions: s.maxOpenPositions = Int(value.rounded())
+        case .maxOpenPositions: s.maxOpenPositions = Int(min(50, max(1, value.rounded())))
         case .minLotDistanceFactor: s.minLotDistanceFactor = value
         case .trailingStopBps: s.trailingStopBps = value
         }

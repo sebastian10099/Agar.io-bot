@@ -166,5 +166,6 @@ final class BacktestStore: ObservableObject {
         return text.components(separatedBy: separators)
             .map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".") }
             .compactMap { Double($0) }
+            .filter { $0.isFinite && abs($0) < 1e9 }
     }
 }
