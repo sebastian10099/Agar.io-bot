@@ -4,8 +4,13 @@ Diese Dateien sind passend zu den Typen aus deiner App `GoMining Bot.app` 3.5 ge
 (`PriceCandle`, `BotSettings.maxOpenPositions`, `PositionLot`, BingX-Kline).
 Ich hatte nur die fertig kompilierte App, nicht deinen Xcode-Quellcode. Deshalb sind die
 Dateien **neu und eigenstaendig**, und die Schritte unten sagen dir genau, wo du die
-vier bestehenden Stellen anfasst. **Ich konnte hier nichts kompilieren** (kein Swift-Compiler),
-bau es also einmal in Xcode (Cmd+B) und lass die Tests laufen (Cmd+U).
+vier bestehenden Stellen anfasst.
+
+**Was geprueft ist:** `PriceCandle.swift`, `MoveDetector.swift` und `PositionLimit.swift` habe ich
+mit Swift 5.10.1 (Linux) uebersetzt und die 13 Tests in `Tests/MoveDetectorTests.swift` laufen
+durch (0 Fehler). **Was nicht geprueft ist:** `CandleChartView.swift` (SwiftUI gibt es nur auf dem Mac)
+und die Verbindung zu deiner `BotEngine`/`BingXPublicAPI`. Bau also einmal in Xcode (Cmd+B)
+und lass die Tests laufen (Cmd+U).
 
 ## 0. Dateien ins Projekt
 
