@@ -1,0 +1,3 @@
+__pycache__/
+*.pyc
+gecko_state.json

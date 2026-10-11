@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gecko Mining Board</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #6b7280; --grid: #e5e7eb;
+    --up: #16a34a; --down: #dc2626; --accent: #2563eb; --warn: #d97706; --border: #e5e7eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --panel: #161b22; --text: #e6edf3; --muted: #8b949e; --grid: #21262d;
+      --up: #22c55e; --down: #ef4444; --accent: #58a6ff; --warn: #f59e0b; --border: #30363d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center;
+           padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 18px; margin: 0; }
+  .stat { display: flex; flex-direction: column; }
+  .stat span:first-child { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .stat span:last-child { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--muted); }
+  main { padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 1100px) { main { grid-template-columns: minmax(0, 1fr) 360px; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-width: 0; }
+  .panel h2 { font-size: 13px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  #coins { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  #coins button { border: 1px solid var(--border); background: transparent; color: var(--text);
+                  border-radius: 6px; padding: 4px 8px; cursor: pointer; font: inherit; font-size: 12px; }
+  #coins button.active { border-color: var(--accent); color: var(--accent); }
+  #coins button .chg { margin-left: 4px; font-variant-numeric: tabular-nums; }
+  #chartWrap { position: relative; width: 100%; height: 460px; }
+  @media (max-width: 600px) { #chartWrap { height: 320px; } }
+  #chart { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #tip { position: absolute; pointer-events: none; display: none; background: var(--panel);
+         border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px;
+         font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num, th.num { text-align: right; }
+  .tag { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .tag.long { background: color-mix(in srgb, var(--up) 18%, transparent); color: var(--up); }
+  .tag.short { background: color-mix(in srgb, var(--down) 18%, transparent); color: var(--down); }
+  .scroll { overflow-x: auto; }
+  #error { color: var(--warn); font-size: 12px; }
+  .side { display: grid; gap: 16px; align-content: start; min-width: 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gecko Mining Board</h1>
+  <div class="stat"><span>Equity</span><span id="equity">–</span></div>
+  <div class="stat"><span>Realisiert</span><span id="realized">–</span></div>
+  <div class="stat"><span>Positionen</span><span id="slots">–</span></div>
+  <div class="stat"><span>Modus</span><span id="mode">–</span></div>
+  <div class="stat"><span>Update</span><span id="updated">–</span></div>
+  <div id="error"></div>
+</header>
+<main>
+  <section class="panel">
+    <div id="coins"></div>
+    <div id="chartWrap"><canvas id="chart"></canvas><div id="tip"></div></div>
+    <div class="scroll" style="margin-top:10px">
+      <table>
+        <thead><tr><th>Fenster</th><th>Richtung</th><th class="num">Bewegung</th><th class="num">Schwelle</th><th class="num">Zurueck</th><th>Status</th></tr></thead>
+        <tbody id="moves"></tbody>
+      </table>
+    </div>
+  </section>
+  <div class="side">
+    <section class="panel">
+      <h2>Offene Positionen</h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Coin</th><th>Seite</th><th class="num">Einstieg</th><th class="num">PnL</th></tr></thead>
+        <tbody id="open"></tbody>
+      </table></div>
+    </section>
+    <section class="panel">
+      <h2>Signale</h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Coin</th><th>Seite</th><th>Grund</th><th>Status</th></tr></thead>
+        <tbody id="signals"></tbody>
+      </table></div>
+    </section>
+    <section class="panel">
+      <h2>Geschlossen</h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Coin</th><th>Seite</th><th>Ausstieg</th><th class="num">PnL</th></tr></thead>
+        <tbody id="closed"></tbody>
+      </table></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let state = null;
+let selected = null;
+let hoverX = null;
+
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function fmtPrice(p) {
+  if (p == null || !isFinite(p)) return "–";
+  const digits = p >= 1000 ? 2 : p >= 1 ? 4 : p >= 0.01 ? 6 : 8;
+  return p.toLocaleString("de-DE", { minimumFractionDigits: Math.min(digits, 2), maximumFractionDigits: digits });
+}
+const fmtUsd = (v) => (v >= 0 ? "+" : "") + v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " $";
+const fmtTime = (t) => new Date(t * 1000).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+const pnlClass = (v) => (v > 0 ? "up" : v < 0 ? "down" : "muted");
+
+// "Schoene" Achsenschritte (1, 2, 2.5, 5 x 10^n), damit Preislabels lesbar bleiben.
+function niceStep(range, ticks) {
+  const raw = range / Math.max(1, ticks);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const nice = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+  return nice * mag;
+}
+
+function drawChart() {
+  const canvas = $("chart");
+  const wrap = $("chartWrap");
+  const dpr = window.devicePixelRatio || 1;
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const coin = state && selected ? state.coins[selected] : null;
+  const candles = coin ? coin.candles : [];
+  ctx.font = "11px system-ui, sans-serif";
+  if (!candles.length) {
+    ctx.fillStyle = css("--muted");
+    ctx.fillText("Noch keine Kursdaten …", 12, 20);
+    return;
+  }
+
+  const positions = state.open_positions.filter((p) => p.coin === selected);
+  // Y-Bereich aus ALLEN Dochten + offenen Positionslinien -> alles bleibt im Bild.
+  let lo = Infinity, hi = -Infinity;
+  for (const c of candles) { lo = Math.min(lo, c.l); hi = Math.max(hi, c.h); }
+  for (const p of positions) { lo = Math.min(lo, p.stop_loss, p.take_profit); hi = Math.max(hi, p.stop_loss, p.take_profit); }
+  if (hi === lo) { hi *= 1.001; lo *= 0.999; }
+  const pad = (hi - lo) * 0.08;
+  lo -= pad; hi += pad;
+
+  // Rechter Rand breit genug fuer das laengste Preislabel.
+  const step = niceStep(hi - lo, Math.max(3, Math.floor(H / 60)));
+  const labels = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) labels.push(v);
+  const axisW = Math.ceil(Math.max(...labels.map((v) => ctx.measureText(fmtPrice(v)).width), ctx.measureText(fmtPrice(candles.at(-1).c)).width)) + 16;
+  const left = 4, top = 8, bottom = 22, right = axisW;
+  const plotW = W - left - right, plotH = H - top - bottom;
+  const y = (v) => top + (hi - v) / (hi - lo) * plotH;
+  const slot = plotW / candles.length;
+  const x = (i) => left + slot * (i + 0.5);
+  const body = Math.max(1, Math.min(14, slot * 0.7));
+
+  // Raster + Preisachse
+  ctx.strokeStyle = css("--grid"); ctx.fillStyle = css("--muted"); ctx.lineWidth = 1;
+  ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  for (const v of labels) {
+    const yy = Math.round(y(v)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(left, yy); ctx.lineTo(left + plotW, yy); ctx.stroke();
+    ctx.fillText(fmtPrice(v), left + plotW + 6, yy);
+  }
+  // Zeitachse
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const every = Math.max(1, Math.ceil(70 / slot));
+  for (let i = candles.length - 1; i >= 0; i -= every) {
+    const label = fmtTime(candles[i].t), half = ctx.measureText(label).width / 2;
+    if (x(i) - half < left) break;  // nicht links aus dem Bild ragen
+    ctx.fillText(label, x(i), H - bottom + 6);
+  }
+
+  // Analyse-Fenster (6/8/20/60 min) als Schattierung von rechts
+  const span = (state.candle_minutes || 1);
+  const windows = [...(coin.moves || [])].sort((a, b) => b.window_minutes - a.window_minutes);
+  windows.forEach((m, k) => {
+    const n = Math.min(candles.length, Math.ceil(m.window_minutes / span));
+    const x0 = left + slot * (candles.length - n);
+    ctx.fillStyle = m.triggered ? (m.direction === "up" ? css("--up") : css("--down")) : css("--muted");
+    ctx.globalAlpha = m.triggered ? 0.08 : 0.035;
+    ctx.fillRect(x0, top, left + plotW - x0, plotH);
+    ctx.globalAlpha = 0.7;
+    ctx.textAlign = "left"; ctx.textBaseline = "top";
+    // Labels gestaffelt, damit sich kurze Fenster (6m/8m) nicht ueberdecken
+    ctx.fillText(m.window_minutes + "m", x0 + 3, top + 2 + 13 * k);
+  });
+  ctx.globalAlpha = 1;
+
+  // Kerzen: gruen = Schluss >= Eroeffnung, rot = Schluss < Eroeffnung
+  const up = css("--up"), down = css("--down");
+  candles.forEach((c, i) => {
+    const color = c.c >= c.o ? up : down;
+    const cx = Math.round(x(i)) + 0.5;
+    ctx.strokeStyle = color; ctx.fillStyle = color;
+    ctx.beginPath(); ctx.moveTo(cx, y(c.h)); ctx.lineTo(cx, y(c.l)); ctx.stroke();
+    const yo = y(c.o), yc = y(c.c);
+    ctx.fillRect(cx - body / 2, Math.min(yo, yc), body, Math.max(1, Math.abs(yc - yo)));
+  });
+
+  // Offene Positionen: Einstieg, Stop-Loss, Take-Profit
+  const hline = (v, color, label, dash) => {
+    const yy = Math.round(y(v)) + 0.5;
+    ctx.setLineDash(dash); ctx.strokeStyle = color;
+    ctx.beginPath(); ctx.moveTo(left, yy); ctx.lineTo(left + plotW, yy); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle = color; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+    ctx.fillText(label, left + 4, yy - 2);
+  };
+  for (const p of positions) {
+    hline(p.entry_price, css("--accent"), `#${p.id} ${p.side.toUpperCase()}`, [4, 3]);
+    hline(p.stop_loss, down, `SL #${p.id}`, [2, 3]);
+    hline(p.take_profit, up, `TP #${p.id}`, [2, 3]);
+    const i = candles.findIndex((c) => c.t + span * 60 > p.opened_ts);
+    if (i >= 0) {
+      ctx.fillStyle = css("--accent");
+      const yy = y(p.entry_price), dir = p.side === "long" ? 1 : -1;
+      ctx.beginPath(); ctx.moveTo(x(i), yy); ctx.lineTo(x(i) - 5, yy + 9 * dir); ctx.lineTo(x(i) + 5, yy + 9 * dir); ctx.fill();
+    }
+  }
+
+  // Aktueller Kurs als Label an der Achse
+  const last = candles.at(-1);
+  const yl = Math.round(y(last.c)) + 0.5;
+  ctx.fillStyle = last.c >= last.o ? up : down;
+  ctx.fillRect(left + plotW + 1, yl - 8, axisW - 2, 16);
+  ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  ctx.fillText(fmtPrice(last.c), left + plotW + 6, yl);
+
+  // Fadenkreuz + Tooltip
+  const tip = $("tip");
+  if (hoverX != null && hoverX >= left && hoverX <= left + plotW) {
+    const i = Math.min(candles.length - 1, Math.max(0, Math.floor((hoverX - left) / slot)));
+    const c = candles[i];
+    ctx.strokeStyle = css("--muted"); ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(Math.round(x(i)) + 0.5, top); ctx.lineTo(Math.round(x(i)) + 0.5, top + plotH); ctx.stroke();
+    ctx.setLineDash([]);
+    const chg = (c.c - c.o) / c.o * 100;
+    tip.innerHTML = `${fmtTime(c.t)}<br>O ${fmtPrice(c.o)} H ${fmtPrice(c.h)}<br>L ${fmtPrice(c.l)} C ${fmtPrice(c.c)}<br><span class="${pnlClass(chg)}">${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%</span>`;
+    tip.style.display = "block";
+    const tx = x(i) + 12, tw = tip.offsetWidth;
+    tip.style.left = (tx + tw > W ? x(i) - tw - 12 : tx) + "px";
+    tip.style.top = top + 4 + "px";
+  } else {
+    tip.style.display = "none";
+  }
+}
+
+function changePct(candles) {
+  if (!candles || candles.length < 2) return null;
+  return (candles.at(-1).c - candles[0].o) / candles[0].o * 100;
+}
+
+function render() {
+  if (!state) return;
+  $("equity").textContent = state.equity.toLocaleString("de-DE", { minimumFractionDigits: 2 }) + " $";
+  $("realized").textContent = fmtUsd(state.realized_pnl);
+  $("realized").className = pnlClass(state.realized_pnl);
+  $("slots").textContent = `${state.open_positions.length} / ${state.max_open_positions}`;
+  $("mode").textContent = state.mode === "reversal" ? "Gegenbewegung" : "Momentum";
+  $("updated").textContent = state.updated ? fmtTime(state.updated) : "–";
+  $("error").textContent = state.error || "";
+
+  const names = Object.keys(state.coins);
+  if (!selected || !state.coins[selected]) selected = names[0];
+  const openCoins = new Set(state.open_positions.map((p) => p.coin));
+  $("coins").innerHTML = names.map((n) => {
+    const chg = changePct(state.coins[n].candles);
+    const dot = openCoins.has(n) ? " ●" : "";
+    return `<button data-coin="${esc(n)}" class="${n === selected ? "active" : ""}">${esc(n)}${dot}` +
+      (chg == null ? "" : `<span class="chg ${pnlClass(chg)}">${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%</span>`) + "</button>";
+  }).join("");
+
+  const moves = state.coins[selected]?.moves || [];
+  $("moves").innerHTML = moves.map((m) => `<tr>
+      <td>${m.window_minutes} min</td>
+      <td class="${m.direction === "up" ? "up" : "down"}">${m.direction === "up" ? "▲ Anstieg" : "▼ Fall"}</td>
+      <td class="num">${m.direction === "up" ? "+" : "-"}${m.move_pct.toFixed(2)}%</td>
+      <td class="num">${m.threshold_pct.toFixed(2)}%</td>
+      <td class="num">${m.retrace_pct.toFixed(0)}%</td>
+      <td>${m.triggered ? "<b>ausgeloest</b>" : '<span class="muted">–</span>'}</td></tr>`).join("");
+
+  $("open").innerHTML = state.open_positions.map((p) => `<tr>
+      <td>${esc(p.coin)}</td><td><span class="tag ${p.side}">${p.side.toUpperCase()}</span></td>
+      <td class="num">${fmtPrice(p.entry_price)}</td>
+      <td class="num ${pnlClass(p.pnl ?? 0)}">${p.pnl == null ? "–" : `${fmtUsd(p.pnl)}<br>${p.pnl_pct.toFixed(2)}%`}</td></tr>`).join("")
+    || '<tr><td colspan="4" class="muted">keine</td></tr>';
+
+  $("signals").innerHTML = state.signals.slice(0, 10).map((s) => `<tr>
+      <td>${esc(s.coin)}</td><td><span class="tag ${s.side}">${s.side.toUpperCase()}</span></td>
+      <td>${esc(s.reason)}</td><td class="muted">${esc(s.status)}</td></tr>`).join("")
+    || '<tr><td colspan="4" class="muted">noch keine</td></tr>';
+
+  $("closed").innerHTML = [...state.closed_positions].reverse().map((p) => `<tr>
+      <td>${esc(p.coin)}</td><td><span class="tag ${p.side}">${p.side.toUpperCase()}</span></td>
+      <td class="muted">${esc(p.exit_reason)}</td>
+      <td class="num ${pnlClass(p.pnl)}">${fmtUsd(p.pnl)}</td></tr>`).join("")
+    || '<tr><td colspan="4" class="muted">noch keine</td></tr>';
+
+  drawChart();
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("/api/state", { cache: "no-store" });
+    state = await res.json();
+    render();
+  } catch (e) {
+    $("error").textContent = "Server nicht erreichbar";
+  }
+}
+
+$("coins").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-coin]");
+  if (b) { selected = b.dataset.coin; render(); }
+});
+$("chart").addEventListener("mousemove", (e) => { hoverX = e.offsetX; drawChart(); });
+$("chart").addEventListener("mouseleave", () => { hoverX = null; drawChart(); });
+new ResizeObserver(() => drawChart()).observe($("chartWrap"));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawChart);
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>
