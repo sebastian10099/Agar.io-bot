@@ -42,4 +42,7 @@ Optionen: `--max-positions 10`, `--mode reversal|momentum`, `--poll 20`,
 
 ```bash
 python -m unittest discover -s tests -t .
+node --test tests/movement.test.js
 ```
+
+Einbau in einen eigenen Bot: siehe [EINBAU.md](EINBAU.md).

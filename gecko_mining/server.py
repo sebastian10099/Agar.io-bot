@@ -54,13 +54,18 @@ def make_handler(runner: BotRunner):
             self.end_headers()
             self.wfile.write(body)
 
+        def _static(self, name: str, content_type: str) -> None:
+            with open(os.path.join(STATIC_DIR, name), "rb") as fh:
+                self._send(200, fh.read(), content_type)
+
         def do_GET(self):  # noqa: N802 (http.server API)
             path = self.path.split("?", 1)[0]
             if path == "/api/state":
                 self._send(200, json.dumps(runner.snapshot()).encode(), "application/json")
             elif path in ("/", "/index.html"):
-                with open(os.path.join(STATIC_DIR, "index.html"), "rb") as fh:
-                    self._send(200, fh.read(), "text/html; charset=utf-8")
+                self._static("index.html", "text/html; charset=utf-8")
+            elif path == "/candle-chart.js":
+                self._static("candle-chart.js", "text/javascript; charset=utf-8")
             else:
                 self._send(404, b"not found", "text/plain")
 
