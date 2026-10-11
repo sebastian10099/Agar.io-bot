@@ -149,65 +149,9 @@ final class AppController: ObservableObject {
             shot("\(index + 1)-\(tab.slug)")
         }
 
-        if ProcessInfo.processInfo.environment["GOMINING_SMOKE_EXPLORE"] != nil {
-            await runExploration(into: &extra)
-        }
-
         let report = diagnosticsText() + "\n" + extra.joined(separator: "\n")
         try? report.write(toFile: out, atomically: true, encoding: .utf8)
         NSApp.terminate(nil)
-    }
-
-    /// Nur fuer die CI (GOMINING_SMOKE_EXPLORE): grosse Parametersuche ueber 30 Tage echter Kerzen mit
-    /// Trainings-/Testaufteilung, damit Standardwerte nicht nach Gefuehl gewaehlt werden.
-    private func runExploration(into extra: inout [String]) async {
-        guard let candles = await prepareHistory(days: 30) else {
-            extra.append("EXPLORE: keine Kerzen")
-            return
-        }
-        let cfg = backtest.config(rules: rules)
-        let trainFraction = 0.6
-        let split = Int(Double(candles.count) * trainFraction)
-        func line(_ train: BacktestResult, _ test: BacktestResult?) -> String {
-            let t = test.map { String(format: "%+.2f (hold %+.1f%%, dd %.2f, %d Verk.)", $0.netPnL, $0.holdReturnFraction * 100, $0.maxDrawdownUSDT, $0.sells) } ?? "-"
-            return String(format: "train %+.2f (hold %+.1f%%, dd %.2f, %d Verk.) | test ", train.netPnL, train.holdReturnFraction * 100, train.maxDrawdownUSDT, train.sells) + t
-        }
-        let base = BotSettings()
-        let baseTrain = Backtester.run(candles: Array(candles[0..<split]), settings: base, config: cfg, collect: false)
-        let baseTest = Backtester.run(candles: candles, settings: base, config: cfg, startIndex: split, collect: false)
-        extra.append("EXPLORE \(candles.count) Kerzen (30 Tage), Training \(Int(trainFraction * 100)) %. Standard: " + line(baseTrain, baseTest))
-
-        let axes = [
-            OptimizerAxis(parameter: .minNetProfitBps, values: [30, 50, 80, 120, 200]),
-            OptimizerAxis(parameter: .stopLossFraction, values: [0.02, 0.03, 0.05, 0.08]),
-            OptimizerAxis(parameter: .trailingStopBps, values: [0, 60, 120]),
-            OptimizerAxis(parameter: .minLotDistanceFactor, values: [0, 0.5, 1, 2]),
-            OptimizerAxis(parameter: .gridDropBps, values: [160, 250]),
-        ]
-        let started = Date()
-        let results = await Optimizer.run(candles: candles, base: base, config: cfg, axes: axes, objective: .riskAdjusted,
-                                          trainFraction: trainFraction, progress: { _, _ in })
-        extra.append("EXPLORE Optimierer: \(results.count) Kombinationen in \(String(format: "%.1f", Date().timeIntervalSince(started))) s")
-        func label(_ e: OptimizerEntry) -> String {
-            zip(axes.map(\.parameter), e.values).map { "\($0.0.rawValue)=\(String(format: "%g", $0.1))" }.joined(separator: " ")
-        }
-        extra.append("Top 12 nach Training (risikobereinigt):")
-        for e in results.prefix(12) { extra.append("  " + label(e) + " :: " + line(e.train, e.test)) }
-        // Robustheit: beste nach Testabschnitt unter allen mit positivem Training.
-        let robust = results.filter { $0.train.netPnL > 0 && ($0.test?.netPnL ?? -1) > 0 }
-        extra.append("Kombinationen mit Gewinn in Training UND Test: \(robust.count) von \(results.count)")
-        for e in robust.sorted(by: { ($0.test?.netPnL ?? 0) > ($1.test?.netPnL ?? 0) }).prefix(8) { extra.append("  " + label(e) + " :: " + line(e.train, e.test)) }
-        // Wirkung einzelner Parameter (Mittel des Testergebnisses je Wert).
-        for (i, axis) in axes.enumerated() {
-            var parts: [String] = []
-            for v in axis.values {
-                let group = results.filter { $0.values[i] == v }
-                let mean = group.isEmpty ? 0 : group.reduce(0.0) { $0 + ($1.test?.netPnL ?? 0) } / Double(group.count)
-                let meanTrain = group.isEmpty ? 0 : group.reduce(0.0) { $0 + $1.train.netPnL } / Double(group.count)
-                parts.append(String(format: "%g: train %+.2f test %+.2f", v, meanTrain, mean))
-            }
-            extra.append("  \(axis.parameter.rawValue) -> " + parts.joined(separator: " | "))
-        }
     }
 
     private func waitUntil(timeout: Double, _ condition: () -> Bool) async {
@@ -817,20 +761,25 @@ final class AppController: ObservableObject {
 
     // MARK: - Verlauf, Backtest, Optimierung
 
-    /// Stellt sicher, dass `days` Tage Kerzen lokal vorliegen; laedt fehlende von BingX.
+    /// BingX liefert 1-Minuten-Kerzen hoechstens 7 Tage weit zurueck (Fehler 100204).
+    static let exchangeHistoryDays = 7.0
+
+    /// Stellt sicher, dass `days` Tage Kerzen lokal vorliegen; laedt fehlende von BingX (soweit dort abrufbar).
     func prepareHistory(days: Int) async -> [PriceCandle]? {
         let now = nowTs()
         let start = now - Double(days) * 86_400
-        let covers = (history.first?.openedAt ?? .infinity) <= start + 7_200
+        // Aelteres als der Abrufbereich von BingX kann nur die App selbst gesammelt haben.
+        let fetchableStart = now - Self.exchangeHistoryDays * 86_400 + 3_600
+        let wantedStart = max(start, fetchableStart)
+        let covers = (history.first?.openedAt ?? .infinity) <= wantedStart + 7_200
         let fresh = (history.last.map { now - $0.openedAt < 900 }) ?? false
         if !(covers && fresh) {
-            status.historyStatus = "Lade \(days) Tage Kerzen von BingX …"
+            status.historyStatus = "Lade Kerzen von BingX …"
             do {
-                let fetched = try await api.history(from: start) { p in
+                let fetched = try await api.history(from: wantedStart) { p in
                     Task { @MainActor [weak self] in self?.backtest.progress = p * 0.5 }
                 }
                 history = CandleCache.merged(history, fetched, now: now)
-                status.historyStatus = "\(history.count) Kerzen lokal gespeichert"
             } catch {
                 status.note("Kerzenverlauf", error)
                 status.historyStatus = "Kerzen konnten nicht geladen werden: \(error.localizedDescription)"
@@ -842,6 +791,12 @@ final class AppController: ObservableObject {
         guard filled.count > Backtester.warmupCandles + 60 else {
             status.historyStatus = "Zu wenige Kerzen für einen Backtest (\(filled.count))."
             return nil
+        }
+        let span = ((filled.last?.openedAt ?? 0) - (filled.first?.openedAt ?? 0)) / 86_400
+        if span < Double(days) * 0.9 {
+            status.historyStatus = "Verfügbar sind \(Fmt.usdt(span, digits: 1)) von \(days) Tagen (\(filled.count) Kerzen): BingX liefert höchstens \(Int(Self.exchangeHistoryDays)) Tage; die App sammelt weiteren Verlauf, solange sie läuft."
+        } else {
+            status.historyStatus = "\(Fmt.usdt(span, digits: 1)) Tage Verlauf (\(filled.count) Kerzen) lokal gespeichert"
         }
         return filled
     }

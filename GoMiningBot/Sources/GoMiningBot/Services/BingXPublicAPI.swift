@@ -65,7 +65,13 @@ struct BingXPublicAPI: Sendable {
                 "symbol": symbol, "interval": "1m", "limit": "1000", "endTime": String(Int(end * 1000)),
             ])
             let page: [PriceCandle]
-            do { page = try BingXParser.parseKlines(data) } catch BingXError.missing { break }
+            do {
+                page = try BingXParser.parseKlines(data)
+            } catch BingXError.missing {
+                break
+            } catch BingXError.api where !all.isEmpty {
+                break    // z. B. 100204: aelter als 7 Tage ist nicht abrufbar - bisherige Seiten behalten
+            }
             guard let oldest = page.first, oldest.openedAt < end - 30 else { break }
             all.append(contentsOf: page)
             progress(min(1, max(0, (now - oldest.openedAt) / max(1, now - start))))

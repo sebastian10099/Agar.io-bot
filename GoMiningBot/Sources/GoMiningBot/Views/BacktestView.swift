@@ -47,7 +47,10 @@ struct BacktestView: View {
                     }
                     .pickerStyle(.segmented)
                     Toggle("Mit virtuellem Startkauf beginnen", isOn: $backtest.seedStartPosition)
-                    Text(status.historyStatus).font(.caption).foregroundStyle(.secondary)
+                    Text(status.historyStatus.isEmpty
+                         ? "BingX liefert höchstens 7 Tage 1-Minuten-Kerzen; längeren Verlauf sammelt die App selbst, solange sie läuft (bis 45 Tage)."
+                         : status.historyStatus)
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: 360, alignment: .leading)
                 VStack(alignment: .leading, spacing: 6) {

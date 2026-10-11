@@ -63,8 +63,10 @@ andere Werte bleiben unverändert.
 - **Anstiegs- und Fall-Erkennung** über 6, 8, 20 und 60 Minuten: Nach einem Anstieg (mit roter Gegenkerze) wird nicht
   mehr in den Pump gekauft und früher verkauft; nach einem Fall (mit grüner Kerze) wird nachgekauft. BingX Spot kann
   nicht leerverkaufen – es wird nur Bestand auf- und abgebaut.
-- **Backtest** über 3–30 Tage 1-Minuten-Kerzen von BingX (lokal zwischengespeichert) und **Optimierer** (Rastersuche mit
-  Trainings-/Testaufteilung gegen Überanpassung; Ergebnis mit einem Klick übernehmen).
+- **Backtest** über bis zu 7 Tage 1-Minuten-Kerzen direkt von BingX (weiter zurück gibt die Schnittstelle nichts her;
+  längeren Verlauf sammelt die App lokal, solange sie läuft, bis 45 Tage) und **Optimierer** (Rastersuche mit
+  Trainings-/Testaufteilung gegen Überanpassung; Ergebnis mit einem Klick übernehmen). 12 Kombinationen auf 7 Tagen
+  dauern weniger als eine Sekunde.
 - **Statistik:** Gewinnquote, Profit-Faktor, Erwartung je Trade, Ø Gewinn/Verlust, Haltedauer, Drawdown,
   Vermögensverlauf gegen „Halten“, Ergebnis je Tag.
 - **Neue Schutzfunktionen** (alle einstellbar): Trailing-Stop, Zeit-Ausstieg, Abkühlphase nach Stop-Loss,
@@ -99,6 +101,10 @@ simulierten Trade ein.
 
 - **Keine echten Orders.** Die Echtgeld-Anbindung gibt es bewusst nicht; Papierergebnisse sind kein Beleg dafür, dass
   eine Strategie mit echtem Geld funktioniert (Ausführung, Wartezeiten, Teilausführung, Gebührenstufen).
+- **Kein Gewinnversprechen.** Mit den Standardwerten lag der Bot auf 7 Tagen echter Kerzen (Stand 11.10.2026) bei
+  −0,5 % (reines Halten: −7,3 %). In einer Parametersuche über 480 Kombinationen war keine Einstellung im Trainings-
+  *und* im Testabschnitt zugleich im Plus – Gebühren, Spread und Stop-Loss fressen die kleinen Ziele. Die App ist ein
+  Werkzeug zum Ausprobieren und Lernen.
 - **Backtest ≠ Zukunft.** Im Backtest gibt es keine historischen Orderbücher; Spread und Tiefe sind Annahmen, und es
   fehlen die Einzeltrades (Käuferanteil). Der Optimierer findet auch im Zufall „gute“ Werte – der Testabschnitt zeigt,
   ob sie halten.
