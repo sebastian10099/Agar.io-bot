@@ -296,7 +296,7 @@ public enum Optimizer {
         let hasTest = split < candles.count - 30
         let trainCandles = hasTest ? Array(candles[0..<split]) : candles
 
-        func evaluate(_ index: Int) -> OptimizerEntry {
+        @Sendable func evaluate(_ index: Int) -> OptimizerEntry {
             var settings = base
             for (axis, value) in zip(activeAxes, combos[index]) { axis.parameter.apply(value, to: &settings) }
             settings = settings.clamped()

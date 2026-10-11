@@ -55,14 +55,17 @@ func fileStamp(_ date: Date = Date()) -> String {
 
 // MARK: - Zustandsspeicher
 
-public actor StateStore {
+/// Liest und schreibt `simulation.json` atomar. Alle Zugriffe laufen ueber eine serielle Queue;
+/// `save` ist synchron (z. B. beim Beenden der App), `saveAsync` schreibt im Hintergrund.
+public final class StateStore: @unchecked Sendable {
     public struct LoadOutcome: Sendable {
         public var stored: StoredBot?
         public var note: String?
     }
 
     private let paths: AppPaths
-    private var lastBackupAt = Date.distantPast
+    private let queue = DispatchQueue(label: "gomining.state", qos: .utility)
+    private var lastBackupAt = Date.distantPast          // nur auf der Queue benutzen
     private let backupInterval: TimeInterval = 30 * 60
     private let keepBackups = 12
 
@@ -71,6 +74,41 @@ public actor StateStore {
     /// Laedt `simulation.json`. Bei einer beschaedigten Datei wird sie beiseitegelegt und die
     /// juengste Sicherung verwendet.
     public func load() -> LoadOutcome {
+        queue.sync { loadLocked() }
+    }
+
+    public func save(_ stored: StoredBot) throws {
+        try queue.sync { try saveLocked(stored) }
+    }
+
+    public func saveAsync(_ stored: StoredBot, completion: (@Sendable (Error?) -> Void)? = nil) {
+        queue.async { [self] in
+            do {
+                try saveLocked(stored)
+                completion?(nil)
+            } catch {
+                completion?(error)
+            }
+        }
+    }
+
+    /// Sicherung auf Wunsch (z. B. vor dem Zuruecksetzen).
+    @discardableResult
+    public func backupNow(_ stored: StoredBot, tag: String) -> URL? {
+        queue.sync {
+            try? paths.prepare()
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            guard let data = try? encoder.encode(stored) else { return nil }
+            let url = paths.backupsDirectory.appendingPathComponent("simulation-\(tag)-\(fileStamp()).json")
+            guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
+            return url
+        }
+    }
+
+    // MARK: Intern (nur auf der Queue)
+
+    private func loadLocked() -> LoadOutcome {
         let fm = FileManager.default
         try? paths.prepare()
         guard fm.fileExists(atPath: paths.stateFile.path) else { return LoadOutcome(stored: nil, note: nil) }
@@ -97,7 +135,7 @@ public actor StateStore {
         return LoadOutcome(stored: nil, note: "simulation.json war beschädigt und keine Sicherung war lesbar; die Datei wurde beiseitegelegt.")
     }
 
-    public func save(_ stored: StoredBot) throws {
+    private func saveLocked(_ stored: StoredBot) throws {
         try paths.prepare()
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -111,18 +149,6 @@ public actor StateStore {
         }
     }
 
-    /// Sicherung auf Wunsch (z. B. vor dem Zuruecksetzen).
-    @discardableResult
-    public func backupNow(_ stored: StoredBot, tag: String) -> URL? {
-        try? paths.prepare()
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(stored) else { return nil }
-        let url = paths.backupsDirectory.appendingPathComponent("simulation-\(tag)-\(fileStamp()).json")
-        guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
-        return url
-    }
-
     private func backupFiles() -> [URL] {
         let keys: [URLResourceKey] = [.contentModificationDateKey]
         let urls = (try? FileManager.default.contentsOfDirectory(at: paths.backupsDirectory, includingPropertiesForKeys: keys)) ?? []
@@ -134,10 +160,9 @@ public actor StateStore {
     }
 
     private func pruneBackups() {
-        // Nur die automatischen Sicherungen (Name mit Zeitstempel direkt hinter "simulation-") rotieren.
-        let auto = backupFiles().filter { name in
-            let n = name.lastPathComponent
-            return n.dropFirst("simulation-".count).first?.isNumber == true
+        // Nur die automatischen Sicherungen (Zeitstempel direkt hinter "simulation-") rotieren.
+        let auto = backupFiles().filter { url in
+            url.lastPathComponent.dropFirst("simulation-".count).first?.isNumber == true
         }
         for url in auto.dropFirst(keepBackups) { try? FileManager.default.removeItem(at: url) }
     }

@@ -78,39 +78,39 @@ final class PersistenceTests: XCTestCase {
         return paths
     }
 
-    func testSaveAndLoadRoundTrip() async throws {
+    func testSaveAndLoadRoundTrip() throws {
         let paths = try tempPaths()
         defer { try? FileManager.default.removeItem(at: paths.root) }
         let store = StateStore(paths: paths)
         var stored = StoredBot.fresh(at: Fixture.now, seedStartPosition: true)
         stored.state.cashUSDT = 123.45
-        try await store.save(stored)
-        let outcome = await store.load()
+        try store.save(stored)
+        let outcome = store.load()
         XCTAssertEqual(outcome.stored?.state.cashUSDT, 123.45)
         XCTAssertNil(outcome.note)
     }
 
-    func testCorruptFileFallsBackToBackup() async throws {
+    func testCorruptFileFallsBackToBackup() throws {
         let paths = try tempPaths()
         defer { try? FileManager.default.removeItem(at: paths.root) }
         let store = StateStore(paths: paths)
         var stored = StoredBot.fresh(at: Fixture.now, seedStartPosition: false)
         stored.state.cashUSDT = 777
-        try await store.save(stored)                                   // legt auch die erste Sicherung an
+        try store.save(stored)                                   // legt auch die erste Sicherung an
         try Data("{ kaputt".utf8).write(to: paths.stateFile)
-        let outcome = await store.load()
+        let outcome = store.load()
         XCTAssertEqual(outcome.stored?.state.cashUSDT, 777)
         XCTAssertNotNil(outcome.note)
     }
 
-    func testMissingFileLoadsNothing() async throws {
+    func testMissingFileLoadsNothing() throws {
         let paths = try tempPaths()
         defer { try? FileManager.default.removeItem(at: paths.root) }
-        let outcome = await StateStore(paths: paths).load()
+        let outcome = StateStore(paths: paths).load()
         XCTAssertNil(outcome.stored)
     }
 
-    func testOldVersionIsBackedUpBeforeUse() async throws {
+    func testOldVersionIsBackedUpBeforeUse() throws {
         let paths = try tempPaths()
         defer { try? FileManager.default.removeItem(at: paths.root) }
         let legacy = """
@@ -118,7 +118,7 @@ final class PersistenceTests: XCTestCase {
         "lastTradeAt":0,"day":"2026-10-10","dayStartEquityUSDT":10,"running":true},"settings":{},"events":[]}
         """
         try Data(legacy.utf8).write(to: paths.stateFile)
-        let outcome = await StateStore(paths: paths).load()
+        let outcome = StateStore(paths: paths).load()
         XCTAssertNotNil(outcome.stored)
         XCTAssertNotNil(outcome.note)
         let backups = try FileManager.default.contentsOfDirectory(atPath: paths.backupsDirectory.path)

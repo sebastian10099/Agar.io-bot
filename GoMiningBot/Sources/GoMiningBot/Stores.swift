@@ -1,0 +1,170 @@
+import Foundation
+import SwiftUI
+import GoMiningCore
+
+/// Live-Marktdaten fuer die Oberflaeche. Wird hoechstens ~4x pro Sekunde aktualisiert.
+@MainActor
+final class MarketStore: ObservableObject {
+    @Published var snapshot: MarketSnapshot?
+    @Published var metrics: EngineMetrics?
+    /// Abgeschlossene Kerzen plus die laufende Minute.
+    @Published var chartCandles: [PriceCandle] = []
+    /// Aggregierte Kerzen fuer laengere Zeitraeume (5 Min, 15 Min, 1 Std, 4 Std).
+    @Published var longCandles: [PriceCandle] = []
+    @Published var longMinutes: Int = 0
+    @Published var recentTrades: [PublicTrade] = []
+    @Published var fastMoveBps: Double = 0
+    @Published var lastUpdate: Date?
+
+    var price: Double { snapshot?.displayPrice ?? 0 }
+    var bid: Double { snapshot?.bid ?? 0 }
+    var ask: Double { snapshot?.ask ?? 0 }
+}
+
+struct DecisionEntry: Identifiable, Hashable {
+    let id = UUID()
+    /// Gleichartige Entscheidungen werden zusammengefasst (gleicher Schluessel).
+    var key: String
+    var at: Double
+    var kind: String
+    var reason: String
+    var count: Int = 1
+}
+
+/// Zustand des Papierkontos, Verlauf und Auswertung.
+@MainActor
+final class BotStore: ObservableObject {
+    @Published var stored: StoredBot
+    @Published var decisions: [DecisionEntry] = []
+    @Published var equityHistory: [EquityPoint] = []
+    @Published var stats = PerformanceStats()
+    /// Zeitstempel des letzten Trades (fuer kurzes Aufleuchten in der Oberflaeche).
+    @Published var lastTradeAt: Date?
+
+    init(stored: StoredBot) { self.stored = stored }
+
+    var state: BotState { stored.state }
+    var settings: BotSettings { stored.settings }
+    var tradeEvents: [BotEvent] { stored.events.filter { $0.isTrade } }
+
+    func equity(bid: Double) -> Double { stored.state.equity(atBid: bid) }
+    func totalResult(bid: Double) -> Double { equity(bid: bid) - stored.settings.startingUSDT }
+
+    func recomputeStats() {
+        stats = PerformanceStats.compute(events: stored.events, equity: equityHistory)
+    }
+}
+
+/// Verbindungs- und Statusmeldungen.
+@MainActor
+final class StatusStore: ObservableObject {
+    @Published var connection = "Verbinde mit BingX …"
+    @Published var stream = "BingX-Livestream verbindet …"
+    @Published var journal = "Marktprotokoll bereit"
+    @Published var account = "Kein BingX-Konto verbunden"
+    @Published var accountConnected = false
+    @Published var balances: [BingXParser.SpotBalance] = []
+    @Published var commission: BingXParser.SpotCommission?
+    @Published var rulesVerified = true
+    @Published var historyStatus = ""
+    @Published var notice: String?
+    @Published var busy = false
+    @Published var dataFolderBytes: Int64 = 0
+    /// Letzte Fehler (neueste zuerst) fuer die Diagnose.
+    @Published var errors: [String] = []
+
+    func note(_ context: String, _ error: Error) {
+        let line = "\(Fmt.time(Date().timeIntervalSince1970)) \(context): \(error.localizedDescription)"
+        errors.insert(line, at: 0)
+        if errors.count > 12 { errors.removeLast(errors.count - 12) }
+    }
+}
+
+/// Vorlieben (UserDefaults): Benachrichtigungen, Preisalarme, Chart.
+struct PriceAlert: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var price: Double
+    var above: Bool
+    var enabled = true
+}
+
+@MainActor
+final class Preferences: ObservableObject {
+    private let defaults = UserDefaults.standard
+
+    @Published var notifyTrades: Bool { didSet { defaults.set(notifyTrades, forKey: "notifyTrades") } }
+    @Published var notifyStops: Bool { didSet { defaults.set(notifyStops, forKey: "notifyStops") } }
+    @Published var notifyLimits: Bool { didSet { defaults.set(notifyLimits, forKey: "notifyLimits") } }
+    @Published var soundEnabled: Bool { didSet { defaults.set(soundEnabled, forKey: "soundEnabled") } }
+    @Published var showMenuBar: Bool { didSet { defaults.set(showMenuBar, forKey: "showMenuBar") } }
+    @Published var chartMinutes: Int { didSet { defaults.set(chartMinutes, forKey: "chartMinutes") } }
+    @Published var journalDays: Int { didSet { defaults.set(journalDays, forKey: "journalDays") } }
+    @Published var alerts: [PriceAlert] {
+        didSet {
+            if let data = try? JSONEncoder().encode(alerts) { defaults.set(data, forKey: "priceAlerts") }
+        }
+    }
+
+    init() {
+        func flag(_ key: String, _ fallback: Bool) -> Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? fallback }
+        notifyTrades = flag("notifyTrades", true)
+        notifyStops = flag("notifyStops", true)
+        notifyLimits = flag("notifyLimits", true)
+        soundEnabled = flag("soundEnabled", false)
+        showMenuBar = flag("showMenuBar", true)
+        let minutes = UserDefaults.standard.integer(forKey: "chartMinutes")
+        chartMinutes = minutes == 0 ? 1 : minutes
+        let days = UserDefaults.standard.integer(forKey: "journalDays")
+        journalDays = days == 0 ? 7 : days
+        if let data = UserDefaults.standard.data(forKey: "priceAlerts"),
+           let list = try? JSONDecoder().decode([PriceAlert].self, from: data) {
+            alerts = list
+        } else {
+            alerts = []
+        }
+    }
+}
+
+/// Zustand der Backtest-Seite.
+@MainActor
+final class BacktestStore: ObservableObject {
+    // Eingaben
+    @Published var days = 7
+    @Published var spreadBps = 40.0
+    @Published var depthUSDT = 3_000.0
+    @Published var seedStartPosition = false
+    // Ausgaben
+    @Published var running = false
+    @Published var progress = 0.0
+    @Published var message = ""
+    @Published var result: BacktestResult?
+    // Optimierung
+    @Published var objective = BacktestObjective.riskAdjusted
+    @Published var trainFraction = 0.7
+    @Published var axes: [OptimizerParameter: String] = [
+        .minNetProfitBps: "30, 50, 80, 120",
+        .stopLossFraction: "0.02, 0.03, 0.05",
+    ]
+    @Published var optimizing = false
+    @Published var entries: [OptimizerEntry] = []
+    @Published var optimizerAxesUsed: [OptimizerParameter] = []
+
+    var task: Task<Void, Never>?
+
+    func config(rules: SymbolRules) -> BacktestConfig {
+        var c = BacktestConfig()
+        c.spreadBps = spreadBps
+        c.depthUSDT = depthUSDT
+        c.seedStartPosition = seedStartPosition
+        c.rules = rules
+        return c
+    }
+
+    /// Wandelt "30, 50; 80" in Zahlen (Komma oder Semikolon, Punkt oder Komma als Dezimalzeichen nur mit Semikolon).
+    static func parseValues(_ text: String) -> [Double] {
+        let separators: CharacterSet = text.contains(";") ? CharacterSet(charactersIn: ";") : CharacterSet(charactersIn: ",")
+        return text.components(separatedBy: separators)
+            .map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".") }
+            .compactMap { Double($0) }
+    }
+}

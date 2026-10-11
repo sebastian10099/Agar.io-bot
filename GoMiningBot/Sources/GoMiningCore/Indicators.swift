@@ -112,6 +112,44 @@ public enum Indicators {
         return result
     }
 
+    /// Verlaengert die Serie mit flachen Kerzen bis zur letzten abgeschlossenen Minute (`lastClosedOpen`).
+    /// Minuten ohne Trade sind in Wahrheit "kein Kurs, keine Bewegung" - die Boerse liefert dafuer oft keine Kerze.
+    public static func extendFlat(_ candles: [PriceCandle], upTo lastClosedOpen: Double, interval: Double = 60, maxGap: Int = 240) -> [PriceCandle] {
+        guard let last = candles.last, lastClosedOpen > last.openedAt else { return candles }
+        let missing = Int(((lastClosedOpen - last.openedAt) / interval).rounded(.down))
+        guard missing > 0, missing <= maxGap else { return candles }
+        var result = candles
+        result.reserveCapacity(candles.count + missing)
+        for k in 1...missing {
+            result.append(PriceCandle(openedAt: last.openedAt + interval * Double(k), open: last.close, high: last.close,
+                                      low: last.close, close: last.close, volume: 0))
+        }
+        return result
+    }
+
+    /// Fuegt neue Kerzen an eine sortierte Serie an; gleiche Zeitstempel im hinteren Teil werden ersetzt.
+    public static func mergeTail(_ series: inout [PriceCandle], _ new: [PriceCandle]) {
+        for c in new.sorted(by: { $0.openedAt < $1.openedAt }) {
+            guard c.close > 0 else { continue }
+            if let last = series.last, c.openedAt <= last.openedAt {
+                var i = series.count - 1
+                var replaced = false
+                while i >= 0, i > series.count - 400 {
+                    if series[i].openedAt == c.openedAt { series[i] = c; replaced = true; break }
+                    if series[i].openedAt < c.openedAt { break }
+                    i -= 1
+                }
+                if !replaced, c.openedAt < last.openedAt {
+                    // Luecke in der Mitte oder weit zurueck: einsortieren.
+                    series.append(c)
+                    series.sort { $0.openedAt < $1.openedAt }
+                }
+            } else {
+                series.append(c)
+            }
+        }
+    }
+
     /// Sortiert aufsteigend und entfernt doppelte Zeitstempel (die spaetere Kerze gewinnt).
     public static func normalize(_ candles: [PriceCandle]) -> [PriceCandle] {
         var byTime: [Double: PriceCandle] = [:]

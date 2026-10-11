@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 public enum BingXError: Error, LocalizedError, Equatable {
     case invalidResponse
@@ -60,14 +61,14 @@ public enum BingXParser {
     /// Millisekunden werden zu Sekunden.
     static func seconds(_ raw: Double) -> Double { raw > 1e11 ? raw / 1000 : raw }
 
-    static func object(_ data: Data) throws -> [String: Any] {
+    public static func object(_ data: Data) throws -> [String: Any] {
         guard let json = try? JSONSerialization.jsonObject(with: data),
               let root = json as? [String: Any] else { throw BingXError.invalidResponse }
         return root
     }
 
     /// Prueft `code` und liefert `data`.
-    static func dataField(_ root: [String: Any]) throws -> Any? {
+    public static func dataField(_ root: [String: Any]) throws -> Any? {
         if let code = number(root["code"]), Int(code) != 0 {
             throw BingXError.api(code: Int(code), message: (root["msg"] as? String) ?? "unbekannt")
         }
@@ -275,5 +276,31 @@ public enum BingXParser {
         let inner = (dict["commission"] as? [String: Any]) ?? dict
         guard let taker = number(inner["takerCommissionRate"]) else { throw BingXError.missing("BingX-Gebühren fehlen") }
         return SpotCommission(takerRate: taker, makerRate: number(inner["makerCommissionRate"]) ?? taker)
+    }
+}
+
+// MARK: - Signatur (nur Lesezugriff auf das Konto)
+
+public struct BingXCredentials: Codable, Equatable, Sendable {
+    public var apiKey: String
+    public var secretKey: String
+
+    public init(apiKey: String, secretKey: String) {
+        self.apiKey = apiKey
+        self.secretKey = secretKey
+    }
+}
+
+public enum BingXSigner {
+    /// HMAC-SHA256 ueber den Query-String, hexadezimal (kleingeschrieben).
+    public static func signature(query: String, secret: String) -> String {
+        let key = SymmetricKey(data: Data(secret.utf8))
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(query.utf8), using: key)
+        return mac.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Alphabetisch sortierter Query-String `a=1&b=2`.
+    public static func canonicalQuery(_ parameters: [String: String]) -> String {
+        parameters.keys.sorted().map { "\($0)=\(parameters[$0] ?? "")" }.joined(separator: "&")
     }
 }
