@@ -25,6 +25,13 @@ weiterentwickelt. Er ist deshalb *nicht* Byte für Byte identisch mit 3.9 – di
    **Öffnen**. Falls macOS sie als „beschädigt“ meldet: im Terminal
    `xattr -dr com.apple.quarantine "/Applications/GoMining Bot.app"` ausführen.
 
+**Variante A2 – fertige Datei im Repository:** `GoMiningBot/release/GoMining-Bot.zip` (wird von der CI nur auf Wunsch
+aktualisiert, wenn die Commit-Nachricht `[app]` enthält). In Terminal auf den Desktop legen und starten:
+
+```bash
+cd ~/Downloads && ditto -x -k GoMining-Bot.zip ~/Desktop && xattr -dr com.apple.quarantine ~/Desktop/"GoMining Bot.app" && open ~/Desktop/"GoMining Bot.app"
+```
+
 **Variante B – selbst bauen** (macOS 14+, Xcode oder `xcode-select --install`)
 
 ```bash

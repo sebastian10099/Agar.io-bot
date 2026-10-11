@@ -90,6 +90,20 @@ jobs:
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
+      - name: App-ZIP ins Repository übernehmen (nur bei [app] in der Commit-Nachricht)
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[app]')
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p GoMiningBot/release
+          cp GoMiningBot/dist/GoMining-Bot.zip GoMiningBot/release/GoMining-Bot.zip
+          git add GoMiningBot/release/GoMining-Bot.zip
+          if git diff --cached --quiet; then echo "keine Änderungen"; exit 0; fi
+          git commit -m "CI: fertig gebaute App (GoMining-Bot.zip) aktualisiert [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
       - name: Bilder der Oberfläche hochladen
         if: always()
         uses: actions/upload-artifact@v4
