@@ -1,0 +1,53 @@
+name: GoMining Bot (macOS-App)
+
+on:
+  push:
+    paths:
+      - 'GoMiningBot/**'
+      - '.github/workflows/gomining-bot.yml'
+  pull_request:
+    paths:
+      - 'GoMiningBot/**'
+      - '.github/workflows/gomining-bot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Unit-Tests
+        working-directory: GoMiningBot
+        run: swift test
+
+      - name: App bauen (universal, ad-hoc signiert)
+        working-directory: GoMiningBot
+        env:
+          APP_VERSION: '4.0'
+          APP_BUILD: ${{ github.run_number }}
+        run: ./build_app.sh
+
+      - name: App-Bundle prüfen
+        working-directory: GoMiningBot/dist
+        run: |
+          ls -la
+          codesign -dv "GoMining Bot.app" 2>&1 | head -5
+          lipo -info "GoMining Bot.app/Contents/MacOS/GoMiningBot"
+
+      - name: ZIP hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoMining-Bot-macOS
+          path: GoMiningBot/dist/GoMining-Bot.zip
+          if-no-files-found: error
+          retention-days: 30
