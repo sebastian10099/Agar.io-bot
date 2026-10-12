@@ -211,6 +211,7 @@ public enum Backtester {
 
 public enum OptimizerParameter: String, CaseIterable, Sendable, Identifiable, Hashable {
     case minNetProfitBps, stopLossFraction, maxTradeUSDT, gridDropBps, maxOpenPositions, minLotDistanceFactor, trailingStopBps
+    case minBuyStepBps
 
     public var id: String { rawValue }
 
@@ -223,6 +224,7 @@ public enum OptimizerParameter: String, CaseIterable, Sendable, Identifiable, Ha
         case .maxOpenPositions: return "Gleichzeitige Positionen"
         case .minLotDistanceFactor: return "Abstand zwischen Käufen (Faktor)"
         case .trailingStopBps: return "Trailing-Stop (bp, 0 = aus)"
+        case .minBuyStepBps: return "Mindest-Kaufabstand (bp, 0 = aus)"
         }
     }
 
@@ -236,6 +238,7 @@ public enum OptimizerParameter: String, CaseIterable, Sendable, Identifiable, Ha
         case .maxOpenPositions: return [4, 6, 10]
         case .minLotDistanceFactor: return [0, 0.5, 1]
         case .trailingStopBps: return [0, 60, 120]
+        case .minBuyStepBps: return [0, 40, 60, 80]
         }
     }
 
@@ -249,6 +252,7 @@ public enum OptimizerParameter: String, CaseIterable, Sendable, Identifiable, Ha
         case .maxOpenPositions: s.maxOpenPositions = Int(min(50, max(1, value.rounded())))
         case .minLotDistanceFactor: s.minLotDistanceFactor = value
         case .trailingStopBps: s.trailingStopBps = value
+        case .minBuyStepBps: s.minBuyStepBps = value
         }
     }
 
@@ -261,6 +265,7 @@ public enum OptimizerParameter: String, CaseIterable, Sendable, Identifiable, Ha
         case .maxOpenPositions: return Double(s.openPositionLimit)
         case .minLotDistanceFactor: return s.minLotDistanceFactor
         case .trailingStopBps: return s.trailingStopBps
+        case .minBuyStepBps: return s.minBuyStepBps
         }
     }
 }

@@ -144,6 +144,9 @@ struct SettingsView: View {
                       format: { Fmt.bps($0) }, help: "Gewinn nach Gebühren und Spread, ab dem ein Los verkauft wird (das adaptive Ziel kann höher sein).")
             SliderRow(title: "Maximaler Kaufabstand", value: controller.binding(\.gridDropBps), range: 20...500, step: 10,
                       format: { Fmt.bps($0) }, help: "Obergrenze für den dynamischen Rückgang, der einen Kauf auslöst (sonst aus Spread, Gebühren und Volatilität berechnet).")
+            SliderRow(title: "Mindest-Kaufabstand", value: controller.binding(\.minBuyStepBps), range: 0...200, step: 5,
+                      format: { $0 <= 0 ? "aus (nur adaptiv)" : Fmt.bps($0) },
+                      help: "Untergrenze für den adaptiven Rückgang, der einen Kauf auslöst. Bei sehr engem Spread kauft der Bot sonst schon nach kleinen Bewegungen – und zahlt oft drauf.")
             SliderRow(title: "Rückblick für Hoch/Tief", value: intBinding(\.lookbackBars), range: 5...120, step: 1,
                       format: { "\(Int($0)) Minuten" })
             SliderRow(title: "Abstand zwischen Käufen", value: controller.binding(\.minLotDistanceFactor), range: 0...3, step: 0.1,

@@ -143,7 +143,7 @@ public enum BotEngine {
         m.minerWars = inSettlementWindow(now)
         m.roundTripCostBps = m.spreadBps + s.roundTripFeeBps
 
-        let adaptive = max(5, 1.5 * m.spreadBps + 2 * (s.feeBps + s.slippageBps), 2 * m.volatilityBps)
+        let adaptive = max(5, s.minBuyStepBps, 1.5 * m.spreadBps + 2 * (s.feeBps + s.slippageBps), 2 * m.volatilityBps)
         var step = min(adaptive, max(5, s.gridDropBps))
         if m.minerWars { step *= minerWarsFactor }
         m.stepBps = step

@@ -226,6 +226,10 @@ final class AppController: ObservableObject {
             extra.append(variant("Limit-Kauf am Bid", cfg, { $0.makerEntries = true }))
             extra.append(variant("Limit-Kauf am Bid, 5 min Geduld", cfg, { $0.makerEntries = true; $0.makerTimeoutSeconds = 300 }))
             extra.append(variant("Trendfilter + Ziel 30", cfg, { $0.minNetProfitBps = 30 }))
+            for floor in [30.0, 40, 60, 80] {
+                extra.append(variant(String(format: "Mindest-Kaufabstand %.0f bp", floor), cfg, { $0.minBuyStepBps = floor }))
+            }
+            extra.append(variant("Mindest-Kaufabstand 60 + Limit-Kauf", cfg, { $0.minBuyStepBps = 60; $0.makerEntries = true }))
         }
     }
 
@@ -1036,7 +1040,7 @@ final class AppController: ObservableObject {
 
     func useLiveMarketForBacktest() {
         guard let snap = market.snapshot, snap.bid > 0 else { return }
-        backtest.spreadBps = max(5, (snap.spreadBps).rounded())
+        backtest.spreadBps = max(1, (snap.spreadBps).rounded())
         backtest.depthUSDT = max(200, ((min(snap.bidDepthUSDT, snap.askDepthUSDT)) / 100).rounded() * 100)
     }
 
@@ -1076,7 +1080,8 @@ final class AppController: ObservableObject {
                 return
             }
             store.calibration = c
-            store.spreadBps = min(300, max(5, (c.medianSpreadBps / 5).rounded() * 5))
+            store.autoMarket = false
+            store.spreadBps = min(300, max(1, c.medianSpreadBps.rounded()))
             store.depthUSDT = min(20_000, max(200, (c.medianDepthUSDT / 100).rounded() * 100))
             store.message = "Gemessen: Spread typisch \(Fmt.bps(c.medianSpreadBps, digits: 1)) (90 %: \(Fmt.bps(c.p90SpreadBps, digits: 1))), Tiefe typisch \(Fmt.usdt(c.medianDepthUSDT, digits: 0)) USDT je Seite."
         }
@@ -1097,6 +1102,7 @@ final class AppController: ObservableObject {
             }
             return
         }
+        if store.autoMarket { useLiveMarketForBacktest() }
         store.task = Task { [weak self] in
             guard let self else { return }
             defer { store.running = false; store.task = nil }
@@ -1163,6 +1169,7 @@ final class AppController: ObservableObject {
             store.message = "Zu viele Kombinationen (\(combos)); erlaubt sind \(Optimizer.maxCombinations)."
             return
         }
+        if store.autoMarket { useLiveMarketForBacktest() }
         store.optimizing = true
         store.progress = 0
         store.entries = []

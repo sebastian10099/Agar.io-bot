@@ -58,13 +58,19 @@ struct BacktestView: View {
                 .frame(maxWidth: 360, alignment: .leading)
                 if backtest.source == .candles {
                     VStack(alignment: .leading, spacing: 6) {
-                        SliderRow(title: "Spread", value: $backtest.spreadBps, range: 5...300, step: 5, format: { Fmt.bps($0) },
+                        Toggle("Spread und Tiefe vor jedem Lauf aus dem Live-Markt", isOn: $backtest.autoMarket)
+                            .help("Ehrlicher als feste Annahmen: Der Bot rechnet mit dem Spread, den er gerade wirklich sieht.")
+                        SliderRow(title: "Spread", value: $backtest.spreadBps, range: 1...300, step: 1, format: { Fmt.bps($0) },
                                   help: "Abstand zwischen Bid und Ask")
+                            .disabled(backtest.autoMarket)
                         SliderRow(title: "Sichtbare Tiefe je Seite", value: $backtest.depthUSDT, range: 200...20_000, step: 100,
                                   format: { "\(Fmt.usdt($0, digits: 0)) USDT" }, help: "Bestimmt, wie große Orders ohne Teilverkauf passen")
+                            .disabled(backtest.autoMarket)
                         HStack {
-                            Button("Aus Live-Markt übernehmen") { controller.useLiveMarketForBacktest() }
-                                .disabled(controller.market.snapshot == nil)
+                            if !backtest.autoMarket {
+                                Button("Aus Live-Markt übernehmen") { controller.useLiveMarketForBacktest() }
+                                    .disabled(controller.market.snapshot == nil)
+                            }
                             Button("Aus Marktprotokoll messen") { controller.measureMarketFromJournal() }
                                 .disabled(busy)
                                 .help("Typischen Spread und typische Tiefe aus den letzten 7 Tagen des eigenen Protokolls übernehmen")
@@ -333,6 +339,7 @@ extension OptimizerParameter {
         case .maxOpenPositions: return "Pos."
         case .minLotDistanceFactor: return "Käufe"
         case .trailingStopBps: return "Trail"
+        case .minBuyStepBps: return "Min.-Abst."
         }
     }
 }

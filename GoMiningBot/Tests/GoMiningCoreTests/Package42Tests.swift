@@ -355,3 +355,28 @@ final class ShadowAccountTests: XCTestCase {
         XCTAssertEqual(sparse.accounts.first?.settings, BotSettings().clamped())
     }
 }
+
+// MARK: - Mindest-Kaufabstand
+
+final class MinBuyStepTests: XCTestCase {
+    func testFloorRaisesBuyThresholdButGridDropStaysCap() {
+        var s = Fixture.settings()
+        let snap = Fixture.snapshot(mid: 0.986, spreadBps: 2)
+        let state = BotState.fresh(s, at: Fixture.now)
+        let base = BotEngine.metrics(snap, state: state, settings: s, now: Fixture.now).stepBps
+        XCTAssertLessThan(base, 120)
+        s.minBuyStepBps = 120
+        XCTAssertEqual(BotEngine.metrics(snap, state: state, settings: s, now: Fixture.now).stepBps, 120, accuracy: 1e-9)
+        s.minBuyStepBps = 500
+        XCTAssertEqual(BotEngine.metrics(snap, state: state, settings: s, now: Fixture.now).stepBps, s.gridDropBps, accuracy: 1e-9)
+    }
+
+    func testFloorIsOffByDefaultAndLoadsFromOldFiles() throws {
+        XCTAssertEqual(BotSettings().minBuyStepBps, 0)
+        let decoded = try JSONDecoder().decode(BotSettings.self, from: Data(#"{"minBuyStepBps":45}"#.utf8))
+        XCTAssertEqual(decoded.minBuyStepBps, 45)
+        var s = BotSettings()
+        OptimizerParameter.minBuyStepBps.apply(60, to: &s)
+        XCTAssertEqual(OptimizerParameter.minBuyStepBps.current(in: s), 60)
+    }
+}

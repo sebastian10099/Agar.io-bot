@@ -192,6 +192,9 @@ public struct BotSettings: Codable, Equatable, Sendable {
     public var lookbackBars: Int = 20
     /// Mindestabstand des naechsten Kaufs zum tiefsten offenen Kauf, in Vielfachen des Kaufabstands.
     public var minLotDistanceFactor: Double = 0.5
+    /// Untergrenze fuer den adaptiven Kaufabstand in bp (0 = nur adaptiv). Bei sehr engem Spread kauft der Bot sonst
+    /// schon nach kleinen Rueckgaengen.
+    public var minBuyStepBps: Double = 0
 
     // Ausstieg
     public var minNetProfitBps: Double = 50
@@ -241,7 +244,7 @@ public struct BotSettings: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case startingUSDT, feeBps, slippageBps
-        case gridDropBps, maxTradeUSDT, maxPositionFraction, maxOpenPositions, lookbackBars, minLotDistanceFactor
+        case gridDropBps, maxTradeUSDT, maxPositionFraction, maxOpenPositions, lookbackBars, minLotDistanceFactor, minBuyStepBps
         case minNetProfitBps, stopLossFraction, trailingStopBps, trailingActivationBps, maxHoldMinutes
         case maxDailyLossFraction, maxDrawdownFraction, minSecondsBetweenTrades, cooldownAfterStopSeconds
         case maxSpreadBps, maxBookParticipation, maxBookAgeSeconds, maxCandleAgeSeconds
@@ -262,6 +265,7 @@ public struct BotSettings: Codable, Equatable, Sendable {
         maxOpenPositions = c.optionalValue(.maxOpenPositions)
         lookbackBars = c.value(.lookbackBars, d.lookbackBars)
         minLotDistanceFactor = c.value(.minLotDistanceFactor, d.minLotDistanceFactor)
+        minBuyStepBps = c.value(.minBuyStepBps, d.minBuyStepBps)
         minNetProfitBps = c.value(.minNetProfitBps, d.minNetProfitBps)
         stopLossFraction = c.value(.stopLossFraction, d.stopLossFraction)
         trailingStopBps = c.value(.trailingStopBps, d.trailingStopBps)
@@ -312,6 +316,7 @@ public struct BotSettings: Codable, Equatable, Sendable {
         if let n = s.maxOpenPositions { s.maxOpenPositions = min(50, max(1, n)) }
         s.lookbackBars = min(240, max(3, s.lookbackBars))
         s.minLotDistanceFactor = clamp(s.minLotDistanceFactor, 0, 10)
+        s.minBuyStepBps = clamp(s.minBuyStepBps, 0, 1_000)
         s.minNetProfitBps = clamp(s.minNetProfitBps, 0, 5_000)
         s.stopLossFraction = clamp(s.stopLossFraction, 0.002, 0.9)
         s.trailingStopBps = clamp(s.trailingStopBps, 0, 5_000)

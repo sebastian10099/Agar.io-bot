@@ -159,6 +159,8 @@ final class BacktestStore: ObservableObject {
     @Published var source = BacktestSource.candles
     @Published var spreadBps = 20.0
     @Published var depthUSDT = 3_000.0
+    /// Spread und Tiefe vor jedem Lauf aus dem Live-Markt nehmen (ehrlicher als feste Annahmen).
+    @Published var autoMarket = true
     @Published var seedStartPosition = false
     /// Gemessene Marktwerte aus dem Protokoll (nach "Aus Marktprotokoll messen" oder einem Replay).
     @Published var calibration: MarketCalibration?
