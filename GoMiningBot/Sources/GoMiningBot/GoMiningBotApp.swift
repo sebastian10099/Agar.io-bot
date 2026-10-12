@@ -15,6 +15,7 @@ struct GoMiningBotApp: App {
                 .environmentObject(controller.status)
                 .environmentObject(controller.prefs)
                 .environmentObject(controller.backtest)
+                .environmentObject(controller.shadows)
         }
         .defaultSize(width: 1180, height: 840)
         .commands {

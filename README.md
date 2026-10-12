@@ -19,8 +19,10 @@ Was als Nächstes kommt: [Roadmap](GoMiningBot/ROADMAP.md)
 | Übersicht | Handel |
 |---|---|
 | ![Übersicht](GoMiningBot/docs/screens/1-uebersicht.png) | ![Handel](GoMiningBot/docs/screens/2-handel.png) |
-| **Statistik** | **Backtest** |
-| ![Statistik](GoMiningBot/docs/screens/3-statistik.png) | ![Backtest](GoMiningBot/docs/screens/4-backtest.png) |
+| **Statistik** | **Vergleich (Schattenkonten)** |
+| ![Statistik](GoMiningBot/docs/screens/3-statistik.png) | ![Vergleich](GoMiningBot/docs/screens/4-vergleich.png) |
+| **Backtest** | **Einstellungen** |
+| ![Backtest](GoMiningBot/docs/screens/5-backtest.png) | ![Einstellungen](GoMiningBot/docs/screens/6-einstellungen.png) |
 
 *Bilder mit Live-Daten von BingX, automatisch bei jedem Build aufgenommen.*
 

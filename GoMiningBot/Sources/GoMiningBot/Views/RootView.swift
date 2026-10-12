@@ -5,6 +5,7 @@ enum AppTab: String, CaseIterable, Identifiable {
     case overview = "Übersicht"
     case trades = "Handel"
     case stats = "Statistik"
+    case compare = "Vergleich"
     case backtest = "Backtest"
     case settings = "Einstellungen"
 
@@ -16,6 +17,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .overview: return "uebersicht"
         case .trades: return "handel"
         case .stats: return "statistik"
+        case .compare: return "vergleich"
         case .backtest: return "backtest"
         case .settings: return "einstellungen"
         }
@@ -26,6 +28,7 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .overview: return "gauge.with.dots.needle.50percent"
         case .trades: return "arrow.left.arrow.right"
         case .stats: return "chart.bar.xaxis"
+        case .compare: return "square.split.2x1"
         case .backtest: return "clock.arrow.circlepath"
         case .settings: return "gearshape"
         }
@@ -60,7 +63,7 @@ struct RootView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 560)
+                .frame(width: 640)
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { controller.toggleRunning() } label: {
@@ -86,6 +89,7 @@ struct RootView: View {
         case .overview: OverviewView()
         case .trades: TradesView()
         case .stats: StatsView()
+        case .compare: CompareView()
         case .backtest: BacktestView()
         case .settings: SettingsView()
         }

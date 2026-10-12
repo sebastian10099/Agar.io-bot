@@ -23,6 +23,7 @@ struct SettingsView: View {
             accountSection
             paperSection
             entrySection
+            makerSection
             exitSection
             moveSection
             trendSection
@@ -71,7 +72,7 @@ struct SettingsView: View {
                 accountBalances
                 if let c = status.commission {
                     HStack {
-                        Text("BingX-Kontosatz GOMINING-USDT: Taker \(Fmt.usdt(c.takerBps, digits: 2)) bp, Maker \(Fmt.usdt(c.makerBps, digits: 2)) bp · simuliert wird Taker je Seite.")
+                        Text("BingX-Kontosatz GOMINING-USDT: Taker \(Fmt.usdt(c.takerBps, digits: 2)) bp, Maker \(Fmt.usdt(c.makerBps, digits: 2)) bp · übernommen werden beide (Maker für Limit-Käufe).")
                             .font(.caption).foregroundStyle(.secondary)
                         Spacer()
                         Button("Kontosatz übernehmen") { controller.applyAccountFee() }.controlSize(.small)
@@ -150,6 +151,24 @@ struct SettingsView: View {
                       help: "Neue Käufe müssen so weit unter dem tiefsten offenen Kauf liegen – verhindert Anhäufen auf demselben Niveau.")
             SliderRow(title: "Maximaler Bestandsanteil für Neukäufe", value: percentBinding(\.maxPositionFraction), range: 5...100, step: 5,
                       format: { "\(Int($0)) %" })
+        }
+    }
+
+    // MARK: Limit-Kauf am Bid
+
+    private var makerSection: some View {
+        Section("Limit-Kauf am Bid (Maker)") {
+            Toggle("Mit Limit-Order am Bid kaufen statt sofort zum Ask", isOn: controller.binding(\.makerEntries))
+            Text("Statt sofort zum Ask zu kaufen, legt der Bot eine virtuelle Kauforder auf den besten Bid und wartet. Ausgeführt gilt sie erst, wenn echte Verkäufe die Warteschlange vor ihr abgearbeitet haben oder der Kurs darunter fällt. Das spart den Spread, aber nicht jede Order wird ausgeführt – und ausgeführt wird oft gerade dann, wenn der Kurs weiter fällt. Ob es sich lohnt, zeigt ein Schattenkonto (Seite „Vergleich“).")
+                .font(.caption).foregroundStyle(.secondary)
+            if s.makerEntries {
+                SliderRow(title: "Maker-Gebühr", value: controller.binding(\.makerFeeBps), range: 0...50, step: 0.5,
+                          format: { "\(Fmt.usdt($0, digits: 1)) bp" }, help: "BingX Spot: in der Regel wie die Taker-Gebühr; mit verbundenem Konto über „Kontosatz übernehmen“.")
+                SliderRow(title: "Order streichen nach", value: controller.binding(\.makerTimeoutSeconds), range: 10...600, step: 10,
+                          format: { "\(Int($0)) s" })
+                SliderRow(title: "Streichen, wenn der Kurs davonläuft", value: controller.binding(\.makerMaxChaseBps), range: 5...200, step: 5,
+                          format: { Fmt.bps($0) }, help: "Steigt der Ask so weit über den Limitpreis, wird die Order gestrichen und bei einem neuen Signal neu gesetzt.")
+            }
         }
     }
 

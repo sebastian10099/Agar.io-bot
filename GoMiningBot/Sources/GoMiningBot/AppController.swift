@@ -21,6 +21,7 @@ final class AppController: ObservableObject {
     let bot: BotStore
     let status = StatusStore()
     let backtest = BacktestStore()
+    let shadows = ShadowStore()
     let prefs: Preferences
     let paths: AppPaths
     /// Nur fuer den Rauchtest: erzwingt eine Seite der Oberflaeche.
@@ -63,6 +64,8 @@ final class AppController: ObservableObject {
     private var lastLongRebuild = 0.0
     private var lastLimitNoticeDay = ""
     private var lastDecisionKey = ""
+    private var shadowsDirty = false
+    private var lastShadowSave = 0.0
 
     init() {
         // Vor dem ersten Lesen von Einstellungen und Datenordner (alte Bundle-ID/alter Ordner -> eigene).
@@ -90,6 +93,9 @@ final class AppController: ObservableObject {
         }
         if let cache = JSONFile.read(CandleCache.self, from: paths.candleCacheFile) {
             history = cache.candles
+        }
+        if let book = JSONFile.read(ShadowBook.self, from: paths.shadowFile) {
+            shadows.book = book
         }
         bot.recomputeStats()
         status.journal = journal.status
@@ -132,9 +138,25 @@ final class AppController: ObservableObject {
             saveScreenshot(to: "\(shots)/\(name).png")
         }
         try? await Task.sleep(nanoseconds: 12_000_000_000)
+        // Schattenkonten fuer die Vergleichsseite.
+        if shadows.book.accounts.isEmpty {
+            addShadow(.current, name: "")
+            addShadow(.cautious, name: "")
+            addShadow(.maker, name: "")
+        }
 
         for (index, tab) in AppTab.allCases.enumerated() {
             if tab == .backtest {
+                // Replay aus dem (in der CI noch sehr kurzen) Marktprotokoll.
+                backtest.days = 1
+                backtest.source = .journal
+                runBacktest()
+                await waitUntil(timeout: 60) { !self.backtest.running }
+                extra.append("Replay aus dem Marktprotokoll: \(backtest.message) · \(backtest.journalInfo)")
+                if let r = backtest.result {
+                    extra.append("  Marktmomente \(r.frameCount) · Käufe \(r.buys) · Verkäufe \(r.sells) · Ergebnis \(String(format: "%.2f", r.netPnL)) USDT")
+                }
+                backtest.source = .candles
                 backtest.days = 7
                 let started = Date()
                 runBacktest()
@@ -149,7 +171,10 @@ final class AppController: ObservableObject {
                 await waitUntil(timeout: 180) { !self.backtest.optimizing }
                 extra.append("Optimierer (12 Kombinationen x Training+Test) in \(String(format: "%.1f", Date().timeIntervalSince(optimizerStarted))) s: \(backtest.message) · \(backtest.entries.count) Ergebnisse")
                 if let best = backtest.entries.first {
-                    extra.append("  Bestes Training \(String(format: "%.2f", best.train.netPnL)) USDT · Test \(best.test.map { String(format: "%.2f", $0.netPnL) } ?? "—") USDT")
+                    extra.append("  Bestes Training \(String(format: "%.2f", best.train.netPnL)) USDT · Test \(best.test.map { String(format: "%.2f", $0.netPnL) } ?? "—") USDT · Abschnitte \(best.positiveSegments)/\(best.segments.count) im Plus")
+                }
+                if let wf = backtest.walkForward {
+                    extra.append("  Walk-forward: außerhalb der Stichprobe \(String(format: "%+.2f", wf.outOfSamplePnL)) USDT (\(wf.positiveSteps)/\(wf.steps.count) Schritte im Plus)")
                 }
             }
             forcedTab = tab.rawValue
@@ -159,6 +184,10 @@ final class AppController: ObservableObject {
 
         await checkForUpdates(manual: true)
         extra.append("Update-Prüfung: \(status.updateStatus)")
+        let bidNow = market.bid
+        for a in shadows.accounts {
+            extra.append("Schattenkonto \(a.name): \(a.buys) Käufe, \(a.sells) Verkäufe, Ergebnis \(String(format: "%+.3f", a.result(bid: bidNow))) USDT · \(a.lastReason)")
+        }
         await compareStrategies(into: &extra)
 
         let report = diagnosticsText() + "\n" + extra.joined(separator: "\n")
@@ -170,23 +199,34 @@ final class AppController: ObservableObject {
     /// (ganzer Zeitraum sowie erste 60 % / letzte 40 %), damit Aenderungen an der Strategie belegt sind.
     private func compareStrategies(into extra: inout [String]) async {
         guard let candles = await prepareHistory(days: 7) else { return }
-        let cfg = backtest.config(rules: rules)
+        var assumed = backtest.config(rules: rules)
+        assumed.spreadBps = 20
+        assumed.depthUSDT = 3_000
+        var live = assumed
+        if let snap = market.snapshot, snap.bid > 0 {
+            live.spreadBps = max(2, snap.spreadBps)
+            live.depthUSDT = max(200, min(snap.bidDepthUSDT, snap.askDepthUSDT))
+        }
         let split = Int(Double(candles.count) * 0.6)
-        func variant(_ name: String, _ edit: (inout BotSettings) -> Void) -> String {
+        func variant(_ name: String, _ cfg: BacktestConfig, _ edit: (inout BotSettings) -> Void) -> String {
             var s = BotSettings()
             edit(&s)
             let all = Backtester.run(candles: candles, settings: s, config: cfg, collect: false)
-            let first = Backtester.run(candles: Array(candles[0..<split]), settings: s, config: cfg, collect: false)
+            let first = Backtester.run(candles: candles, settings: s, config: cfg, endIndex: split, collect: false)
             let last = Backtester.run(candles: candles, settings: s, config: cfg, startIndex: split, collect: false)
             return String(format: "  %@: gesamt %+.2f (dd %.2f, %ld/%ld) · Teil 1 %+.2f · Teil 2 %+.2f", name, all.netPnL,
                           all.maxDrawdownUSDT, all.buys, all.sells, first.netPnL, last.netPnL)
         }
-        let hold = Backtester.run(candles: candles, settings: BotSettings(), config: cfg, collect: false).holdReturnFraction
-        extra.append(String(format: "Strategievergleich (7 Tage, Halten %+.1f%%):", hold * 100))
-        extra.append(variant("Standard", { _ in }))
-        extra.append(variant("Trendfilter 30/120", { $0.trendFilterEnabled = true }))
-        extra.append(variant("Trendfilter 60/240", { $0.trendFilterEnabled = true; $0.trendFastMinutes = 60; $0.trendSlowMinutes = 240 }))
-        extra.append(variant("Trendfilter 30/120 + Ziel 30", { $0.trendFilterEnabled = true; $0.minNetProfitBps = 30 }))
+        let hold = Backtester.run(candles: candles, settings: BotSettings(), config: assumed, collect: false).holdReturnFraction
+        for (label, cfg) in [("angenommen", assumed), ("live gemessen", live)] {
+            extra.append(String(format: "Strategievergleich (7 Tage, Spread %@ %.1f bp, Tiefe %.0f USDT, Halten %+.1f%%):",
+                                label, cfg.spreadBps, cfg.depthUSDT, hold * 100))
+            extra.append(variant("Standard (Trendfilter 30/120)", cfg, { _ in }))
+            extra.append(variant("Ohne Trendfilter", cfg, { $0.trendFilterEnabled = false }))
+            extra.append(variant("Limit-Kauf am Bid", cfg, { $0.makerEntries = true }))
+            extra.append(variant("Limit-Kauf am Bid, 5 min Geduld", cfg, { $0.makerEntries = true; $0.makerTimeoutSeconds = 300 }))
+            extra.append(variant("Trendfilter + Ziel 30", cfg, { $0.minNetProfitBps = 30 }))
+        }
     }
 
     private func waitUntil(timeout: Double, _ condition: () -> Bool) async {
@@ -236,6 +276,7 @@ final class AppController: ObservableObject {
         try? stateStore.save(bot.stored)
         try? JSONFile.write(equity, to: paths.equityFile)
         try? JSONFile.write(CandleCache(candles: history), to: paths.candleCacheFile)
+        try? JSONFile.write(shadows.book, to: paths.shadowFile)
         journal.flushAndWait()
         if let activity { ProcessInfo.processInfo.endActivity(activity) }
     }
@@ -401,6 +442,7 @@ final class AppController: ObservableObject {
     private func housekeeping() {
         let now = nowTs()
         sampleEquity(now: now)
+        if shadowsDirty, now - lastShadowSave >= 60 { saveShadows() }
         if now - lastJournalFlush >= 10 {
             lastJournalFlush = now
             journal.flush()
@@ -530,6 +572,7 @@ final class AppController: ObservableObject {
             bot.stored.state = state
             markDirty()
         }
+        stepShadows(snap, fastMoveBps: fast, now: now)
         recordDecision(result, now: now)
         checkAlerts(price: snap.displayPrice)
         journalTick(snap, result: result, now: now)
@@ -718,7 +761,10 @@ final class AppController: ObservableObject {
 
     func applyAccountFee() {
         guard let c = status.commission else { return }
-        updateSettings { $0.feeBps = (c.takerBps * 100).rounded() / 100 }
+        updateSettings {
+            $0.feeBps = (c.takerBps * 100).rounded() / 100
+            $0.makerFeeBps = (c.makerBps * 100).rounded() / 100
+        }
     }
 
     // MARK: - Konto
@@ -881,6 +927,71 @@ final class AppController: ObservableObject {
         }
     }
 
+    // MARK: - Schattenkonten
+
+    /// Alle Schattenkonten handeln auf demselben Marktbild wie das Hauptkonto.
+    private func stepShadows(_ snap: MarketSnapshot, fastMoveBps: Double, now: Double) {
+        guard !shadows.book.accounts.isEmpty else { return }
+        var book = shadows.book
+        var traded = false
+        for i in book.accounts.indices {
+            if book.accounts[i].step(snap, fastMoveBps: fastMoveBps, now: now) != nil { traded = true }
+        }
+        shadows.book = book
+        shadowsDirty = true
+        if traded { saveShadows() }
+    }
+
+    private func saveShadows() {
+        shadowsDirty = false
+        lastShadowSave = nowTs()
+        let book = shadows.book
+        let url = paths.shadowFile
+        DispatchQueue.global(qos: .utility).async { try? JSONFile.write(book, to: url) }
+    }
+
+    func addShadow(_ preset: ShadowPreset, name: String) {
+        guard shadows.book.accounts.count < ShadowAccount.maxAccounts else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let account = ShadowAccount(name: trimmed.isEmpty ? preset.rawValue : trimmed,
+                                    settings: preset.settings(from: bot.stored.settings),
+                                    at: nowTs(), bid: market.snapshot?.bid)
+        shadows.book.accounts.append(account)
+        saveShadows()
+        scheduleEvaluate()
+    }
+
+    func removeShadow(_ id: UUID) {
+        shadows.book.accounts.removeAll { $0.id == id }
+        saveShadows()
+    }
+
+    func resetShadow(_ id: UUID) {
+        guard let i = shadows.book.accounts.firstIndex(where: { $0.id == id }) else { return }
+        shadows.book.accounts[i].reset(at: nowTs(), bid: market.snapshot?.bid)
+        saveShadows()
+    }
+
+    /// Setzt alle Schattenkonten gleichzeitig zurueck (fairer Neustart des Vergleichs).
+    func resetAllShadows() {
+        let now = nowTs()
+        let bid = market.snapshot?.bid
+        for i in shadows.book.accounts.indices { shadows.book.accounts[i].reset(at: now, bid: bid) }
+        saveShadows()
+    }
+
+    /// Uebernimmt die Einstellungen eines Schattenkontos ins Hauptkonto (Papierkonto bleibt unveraendert).
+    func applyShadowSettings(_ id: UUID) {
+        guard let account = shadows.book.accounts.first(where: { $0.id == id }) else { return }
+        let incoming = account.settings
+        updateSettings { s in
+            let start = s.startingUSDT
+            s = incoming
+            s.startingUSDT = start
+        }
+        status.notice = "Einstellungen von „\(account.name)“ übernommen."
+    }
+
     // MARK: - Verlauf, Backtest, Optimierung
 
     /// BingX liefert 1-Minuten-Kerzen hoechstens 7 Tage weit zurueck (Fehler 100204).
@@ -929,13 +1040,63 @@ final class AppController: ObservableObject {
         backtest.depthUSDT = max(200, ((min(snap.bidDepthUSDT, snap.askDepthUSDT)) / 100).rounded() * 100)
     }
 
+    /// Liest das eigene Marktprotokoll der letzten `days` Tage im Hintergrund.
+    private func loadJournal(days: Int) async -> ReplayData {
+        journal.flushAndWait()
+        let dir = paths.journalDirectory
+        let now = nowTs()
+        let from = now - Double(days) * 86_400
+        let worker = Task.detached(priority: .userInitiated) {
+            JournalReader.load(directory: dir, from: from, to: now, shouldCancel: { Task.isCancelled })
+        }
+        return await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
+    }
+
+    private func describe(_ data: ReplayData) -> String {
+        guard data.frames.count >= 2 else {
+            return "Im Marktprotokoll ist noch nichts gespeichert. Die App schreibt alle 5 Sekunden einen Eintrag, solange sie läuft."
+        }
+        return "Marktprotokoll: \(data.frames.count) Einträge aus \(data.filesRead) Tagesdateien · \(Fmt.usdt(data.coveredHours, digits: 1)) Stunden Livebetrieb"
+            + (data.badLines > 0 ? " · \(data.badLines) unlesbare Zeilen übersprungen" : "")
+    }
+
+    /// Misst typischen Spread und Orderbuchtiefe im Protokoll und uebernimmt sie fuer den Kerzen-Backtest.
+    func measureMarketFromJournal() {
+        guard !backtest.running, !backtest.optimizing else { return }
+        let store = backtest
+        store.running = true
+        store.message = "Lese Marktprotokoll …"
+        store.task = Task { [weak self] in
+            guard let self else { return }
+            defer { store.running = false; store.task = nil }
+            let data = await self.loadJournal(days: 7)
+            store.journalInfo = self.describe(data)
+            guard let c = data.calibration else {
+                store.message = "Zu wenige Protokolleinträge zum Messen (mindestens 10)."
+                return
+            }
+            store.calibration = c
+            store.spreadBps = min(300, max(5, (c.medianSpreadBps / 5).rounded() * 5))
+            store.depthUSDT = min(20_000, max(200, (c.medianDepthUSDT / 100).rounded() * 100))
+            store.message = "Gemessen: Spread typisch \(Fmt.bps(c.medianSpreadBps, digits: 1)) (90 %: \(Fmt.bps(c.p90SpreadBps, digits: 1))), Tiefe typisch \(Fmt.usdt(c.medianDepthUSDT, digits: 0)) USDT je Seite."
+        }
+    }
+
     func runBacktest() {
         guard !backtest.running, !backtest.optimizing else { return }
         let store = backtest
         store.running = true
         store.progress = 0
-        store.message = "Lade Kerzen …"
+        store.message = store.source == .journal ? "Lese Marktprotokoll …" : "Lade Kerzen …"
         store.result = nil
+        if store.source == .journal {
+            store.task = Task { [weak self] in
+                guard let self else { return }
+                defer { store.running = false; store.task = nil }
+                await self.runReplay(store)
+            }
+            return
+        }
         store.task = Task { [weak self] in
             guard let self else { return }
             defer { store.running = false; store.task = nil }
@@ -954,6 +1115,34 @@ final class AppController: ObservableObject {
             store.progress = 1
             store.message = result.cancelled ? "Abgebrochen" : "Fertig"
         }
+    }
+
+    /// Replay: echte Orderbuecher und Kaeuferanteile aus dem eigenen Protokoll statt Annahmen.
+    private func runReplay(_ store: BacktestStore) async {
+        let data = await loadJournal(days: store.days)
+        store.journalInfo = describe(data)
+        if let c = data.calibration { store.calibration = c }
+        guard data.frames.count >= 2 else {
+            store.message = store.journalInfo
+            return
+        }
+        // Kerzen fuer die Ausloeser: Protokoll und gespeicherter Verlauf zusammen.
+        if let first = data.firstTime, (history.first?.openedAt ?? .infinity) > first - 3 * 3_600 {
+            _ = await prepareHistory(days: store.days)
+        }
+        let candles = Indicators.normalize(history + data.candles)
+        store.message = "Spiele \(data.frames.count) Marktmomente ab …"
+        store.progress = 0.5
+        let settings = bot.stored.settings
+        let config = store.config(rules: rules)
+        let frames = data.frames
+        let worker = Task.detached(priority: .userInitiated) {
+            Backtester.replay(frames: frames, candles: candles, settings: settings, config: config, shouldCancel: { Task.isCancelled })
+        }
+        let result = await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
+        store.result = result
+        store.progress = 1
+        store.message = result.cancelled ? "Abgebrochen" : "Fertig (Replay aus dem Marktprotokoll)"
     }
 
     func runOptimizer() {
@@ -977,6 +1166,7 @@ final class AppController: ObservableObject {
         store.optimizing = true
         store.progress = 0
         store.entries = []
+        store.walkForward = nil
         store.optimizerAxesUsed = axes.map(\.parameter)
         store.message = "Lade Kerzen …"
         store.task = Task { [weak self] in
@@ -991,13 +1181,15 @@ final class AppController: ObservableObject {
             let config = store.config(rules: self.rules)
             let objective = store.objective
             let train = store.trainFraction
-            let results = await Optimizer.run(candles: candles, base: base, config: config, axes: axes, objective: objective,
-                                              trainFraction: train, progress: { done, total in
+            let report = await Optimizer.runReport(candles: candles, base: base, config: config, axes: axes, objective: objective,
+                                                   trainFraction: train, segments: Optimizer.defaultSegments, progress: { done, total in
                 Task { @MainActor in store.progress = Double(done) / Double(max(1, total)) }
             })
-            store.entries = results
+            store.entries = report.entries
+            store.walkForward = report.walkForward
             store.progress = 1
-            store.message = Task.isCancelled ? "Abgebrochen" : "Fertig: \(results.count) Ergebnisse"
+            let passing = report.entries.filter(\.passesTest).count
+            store.message = Task.isCancelled ? "Abgebrochen" : "Fertig: \(report.entries.count) Ergebnisse, \(passing) davon im Test im Plus"
         }
     }
 
@@ -1007,6 +1199,10 @@ final class AppController: ObservableObject {
 
     /// Uebernimmt die Einstellungen eines Optimierungsergebnisses (nur die untersuchten Parameter).
     func apply(_ entry: OptimizerEntry) {
+        guard entry.passesTest else {
+            status.notice = "Nicht übernommen: Diese Kombination liegt im Testabschnitt nicht im Plus."
+            return
+        }
         let parameters = backtest.optimizerAxesUsed
         updateSettings { s in
             for (parameter, value) in zip(parameters, entry.values) { parameter.apply(value, to: &s) }

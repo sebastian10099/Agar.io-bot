@@ -137,14 +137,32 @@ final class Preferences: ObservableObject {
     }
 }
 
+/// Datenquelle des Backtests.
+enum BacktestSource: String, CaseIterable, Identifiable {
+    case candles = "Kerzen von BingX"
+    case journal = "Marktprotokoll (echte Orderbücher)"
+    var id: String { rawValue }
+}
+
+/// Schattenkonten fuer die Vergleichsseite.
+@MainActor
+final class ShadowStore: ObservableObject {
+    @Published var book = ShadowBook()
+    var accounts: [ShadowAccount] { book.accounts }
+}
+
 /// Zustand der Backtest-Seite.
 @MainActor
 final class BacktestStore: ObservableObject {
     // Eingaben
     @Published var days = 7
+    @Published var source = BacktestSource.candles
     @Published var spreadBps = 20.0
     @Published var depthUSDT = 3_000.0
     @Published var seedStartPosition = false
+    /// Gemessene Marktwerte aus dem Protokoll (nach "Aus Marktprotokoll messen" oder einem Replay).
+    @Published var calibration: MarketCalibration?
+    @Published var journalInfo = ""
     // Ausgaben
     @Published var running = false
     @Published var progress = 0.0
@@ -160,6 +178,8 @@ final class BacktestStore: ObservableObject {
     @Published var optimizing = false
     @Published var entries: [OptimizerEntry] = []
     @Published var optimizerAxesUsed: [OptimizerParameter] = []
+    @Published var ranking = OptimizerRanking.robustness
+    @Published var walkForward: WalkForwardSummary?
 
     var task: Task<Void, Never>?
 

@@ -234,6 +234,12 @@ struct OverviewView: View {
                         help: "Unter diesem Preis löst ein Rückgang den nächsten Kauf aus")
             KeyValueRow(title: "Dynamischer Verkauf ab", value: m?.nextSellPrice.map(Fmt.price) ?? "—", color: .candleUp,
                         help: "Bid, ab dem das günstigste Los sein Nettoziel erreicht")
+            if let order = state.pendingBuy {
+                KeyValueRow(title: "Wartender Limit-Kauf",
+                            value: "\(Fmt.quantity(order.quantity)) zu \(Fmt.price(order.price)) · \(Int(max(0, Date().timeIntervalSince1970 - order.placedAt))) s",
+                            color: .orange,
+                            help: "Virtuelle Kauforder am Bid; ausgeführt, wenn echte Verkäufe sie erreichen (Einstellungen → Limit-Kauf am Bid)")
+            }
             Divider()
             KeyValueRow(title: "Rückgang / Anstieg", value: "\(Fmt.usdt(m?.dropBps ?? 0, digits: 0)) / \(Fmt.usdt(m?.riseBps ?? 0, digits: 0)) bp")
             KeyValueRow(title: "Kaufschwelle", value: Fmt.bps(m?.stepBps ?? 0), help: "Aus Spread, Gebühren und Volatilität berechnet")
