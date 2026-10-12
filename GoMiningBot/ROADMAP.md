@@ -26,6 +26,11 @@ Grundsätze, die für jede Version gelten:
 - [ ] Tages- und Wochenbericht (HTML/PDF) und Tageszusammenfassung als Mitteilung.
 - [ ] Oberfläche auch auf Englisch; Dunkelmodus in den CI-Bildern prüfen.
 
+## Beobachten (aus dem Strategievergleich vom 12.10.2026)
+- [ ] Mindest-Kaufabstand 80 bp über mehrere Wochen und auch in steigenden Phasen prüfen (Schattenkonto „ohne
+      Mindest-Kaufabstand“, Replay aus dem Protokoll); 100 bp war in der fallenden Woche noch besser.
+- [ ] Trendfilter neben dem Mindest-Kaufabstand neu bewerten (in dieser Woche kaum Unterschied).
+
 ## Paket 4.4 – Zuverlässigkeit und Daten
 - [ ] Selbstdiagnose mit Hinweis bei hängenden Daten, deutlicher Offline-Modus.
 - [ ] Langzeittest (Speicher und CPU über Stunden) in der CI, Fuzz-Tests für die Parser.

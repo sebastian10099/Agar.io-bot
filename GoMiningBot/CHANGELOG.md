@@ -5,6 +5,22 @@ Die Abschnitte hier werden als Release-Notizen und in der App unter „Was ist n
 
 ## 4.2 – 12.10.2026
 
+**Mindest-Kaufabstand 80 bp (neu, Standard) – der Bot kauft nicht mehr jeden kleinen Rücksetzer**
+- Bisher hing die Kaufschwelle vor allem am Spread. Beim echten, engen Spread von GOMINING (5–12 bp) kaufte der Bot
+  schon nach Rückgängen von rund 30 bp – und zahlte mit Gebühren und Stop-Loss drauf.
+- Neu: Die Schwelle ist mindestens 80 bp (einstellbar unter *Einstieg*, 0 = Verhalten wie 4.1, auch im Optimierer).
+- Beleg (Strategievergleich auf 7 Tagen echter BingX-Kerzen, 12.10.2026, Halten −6,5 %):
+  mit dem live gemessenen Spread (12 bp) **+0,35 USDT statt −18,02 USDT** (Teil 1 ±0,00 statt −17,74, Teil 2 +0,35
+  statt −2,75, größter Rückgang 1,9 statt 20,3 USDT); mit angenommenem Spread (20 bp) +0,18 statt −3,49 USDT.
+  60 bp war uneinheitlich, 100 bp in dieser Woche noch etwas besser (+2,00) – gewählt wurde trotzdem der vorher
+  festgelegte Wert 80, um nicht einer einzelnen Woche hinterherzulaufen. Der Bot handelt damit seltener (6 statt 21
+  Käufe in 7 Tagen). Die Vorlage „Aktuelle ohne Mindest-Kaufabstand (wie 4.1)“ auf der Seite *Vergleich* prüft das live.
+
+**Backtest rechnet standardmäßig mit dem echten Live-Spread**
+- Bisher galten feste 20 bp – deutlich mehr als der echte Spread. Weil die Kaufschwelle vom Spread abhängt, sah der
+  Backtest dadurch besser aus als der Livebetrieb (7 Tage, Version 4.1: −3,5 USDT im Backtest, −18 USDT mit echtem
+  Spread). Jetzt werden Spread und Tiefe vor jedem Lauf aus dem Live-Markt übernommen (abschaltbar).
+
 **Neue Seite „Vergleich“: Schattenkonten**
 - Bis zu fünf Schattenkonten handeln mit eigenen Einstellungen und eigenem Papierkonto auf genau denselben Live-Daten
   wie das Hauptkonto. Die Seite zeigt Ergebnis, Vergleich mit Halten, Käufe/Verkäufe, Gewinnquote, offene Positionen
@@ -35,11 +51,16 @@ Die Abschnitte hier werden als Release-Notizen und in der App unter „Was ist n
 - Eigene Maker-Gebühr (mit verbundenem Konto per „Kontosatz übernehmen“), Zeitlimit, Abbruch wenn der Kurs davonläuft,
   bei Schutzgrenzen, Anstiegssignal oder Abwärtstrend; Pausieren streicht wartende Orders. Die wartende Order steht in
   der Übersicht.
-- STRATEGIEVERGLEICH_PLATZHALTER
+- Bleibt aus: Im Strategievergleich war der Limit-Kauf mit dem neuen Standard schlechter (−0,65 statt +0,35 USDT);
+  ohne Mindest-Kaufabstand und mit echtem Spread war er besser (−13,4 statt −18,0 USDT). Wer ihn ausprobieren will:
+  Schattenkonto mit der Vorlage „Aktuelle mit Limit-Kauf am Bid“.
 
 **Sonstiges**
 - Rauchtest in der CI erweitert: Replay, Walk-forward, Schattenkonten und Strategievergleich mit angenommenem und live
   gemessenem Spread.
+- Ehrlich festgehalten: Die Walk-forward-Prüfung des Optimierers lag auch mit den neuen Standardwerten nicht im Plus
+  (−0,12 USDT). Die App rät dann selbst, die Standardwerte zu behalten. Der Trendfilter bringt zusammen mit dem
+  Mindest-Kaufabstand in dieser Woche kaum noch etwas (ein Trade Unterschied); er bleibt als Schutz an.
 - Neue Tests für Walk-forward, Replay, Protokoll-Leser, Limit-Kauf und Schattenkonten.
 
 ## 4.1.1 – 11.10.2026

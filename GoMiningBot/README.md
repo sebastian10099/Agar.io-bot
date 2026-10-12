@@ -75,6 +75,9 @@ andere Werte bleiben unverändert.
 
 ## Neu in 4.2
 
+- **Mindest-Kaufabstand 80 bp:** Der Bot kauft nicht mehr nach jedem kleinen Rücksetzer. Auf 7 Tagen echter Kerzen mit
+  echtem Spread: +0,35 USDT statt −18 USDT (Halten −6,5 %), bei deutlich weniger Trades.
+- **Backtest mit echtem Live-Spread** statt fester 20 bp – die Ergebnisse passen damit besser zum Livebetrieb.
 - **Vergleich mit Schattenkonten:** bis zu fünf weitere Einstellungen (Vorlagen „Vorsichtig“, „Aktiv“, „mit
   Limit-Kauf“ …) handeln parallel auf denselben Live-Daten; die neue Seite *Vergleich* zeigt, welche besser läuft, und
   übernimmt die Einstellungen auf Wunsch ins Hauptkonto.
@@ -148,10 +151,11 @@ simulierten Trade ein.
 
 - **Keine echten Orders.** Die Echtgeld-Anbindung gibt es bewusst nicht; Papierergebnisse sind kein Beleg dafür, dass
   eine Strategie mit echtem Geld funktioniert (Ausführung, Wartezeiten, Teilausführung, Gebührenstufen).
-- **Kein Gewinnversprechen.** Mit den Standardwerten lag der Bot auf 7 Tagen echter Kerzen (Stand 11.10.2026) bei
-  −0,5 % (reines Halten: −7,3 %). In einer Parametersuche über 480 Kombinationen war keine Einstellung im Trainings-
-  *und* im Testabschnitt zugleich im Plus – Gebühren, Spread und Stop-Loss fressen die kleinen Ziele. Die App ist ein
-  Werkzeug zum Ausprobieren und Lernen.
+- **Kein Gewinnversprechen.** Mit den Standardwerten von 4.2 lag der Bot auf 7 Tagen echter Kerzen (Stand 12.10.2026)
+  bei +0,02 bis +0,04 % (reines Halten: −6,5 %) – vor allem, weil er in einer fallenden Woche wenig gekauft hat. Mit den
+  Werten von 4.1 und echtem Spread waren es −1,8 %. Die Walk-forward-Prüfung des Optimierers findet bisher keine
+  Einstellung, die verlässlich im Plus bleibt – Gebühren, Spread und Stop-Loss fressen die kleinen Ziele. Die App ist
+  ein Werkzeug zum Ausprobieren und Lernen.
 - **Backtest ≠ Zukunft.** Im Backtest gibt es keine historischen Orderbücher; Spread und Tiefe sind Annahmen, und es
   fehlen die Einzeltrades (Käuferanteil). Der Optimierer findet auch im Zufall „gute“ Werte – der Testabschnitt zeigt,
   ob sie halten.
