@@ -221,15 +221,15 @@ final class AppController: ObservableObject {
         for (label, cfg) in [("angenommen", assumed), ("live gemessen", live)] {
             extra.append(String(format: "Strategievergleich (7 Tage, Spread %@ %.1f bp, Tiefe %.0f USDT, Halten %+.1f%%):",
                                 label, cfg.spreadBps, cfg.depthUSDT, hold * 100))
-            extra.append(variant("Standard (Trendfilter 30/120)", cfg, { _ in }))
-            extra.append(variant("Ohne Trendfilter", cfg, { $0.trendFilterEnabled = false }))
-            extra.append(variant("Limit-Kauf am Bid", cfg, { $0.makerEntries = true }))
-            extra.append(variant("Limit-Kauf am Bid, 5 min Geduld", cfg, { $0.makerEntries = true; $0.makerTimeoutSeconds = 300 }))
-            extra.append(variant("Trendfilter + Ziel 30", cfg, { $0.minNetProfitBps = 30 }))
-            for floor in [30.0, 40, 60, 80] {
+            extra.append(variant("Standard 4.2 (Mindest-Kaufabstand 80, Trendfilter)", cfg, { _ in }))
+            extra.append(variant("Wie 4.1 (ohne Mindest-Kaufabstand)", cfg, { $0.minBuyStepBps = 0 }))
+            for floor in [60.0, 100, 120] {
                 extra.append(variant(String(format: "Mindest-Kaufabstand %.0f bp", floor), cfg, { $0.minBuyStepBps = floor }))
             }
-            extra.append(variant("Mindest-Kaufabstand 60 + Limit-Kauf", cfg, { $0.minBuyStepBps = 60; $0.makerEntries = true }))
+            extra.append(variant("Ohne Trendfilter", cfg, { $0.trendFilterEnabled = false }))
+            extra.append(variant("Limit-Kauf am Bid", cfg, { $0.makerEntries = true }))
+            extra.append(variant("Ziel 30", cfg, { $0.minNetProfitBps = 30 }))
+            extra.append(variant("Ziel 80", cfg, { $0.minNetProfitBps = 80 }))
         }
     }
 

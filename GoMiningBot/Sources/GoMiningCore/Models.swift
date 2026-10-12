@@ -193,8 +193,8 @@ public struct BotSettings: Codable, Equatable, Sendable {
     /// Mindestabstand des naechsten Kaufs zum tiefsten offenen Kauf, in Vielfachen des Kaufabstands.
     public var minLotDistanceFactor: Double = 0.5
     /// Untergrenze fuer den adaptiven Kaufabstand in bp (0 = nur adaptiv). Bei sehr engem Spread kauft der Bot sonst
-    /// schon nach kleinen Rueckgaengen.
-    public var minBuyStepBps: Double = 0
+    /// schon nach kleinen Rueckgaengen. Standard 80 bp seit 4.2 (Strategievergleich vom 12.10.2026).
+    public var minBuyStepBps: Double = 80
 
     // Ausstieg
     public var minNetProfitBps: Double = 50

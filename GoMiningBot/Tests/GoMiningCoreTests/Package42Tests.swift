@@ -361,6 +361,7 @@ final class ShadowAccountTests: XCTestCase {
 final class MinBuyStepTests: XCTestCase {
     func testFloorRaisesBuyThresholdButGridDropStaysCap() {
         var s = Fixture.settings()
+        s.minBuyStepBps = 0
         let snap = Fixture.snapshot(mid: 0.986, spreadBps: 2)
         let state = BotState.fresh(s, at: Fixture.now)
         let base = BotEngine.metrics(snap, state: state, settings: s, now: Fixture.now).stepBps
@@ -371,10 +372,12 @@ final class MinBuyStepTests: XCTestCase {
         XCTAssertEqual(BotEngine.metrics(snap, state: state, settings: s, now: Fixture.now).stepBps, s.gridDropBps, accuracy: 1e-9)
     }
 
-    func testFloorIsOffByDefaultAndLoadsFromOldFiles() throws {
-        XCTAssertEqual(BotSettings().minBuyStepBps, 0)
+    func testFloorDefaultsTo80AlsoForOldFiles() throws {
+        XCTAssertEqual(BotSettings().minBuyStepBps, 80)
+        XCTAssertEqual(try JSONDecoder().decode(BotSettings.self, from: Data("{}".utf8)).minBuyStepBps, 80)
         let decoded = try JSONDecoder().decode(BotSettings.self, from: Data(#"{"minBuyStepBps":45}"#.utf8))
         XCTAssertEqual(decoded.minBuyStepBps, 45)
+        XCTAssertEqual(ShadowPreset.noMinBuyStep.settings(from: BotSettings()).minBuyStepBps, 0)
         var s = BotSettings()
         OptimizerParameter.minBuyStepBps.apply(60, to: &s)
         XCTAssertEqual(OptimizerParameter.minBuyStepBps.current(in: s), 60)

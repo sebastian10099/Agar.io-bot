@@ -117,6 +117,7 @@ public enum ShadowPreset: String, CaseIterable, Identifiable, Sendable {
     case active = "Aktiv"
     case maker = "Aktuelle mit Limit-Kauf am Bid"
     case noTrendFilter = "Aktuelle ohne Trendfilter"
+    case noMinBuyStep = "Aktuelle ohne Mindest-Kaufabstand (wie 4.1)"
 
     public var id: String { rawValue }
 
@@ -128,13 +129,14 @@ public enum ShadowPreset: String, CaseIterable, Identifiable, Sendable {
         case .active: return "Ziel 30 bp, Stop 4 %, 10 Positionen, kürzere Abstände – handelt häufiger."
         case .maker: return "Kauft mit Limit-Order am Bid statt sofort zum Ask (spart den Spread, wird aber nicht immer ausgeführt)."
         case .noTrendFilter: return "Kauft auch im Abwärtstrend nach – zeigt, was der Trendfilter bringt."
+        case .noMinBuyStep: return "Kauft schon nach kleinen Rückgängen wie bis Version 4.1 – zeigt, was der Mindest-Kaufabstand bringt."
         }
     }
 
     public func settings(from current: BotSettings) -> BotSettings {
         var s: BotSettings
         switch self {
-        case .current, .maker, .noTrendFilter:
+        case .current, .maker, .noTrendFilter, .noMinBuyStep:
             s = current
         case .cautious, .balanced, .active:
             s = BotSettings()
@@ -164,6 +166,8 @@ public enum ShadowPreset: String, CaseIterable, Identifiable, Sendable {
             s.makerEntries = true
         case .noTrendFilter:
             s.trendFilterEnabled = false
+        case .noMinBuyStep:
+            s.minBuyStepBps = 0
         }
         return s.clamped()
     }

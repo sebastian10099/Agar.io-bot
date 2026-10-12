@@ -201,6 +201,7 @@ struct CompareView: View {
         if a.maxTradeUSDT != b.maxTradeUSDT { out.append("Einsatz \(Fmt.usdt(a.maxTradeUSDT, digits: 0)) USDT") }
         if a.openPositionLimit != b.openPositionLimit { out.append("\(a.openPositionLimit) Positionen") }
         if a.minLotDistanceFactor != b.minLotDistanceFactor { out.append("Abstand \(Fmt.usdt(a.minLotDistanceFactor, digits: 1))×") }
+        if a.minBuyStepBps != b.minBuyStepBps { out.append(a.minBuyStepBps > 0 ? "Mindest-Kaufabstand \(Fmt.bps(a.minBuyStepBps))" : "ohne Mindest-Kaufabstand") }
         if a.trailingStopBps != b.trailingStopBps { out.append(a.trailingStopBps > 0 ? "Trailing \(Fmt.bps(a.trailingStopBps))" : "ohne Trailing") }
         if a.trendFilterEnabled != b.trendFilterEnabled { out.append(a.trendFilterEnabled ? "Trendfilter an" : "Trendfilter aus") }
         if a.makerEntries != b.makerEntries { out.append(a.makerEntries ? "Limit-Kauf am Bid" : "Kauf zum Ask") }
