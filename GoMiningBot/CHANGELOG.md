@@ -3,6 +3,45 @@
 Jede Version erscheint automatisch als GitHub-Release mit der fertigen App (`GoMining-Bot.zip`).
 Die Abschnitte hier werden als Release-Notizen und in der App unter „Was ist neu“ angezeigt.
 
+## 4.2 – 12.10.2026
+
+**Neue Seite „Vergleich“: Schattenkonten**
+- Bis zu fünf Schattenkonten handeln mit eigenen Einstellungen und eigenem Papierkonto auf genau denselben Live-Daten
+  wie das Hauptkonto. Die Seite zeigt Ergebnis, Vergleich mit Halten, Käufe/Verkäufe, Gewinnquote, offene Positionen
+  und die Unterschiede zum Hauptkonto.
+- Vorlagen: Aktuelle Einstellungen, Vorsichtig, Ausgewogen (Standard), Aktiv, Aktuelle mit Limit-Kauf am Bid,
+  Aktuelle ohne Trendfilter. Startkapital, Gebühren und Slippage übernimmt jedes Konto vom Hauptkonto.
+- Je Konto: Einstellungen ins Hauptkonto übernehmen, zurücksetzen, entfernen; „Alle zurücksetzen“ für einen fairen
+  gemeinsamen Neustart. Gespeichert in `shadow-accounts.json`.
+
+**Backtest mit echten Orderbüchern (Replay aus dem Marktprotokoll)**
+- Neue Datenquelle im Backtest: die Orderbücher (beste zehn Stufen) und Käuferanteile, die die App alle 5 Sekunden
+  selbst aufzeichnet – statt angenommenem Spread und angenommener Tiefe. Lücken, in denen die App aus war, werden
+  übersprungen.
+- „Aus Marktprotokoll messen“ übernimmt den typischen Spread und die typische Tiefe der letzten 7 Tage in den
+  Kerzen-Backtest (Median, dazu der Spread, der in 90 % der Zeit nicht überschritten wurde).
+
+**Robustere Optimierung**
+- Jede Kombination wird zusätzlich in vier aufeinanderfolgenden Zeitabschnitten mit frischem Konto gerechnet; die Tabelle
+  zeigt „x/4 im Plus“ und lässt sich nach Robustheit sortieren (Standard) statt nur nach dem Trainingsergebnis.
+- Walk-forward-Prüfung: Für jeden Abschnitt wird die Kombination gewählt, die vorher am besten war, und nur ihr Ergebnis
+  im neuen Abschnitt gezählt – so hätte der Optimierer in Echtzeit abgeschnitten. Ist das nicht positiv, sagt die App es.
+- „Übernehmen“ ist nur noch möglich, wenn die Kombination im Testabschnitt im Plus liegt.
+
+**Limit-Kauf am Bid (Maker) – als Option, standardmäßig aus**
+- Statt sofort zum Ask zu kaufen, legt der Bot eine virtuelle Kauforder auf den besten Bid. Ausgeführt gilt sie erst,
+  wenn echte Verkäufe zu diesem Preis die Warteschlange davor und die eigene Menge abgearbeitet haben, der Bid darunter
+  fällt oder der Ask sie erreicht. Teilausführungen werden vorsichtshalber nicht angerechnet.
+- Eigene Maker-Gebühr (mit verbundenem Konto per „Kontosatz übernehmen“), Zeitlimit, Abbruch wenn der Kurs davonläuft,
+  bei Schutzgrenzen, Anstiegssignal oder Abwärtstrend; Pausieren streicht wartende Orders. Die wartende Order steht in
+  der Übersicht.
+- STRATEGIEVERGLEICH_PLATZHALTER
+
+**Sonstiges**
+- Rauchtest in der CI erweitert: Replay, Walk-forward, Schattenkonten und Strategievergleich mit angenommenem und live
+  gemessenem Spread.
+- Neue Tests für Walk-forward, Replay, Protokoll-Leser, Limit-Kauf und Schattenkonten.
+
 ## 4.1.1 – 11.10.2026
 
 **Dringende Korrektur: Die App heißt jetzt „GoMining Bot Pro“ und wird nicht mehr mit der alten App verwechselt**

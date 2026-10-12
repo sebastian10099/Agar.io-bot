@@ -11,15 +11,18 @@ Grundsätze, die für jede Version gelten:
 - Bestehende Daten (`simulation.json`, Einstellungen, Schlüsselbund) werden immer übernommen.
 - Ausnahme vom Bündeln: dringende Fehlerbehebungen (z. B. App startet nicht) erscheinen sofort als x.y.z-Version.
 
-## Paket 4.2 – Realistischere Simulation und Auswertung
-- [ ] Backtest mit echten Spreads und Orderbuchtiefen aus dem eigenen Marktprotokoll (Replay statt Annahmen).
-- [ ] Walk-forward-Optimierung über mehrere Zeitfenster mit Robustheitswert; „Übernehmen“ nur bei Plus im Test.
-- [ ] Limit-Orders am Bid als Option (Maker-Gebühr, Füllwahrscheinlichkeit aus echten Trades) statt nur Taker.
-- [ ] Schattenkonten: mehrere Einstellungs-Profile laufen parallel im Papierhandel und werden live verglichen.
+## Paket 4.2 – Realistischere Simulation und Auswertung (erledigt, siehe CHANGELOG)
+- [x] Backtest mit echten Spreads und Orderbuchtiefen aus dem eigenen Marktprotokoll (Replay statt Annahmen).
+- [x] Walk-forward-Optimierung über mehrere Zeitfenster mit Robustheitswert; „Übernehmen“ nur bei Plus im Test.
+- [x] Limit-Orders am Bid als Option (Maker-Gebühr, Füllwahrscheinlichkeit aus echten Trades) statt nur Taker.
+- [x] Schattenkonten: mehrere Einstellungs-Profile laufen parallel im Papierhandel und werden live verglichen.
 
 ## Paket 4.3 – Bedienung
 - [ ] Diagramm: Zoomen und Verschieben, frei wählbarer Zeitraum, Tooltips an den Trade-Marken.
-- [ ] Profile: Einstellungen speichern, laden, teilen; Vorlagen „vorsichtig / ausgewogen / aktiv“.
+- [ ] Profile: Einstellungen speichern, laden, teilen (Vorlagen „vorsichtig / ausgewogen / aktiv“ gibt es seit 4.2 für
+      Schattenkonten).
+- [ ] Limit-Verkäufe am Ask für Gewinnziele (Maker auch beim Ausstieg), Teilausführungen.
+- [ ] Vergleichsseite: Vermögensverlauf aller Schattenkonten als Diagramm.
 - [ ] Tages- und Wochenbericht (HTML/PDF) und Tageszusammenfassung als Mitteilung.
 - [ ] Oberfläche auch auf Englisch; Dunkelmodus in den CI-Bildern prüfen.
 

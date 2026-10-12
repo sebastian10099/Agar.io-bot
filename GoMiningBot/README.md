@@ -73,6 +73,21 @@ wird weiterverwendet; macOS fragt beim ersten Zugriff einmal nach der Erlaubnis 
 Einmalige Anpassung: Der alte Standard für gleichzeitige Positionen (4 bzw. 8) wird auf **10** angehoben; bewusst
 andere Werte bleiben unverändert.
 
+## Neu in 4.2
+
+- **Vergleich mit Schattenkonten:** bis zu fünf weitere Einstellungen (Vorlagen „Vorsichtig“, „Aktiv“, „mit
+  Limit-Kauf“ …) handeln parallel auf denselben Live-Daten; die neue Seite *Vergleich* zeigt, welche besser läuft, und
+  übernimmt die Einstellungen auf Wunsch ins Hauptkonto.
+- **Replay aus dem Marktprotokoll:** Backtest über die echten Orderbücher und Käuferanteile, die die App selbst
+  aufgezeichnet hat – statt angenommenem Spread. Typischen Spread und typische Tiefe kann man auch für den
+  Kerzen-Backtest messen lassen.
+- **Robustere Optimierung:** Ergebnis je Zeitabschnitt („3/4 im Plus“), Walk-forward-Prüfung (wie hätte der Optimierer in
+  Echtzeit abgeschnitten?) und „Übernehmen“ nur noch, wenn der Testabschnitt im Plus liegt.
+- **Limit-Kauf am Bid (Maker) als Option:** virtuelle Kauforder am Bid, ausgeführt erst, wenn echte Verkäufe die
+  Warteschlange davor abgearbeitet haben; mit Zeitlimit und Abbruch, wenn der Kurs davonläuft.
+
+Details: [CHANGELOG](CHANGELOG.md).
+
 ## Neu in 4.0 und 4.1
 
 Neuerungen ab 4.1 (Updates aus der App, Trendfilter, „Was ist neu“) stehen im [CHANGELOG](CHANGELOG.md).
