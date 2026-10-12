@@ -228,6 +228,15 @@ public struct BotSettings: Codable, Equatable, Sendable {
     public var trendSlowMinutes: Int = 120
     public var trendTolerancePercent: Double = 0.2
 
+    // Limit-Kauf am Bid (Maker) statt sofortigem Kauf zum Ask
+    public var makerEntries: Bool = false
+    /// Maker-Gebuehr je Seite in bp (BingX Spot Standard: 0,1 %).
+    public var makerFeeBps: Double = 10
+    /// Nicht ausgefuehrte Limit-Kaeufe werden nach dieser Zeit gestrichen.
+    public var makerTimeoutSeconds: Double = 90
+    /// Streichen, wenn der Ask so weit (bp) ueber den Limitpreis steigt.
+    public var makerMaxChaseBps: Double = 30
+
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
@@ -238,6 +247,7 @@ public struct BotSettings: Codable, Equatable, Sendable {
         case maxSpreadBps, maxBookParticipation, maxBookAgeSeconds, maxCandleAgeSeconds
         case useMoveDetector, moveWindows, moveRequireConfirmation, moveMaxRetracePercent
         case trendFilterEnabled, trendFastMinutes, trendSlowMinutes, trendTolerancePercent
+        case makerEntries, makerFeeBps, makerTimeoutSeconds, makerMaxChaseBps
     }
 
     public init(from decoder: Decoder) throws {
@@ -273,6 +283,10 @@ public struct BotSettings: Codable, Equatable, Sendable {
         trendFastMinutes = c.value(.trendFastMinutes, d.trendFastMinutes)
         trendSlowMinutes = c.value(.trendSlowMinutes, d.trendSlowMinutes)
         trendTolerancePercent = c.value(.trendTolerancePercent, d.trendTolerancePercent)
+        makerEntries = c.value(.makerEntries, d.makerEntries)
+        makerFeeBps = c.value(.makerFeeBps, d.makerFeeBps)
+        makerTimeoutSeconds = c.value(.makerTimeoutSeconds, d.makerTimeoutSeconds)
+        makerMaxChaseBps = c.value(.makerMaxChaseBps, d.makerMaxChaseBps)
     }
 
     /// So viele 1-Minuten-Kerzen braucht die Engine mindestens (60-Minuten-Fenster, langsamer EMA).
@@ -319,6 +333,9 @@ public struct BotSettings: Codable, Equatable, Sendable {
         s.trendSlowMinutes = min(720, max(20, s.trendSlowMinutes))
         s.trendFastMinutes = min(s.trendSlowMinutes - 5, max(5, s.trendFastMinutes))
         s.trendTolerancePercent = clamp(s.trendTolerancePercent, 0, 10)
+        s.makerFeeBps = clamp(s.makerFeeBps, 0, 200)
+        s.makerTimeoutSeconds = clamp(s.makerTimeoutSeconds, 5, 3_600)
+        s.makerMaxChaseBps = clamp(s.makerMaxChaseBps, 0, 1_000)
         return s
     }
 }
@@ -366,6 +383,35 @@ public struct PositionLot: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// Ein wartender virtueller Limit-Kauf am Bid (Maker).
+public struct PendingOrder: Codable, Equatable, Sendable {
+    public var id: UUID
+    /// Limitpreis (bester Bid beim Platzieren).
+    public var price: Double
+    public var quantity: Double
+    public var placedAt: Double
+    /// Menge, die beim Platzieren schon auf diesem Preis lag und vor uns ausgefuehrt wird.
+    public var queueAhead: Double
+    /// Seitdem zu unserem Preis verkaufte Menge (Verkaeufer als Taker).
+    public var tradedAtPrice: Double
+    /// Zeitpunkt des zuletzt beruecksichtigten Trades.
+    public var lastTradeAt: Double
+    /// Ausloeser des Kaufs.
+    public var reason: String
+
+    public init(id: UUID = UUID(), price: Double, quantity: Double, placedAt: Double, queueAhead: Double,
+                tradedAtPrice: Double = 0, lastTradeAt: Double, reason: String) {
+        self.id = id
+        self.price = price
+        self.quantity = quantity
+        self.placedAt = placedAt
+        self.queueAhead = queueAhead
+        self.tradedAtPrice = tradedAtPrice
+        self.lastTradeAt = lastTradeAt
+        self.reason = reason
+    }
+}
+
 public struct BotState: Codable, Equatable, Sendable {
     public var cashUSDT: Double
     public var tokens: Double
@@ -384,12 +430,15 @@ public struct BotState: Codable, Equatable, Sendable {
     public var peakEquityUSDT: Double
     public var cooldownUntil: Double
     public var lastSellPriceUSDT: Double
+    // neu in 4.2
+    /// Wartender Limit-Kauf am Bid (nur mit `makerEntries`).
+    public var pendingBuy: PendingOrder?
 
     public init(cashUSDT: Double, tokens: Double = 0, costBasisUSDT: Double = 0, realizedPnLUSDT: Double = 0,
                 totalFeesUSDT: Double = 0, anchorUSDT: Double = 0, lastTradeAt: Double = 0, day: String,
                 dayStartEquityUSDT: Double, running: Bool = true, lots: [PositionLot] = [],
                 dayIndex: Int = 0, peakEquityUSDT: Double = 0, cooldownUntil: Double = 0,
-                lastSellPriceUSDT: Double = 0) {
+                lastSellPriceUSDT: Double = 0, pendingBuy: PendingOrder? = nil) {
         self.cashUSDT = cashUSDT
         self.tokens = tokens
         self.costBasisUSDT = costBasisUSDT
@@ -405,6 +454,7 @@ public struct BotState: Codable, Equatable, Sendable {
         self.peakEquityUSDT = peakEquityUSDT
         self.cooldownUntil = cooldownUntil
         self.lastSellPriceUSDT = lastSellPriceUSDT
+        self.pendingBuy = pendingBuy
     }
 
     public static func fresh(_ settings: BotSettings, at now: Double) -> BotState {
@@ -416,7 +466,7 @@ public struct BotState: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case cashUSDT, tokens, costBasisUSDT, realizedPnLUSDT, totalFeesUSDT, anchorUSDT, lastTradeAt
         case day, dayStartEquityUSDT, running, lots
-        case dayIndex, peakEquityUSDT, cooldownUntil, lastSellPriceUSDT
+        case dayIndex, peakEquityUSDT, cooldownUntil, lastSellPriceUSDT, pendingBuy
     }
 
     public init(from decoder: Decoder) throws {
@@ -450,6 +500,7 @@ public struct BotState: Codable, Equatable, Sendable {
         peakEquityUSDT = c.value(.peakEquityUSDT, cash + cost)
         cooldownUntil = c.value(.cooldownUntil, 0.0)
         lastSellPriceUSDT = c.value(.lastSellPriceUSDT, 0.0)
+        pendingBuy = c.optionalValue(.pendingBuy)
     }
 
     /// Vermoegen zum Bid (vor Verkaufskosten).

@@ -247,14 +247,31 @@ public enum BotEngine {
             }
             if equity > state.peakEquityUSDT { state.peakEquityUSDT = equity }
         }
-        guard state.running else { return result(.paused, "Simulation angehalten") }
+        guard state.running else {
+            state.pendingBuy = nil                      // Pausieren streicht wartende Limit-Kaeufe
+            return result(.paused, "Simulation angehalten")
+        }
         if let problem = bookProblem(snap, settings: s, now: now) { return result(.wait, problem) }
 
         consolidateDust(&state, bid: bid, settings: s, minNotional: snap.rules.minNotional)
         let m = metrics(snap, state: state, settings: s, now: now)
 
         if let exit = evaluateExits(snap, state: &state, settings: s, metrics: m, now: now, verbose: verbose) { return exit }
+        if state.pendingBuy != nil {
+            return managePendingBuy(snap, state: &state, settings: s, metrics: m, now: now, verbose: verbose)
+        }
         return evaluateEntries(snap, state: &state, settings: s, metrics: m, fastMoveBps: fastMoveBps, now: now, verbose: verbose)
+    }
+
+    /// Schutzgrenzen, die Neukaeufe verbieten (Tagesverlust, Drawdown, Abkuehlphase).
+    static func riskGate(_ state: BotState, settings s: BotSettings, bid: Double, now: Double) -> String? {
+        let equity = state.equity(atBid: bid)
+        if equity < state.dayStartEquityUSDT * (1 - s.maxDailyLossFraction) { return "Tagesverlustgrenze erreicht" }
+        if s.maxDrawdownFraction > 0, state.peakEquityUSDT > 0, equity < state.peakEquityUSDT * (1 - s.maxDrawdownFraction) {
+            return "Drawdown-Grenze erreicht"
+        }
+        if now < state.cooldownUntil { return "Abkühlphase nach Stop-Loss" }
+        return nil
     }
 
     // MARK: Ausstiege
@@ -396,13 +413,7 @@ public enum BotEngine {
         let rules = snap.rules
         let equity = state.equity(atBid: bid)
 
-        if equity < state.dayStartEquityUSDT * (1 - s.maxDailyLossFraction) {
-            return result(.wait, "Tagesverlustgrenze erreicht")
-        }
-        if s.maxDrawdownFraction > 0, state.peakEquityUSDT > 0, equity < state.peakEquityUSDT * (1 - s.maxDrawdownFraction) {
-            return result(.wait, "Drawdown-Grenze erreicht")
-        }
-        if now < state.cooldownUntil { return result(.wait, "Abkühlphase nach Stop-Loss") }
+        if let gate = riskGate(state, settings: s, bid: bid, now: now) { return result(.wait, gate) }
         if now - state.lastTradeAt < s.minSecondsBetweenTrades { return result(.wait, "Mindestabstand zwischen Trades") }
 
         let positions = openPositionCount(state.lots, bid: bid, settings: s, minNotional: rules.minNotional)
@@ -464,6 +475,9 @@ public enum BotEngine {
         // --- Kauf ---
         var budget = min(s.maxTradeUSDT, state.cashUSDT, room)
         budget = max(0, budget)
+        if s.makerEntries {
+            return placeLimitBuy(snap, state: &state, settings: s, budgetUSDT: budget, reason: reason, now: now, verbose: verbose)
+        }
         switch Book.buyQuote(snap, budgetUSDT: budget, settings: s) {
         case .failure(let failure):
             switch failure {
@@ -472,19 +486,103 @@ public enum BotEngine {
             default: return result(.wait, "Kauf: Mindestmenge oder Orderbuchtiefe")
             }
         case .success(let q):
-            let lot = PositionLot(quantity: q.quantity, costBasisUSDT: q.totalUSDT, buyPriceUSDT: q.priceUSDT,
-                                  boughtAt: now, peakPriceUSDT: bid)
-            state.lots.append(lot)
-            state.cashUSDT -= q.totalUSDT
-            state.totalFeesUSDT += q.feeUSDT
-            state.anchorUSDT = q.priceUSDT
-            state.lastTradeAt = now
-            normalize(&state)
-            let event = BotEvent(at: now, action: BotAction.buy, reason: reason, bidUSDT: bid, askUSDT: ask,
-                                 quantity: q.quantity, priceUSDT: q.priceUSDT, feeUSDT: q.feeUSDT,
-                                 equityUSDT: state.equity(atBid: bid))
+            let event = applyBuy(snap, state: &state, quantity: q.quantity, price: q.priceUSDT, fee: q.feeUSDT,
+                                 total: q.totalUSDT, reason: reason, now: now)
             return result(.buy, reason, event: event)
         }
+    }
+
+    private static func applyBuy(_ snap: MarketSnapshot, state: inout BotState, quantity: Double, price: Double, fee: Double,
+                                 total: Double, reason: String, now: Double) -> BotEvent {
+        state.lots.append(PositionLot(quantity: quantity, costBasisUSDT: total, buyPriceUSDT: price, boughtAt: now,
+                                      peakPriceUSDT: snap.bid))
+        state.cashUSDT -= total
+        state.totalFeesUSDT += fee
+        state.anchorUSDT = price
+        state.lastTradeAt = now
+        normalize(&state)
+        return BotEvent(at: now, action: BotAction.buy, reason: reason, bidUSDT: snap.bid, askUSDT: snap.ask,
+                        quantity: quantity, priceUSDT: price, feeUSDT: fee, equityUSDT: state.equity(atBid: snap.bid))
+    }
+
+    // MARK: Limit-Kauf am Bid (Maker)
+
+    /// Legt einen virtuellen Limit-Kauf zum besten Bid an. Ausgefuehrt wird er erst, wenn der Markt ihn erreicht.
+    private static func placeLimitBuy(_ snap: MarketSnapshot, state: inout BotState, settings s: BotSettings,
+                                      budgetUSDT: Double, reason: String, now: Double, verbose: Bool) -> StepResult {
+        let rules = snap.rules
+        let price = snap.bid
+        guard price > 0, rules.buyEnabled else { return result(.wait, "Kauf: Handel für das Symbol derzeit gesperrt") }
+        let feeRate = s.makerFeeBps / 10_000
+        let quantity = Book.floorToStep(budgetUSDT / (price * (1 + feeRate)), step: rules.stepSize)
+        guard quantity > 0, quantity >= rules.minQuantity, quantity * price >= rules.minNotional - 1e-9 else {
+            return result(.wait, "Kauf: Mindestmenge oder Mindestbetrag")
+        }
+        let queue = snap.bids.first.map { abs($0.price - price) <= price * 1e-9 ? $0.quantity : 0 } ?? 0
+        let newestTrade = snap.trades.reduce(0.0) { max($0, $1.at) }
+        state.pendingBuy = PendingOrder(price: price, quantity: quantity, placedAt: now, queueAhead: queue,
+                                        lastTradeAt: max(newestTrade, 0), reason: reason)
+        let text = verbose
+            ? String(format: "Limit-Kauf am Bid platziert: %.4f zu %.6f (%@)", quantity, price, reason)
+            : "Limit-Kauf platziert"
+        return result(.wait, text)
+    }
+
+    /// Prueft einen wartenden Limit-Kauf: ausgefuehrt, gestrichen oder weiter warten.
+    /// Ausgefuehrt gilt er, wenn der Ask auf oder unter den Limitpreis faellt, der Bid darunter faellt (unser Preis
+    /// wurde durchgehandelt) oder echte Verkaeufe zu unserem Preis die Warteschlange vor uns und unsere Menge abdecken.
+    /// Teilausfuehrungen werden nicht simuliert (vorsichtig: lieber nicht als zu frueh gefuellt).
+    private static func managePendingBuy(_ snap: MarketSnapshot, state: inout BotState, settings s: BotSettings,
+                                         metrics m: EngineMetrics, now: Double, verbose: Bool) -> StepResult {
+        guard var order = state.pendingBuy else { return result(.wait, "Kein Limit-Kauf") }
+        let bid = snap.bid
+        let ask = snap.ask
+        let eps = order.price * 1e-9
+        var filled = (ask > 0 && ask <= order.price + eps) || (bid > 0 && bid < order.price - eps)
+        if !filled, snap.tradeDataAvailable {
+            var newest = order.lastTradeAt
+            for t in snap.trades where t.at > order.lastTradeAt {
+                newest = max(newest, t.at)
+                guard !t.buyerInitiated, t.price <= order.price + eps else { continue }
+                if t.price < order.price - eps { filled = true } else { order.tradedAtPrice += t.quantity }
+            }
+            order.lastTradeAt = newest
+            if order.tradedAtPrice >= order.queueAhead + order.quantity - 1e-12 { filled = true }
+        }
+
+        if filled {
+            state.pendingBuy = nil
+            let notional = order.quantity * order.price
+            let fee = notional * s.makerFeeBps / 10_000
+            let total = notional + fee
+            guard state.cashUSDT >= total - 1e-9 else { return result(.wait, "Limit-Kauf verworfen: nicht genug virtuelles USDT") }
+            let reason = "\(order.reason) · Limit-Kauf am Bid ausgeführt"
+            let event = applyBuy(snap, state: &state, quantity: order.quantity, price: order.price, fee: fee, total: total,
+                                 reason: reason, now: now)
+            return result(.buy, reason, event: event)
+        }
+
+        var cancel: String?
+        if now - order.placedAt >= s.makerTimeoutSeconds {
+            cancel = "nicht ausgeführt nach \(Int(s.makerTimeoutSeconds)) s"
+        } else if ask > order.price * (1 + s.makerMaxChaseBps / 10_000) {
+            cancel = "Kurs davongelaufen"
+        } else if let gate = riskGate(state, settings: s, bid: bid, now: now) {
+            cancel = gate
+        } else if m.moveSignal?.action == .sell {
+            cancel = "Anstieg erkannt"
+        } else if s.trendFilterEnabled, m.downtrend {
+            cancel = "Abwärtstrend"
+        }
+        if let why = cancel {
+            state.pendingBuy = nil
+            return result(.wait, "Limit-Kauf gestrichen: \(why)")
+        }
+        state.pendingBuy = order
+        if !verbose { return result(.wait, "Limit-Kauf wartet") }
+        let queued = max(0, order.queueAhead - order.tradedAtPrice)
+        return result(.wait, String(format: "Limit-Kauf zu %.6f wartet seit %.0f s (vor uns noch %.0f Stück)",
+                                    order.price, now - order.placedAt, queued))
     }
 
     /// Die letzten drei Schlusskurse steigen.

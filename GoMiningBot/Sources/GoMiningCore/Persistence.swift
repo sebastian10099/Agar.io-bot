@@ -54,6 +54,8 @@ public struct AppPaths: Sendable {
     public var stateFile: URL { root.appendingPathComponent("simulation.json") }
     public var equityFile: URL { root.appendingPathComponent("equity-history.json") }
     public var candleCacheFile: URL { root.appendingPathComponent("candle-cache.json") }
+    /// Schattenkonten (seit 4.2).
+    public var shadowFile: URL { root.appendingPathComponent("shadow-accounts.json") }
     public var backupsDirectory: URL { root.appendingPathComponent("backups", isDirectory: true) }
     /// Neues, kompaktes Marktprotokoll.
     public var journalDirectory: URL { root.appendingPathComponent("market-journal-v2", isDirectory: true) }

@@ -39,6 +39,8 @@ public struct BacktestResult: Sendable {
     public var equityCurve: [EquityPoint] = []
     public var events: [BotEvent] = []
     public var cancelled = false
+    /// Replay: Zahl der abgespielten Marktmomente aus dem Protokoll (0 im Kerzen-Backtest).
+    public var frameCount = 0
 
     public init() {}
 
@@ -72,19 +74,21 @@ public enum Backtester {
     /// Spielt die Strategie ueber die Kerzen ab. Pro Kerze werden vier Kurspunkte durchlaufen
     /// (bei gruenen Kerzen Open-Low-High-Close, bei roten Open-High-Low-Close), damit Stop-Loss
     /// und Ziele innerhalb einer Kerze realistisch in der unguenstigeren Reihenfolge ausgeloest werden.
+    /// `startIndex`/`endIndex` begrenzen den gehandelten Abschnitt; Kerzen davor dienen als Vorlauf.
     public static func run(candles: [PriceCandle], settings rawSettings: BotSettings, config: BacktestConfig,
-                           startIndex: Int? = nil, collect: Bool = true,
+                           startIndex: Int? = nil, endIndex: Int? = nil, collect: Bool = true,
                            shouldCancel: (() -> Bool)? = nil) -> BacktestResult {
         let settings = rawSettings.clamped()
         var result = BacktestResult()
         result.startingUSDT = settings.startingUSDT
         result.finalEquity = settings.startingUSDT
-        result.candleCount = candles.count
+        let end = min(candles.count, max(0, endIndex ?? candles.count))
+        result.candleCount = end
         let start = max(startIndex ?? warmupCandles, 3)
-        guard candles.count > start + 1 else { return result }
+        guard end > start + 1 else { return result }
 
         result.firstTime = candles[start].openedAt
-        result.lastTime = candles[candles.count - 1].openedAt + 60
+        result.lastTime = candles[end - 1].openedAt + 60
 
         var state = BotState.fresh(settings, at: candles[start].openedAt)
         let windowSize = max(windowCandles, settings.requiredCandles)
@@ -99,12 +103,12 @@ public enum Backtester {
 
         var peak = settings.startingUSDT
         var curveStride = 1
-        if collect { curveStride = max(1, (candles.count - start) / 600) }
+        if collect { curveStride = max(1, (end - start) / 600) }
         var firstAsk = 0.0
         var lastBid = 0.0
         var seedEvent: BotEvent?
 
-        for i in start..<candles.count {
+        for i in start..<end {
             if let cancel = shouldCancel, i % 256 == 0, cancel() { result.cancelled = true; break }
             let c = candles[i]
             for k in 0..<ticksPerCandle {
@@ -141,16 +145,7 @@ public enum Backtester {
                 }
 
                 let r = BotEngine.step(snap, state: &state, settings: settings, fastMoveBps: 0, now: t, verbose: false)
-                if let e = r.event {
-                    if e.isSell {
-                        result.sells += 1
-                        if e.realizedPnLUSDT > 0 { result.wins += 1; result.grossProfit += e.realizedPnLUSDT }
-                        else { result.grossLoss += -e.realizedPnLUSDT }
-                    } else {
-                        result.buys += 1
-                    }
-                    if collect { result.events.append(e) }
-                }
+                tally(r, into: &result, collect: collect)
             }
             // Kerze abgeschlossen.
             window.append(c)
@@ -168,7 +163,13 @@ public enum Backtester {
             }
         }
 
-        let finalBid = lastBid > 0 ? lastBid : candles[candles.count - 1].close
+        let finalBid = lastBid > 0 ? lastBid : candles[end - 1].close
+        finish(&result, state: state, settings: settings, firstAsk: firstAsk, finalBid: finalBid)
+        return result
+    }
+
+    /// Endvermoegen, Gebuehren und Vergleich mit reinem Halten (Kauf zum ersten Ask, Verkauf zum letzten Bid).
+    static func finish(_ result: inout BacktestResult, state: BotState, settings: BotSettings, firstAsk: Double, finalBid: Double) {
         result.finalEquity = state.equity(atBid: finalBid)
         result.feesPaid = state.totalFeesUSDT
         result.openLotsAtEnd = state.lots.count
@@ -179,7 +180,19 @@ public enum Backtester {
             let heldValue = bought * finalBid * (1 - slip) * (1 - feeRate)
             result.holdReturnFraction = (heldValue - settings.startingUSDT) / settings.startingUSDT
         }
-        return result
+    }
+
+    /// Wertet ein Engine-Ergebnis fuer die Statistik aus.
+    static func tally(_ r: StepResult, into result: inout BacktestResult, collect: Bool) {
+        guard let e = r.event else { return }
+        if e.isSell {
+            result.sells += 1
+            if e.realizedPnLUSDT > 0 { result.wins += 1; result.grossProfit += e.realizedPnLUSDT }
+            else { result.grossLoss += -e.realizedPnLUSDT }
+        } else {
+            result.buys += 1
+        }
+        if collect { result.events.append(e) }
     }
 
     /// Ersatz fuer den Kaeuferanteil: wo schliessen die letzten drei Kerzen in ihrer Spanne?
@@ -268,10 +281,67 @@ public struct OptimizerEntry: Sendable, Identifiable {
     public var settings: BotSettings
     public var train: BacktestResult
     public var test: BacktestResult?
+    /// Ergebnisse in aufeinanderfolgenden Zeitabschnitten, jeweils mit frischem Konto (Walk-forward).
+    public var segments: [BacktestResult] = []
+
+    /// Zahl der Abschnitte mit Gewinn.
+    public var positiveSegments: Int { segments.reduce(0) { $0 + ($1.netPnL > 0 ? 1 : 0) } }
+
+    /// Robustheit 0...1: Anteil der Abschnitte im Plus.
+    public var robustness: Double { segments.isEmpty ? 0 : Double(positiveSegments) / Double(segments.count) }
+
+    /// Durchschnittliche Rendite je Abschnitt.
+    public var meanSegmentReturn: Double {
+        segments.isEmpty ? 0 : segments.reduce(0) { $0 + $1.returnFraction } / Double(segments.count)
+    }
+
+    /// Schlechtester Abschnitt (Rendite).
+    public var worstSegmentReturn: Double? { segments.map(\.returnFraction).min() }
+
+    /// Uebernehmen ist nur erlaubt, wenn die Kombination auf den nicht zur Auswahl benutzten Testdaten im Plus liegt.
+    public var passesTest: Bool { (test?.netPnL ?? 0) > 0 }
+}
+
+/// Wie die Ergebnisliste sortiert wird.
+public enum OptimizerRanking: String, CaseIterable, Sendable, Identifiable {
+    case training = "Training"
+    case robustness = "Robustheit"
+    public var id: String { rawValue }
+}
+
+/// Ein Schritt der Walk-forward-Pruefung: Auswahl nur mit den Abschnitten davor, Bewertung im naechsten.
+public struct WalkForwardStep: Sendable {
+    /// Index des bewerteten Abschnitts (ab 1; Abschnitt 0 dient nur der ersten Auswahl).
+    public var segment: Int
+    public var entryID: Int
+    public var values: [Double]
+    public var result: BacktestResult
+}
+
+public struct WalkForwardSummary: Sendable {
+    public var segmentCount: Int
+    public var steps: [WalkForwardStep]
+    /// Beginn und Ende der Abschnitte (Unix-Zeit).
+    public var segmentStarts: [Double]
+    public var segmentEnds: [Double]
+
+    /// Ergebnis ausserhalb der Stichprobe: Summe der Abschnitte, die jeweils mit der vorher besten Kombination
+    /// gehandelt wurden. Die ehrlichste Schaetzung dafuer, was der Optimierer wirklich bringt.
+    public var outOfSamplePnL: Double { steps.reduce(0) { $0 + $1.result.netPnL } }
+    public var positiveSteps: Int { steps.reduce(0) { $0 + ($1.result.netPnL > 0 ? 1 : 0) } }
+}
+
+public struct OptimizerReport: Sendable {
+    public var entries: [OptimizerEntry]
+    public var walkForward: WalkForwardSummary?
 }
 
 public enum Optimizer {
     public static let maxCombinations = 600
+    /// Standardzahl der Zeitabschnitte fuer Robustheit und Walk-forward.
+    public static let defaultSegments = 4
+    /// Jeder Abschnitt braucht mindestens so viele Kerzen (3 Stunden).
+    static let minSegmentCandles = 180
 
     public static func combinations(_ axes: [OptimizerAxis]) -> [[Double]] {
         var combos: [[Double]] = [[]]
@@ -283,33 +353,97 @@ public enum Optimizer {
         return combos
     }
 
+    /// Teilt die gehandelten Kerzen (nach dem Vorlauf) in `count` gleich lange, aufeinanderfolgende Abschnitte.
+    public static func segmentRanges(candleCount n: Int, count: Int) -> [Range<Int>] {
+        let first = Backtester.warmupCandles
+        guard count >= 2, n - first >= count * minSegmentCandles else { return [] }
+        let size = (n - first) / count
+        return (0..<count).map { i in
+            let lo = first + i * size
+            return lo..<(i == count - 1 ? n : lo + size)
+        }
+    }
+
+    /// Sortiert nach Trainings-Score oder nach Robustheit (Abschnitte im Plus, dann Durchschnittsrendite).
+    public static func ranked(_ entries: [OptimizerEntry], by ranking: OptimizerRanking, objective: BacktestObjective) -> [OptimizerEntry] {
+        switch ranking {
+        case .training:
+            return entries.sorted { $0.train.score(objective) > $1.train.score(objective) }
+        case .robustness:
+            return entries.sorted { a, b in
+                if a.positiveSegments != b.positiveSegments { return a.positiveSegments > b.positiveSegments }
+                if a.passesTest != b.passesTest { return a.passesTest }
+                return a.meanSegmentReturn > b.meanSegmentReturn
+            }
+        }
+    }
+
+    /// Walk-forward: Fuer jeden Abschnitt ab dem zweiten wird die Kombination gewaehlt, die in allen Abschnitten
+    /// davor im Mittel am besten war, und ihr Ergebnis im Abschnitt selbst gezaehlt.
+    public static func walkForward(_ entries: [OptimizerEntry], objective: BacktestObjective, segmentStarts: [Double],
+                                   segmentEnds: [Double]) -> WalkForwardSummary? {
+        guard let count = entries.first?.segments.count, count >= 2,
+              entries.allSatisfy({ $0.segments.count == count }) else { return nil }
+        var steps: [WalkForwardStep] = []
+        for f in 1..<count {
+            var best: OptimizerEntry?
+            var bestScore = -Double.infinity
+            for e in entries {
+                var sum = 0.0
+                for j in 0..<f { sum += e.segments[j].score(objective) }
+                let score = sum / Double(f)
+                if score > bestScore || (score == bestScore && (best.map { e.id < $0.id } ?? true)) {
+                    bestScore = score
+                    best = e
+                }
+            }
+            if let best {
+                steps.append(WalkForwardStep(segment: f, entryID: best.id, values: best.values, result: best.segments[f]))
+            }
+        }
+        return WalkForwardSummary(segmentCount: count, steps: steps, segmentStarts: segmentStarts, segmentEnds: segmentEnds)
+    }
+
     /// Rastersuche mit Trainings-/Testaufteilung: Die Kennzahl wird auf den ersten `trainFraction`
     /// der Kerzen optimiert und auf dem Rest gegengeprueft (Schutz vor Ueberanpassung).
     /// Ergebnis: absteigend nach Trainings-Score sortiert.
     public static func run(candles: [PriceCandle], base: BotSettings, config: BacktestConfig, axes: [OptimizerAxis],
                            objective: BacktestObjective, trainFraction: Double,
                            progress: @escaping @Sendable (Int, Int) -> Void) async -> [OptimizerEntry] {
+        await runReport(candles: candles, base: base, config: config, axes: axes, objective: objective,
+                        trainFraction: trainFraction, segments: 0, progress: progress).entries
+    }
+
+    /// Wie `run`, zusaetzlich mit Ergebnissen je Zeitabschnitt (Robustheit) und Walk-forward-Pruefung.
+    public static func runReport(candles: [PriceCandle], base: BotSettings, config: BacktestConfig, axes: [OptimizerAxis],
+                                 objective: BacktestObjective, trainFraction: Double, segments segmentCount: Int = defaultSegments,
+                                 progress: @escaping @Sendable (Int, Int) -> Void) async -> OptimizerReport {
         let activeAxes = axes.filter { !$0.values.isEmpty }
         let combos = Array(combinations(activeAxes).prefix(maxCombinations))
         let total = combos.count
-        guard total > 0, candles.count > Backtester.warmupCandles + 20 else { return [] }
+        guard total > 0, candles.count > Backtester.warmupCandles + 20 else { return OptimizerReport(entries: [], walkForward: nil) }
 
         let split = trainFraction >= 0.99 ? candles.count : max(Backtester.warmupCandles + 10, Int(Double(candles.count) * trainFraction))
         let hasTest = split < candles.count - 30
-        let trainCandles = hasTest ? Array(candles[0..<split]) : candles
+        let ranges = segmentRanges(candleCount: candles.count, count: segmentCount)
 
         @Sendable func evaluate(_ index: Int) -> OptimizerEntry {
             var settings = base
             for (axis, value) in zip(activeAxes, combos[index]) { axis.parameter.apply(value, to: &settings) }
             settings = settings.clamped()
-            let train = Backtester.run(candles: trainCandles, settings: settings, config: config, collect: false,
-                                       shouldCancel: { Task.isCancelled })
+            let train = Backtester.run(candles: candles, settings: settings, config: config,
+                                       endIndex: hasTest ? split : nil, collect: false, shouldCancel: { Task.isCancelled })
             var test: BacktestResult?
             if hasTest {
                 test = Backtester.run(candles: candles, settings: settings, config: config, startIndex: split,
                                       collect: false, shouldCancel: { Task.isCancelled })
             }
-            return OptimizerEntry(id: index, values: combos[index], settings: settings, train: train, test: test)
+            var parts: [BacktestResult] = []
+            for range in ranges {
+                parts.append(Backtester.run(candles: candles, settings: settings, config: config, startIndex: range.lowerBound,
+                                            endIndex: range.upperBound, collect: false, shouldCancel: { Task.isCancelled }))
+            }
+            return OptimizerEntry(id: index, values: combos[index], settings: settings, train: train, test: test, segments: parts)
         }
 
         let workers = max(1, ProcessInfo.processInfo.activeProcessorCount - 1)
@@ -335,6 +469,10 @@ public enum Optimizer {
                 if Task.isCancelled { group.cancelAll() } else { submit() }
             }
         }
-        return entries.sorted { $0.train.score(objective) > $1.train.score(objective) }
+        let sorted = ranked(entries, by: .training, objective: objective)
+        let starts = ranges.map { candles[$0.lowerBound].openedAt }
+        let ends = ranges.map { candles[$0.upperBound - 1].openedAt + 60 }
+        let summary = Task.isCancelled ? nil : walkForward(sorted, objective: objective, segmentStarts: starts, segmentEnds: ends)
+        return OptimizerReport(entries: sorted, walkForward: summary)
     }
 }
