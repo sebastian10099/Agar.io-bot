@@ -317,6 +317,20 @@ final class AppController: ObservableObject {
         startStream()
         startLoops()
         evaluate()
+        await preloadChartHistory()
+    }
+
+    /// Laedt beim Start die letzten 12 Stunden 1-Minuten-Kerzen, falls der gespeicherte Verlauf sie nicht abdeckt,
+    /// damit man im Diagramm sofort herauszoomen kann.
+    private func preloadChartHistory() async {
+        let now = nowTs()
+        guard (history.first?.openedAt ?? .infinity) > now - 12 * 3_600 + 600 else { return }
+        do {
+            let fetched = try await api.klines(limit: 720)
+            history = CandleCache.merged(history, fetched, now: now)
+        } catch {
+            status.note("Kerzenverlauf (Diagramm)", error)
+        }
     }
 
     // MARK: - Datenquellen
