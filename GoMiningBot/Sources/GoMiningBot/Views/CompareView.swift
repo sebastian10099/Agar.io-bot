@@ -192,7 +192,8 @@ struct CompareView: View {
     private var chartCard: some View {
         let points = comparePoints
         return Card("Verlauf seit dem Start", systemImage: "chart.xyaxis.line") {
-            if Set(points.map(\.series)).count < 1 || points.count < 3 {
+            let drawable = Dictionary(grouping: points, by: \.series).values.contains { $0.count >= 2 }
+            if !drawable {
                 EmptyHint(text: "Der Verlauf füllt sich mit einem Punkt pro Minute.", systemImage: "chart.xyaxis.line")
             } else {
                 Chart(points) { p in

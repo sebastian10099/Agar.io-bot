@@ -39,6 +39,14 @@ struct CandleChartView: View {
     private let top: CGFloat = 8
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            zoomControls
+            chartArea
+        }
+        .onChange(of: candleMinutes) { _, _ in resetZoom() }
+    }
+
+    private var chartArea: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
                 Canvas { ctx, size in draw(ctx, size) }
@@ -52,10 +60,6 @@ struct CandleChartView: View {
                     .gesture(panGesture(width: geo.size.width))
                     .simultaneousGesture(pinchGesture)
                     .onTapGesture(count: 2) { resetZoom() }
-                zoomControls
-                    .padding(.leading, 6)
-                    .padding(.top, 4)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 if let tip = tooltip(width: geo.size.width) {
                     Text(tip.text)
                         .font(.system(size: 11, design: .monospaced))
@@ -69,7 +73,6 @@ struct CandleChartView: View {
         .overlay {
             if candles.isEmpty { Text("Kursdaten werden geladen …").foregroundStyle(.secondary) }
         }
-        .onChange(of: candleMinutes) { _, _ in resetZoom() }
     }
 
     // MARK: Zoom und Verschieben
@@ -137,11 +140,11 @@ struct CandleChartView: View {
     }
 
     private var zoomControls: some View {
-        HStack(spacing: 4) {
-            Button { zoom(by: 0.6) } label: { Image(systemName: "plus.magnifyingglass") }
+        HStack(spacing: 6) {
+            Button { zoom(by: 0.6) } label: { Label("Vergrößern", systemImage: "plus.magnifyingglass") }
                 .help("Hineinzoomen (auch mit zwei Fingern auf dem Trackpad)")
                 .disabled(window.count <= min(candles.count, Self.minVisible))
-            Button { zoom(by: 1 / 0.6) } label: { Image(systemName: "minus.magnifyingglass") }
+            Button { zoom(by: 1 / 0.6) } label: { Label("Verkleinern", systemImage: "minus.magnifyingglass") }
                 .help("Herauszoomen")
                 .disabled(window.count >= candles.count)
             if window.count < candles.count {
@@ -155,12 +158,10 @@ struct CandleChartView: View {
                     .help("Zur neuesten Kerze springen")
             }
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.bordered)
         .controlSize(.small)
         .font(.caption)
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+        .labelStyle(.titleAndIcon)
         .opacity(candles.count > Self.minVisible ? 1 : 0)
     }
 
