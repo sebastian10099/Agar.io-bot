@@ -73,6 +73,15 @@ wird weiterverwendet; macOS fragt beim ersten Zugriff einmal nach der Erlaubnis 
 Einmalige Anpassung: Der alte Standard für gleichzeitige Positionen (4 bzw. 8) wird auf **10** angehoben; bewusst
 andere Werte bleiben unverändert.
 
+## Neu in 4.3
+
+- **Diagramm zum Zoomen und Verschieben** (Trackpad oder Lupe, „Live“, „Alles“), Tooltips mit den Trades jeder Kerze.
+- **Profile & Vorlagen:** Einstellungen speichern, laden, als Datei teilen und importieren; Vorlagen „Vorsichtig“,
+  „Ausgewogen“, „Aktiv“; ein Profil per Klick als Schattenkonto testen.
+- **Berichte:** heute, gestern, letzte 7 Tage auf der Statistik-Seite, als HTML-Bericht speicherbar; Tageszusammenfassung
+  als Mitteilung.
+- **Vergleichsdiagramm** aller Schattenkonten seit ihrem Start.
+
 ## Neu in 4.2
 
 - **Mindest-Kaufabstand 80 bp:** Der Bot kauft nicht mehr nach jedem kleinen Rücksetzer. Auf 7 Tagen echter Kerzen mit

@@ -17,14 +17,17 @@ Grundsätze, die für jede Version gelten:
 - [x] Limit-Orders am Bid als Option (Maker-Gebühr, Füllwahrscheinlichkeit aus echten Trades) statt nur Taker.
 - [x] Schattenkonten: mehrere Einstellungs-Profile laufen parallel im Papierhandel und werden live verglichen.
 
-## Paket 4.3 – Bedienung
-- [ ] Diagramm: Zoomen und Verschieben, frei wählbarer Zeitraum, Tooltips an den Trade-Marken.
-- [ ] Profile: Einstellungen speichern, laden, teilen (Vorlagen „vorsichtig / ausgewogen / aktiv“ gibt es seit 4.2 für
-      Schattenkonten).
+## Paket 4.3 – Bedienung (erledigt, siehe CHANGELOG)
+- [x] Diagramm: Zoomen und Verschieben, frei wählbarer Zeitraum, Tooltips an den Trade-Marken.
+- [x] Profile: Einstellungen speichern, laden, teilen; Vorlagen „vorsichtig / ausgewogen / aktiv“ fürs Hauptkonto.
+- [x] Vergleichsseite: Vermögensverlauf aller Schattenkonten als Diagramm.
+- [x] Tages- und Wochenbericht (HTML, im Browser als PDF druckbar) und Tageszusammenfassung als Mitteilung.
+- [x] Dunkelmodus in den CI-Bildern prüfen.
+
+## Paket 4.5 – Strategie (mit Beleg aus dem Strategievergleich)
 - [ ] Limit-Verkäufe am Ask für Gewinnziele (Maker auch beim Ausstieg), Teilausführungen.
-- [ ] Vergleichsseite: Vermögensverlauf aller Schattenkonten als Diagramm.
-- [ ] Tages- und Wochenbericht (HTML/PDF) und Tageszusammenfassung als Mitteilung.
-- [ ] Oberfläche auch auf Englisch; Dunkelmodus in den CI-Bildern prüfen.
+- [ ] Mindest-Kaufabstand und Trendfilter über mehrere Wochen neu bewerten (siehe „Beobachten“).
+- [ ] Ziel abhängig von der Volatilität staffeln; Stop-Loss mit Abstand zum letzten Tief statt fester Prozentzahl prüfen.
 
 ## Beobachten (aus dem Strategievergleich vom 12.10.2026)
 - [ ] Mindest-Kaufabstand 80 bp über mehrere Wochen und auch in steigenden Phasen prüfen (Schattenkonto „ohne
@@ -37,5 +40,6 @@ Grundsätze, die für jede Version gelten:
 - [ ] Sicherungen importieren; Verlauf über Monate (Datenbank statt JSON, wenn nötig).
 
 ## Später
+- [ ] Oberfläche auch auf Englisch.
 - [ ] Weitere BingX-Spot-Paare wählbar, mehrere Bots gleichzeitig.
 - [ ] Kontrollkurs aus einer zweiten Quelle zur Plausibilisierung.

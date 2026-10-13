@@ -3,6 +3,37 @@
 Jede Version erscheint automatisch als GitHub-Release mit der fertigen App (`GoMining-Bot.zip`).
 Die Abschnitte hier werden als Release-Notizen und in der App unter „Was ist neu“ angezeigt.
 
+## 4.3 – 13.10.2026
+
+**Diagramm zum Zoomen und Verschieben**
+- Zoomen mit zwei Fingern auf dem Trackpad oder mit den Lupen-Knöpfen, Verschieben durch Ziehen, „Live“ springt zur
+  neuesten Kerze, „Alles“ zeigt den ganzen geladenen Verlauf, Doppelklick stellt die Standardansicht wieder her.
+- Die 1-Minuten-Ansicht reicht jetzt bis zu 12 Stunden zurück (aus dem gespeicherten Verlauf), die längeren Zeiträume
+  bis zu 1.000 Kerzen. Der Preisbereich passt sich den sichtbaren Kerzen an.
+- Tooltips zeigen neben Eröffnung/Hoch/Tief/Schluss auch die Trades in der Kerze (Zeit, Menge, Preis, Ergebnis).
+
+**Profile & Vorlagen (Einstellungen)**
+- Aktuelle Einstellungen unter einem Namen speichern, später wieder laden, löschen, als Datei exportieren und
+  importieren (auch Einstellungen aus einer Sicherung oder `simulation.json`).
+- „Als Schattenkonto testen“ prüft ein Profil live neben dem Hauptkonto.
+- Vorlagen „Vorsichtig“, „Ausgewogen (Standard)“ und „Aktiv“ jetzt auch fürs Hauptkonto.
+- Laden ändert nur die Strategie: Startkapital, Gebühren und Papierkonto bleiben unverändert.
+
+**Berichte**
+- Neue Karte „Bericht“ auf der Statistik-Seite für heute, gestern und die letzten 7 Tage: Vermögensänderung, Vergleich
+  mit Halten, realisiertes Ergebnis, Käufe/Verkäufe, Gewinnquote, Gebühren.
+- „Als HTML-Bericht speichern“: eigenständige Seite mit Vermögensverlauf, allen Trades und den Einstellungen – im
+  Browser auch als PDF druckbar.
+- Tageszusammenfassung von gestern als Mitteilung nach Mitternacht (abschaltbar unter Benachrichtigungen).
+
+**Vergleichsseite**
+- Neues Diagramm: Rendite aller Schattenkonten seit ihrem Start, das Hauptkonto auf denselben Zeitraum umgerechnet.
+- Schattenkonten führen dafür einen eigenen Vermögensverlauf (ein Punkt pro Minute, ältere Punkte werden ausgedünnt).
+
+**Sonstiges**
+- Die CI prüft die Oberfläche jetzt auch im Dunkelmodus (Bilder `7-dunkel-uebersicht` und `8-dunkel-vergleich`).
+- Neue Tests für Profile, Berichte und den Verlauf der Schattenkonten.
+
 ## 4.2 – 12.10.2026
 
 **Mindest-Kaufabstand 80 bp (neu, Standard) – der Bot kauft nicht mehr jeden kleinen Rücksetzer**
