@@ -22,6 +22,7 @@ final class AppController: ObservableObject {
     let status = StatusStore()
     let backtest = BacktestStore()
     let shadows = ShadowStore()
+    let profiles = ProfileStore()
     let prefs: Preferences
     let paths: AppPaths
     /// Nur fuer den Rauchtest: erzwingt eine Seite der Oberflaeche.
@@ -96,6 +97,9 @@ final class AppController: ObservableObject {
         }
         if let book = JSONFile.read(ShadowBook.self, from: paths.shadowFile) {
             shadows.book = book
+        }
+        if let book = JSONFile.read(ProfileBook.self, from: paths.profilesFile) {
+            profiles.book = book
         }
         bot.recomputeStats()
         status.journal = journal.status
@@ -181,6 +185,21 @@ final class AppController: ObservableObject {
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             shot("\(index + 1)-\(tab.slug)")
         }
+
+        // Dunkelmodus pruefen.
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+        forcedTab = AppTab.overview.rawValue
+        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        shot("7-dunkel-uebersicht")
+        forcedTab = AppTab.compare.rawValue
+        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        shot("8-dunkel-vergleich")
+        NSApp.appearance = nil
+
+        // Profile und Berichte.
+        saveProfile(name: "Rauchtest")
+        let week = report(.week)
+        extra.append("Profile: \(profiles.book.profiles.count) · Wochenbericht: \(ReportBuilder.summaryText(week)) · HTML \(ReportBuilder.html(week, appName: Self.appName, appVersion: Self.version, settings: bot.stored.settings, generatedAt: nowTs()).count) Zeichen")
 
         await checkForUpdates(manual: true)
         extra.append("Update-Prüfung: \(status.updateStatus)")
@@ -447,6 +466,7 @@ final class AppController: ObservableObject {
         let now = nowTs()
         sampleEquity(now: now)
         if shadowsDirty, now - lastShadowSave >= 60 { saveShadows() }
+        checkDailySummary(now: now)
         if now - lastJournalFlush >= 10 {
             lastJournalFlush = now
             journal.flush()
@@ -484,6 +504,142 @@ final class AppController: ObservableObject {
         if equity.append(EquityPoint(t: now, equity: value, hold: hold), minInterval: 60) {
             bot.equityHistory = equity.points
         }
+        if !shadows.book.accounts.isEmpty {
+            for i in shadows.book.accounts.indices { shadows.book.accounts[i].sample(bid: snap.bid, now: now) }
+            shadowsDirty = true
+        }
+    }
+
+    // MARK: - Berichte
+
+    private static func localDay(_ t: Double) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date(timeIntervalSince1970: t))
+    }
+
+    func report(_ kind: ReportKind) -> PeriodReport {
+        let now = nowTs()
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date(timeIntervalSince1970: now)).timeIntervalSince1970
+        let bid = market.bid
+        let currentEquity = bid > 0 ? bot.stored.state.equity(atBid: bid) : nil
+        let currentHold = bid > 0 ? bot.stored.holdBenchmarkUSDT(bid: bid) : nil
+        let events = bot.stored.events
+        let points = equity.points
+        switch kind {
+        case .today:
+            return ReportBuilder.period(title: "Tagesbericht \(Date(timeIntervalSince1970: today).formatted(date: .numeric, time: .omitted))", events: events, equity: points,
+                                        from: today, to: now + 1, currentEquity: currentEquity, currentHold: currentHold)
+        case .yesterday:
+            let start = cal.date(byAdding: .day, value: -1, to: Date(timeIntervalSince1970: today))?.timeIntervalSince1970 ?? today - 86_400
+            return ReportBuilder.period(title: "Tagesbericht \(Date(timeIntervalSince1970: start).formatted(date: .numeric, time: .omitted))", events: events, equity: points,
+                                        from: start, to: today)
+        case .week:
+            return ReportBuilder.period(title: "Wochenbericht", events: events, equity: points, from: now - 7 * 86_400, to: now + 1,
+                                        currentEquity: currentEquity, currentHold: currentHold)
+        }
+    }
+
+    func exportReport(_ kind: ReportKind) {
+        let r = report(kind)
+        let html = ReportBuilder.html(r, appName: Self.appName, appVersion: Self.version, settings: bot.stored.settings,
+                                      generatedAt: nowTs())
+        let name = "gomining-\(kind == .week ? "wochenbericht" : "tagesbericht")-\(Self.localDay(r.from)).html"
+        savePanel(name: name, type: .html) { url in
+            try html.write(to: url, atomically: true, encoding: .utf8)
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Nach Mitternacht (Ortszeit) einmal die Zusammenfassung des Vortags als Mitteilung.
+    private func checkDailySummary(now: Double) {
+        let today = Self.localDay(now)
+        guard prefs.lastSummaryDay != today else { return }
+        let first = prefs.lastSummaryDay.isEmpty
+        prefs.lastSummaryDay = today
+        guard !first, prefs.dailySummary else { return }
+        let r = report(.yesterday)
+        guard !r.isEmpty else { return }
+        Notifier.shared.post(title: "\(Self.appName): Zusammenfassung von gestern", body: ReportBuilder.summaryText(r), sound: false)
+    }
+
+    // MARK: - Profile
+
+    private func saveProfiles() {
+        let book = profiles.book
+        let url = paths.profilesFile
+        DispatchQueue.global(qos: .utility).async { try? JSONFile.write(book, to: url) }
+    }
+
+    func saveProfile(name: String) {
+        let profile = profiles.book.save(name: name, settings: bot.stored.settings, at: nowTs())
+        saveProfiles()
+        status.notice = "Profil „\(profile.name)“ gespeichert."
+    }
+
+    /// Laedt die Strategie-Werte eines Profils; Startkapital und Gebuehren des eigenen Kontos bleiben.
+    func loadProfile(_ id: UUID) {
+        guard let profile = profiles.book.profiles.first(where: { $0.id == id }) else { return }
+        let current = bot.stored.settings
+        updateSettings { $0 = current.adoptingStrategy(from: profile.settings) }
+        status.notice = "Profil „\(profile.name)“ geladen."
+    }
+
+    func deleteProfile(_ id: UUID) {
+        profiles.book.remove(id)
+        saveProfiles()
+    }
+
+    func applyPreset(_ preset: ShadowPreset) {
+        let current = bot.stored.settings
+        updateSettings { $0 = preset.settings(from: current) }
+        status.notice = "Vorlage „\(preset.rawValue)“ angewendet."
+    }
+
+    /// Legt ein Schattenkonto mit den Einstellungen eines Profils an.
+    func testProfileAsShadow(_ id: UUID) {
+        guard let profile = profiles.book.profiles.first(where: { $0.id == id }),
+              shadows.book.accounts.count < ShadowAccount.maxAccounts else {
+            status.notice = "Höchstens \(ShadowAccount.maxAccounts) Schattenkonten – bitte zuerst eines entfernen."
+            return
+        }
+        let account = ShadowAccount(name: profile.name, settings: bot.stored.settings.adoptingStrategy(from: profile.settings),
+                                    at: nowTs(), bid: market.snapshot?.bid)
+        shadows.book.accounts.append(account)
+        saveShadows()
+        status.notice = "Schattenkonto „\(profile.name)“ angelegt (Seite Vergleich)."
+    }
+
+    func exportProfile(_ id: UUID) {
+        guard let profile = profiles.book.profiles.first(where: { $0.id == id }),
+              let data = try? ProfileFile.encode(profile, appVersion: Self.version) else { return }
+        let safe = profile.name.map { $0.isLetter || $0.isNumber ? $0 : "-" }
+        savePanel(name: "gomining-profil-\(String(safe)).json", type: .json) { url in
+            try data.write(to: url, options: .atomic)
+        }
+    }
+
+    func importProfile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            let data = try? Data(contentsOf: url)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let name = url.deletingPathExtension().lastPathComponent
+                guard let data, let profile = ProfileFile.decode(data, fallbackName: name, now: self.nowTs()) else {
+                    self.status.notice = "Die Datei enthält kein lesbares Profil."
+                    return
+                }
+                let added = self.profiles.book.add(imported: profile)
+                self.saveProfiles()
+                self.status.notice = "Profil „\(added.name)“ importiert. Zum Verwenden „Laden“ oder „Als Schattenkonto testen“ wählen."
+            }
+        }
     }
 
     // MARK: - Marktbild
@@ -496,8 +652,14 @@ final class AppController: ObservableObject {
         return closed
     }
 
-    /// Abgeschlossene Kerzen plus die laufende Minute (aus Trades und letztem Kurs).
-    private func chartCandles(closed: [PriceCandle], now: Double, price: Double) -> [PriceCandle] {
+    /// Abgeschlossene Kerzen plus die laufende Minute (aus Trades und letztem Kurs). Fuer das Diagramm wird der
+    /// gespeicherte Verlauf davor gesetzt (bis 12 Stunden), damit man herauszoomen kann.
+    private func chartCandles(closed rawClosed: [PriceCandle], now: Double, price: Double) -> [PriceCandle] {
+        var closed = rawClosed
+        if let first = closed.first {
+            let older = history.suffix(720).filter { $0.openedAt < first.openedAt }
+            if !older.isEmpty { closed = older + closed }
+        }
         guard let last = closed.last, price > 0 else { return closed }
         let minuteNow = (now / 60).rounded(.down) * 60
         var forming: PriceCandle
@@ -923,7 +1085,7 @@ final class AppController: ObservableObject {
         let market = market
         Task.detached(priority: .utility) {
             let aggregated = Indicators.aggregate(source, minutes: minutes)
-            let tail = Array(aggregated.suffix(240))
+            let tail = Array(aggregated.suffix(1_000))
             await MainActor.run {
                 market.longCandles = tail
                 market.longMinutes = minutes

@@ -107,6 +107,10 @@ final class Preferences: ObservableObject {
     @Published var chartMinutes: Int { didSet { defaults.set(chartMinutes, forKey: "chartMinutes") } }
     @Published var journalDays: Int { didSet { defaults.set(journalDays, forKey: "journalDays") } }
     @Published var autoCheckUpdates: Bool { didSet { defaults.set(autoCheckUpdates, forKey: "autoCheckUpdates") } }
+    /// Tageszusammenfassung als Mitteilung nach Mitternacht.
+    @Published var dailySummary: Bool { didSet { defaults.set(dailySummary, forKey: "dailySummary") } }
+    /// Lokaler Tag (yyyy-MM-dd) der letzten Zusammenfassung.
+    @Published var lastSummaryDay: String { didSet { defaults.set(lastSummaryDay, forKey: "lastSummaryDay") } }
     /// Zuletzt gestartete Version (fuer "Was ist neu").
     @Published var lastSeenVersion: String { didSet { defaults.set(lastSeenVersion, forKey: "lastSeenVersion") } }
     @Published var alerts: [PriceAlert] {
@@ -127,6 +131,8 @@ final class Preferences: ObservableObject {
         let days = UserDefaults.standard.integer(forKey: "journalDays")
         journalDays = days == 0 ? 7 : days
         autoCheckUpdates = flag("autoCheckUpdates", true)
+        dailySummary = flag("dailySummary", true)
+        lastSummaryDay = UserDefaults.standard.string(forKey: "lastSummaryDay") ?? ""
         lastSeenVersion = UserDefaults.standard.string(forKey: "lastSeenVersion") ?? ""
         if let data = UserDefaults.standard.data(forKey: "priceAlerts"),
            let list = try? JSONDecoder().decode([PriceAlert].self, from: data) {
@@ -141,6 +147,20 @@ final class Preferences: ObservableObject {
 enum BacktestSource: String, CaseIterable, Identifiable {
     case candles = "Kerzen von BingX"
     case journal = "Marktprotokoll (echte Orderbücher)"
+    var id: String { rawValue }
+}
+
+/// Gespeicherte Einstellungs-Profile.
+@MainActor
+final class ProfileStore: ObservableObject {
+    @Published var book = ProfileBook()
+}
+
+/// Zeitraum eines Berichts.
+enum ReportKind: String, CaseIterable, Identifiable {
+    case today = "Heute"
+    case yesterday = "Gestern"
+    case week = "Letzte 7 Tage"
     var id: String { rawValue }
 }
 

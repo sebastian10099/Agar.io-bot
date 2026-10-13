@@ -142,7 +142,11 @@ struct OverviewView: View {
 
     private var markers: [ChartMarker] {
         bot.stored.events.suffix(400).filter { $0.isTrade && $0.priceUSDT > 0 }
-            .map { ChartMarker(time: $0.at, price: $0.priceUSDT, isBuy: $0.isBuy) }
+            .map { e in
+                var label = "\(Fmt.shortTime(e.at)) \(e.action) \(Fmt.quantity(e.quantity)) zu \(Fmt.price(e.priceUSDT))"
+                if e.isSell { label += " · \(Fmt.signedUSDT(e.realizedPnLUSDT, digits: 3)) USDT" }
+                return ChartMarker(time: e.at, price: e.priceUSDT, isBuy: e.isBuy, label: label)
+            }
     }
 
     private var chartCard: some View {
@@ -153,7 +157,8 @@ struct OverviewView: View {
                             markers: markers,
                             targetPrice: market.metrics?.nextSellPrice,
                             buyPrice: market.metrics?.nextBuyPrice,
-                            candleMinutes: prefs.chartMinutes)
+                            candleMinutes: prefs.chartMinutes,
+                            defaultVisible: prefs.chartMinutes == 1 ? 180 : 240)
                 .frame(height: 340)
             Text(chartCaption).font(.caption).foregroundStyle(.secondary)
         }
@@ -163,7 +168,7 @@ struct OverviewView: View {
         var text = prefs.chartMinutes == 1
             ? "Abgeschlossene 1-Minuten-Kerzen und die laufende Minute · grün = steigend, rot = fallend"
             : "Aus 1-Minuten-Kerzen zusammengesetzt (\(prefs.chartMinutes) min je Kerze)"
-        text += " · blaue Linien = Einstiege · ▲ Kauf ▼ Verkauf"
+        text += " · blaue Linien = Einstiege · ▲ Kauf ▼ Verkauf · Zoomen mit zwei Fingern oder der Lupe, Verschieben durch Ziehen"
         return text
     }
 

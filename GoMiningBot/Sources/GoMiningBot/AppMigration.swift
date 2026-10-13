@@ -9,7 +9,7 @@ enum AppMigration {
     private static let doneKey = "importedFromGoMiningBot"
     /// Einstellungen, die aus der bisherigen Bundle-ID uebernommen werden.
     private static let preferenceKeys = ["notifyTrades", "notifyStops", "notifyLimits", "soundEnabled", "showMenuBar",
-                                         "chartMinutes", "journalDays", "autoCheckUpdates", "priceAlerts"]
+                                         "chartMinutes", "journalDays", "autoCheckUpdates", "priceAlerts", "dailySummary"]
 
     /// Muss vor dem ersten Lesen von Einstellungen und Datenordner laufen. Mehrfacher Aufruf ist harmlos.
     static func run() {

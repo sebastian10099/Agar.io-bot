@@ -1,5 +1,14 @@
 import SwiftUI
+import Charts
 import GoMiningCore
+
+/// Ein Punkt im Vergleichsdiagramm.
+private struct ComparePoint: Identifiable {
+    let id: String
+    let series: String
+    let t: Double
+    let value: Double
+}
 
 /// Schattenkonten: mehrere Einstellungen handeln parallel auf denselben Live-Daten.
 @MainActor
@@ -20,6 +29,7 @@ struct CompareView: View {
             VStack(spacing: 14) {
                 introCard
                 tableCard
+                if !shadows.accounts.isEmpty { chartCard }
                 addCard
             }
             .padding(16)
@@ -154,6 +164,49 @@ struct CompareView: View {
         BotEngine.openPositionCount(state.lots, bid: bid, settings: s, minNotional: market.snapshot?.rules.minNotional ?? 0)
     }
 
+    // MARK: Verlauf
+
+    /// Rendite seit dem Start jedes Schattenkontos; das Hauptkonto wird auf denselben Zeitraum umgerechnet.
+    private var comparePoints: [ComparePoint] {
+        guard let windowStart = shadows.accounts.map(\.createdAt).min() else { return [] }
+        var out: [ComparePoint] = []
+        func thin(_ pts: [EquityPoint]) -> [EquityPoint] {
+            guard pts.count > 400 else { return pts }
+            let step = pts.count / 400 + 1
+            return pts.enumerated().compactMap { $0.offset % step == 0 || $0.offset == pts.count - 1 ? $0.element : nil }
+        }
+        let main = thin(bot.equityHistory.filter { $0.t >= windowStart })
+        if let base = main.first?.equity, base > 0 {
+            for p in main { out.append(ComparePoint(id: "H\(p.t)", series: "Hauptkonto", t: p.t, value: p.equity / base - 1)) }
+        }
+        for a in shadows.accounts {
+            let start = a.settings.startingUSDT
+            guard start > 0 else { continue }
+            for p in thin(a.history.points) {
+                out.append(ComparePoint(id: "\(a.id)\(p.t)", series: a.name, t: p.t, value: p.equity / start - 1))
+            }
+        }
+        return out
+    }
+
+    private var chartCard: some View {
+        let points = comparePoints
+        return Card("Verlauf seit dem Start", systemImage: "chart.xyaxis.line") {
+            if Set(points.map(\.series)).count < 1 || points.count < 3 {
+                EmptyHint(text: "Der Verlauf füllt sich mit einem Punkt pro Minute.", systemImage: "chart.xyaxis.line")
+            } else {
+                Chart(points) { p in
+                    LineMark(x: .value("Zeit", Date(timeIntervalSince1970: p.t)), y: .value("Rendite", p.value * 100))
+                        .foregroundStyle(by: .value("Konto", p.series))
+                }
+                .chartYAxisLabel("% seit Start")
+                .frame(height: 240)
+                Text("Rendite in Prozent seit dem Anlegen der Schattenkonten; das Hauptkonto wird auf denselben Zeitraum umgerechnet.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
     // MARK: Neues Konto
 
     private var addCard: some View {
@@ -185,13 +238,7 @@ struct CompareView: View {
 
     // MARK: Hilfen
 
-    private func settingsSummary(_ s: BotSettings) -> String {
-        var parts = ["Ziel \(Fmt.bps(s.minNetProfitBps))", "Stop \(Fmt.percent(s.stopLossFraction, digits: 1))",
-                     "Einsatz \(Fmt.usdt(s.maxTradeUSDT, digits: 0))", "\(s.openPositionLimit) Pos."]
-        parts.append(s.trendFilterEnabled ? "Trendfilter an" : "Trendfilter aus")
-        if s.makerEntries { parts.append("Limit-Kauf am Bid") }
-        return parts.joined(separator: " · ")
-    }
+    private func settingsSummary(_ s: BotSettings) -> String { Fmt.settingsSummary(s) }
 
     /// Kurze Liste der wichtigsten Unterschiede.
     private func differences(_ a: BotSettings, from b: BotSettings) -> [String] {

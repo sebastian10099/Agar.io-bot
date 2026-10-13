@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import GoMiningCore
 
 /// Zahlen- und Zeitformate fuer die deutsche Oberflaeche.
 enum Fmt {
@@ -60,6 +61,16 @@ enum Fmt {
 
     static func bytes(_ n: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: n, countStyle: .file)
+    }
+
+    /// Kurzbeschreibung der wichtigsten Strategie-Einstellungen.
+    static func settingsSummary(_ s: BotSettings) -> String {
+        var parts = ["Ziel \(bps(s.minNetProfitBps))", "Stop \(percent(s.stopLossFraction, digits: 1))",
+                     "Einsatz \(usdt(s.maxTradeUSDT, digits: 0))", "\(s.openPositionLimit) Pos."]
+        parts.append(s.minBuyStepBps > 0 ? "Kaufabstand ≥ \(bps(s.minBuyStepBps))" : "Kaufabstand nur adaptiv")
+        parts.append(s.trendFilterEnabled ? "Trendfilter an" : "Trendfilter aus")
+        if s.makerEntries { parts.append("Limit-Kauf am Bid") }
+        return parts.joined(separator: " · ")
     }
 }
 

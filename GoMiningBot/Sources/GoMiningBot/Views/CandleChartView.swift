@@ -6,10 +6,12 @@ struct ChartMarker: Hashable {
     var time: Double
     var price: Double
     var isBuy: Bool
+    /// Text fuer den Tooltip (Aktion, Menge, Preis, Ergebnis).
+    var label: String = ""
 }
 
 /// Kerzen-Diagramm (gruen/rot) mit Volumen, Einstiegslinien, Trade-Marken und den Analysefenstern.
-/// Der Preisbereich wird aus Hoch/Tief ALLER Kerzen berechnet, damit der ganze Verlauf im Bild bleibt.
+/// Zoomen per Zwei-Finger-Geste oder Knopf, Verschieben per Ziehen; der Preisbereich passt sich den sichtbaren Kerzen an.
 struct CandleChartView: View {
     var candles: [PriceCandle]
     var moves: [Move] = []
@@ -18,8 +20,18 @@ struct CandleChartView: View {
     var targetPrice: Double?
     var buyPrice: Double?
     var candleMinutes = 1
+    /// So viele Kerzen zeigt das Diagramm ohne Zoom (nil = alle).
+    var defaultVisible: Int?
 
     @State private var hoverX: CGFloat?
+    /// Zahl der sichtbaren Kerzen (nil = Standard).
+    @State private var zoomCount: Int?
+    /// Ende des sichtbaren Bereichs als Zeit der letzten sichtbaren Kerze (nil = immer die neueste).
+    @State private var anchorEnd: Double?
+    @State private var dragStart: (end: Int, count: Int)?
+    @State private var pinchStart: Int?
+
+    static let minVisible = 20
 
     private let axisWidth: CGFloat = 74
     private let bottomHeight: CGFloat = 22
@@ -37,6 +49,13 @@ struct CandleChartView: View {
                         case .ended: hoverX = nil
                         }
                     }
+                    .gesture(panGesture(width: geo.size.width))
+                    .simultaneousGesture(pinchGesture)
+                    .onTapGesture(count: 2) { resetZoom() }
+                zoomControls
+                    .padding(.leading, 6)
+                    .padding(.top, 4)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 if let tip = tooltip(width: geo.size.width) {
                     Text(tip.text)
                         .font(.system(size: 11, design: .monospaced))
@@ -50,11 +69,105 @@ struct CandleChartView: View {
         .overlay {
             if candles.isEmpty { Text("Kursdaten werden geladen …").foregroundStyle(.secondary) }
         }
+        .onChange(of: candleMinutes) { _, _ in resetZoom() }
+    }
+
+    // MARK: Zoom und Verschieben
+
+    /// Sichtbarer Bereich: Ende (exklusiv) und Anzahl.
+    private var window: (end: Int, count: Int) {
+        let n = candles.count
+        guard n > 0 else { return (0, 0) }
+        let count = min(n, max(min(n, Self.minVisible), zoomCount ?? defaultVisible ?? n))
+        var end = n
+        if let anchor = anchorEnd, let idx = candles.lastIndex(where: { $0.openedAt <= anchor + 1 }) { end = idx + 1 }
+        end = min(n, max(count, end))
+        return (end, count)
+    }
+
+    private var visible: ArraySlice<PriceCandle> {
+        let w = window
+        return candles[(w.end - w.count)..<w.end]
+    }
+
+    /// `true`, wenn die neueste Kerze sichtbar ist (Analysefenster nur dann einblenden).
+    private var showsLatest: Bool { window.end == candles.count }
+
+    private func setWindow(end: Int, count: Int) {
+        let n = candles.count
+        guard n > 0 else { return }
+        let c = min(n, max(min(n, Self.minVisible), count))
+        let e = min(n, max(c, end))
+        zoomCount = c
+        anchorEnd = e >= n ? nil : candles[e - 1].openedAt
+    }
+
+    private func zoom(by factor: Double) {
+        let w = window
+        setWindow(end: w.end, count: Int((Double(w.count) * factor).rounded()))
+    }
+
+    private func resetZoom() {
+        zoomCount = nil
+        anchorEnd = nil
+    }
+
+    private func panGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 6)
+            .onChanged { value in
+                let start = dragStart ?? window
+                if dragStart == nil { dragStart = start }
+                let plotW = max(10, width - left - axisWidth)
+                let slot = plotW / CGFloat(max(1, start.count))
+                let shift = Int((value.translation.width / slot).rounded())
+                setWindow(end: start.end - shift, count: start.count)
+            }
+            .onEnded { _ in dragStart = nil }
+    }
+
+    private var pinchGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                let start = pinchStart ?? window.count
+                if pinchStart == nil { pinchStart = start }
+                let w = window
+                setWindow(end: w.end, count: Int((Double(start) / max(0.1, value.magnification)).rounded()))
+            }
+            .onEnded { _ in pinchStart = nil }
+    }
+
+    private var zoomControls: some View {
+        HStack(spacing: 4) {
+            Button { zoom(by: 0.6) } label: { Image(systemName: "plus.magnifyingglass") }
+                .help("Hineinzoomen (auch mit zwei Fingern auf dem Trackpad)")
+                .disabled(window.count <= min(candles.count, Self.minVisible))
+            Button { zoom(by: 1 / 0.6) } label: { Image(systemName: "minus.magnifyingglass") }
+                .help("Herauszoomen")
+                .disabled(window.count >= candles.count)
+            if window.count < candles.count {
+                Button("Alles") { zoomCount = candles.count; anchorEnd = nil }.help("Den ganzen geladenen Verlauf zeigen")
+            }
+            if zoomCount != nil || anchorEnd != nil {
+                Button("Standard") { resetZoom() }.help("Standardansicht (auch per Doppelklick ins Diagramm)")
+            }
+            if anchorEnd != nil {
+                Button { anchorEnd = nil } label: { Label("Live", systemImage: "forward.end.fill") }
+                    .help("Zur neuesten Kerze springen")
+            }
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .font(.caption)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+        .opacity(candles.count > Self.minVisible ? 1 : 0)
     }
 
     // MARK: Geometrie
 
     private func priceRange() -> (lo: Double, hi: Double) {
+        let candles = visible
         var lo = candles.map(\.low).min() ?? 0
         var hi = candles.map(\.high).max() ?? 1
         for p in entryPrices + [targetPrice, buyPrice].compactMap({ $0 }) where p > 0 {
@@ -80,6 +193,8 @@ struct CandleChartView: View {
     // MARK: Zeichnen
 
     private func draw(_ ctx: GraphicsContext, _ size: CGSize) {
+        let candles = Array(visible)
+        let moves = showsLatest ? self.moves : []
         guard let last = candles.last else { return }
         let (lo, hi) = priceRange()
         let plotW = size.width - left - axisWidth
@@ -193,7 +308,7 @@ struct CandleChartView: View {
 
         // Fadenkreuz
         if let hx = hoverX, hx >= left, hx <= left + plotW {
-            let idx = hoverIndex(hx, slot: slot)
+            let idx = hoverIndex(hx, slot: slot, count: candles.count)
             var cross = Path()
             cross.move(to: CGPoint(x: x(idx), y: top))
             cross.addLine(to: CGPoint(x: x(idx), y: top + plotH))
@@ -208,21 +323,28 @@ struct CandleChartView: View {
         ctx.stroke(line, with: .color(color), style: StrokeStyle(lineWidth: 1, dash: dash))
     }
 
-    private func hoverIndex(_ hx: CGFloat, slot: CGFloat) -> Int {
-        min(candles.count - 1, max(0, Int((hx - left) / slot)))
+    private func hoverIndex(_ hx: CGFloat, slot: CGFloat, count: Int) -> Int {
+        min(count - 1, max(0, Int((hx - left) / slot)))
     }
 
     private func tooltip(width: CGFloat) -> (text: String, x: CGFloat)? {
+        let candles = Array(visible)
         guard let hx = hoverX, !candles.isEmpty else { return nil }
         let plotW = width - left - axisWidth
         guard plotW > 10, hx >= left, hx <= left + plotW else { return nil }
         let slot = plotW / CGFloat(candles.count)
-        let idx = hoverIndex(hx, slot: slot)
+        let idx = hoverIndex(hx, slot: slot, count: candles.count)
         let c = candles[idx]
         let change = c.open > 0 ? (c.close - c.open) / c.open : 0
-        let text = "\(timeText(c.openedAt))\nO \(Fmt.price(c.open))  H \(Fmt.price(c.high))\nL \(Fmt.price(c.low))  C \(Fmt.price(c.close))\n"
+        var text = "\(timeText(c.openedAt))\nO \(Fmt.price(c.open))  H \(Fmt.price(c.high))\nL \(Fmt.price(c.low))  C \(Fmt.price(c.close))\n"
             + "\(Fmt.percent(change, digits: 2, signed: true))  Vol \(Fmt.quantity(c.volume))"
+        // Trades in dieser Kerze.
+        let bucket = Double(max(1, candleMinutes)) * 60
+        let inside = markers.filter { $0.time >= c.openedAt && $0.time < c.openedAt + bucket && !$0.label.isEmpty }
+        for m in inside.prefix(4) { text += "\n\(m.isBuy ? "▲" : "▼") \(m.label)" }
+        if inside.count > 4 { text += "\n… und \(inside.count - 4) weitere" }
         let cx = left + slot * (CGFloat(idx) + 0.5)
-        return (text, cx + 190 > width ? cx - 200 : cx + 12)
+        let boxWidth: CGFloat = inside.isEmpty ? 200 : 290
+        return (text, cx + boxWidth - 10 > width ? cx - boxWidth : cx + 12)
     }
 }

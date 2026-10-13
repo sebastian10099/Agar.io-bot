@@ -4,8 +4,10 @@ import GoMiningCore
 
 @MainActor
 struct StatsView: View {
+    @EnvironmentObject var controller: AppController
     @EnvironmentObject var bot: BotStore
     @EnvironmentObject var market: MarketStore
+    @State private var reportKind = ReportKind.today
 
     private var stats: PerformanceStats { bot.stats }
 
@@ -24,6 +26,7 @@ struct StatsView: View {
         ScrollView {
             VStack(spacing: 14) {
                 summary
+                reportCard
                 equityCard
                 dailyCard
             }
@@ -50,6 +53,31 @@ struct StatsView: View {
                 Metric(title: "Käufe", value: "\(stats.buyCount)")
                 Metric(title: "Aktuelle Serie", value: stats.currentStreak == 0 ? "—" : (stats.currentStreak > 0 ? "\(stats.currentStreak) Gewinne" : "\(-stats.currentStreak) Verluste"),
                        color: .pnl(Double(stats.currentStreak)))
+            }
+        }
+    }
+
+    private var reportCard: some View {
+        let r = controller.report(reportKind)
+        return Card("Bericht", systemImage: "doc.richtext",
+                    trailing: AnyView(Picker("Zeitraum", selection: $reportKind) {
+                        ForEach(ReportKind.allCases) { Text($0.rawValue).tag($0) }
+                    }.pickerStyle(.segmented).labelsHidden().frame(width: 300))) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 16)], alignment: .leading, spacing: 14) {
+                Metric(title: "Vermögen", value: r.equityChange.map { Fmt.signedUSDT($0) } ?? "—",
+                       subtitle: r.equityChangeFraction.map { Fmt.percent($0, digits: 2, signed: true) } ?? "noch kein Verlauf",
+                       color: Color.pnl(r.equityChange ?? 0))
+                Metric(title: "Zum Vergleich: Halten", value: r.holdChangeFraction.map { Fmt.percent($0, digits: 2, signed: true) } ?? "—",
+                       subtitle: "nur mit Startkauf", color: Color.pnl(r.holdChangeFraction ?? 0))
+                Metric(title: "Realisiert", value: Fmt.signedUSDT(r.realizedPnL), subtitle: "USDT", color: .pnl(r.realizedPnL))
+                Metric(title: "Käufe / Verkäufe", value: "\(r.buys) / \(r.sells)",
+                       subtitle: r.winRate.map { "Gewinnquote \(Fmt.percent($0, digits: 0))" } ?? "")
+                Metric(title: "Gebühren", value: "\(Fmt.usdt(r.fees)) USDT")
+            }
+            HStack {
+                Button { controller.exportReport(reportKind) } label: { Label("Als HTML-Bericht speichern …", systemImage: "square.and.arrow.down") }
+                Text("Mit Vermögensverlauf, allen Trades und den Einstellungen; im Browser auch als PDF druckbar.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }

@@ -8,6 +8,7 @@ struct SettingsView: View {
     @EnvironmentObject var bot: BotStore
     @EnvironmentObject var status: StatusStore
     @EnvironmentObject var prefs: Preferences
+    @EnvironmentObject var profiles: ProfileStore
 
     @State private var apiKey = ""
     @State private var secretKey = ""
@@ -15,12 +16,17 @@ struct SettingsView: View {
     @State private var alertPrice = ""
     @State private var alertAbove = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var profileName = ""
+    @State private var preset = ShadowPreset.balanced
+    @State private var confirmPreset = false
+    @State private var confirmDelete: SettingsProfile?
 
     private var s: BotSettings { bot.stored.settings }
 
     var body: some View {
         Form {
             accountSection
+            profileSection
             paperSection
             entrySection
             makerSection
@@ -40,6 +46,69 @@ struct SettingsView: View {
             Button("Abbrechen", role: .cancel) {}
         } message: {
             Text("Virtuelles Guthaben und bisherige Aktivitäten werden gelöscht. Vorher wird automatisch eine Sicherung im Datenordner angelegt. Mit Startkauf werden \(Fmt.usdt(s.startingUSDT, digits: 0)) USDT virtuell in GOMINING angelegt (Vergleichsbasis „Halten“).")
+        }
+        .confirmationDialog("Vorlage „\(preset.rawValue)“ anwenden?", isPresented: $confirmPreset, titleVisibility: .visible) {
+            Button("Anwenden") { controller.applyPreset(preset) }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text("\(preset.summary) Die bisherigen Einstellungen vorher als Profil speichern, wenn du zurückwechseln möchtest.")
+        }
+        .confirmationDialog("Profil löschen?", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
+                            titleVisibility: .visible, presenting: confirmDelete) { profile in
+            Button("„\(profile.name)“ löschen", role: .destructive) { controller.deleteProfile(profile.id) }
+            Button("Abbrechen", role: .cancel) {}
+        }
+    }
+
+    // MARK: Profile
+
+    private var profileSection: some View {
+        Section {
+            HStack {
+                TextField("Name", text: $profileName, prompt: Text("Aktuelle Einstellungen speichern als …"))
+                Button("Speichern") {
+                    controller.saveProfile(name: profileName)
+                    profileName = ""
+                }
+                .disabled(profileName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            if profiles.book.profiles.isEmpty {
+                Text("Noch keine gespeicherten Profile.").font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(profiles.book.profiles) { p in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack {
+                        Text(p.name).font(.callout.weight(.semibold))
+                        Text(Fmt.dateTime(p.createdAt)).font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Laden") { controller.loadProfile(p.id) }.controlSize(.small)
+                        Menu {
+                            Button("Als Schattenkonto testen") { controller.testProfileAsShadow(p.id) }
+                            Button("Exportieren …") { controller.exportProfile(p.id) }
+                            Divider()
+                            Button("Löschen", role: .destructive) { confirmDelete = p }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .frame(width: 30)
+                    }
+                    Text(Fmt.settingsSummary(p.settings)).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                Button("Profil importieren …") { controller.importProfile() }
+                Spacer()
+                Picker("Vorlage", selection: $preset) {
+                    ForEach([ShadowPreset.cautious, .balanced, .active]) { Text($0.rawValue).tag($0) }
+                }
+                .frame(width: 300)
+                Button("Anwenden …") { confirmPreset = true }
+            }
+            Text("Laden und Vorlagen ändern nur die Strategie – Startkapital, Gebühren und Papierkonto bleiben. Profile lassen sich als Datei weitergeben und importieren; „Als Schattenkonto testen“ prüft ein Profil live neben dem Hauptkonto.")
+                .font(.caption).foregroundStyle(.secondary)
+        } header: {
+            Text("Profile & Vorlagen")
         }
     }
 
@@ -283,6 +352,7 @@ struct SettingsView: View {
             Toggle("Bei erreichter Schutzgrenze", isOn: $prefs.notifyLimits)
             Toggle("Mit Ton", isOn: $prefs.soundEnabled)
             Toggle("Kurs in der Menüleiste anzeigen", isOn: $prefs.showMenuBar)
+            Toggle("Tageszusammenfassung nach Mitternacht als Mitteilung", isOn: $prefs.dailySummary)
             ForEach(prefs.alerts) { alert in
                 HStack {
                     Image(systemName: alert.above ? "arrow.up.right" : "arrow.down.right")
