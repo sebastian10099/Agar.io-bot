@@ -23,12 +23,12 @@ public struct EquityHistory: Codable, Equatable, Sendable {
 
     public static let maxPoints = 20_000
 
-    /// Haengt einen Punkt an, hoechstens einer pro `minInterval` Sekunden.
+    /// Haengt einen Punkt an, hoechstens einer pro `minInterval` Sekunden. Ueber `maxPoints` wird ausgeduennt.
     @discardableResult
-    public mutating func append(_ point: EquityPoint, minInterval: Double = 60) -> Bool {
+    public mutating func append(_ point: EquityPoint, minInterval: Double = 60, maxPoints: Int = EquityHistory.maxPoints) -> Bool {
         if let last = points.last, point.t - last.t < minInterval { return false }
         points.append(point)
-        if points.count > EquityHistory.maxPoints { thin() }
+        if points.count > max(10, maxPoints) { thin() }
         return true
     }
 

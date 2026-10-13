@@ -7,6 +7,8 @@ import Foundation
 public struct ShadowAccount: Codable, Identifiable, Equatable, Sendable {
     public static let maxAccounts = 5
     public static let eventLimit = 500
+    /// Punkte im Vermoegensverlauf (aeltere werden ausgeduennt), damit die Datei klein bleibt.
+    public static let historyLimit = 3_000
 
     public var id: UUID
     public var name: String
@@ -21,6 +23,8 @@ public struct ShadowAccount: Codable, Identifiable, Equatable, Sendable {
     public var lastReason: String
     public var sells: Int
     public var wins: Int
+    /// Vermoegensverlauf (ein Punkt pro Minute).
+    public var history: EquityHistory
 
     public init(id: UUID = UUID(), name: String, settings: BotSettings, at now: Double, bid: Double?) {
         let clamped = settings.clamped()
@@ -34,10 +38,11 @@ public struct ShadowAccount: Codable, Identifiable, Equatable, Sendable {
         lastReason = "Wartet auf Marktdaten"
         sells = 0
         wins = 0
+        history = EquityHistory(points: [EquityPoint(t: now, equity: clamped.startingUSDT)])
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, settings, state, events, createdAt, startBid, lastReason, sells, wins
+        case id, name, settings, state, events, createdAt, startBid, lastReason, sells, wins, history
     }
 
     public init(from decoder: Decoder) throws {
@@ -53,6 +58,13 @@ public struct ShadowAccount: Codable, Identifiable, Equatable, Sendable {
         lastReason = c.value(.lastReason, "")
         sells = c.value(.sells, 0)
         wins = c.value(.wins, 0)
+        history = c.value(.history, EquityHistory())
+    }
+
+    /// Nimmt hoechstens einen Punkt pro Minute in den Vermoegensverlauf auf.
+    public mutating func sample(bid: Double, now: Double) {
+        guard bid > 0 else { return }
+        history.append(EquityPoint(t: now, equity: equity(bid: bid)), minInterval: 60, maxPoints: Self.historyLimit)
     }
 
     /// Ein Marktdurchlauf mit den eigenen Einstellungen. Gibt den Trade zurueck, falls gehandelt wurde.
