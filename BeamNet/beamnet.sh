@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.2"
+VERSION="1.3"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -23,6 +23,7 @@ WAIT_SECONDS="${BEAMNET_WAIT:-15}"
 CONF="${BEAMNET_CONF:-/etc/beamnet.conf}"
 STATE_DIR="${BEAMNET_STATE:-/var/lib/beamnet}"
 SYSTEMD_DIR="${BEAMNET_SYSTEMD_DIR:-/etc/systemd/system}"
+WEB_DIR="${BEAMNET_WEB_DIR:-/var/www/beamnet}"
 # Hoechstens so viele automatische Neustarts je Server und Stunde (Schutz vor Endlosschleifen).
 MAX_RESTARTS_PER_HOUR=3
 RAW_BASE="${BEAMNET_RAW:-https://raw.githubusercontent.com/sebastian10099/Agar.io-bot/claude/friendly-goldberg-31l8fp/BeamNet}"
@@ -883,6 +884,240 @@ cmd_watch() {
     esac
 }
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Statusseite
+
+# Erzeugt index.html aus den gemeinsamen Daten von BeamNetCore (Server, Bestenliste, Wochenkilometer, Rekorde).
+web_generate() {
+    command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
+    mkdir -p "$WEB_DIR" || die "Kann $WEB_DIR nicht anlegen."
+    python3 -I - "$SHARED" "$WEB_DIR/index.html" "${1:-BeamNet}" <<'PY'
+import glob, html, json, math, os, sys, time
+
+shared, out, title = sys.argv[1], sys.argv[2], sys.argv[3] or "BeamNet"
+now = time.time()
+E = html.escape
+
+
+def load(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def num(v, default=0.0):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else default
+
+
+cfg = load(os.path.join(shared, "config.json"))
+cfg = cfg if isinstance(cfg, dict) else {}
+xp_km, xp_min, base = num(cfg.get("xpPerKm"), 10), num(cfg.get("xpPerMinute"), 1), num(cfg.get("levelBase"), 25) or 25
+leagues = cfg.get("leagues")
+if not (isinstance(leagues, list) and leagues and all(isinstance(l, dict) and isinstance(l.get("name"), str) for l in leagues)):
+    leagues = [{"xp": 0, "name": "Bronze"}, {"xp": 500, "name": "Silber"}, {"xp": 2000, "name": "Gold"},
+               {"xp": 6000, "name": "Platin"}, {"xp": 15000, "name": "Diamant"}, {"xp": 40000, "name": "Legende"}]
+
+
+def xp_of(r):
+    if isinstance(r.get("xp"), (int, float)):
+        return int(r["xp"])
+    return int(num(r.get("km")) * xp_km + num(r.get("seconds")) / 60 * xp_min + num(r.get("bonusXp")))
+
+
+def level_of(xp):
+    return int(math.sqrt(xp / base)) + 1 if xp > 0 else 1
+
+
+def league_of(xp):
+    name = leagues[0]["name"]
+    for l in leagues:
+        if xp >= num(l.get("xp")):
+            name = l["name"]
+    return name
+
+
+def km(v):
+    return f"{v:.0f} km" if v >= 100 else f"{v:.1f} km"
+
+
+MAPS = {"gridmap_v2": "Grid Map", "smallgrid": "Small Grid", "west_coast_usa": "West Coast, USA",
+        "east_coast_usa": "East Coast, USA", "italy": "Italy", "utah": "Utah, USA", "jungle_rock_island": "Jungle Rock Island",
+        "small_island": "Small Island, USA", "hirochi_raceway": "Hirochi Raceway", "johnson_valley": "Johnson Valley",
+        "industrial": "Industrial Site", "derby": "Derby Arenas", "automation_test_track": "Automation Test Track"}
+
+
+def map_name(m):
+    m = str(m)
+    return MAPS.get(m) or m.replace("_", " ").title()
+
+
+def race_time(t):
+    t = max(0.0, num(t))
+    return f"{int(t // 60)}:{t % 60:04.1f}"
+
+
+week = time.strftime("%G-W%V", time.gmtime(now))
+servers = [s for s in (load(p) for p in glob.glob(os.path.join(shared, "servers", "*.json")))
+           if isinstance(s, dict) and now - num(s.get("updated")) <= 90]
+servers.sort(key=lambda s: num(s.get("port")))
+players = [r for r in (load(p) for p in glob.glob(os.path.join(shared, "players", "*.json")))
+           if isinstance(r, dict) and r.get("id")]
+by_xp = sorted(players, key=lambda r: (-xp_of(r), str(r.get("name", ""))))[:10]
+by_week = sorted([r for r in players if r.get("week") == week and num(r.get("weekKm")) > 0],
+                 key=lambda r: (-num(r.get("weekKm")), str(r.get("name", ""))))[:10]
+races = []
+for path in sorted(glob.glob(os.path.join(shared, "races", "*.json"))):
+    data = load(path)
+    tracks = data.get("tracks") if isinstance(data, dict) else None
+    if not isinstance(tracks, dict):
+        continue
+    for name, t in sorted(tracks.items()):
+        recs = t.get("records") if isinstance(t, dict) else None
+        if isinstance(recs, list) and recs and isinstance(recs[0], dict):
+            races.append((os.path.basename(path)[:-5], name, recs[0]))
+
+online = sum(int(num(s.get("players"))) for s in servers)
+rows = []
+for s in servers:
+    names = s.get("names") if isinstance(s.get("names"), list) else []
+    who = E(", ".join(str(n) for n in names))
+    rows.append(f"<tr><td><b>{E(str(s.get('name', '?')))}</b>" + (f"<div class=small>{who}</div>" if who else "") +
+                f"</td><td>{E(map_name(s.get('map', '?')))}</td>"
+                f"<td class=n>{int(num(s.get('players')))}/{int(num(s.get('max')))}</td></tr>")
+top = [f"<tr><td class=n>{i}</td><td>{E(str(r.get('name', '?')))}</td><td class=n>{level_of(xp_of(r))}</td>"
+       f"<td>{E(league_of(xp_of(r)))}</td><td class=n>{xp_of(r)}</td><td class=n>{km(num(r.get('km')))}</td></tr>"
+       for i, r in enumerate(by_xp, 1)]
+weekly = [f"<tr><td class=n>{i}</td><td>{E(str(r.get('name', '?')))}</td><td class=n>{km(num(r.get('weekKm')))}</td></tr>"
+          for i, r in enumerate(by_week, 1)]
+records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name', '?')))}</td><td class=n>{race_time(b.get('time'))}</td></tr>"
+           for m, n, b in races]
+
+
+def table(head, body, empty):
+    """head: Spaltennamen; ein '#' am Ende markiert Zahlenspalten (rechtsbuendig)."""
+    if not body:
+        return f"<p class=empty>{empty}</p>"
+    cells = "".join(f"<th class=n>{h[:-1]}</th>" if h.endswith("#") and len(h) > 1 else f"<th>{h}</th>" for h in head)
+    return "<table><thead><tr>" + cells + "</tr></thead><tbody>" + "".join(body) + "</tbody></table>"
+
+
+page = f"""<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60"><title>{E(title)} – Status</title>
+<style>
+:root {{ --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7385; --line:#e3e6ec; --accent:#e8590c; }}
+@media (prefers-color-scheme: dark) {{ :root {{ --bg:#14161b; --card:#1d2027; --text:#e8eaf0; --muted:#9aa2b3; --line:#2c303a; --accent:#ff8a3d; }} }}
+* {{ box-sizing:border-box; }}
+body {{ margin:0; font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); }}
+main {{ max-width:960px; margin:0 auto; padding:24px 16px 48px; }}
+h1 {{ margin:0 0 4px; font-size:28px; }} h1 span {{ color:var(--accent); }}
+h2 {{ font-size:17px; margin:0 0 10px; }}
+.sub {{ color:var(--muted); margin-bottom:20px; }}
+section {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; overflow-x:auto; }}
+table {{ width:100%; border-collapse:collapse; }}
+th, td {{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }}
+th {{ color:var(--muted); font-weight:600; font-size:13px; }}
+td.n, th.n {{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }}
+td b {{ font-weight:600; }}
+.small {{ font-size:13px; color:var(--muted); }} .empty {{ color:var(--muted); margin:0; }}
+.grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }} .grid section {{ margin:0; }}
+footer {{ color:var(--muted); font-size:12px; margin-top:24px; }}
+</style></head><body><main>
+<h1><span>{E(title)}</span> Status</h1>
+<div class=sub>{len(servers)} Server online · {online} Spieler · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))} (aktualisiert sich jede Minute)</div>
+<section><h2>Server</h2>{table(["Server", "Map", "Spieler#"], rows, "Gerade meldet sich kein Server.")}</section>
+<section><h2>Bestenliste</h2>{table(["#", "Name", "Level#", "Liga", "XP#", "Kilometer#"], top, "Noch keine Einträge – einfach losfahren!")}</section>
+<div class=grid>
+<section><h2>Diese Woche</h2>{table(["#", "Name", "Kilometer#"], weekly, "Diese Woche ist noch niemand gefahren.")}</section>
+<section><h2>Streckenrekorde</h2>{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>
+</div>
+<footer>Chat-Befehle im Spiel: /hilfe · /stats · /top · /liga · /server · /rennen · /rekorde</footer>
+</main></body></html>
+"""
+tmp = out + ".tmp"
+with open(tmp, "w", encoding="utf-8") as f:
+    f.write(page)
+os.chmod(tmp, 0o644)
+os.replace(tmp, out)
+PY
+}
+
+web_install() {
+    need_root web
+    local port=$1 self py
+    [[ $port =~ ^[0-9]+$ ]] && (( port >= 1024 && port <= 65535 )) || die "Port muss zwischen 1024 und 65535 liegen."
+    py=$(command -v python3) || die "python3 fehlt (apt install python3)."
+    self=$(readlink -f "${BASH_SOURCE[0]}")
+    web_generate "$(conf_get WEB_TITLE)" || die "Statusseite konnte nicht erzeugt werden."
+    chmod 755 "$WEB_DIR"
+    mkdir -p "$SYSTEMD_DIR"
+    cat >"$SYSTEMD_DIR/beamnet-web.service" <<EOF
+[Unit]
+Description=BeamNet-Statusseite (Webserver, nur lesend)
+After=network.target
+
+[Service]
+ExecStart=$py -m http.server $port --bind 0.0.0.0 --directory $WEB_DIR
+DynamicUser=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadOnlyPaths=$WEB_DIR
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    cat >"$SYSTEMD_DIR/beamnet-web-update.service" <<EOF
+[Unit]
+Description=BeamNet-Statusseite erneuern
+
+[Service]
+Type=oneshot
+ExecStart=$self web run
+EOF
+    cat >"$SYSTEMD_DIR/beamnet-web-update.timer" <<'EOF'
+[Unit]
+Description=BeamNet-Statusseite jede Minute erneuern
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=60s
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now beamnet-web.service beamnet-web-update.timer >/dev/null 2>&1
+    ok "Statusseite läuft auf Port $port und erneuert sich jede Minute."
+    echo "Aufrufen: http://<IP-Adresse des Servers>:$port/"
+    if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+        echo "Die Firewall (ufw) ist aktiv – Port freigeben mit: ufw allow $port/tcp"
+    fi
+    echo "Eigener Titel: WEB_TITLE=… in $CONF"
+}
+
+web_uninstall() {
+    need_root web
+    systemctl disable --now beamnet-web.service beamnet-web-update.timer >/dev/null 2>&1
+    rm -f "$SYSTEMD_DIR/beamnet-web.service" "$SYSTEMD_DIR/beamnet-web-update.service" "$SYSTEMD_DIR/beamnet-web-update.timer"
+    systemctl daemon-reload
+    ok "Statusseite abgeschaltet ($WEB_DIR bleibt)."
+}
+
+cmd_web() {
+    case ${1:-run} in
+        run) web_generate "$(conf_get WEB_TITLE)" && echo "Statusseite erzeugt: $WEB_DIR/index.html" ;;
+        install) web_install "${2:-8080}" ;;
+        uninstall) web_uninstall ;;
+        *) die "Aufruf: beamnet web [run|install [port]|uninstall]" ;;
+    esac
+}
+
 cmd_self_update() {
     need_root self-update
     local target tmp
@@ -914,6 +1149,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, /server) auf allen Servern
   beamnet openclaw status|pause|resume   OpenClaw-Agent ansehen, anhalten (einfrieren), fortsetzen
   beamnet watch install|status|test|uninstall   Wächter: meldet Ausfälle (auch an Discord), optional Neustart
+  beamnet web install [port]     Statusseite (Server, Bestenliste, Rekorde) als Webseite, Standard-Port 8080
   beamnet self-update            Neueste Version dieses Werkzeugs laden
 
   Option -y: ohne Rückfrage ausführen.
@@ -947,6 +1183,7 @@ main() {
         install-core) cmd_install_core ;;
         openclaw) cmd_openclaw "$@" ;;
         watch|waechter) cmd_watch "$@" ;;
+        web|statusseite) cmd_web "$@" ;;
         self-update|update) cmd_self_update ;;
         version|--version) echo "BeamNet $VERSION" ;;
         hilfe|help|-h|--help) cmd_help ;;

@@ -44,6 +44,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet install-core` | Installiert BeamNetCore auf allen Servern |
 | `beamnet openclaw status / pause / resume` | OpenClaw-Agent ansehen, anhalten (einfrieren, nichts wird gelöscht) und fortsetzen |
 | `beamnet watch install / status / test / uninstall` | Wächter einrichten (siehe unten) |
+| `beamnet web install [port]` / `web uninstall` | Statusseite als Webseite (siehe unten), Standard-Port 8080 |
 | `beamnet self-update` | Neueste Version des Werkzeugs laden |
 
 Mit `-y` laufen Befehle ohne Rückfrage.
@@ -74,6 +75,20 @@ beamnet watch test         # Testnachricht an Discord
   du sie mit `beamnet start` wieder startest.
 - Er kämpft nicht gegen OpenClaw: Hat der Agent einen Server gestoppt, meldet er das, startet aber nicht neu.
 - Montags postet er die **Wochensieger** der Vorwoche nach Discord.
+
+### Statusseite für die Community
+
+```bash
+beamnet web install 8080   # erzeugt die Seite jede Minute neu und stellt sie auf Port 8080 bereit
+ufw allow 8080/tcp         # nur nötig, wenn die Firewall ufw aktiv ist
+```
+
+Danach ist sie unter `http://<IP-Adresse des Servers>:8080/` erreichbar – zum Teilen, z. B. in Discord. Sie zeigt alle
+Server mit Map, Spielerzahl und wer gerade fährt, die Bestenliste (Level, Liga, XP, Kilometer), die Kilometer dieser
+Woche und die Streckenrekorde; hell oder dunkel je nach Gerät, auch fürs Handy. Eigener Titel: `WEB_TITLE=…` in
+`/etc/beamnet.conf`. Der kleine Webserver läuft abgeschottet (eigener Benutzer, nur Lesezugriff auf die Seite).
+
+<p><img src="docs/statusseite.png" alt="Statusseite (Beispieldaten)" width="640"> <img src="docs/statusseite-handy.png" alt="Statusseite auf dem Handy" width="200"></p>
 
 ## Stand vom 27.07.2026 (letzte Sitzung auf dem Server)
 

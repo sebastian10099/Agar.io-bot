@@ -363,6 +363,48 @@ out=$("$TOOL" watch uninstall 2>&1)
 contains "$out" "Wächter entfernt" "watch uninstall"
 [[ ! -f $T/systemd/beamnet-watch.timer && -f $T/beamnet.conf ]] && pass || fail "watch uninstall: Timer weg, Einstellungen bleiben"
 
+# --- Statusseite --------------------------------------------------------------------------------------------------
+export BEAMNET_WEB_DIR="$T/web"
+rm -f "$T"/root/shared/beamnet/servers/*.json "$T"/root/shared/beamnet/players/*.json
+now=$(date +%s)
+week=$(date -u +%G-W%V)
+echo "{\"name\":\"BeamNet | Server 1\",\"port\":30814,\"map\":\"gridmap_v2\",\"players\":2,\"max\":8,\"names\":[\"Sebi\",\"<b>Hacker</b>\"],\"updated\":$now}" >"$T/root/shared/beamnet/servers/30814.json"
+echo "{\"name\":\"Alt\",\"port\":30899,\"map\":\"x\",\"players\":9,\"max\":8,\"updated\":$((now - 3600))}" >"$T/root/shared/beamnet/servers/30899.json"
+echo "{\"id\":\"1\",\"name\":\"Sebi\",\"km\":120.4,\"seconds\":7200,\"xp\":1500,\"week\":\"$week\",\"weekKm\":33.3}" >"$T/root/shared/beamnet/players/1.json"
+echo "{\"id\":\"2\",\"name\":\"<b>Hacker</b>\",\"km\":2,\"seconds\":60,\"bonusXp\":5}" >"$T/root/shared/beamnet/players/2.json"
+echo "kaputt" >"$T/root/shared/beamnet/players/3.json"
+mkdir -p "$T/root/shared/beamnet/races"
+echo '{"tracks":{"sprint":{"records":[{"id":"1","name":"Sebi","time":49.0667}]},"leer":{"records":[]}}}' >"$T/root/shared/beamnet/races/italy.json"
+out=$("$TOOL" web run 2>&1)
+contains "$out" "Statusseite erzeugt" "web run"
+page=$(cat "$T/web/index.html")
+contains "$page" "<title>BeamNet – Status</title>" "Statusseite: Titel"
+contains "$page" "<td><b>BeamNet \\| Server 1</b><div class=small>Sebi, &lt;b&gt;Hacker&lt;/b&gt;</div></td><td>Grid Map</td><td class=n>2/8</td>" "Statusseite: Server"
+lacks "$page" ">Alt<" "Statusseite: veraltete Server fehlen"
+contains "$page" "1 Server online · 2 Spieler" "Statusseite: Zusammenfassung"
+contains "$page" "<td class=n>1</td><td>Sebi</td><td class=n>8</td><td>Silber</td><td class=n>1500</td><td class=n>120 km</td>" "Statusseite: Bestenliste"
+contains "$page" "&lt;b&gt;Hacker&lt;/b&gt;" "Statusseite: Namen werden maskiert"
+lacks "$page" "<b>Hacker</b>" "Statusseite: kein HTML aus Spielernamen"
+contains "$page" "<td class=n>1</td><td>Sebi</td><td class=n>33.3 km</td>" "Statusseite: Woche"
+contains "$page" "<td>Italy</td><td>sprint</td><td>Sebi</td><td class=n>0:49.1</td>" "Statusseite: Rekorde"
+contains "$page" "<th class=n>XP</th>" "Statusseite: Zahlenspalten rechtsbuendig"
+contains "$page" "</html>" "Statusseite: vollstaendig"
+echo "WEB_TITLE=Sebis Netz" >>"$T/beamnet.conf"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" "<title>Sebis Netz – Status</title>" "Statusseite: eigener Titel"
+
+: >"$T/actions"
+out=$("$TOOL" web install 99 2>&1)
+contains "$out" "Port muss zwischen 1024 und 65535" "web install: Port geprueft"
+out=$("$TOOL" web install 8088 2>&1)
+contains "$out" "Statusseite läuft auf Port 8088" "web install"
+contains "$(cat "$T/systemd/beamnet-web.service")" "http.server 8088 --bind 0.0.0.0 --directory $T/web" "web install: Webserver"
+contains "$(cat "$T/systemd/beamnet-web.service")" "^DynamicUser=yes" "web install: abgeschottet"
+contains "$(cat "$T/systemd/beamnet-web-update.service")" "beamnet.sh web run$" "web install: Erneuern"
+contains "$(cat "$T/actions")" "enable --now" "web install: aktiviert"
+out=$("$TOOL" web uninstall 2>&1)
+[[ ! -f $T/systemd/beamnet-web.service ]] && pass || fail "web uninstall"
+
 # Nicht als root: Aenderungen verweigert.
 out=$(FAKE_UID=1000 "$TOOL" restart all 2>&1)
 contains "$out" "Bitte als root" "restart verlangt root"

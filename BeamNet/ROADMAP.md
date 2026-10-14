@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Werkzeug 1.3):
+- [x] Statusseite `beamnet web`: Server, wer fährt, Bestenliste, Wochenkilometer, Rekorde; jede Minute neu,
+      kleiner abgeschotteter Webserver, hell/dunkel, fürs Handy.
+
 Erledigt (Werkzeug 1.2):
 - [x] Wächter `beamnet watch`: Ausfälle und Rückkehr melden, Discord-Webhook, optionaler Neustart (Limit 3/Stunde,
       nicht bei Wartung oder OpenClaw-Stopp), Wochensieger montags nach Discord.
@@ -23,8 +27,6 @@ Erledigt (Version 1.0):
 
 Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamnet doctor` vorliegt):
 - [ ] Auf dem echten Server prüfen: `beamnet doctor`, `beamnet fix`, BeamNetCore installieren, alte Plugins vergleichen.
-- [ ] Statusseite: `beamnet web` erzeugt jede Minute eine HTML-Seite mit allen Servern, Spielern und der Bestenliste
-      (zum Teilen, z. B. in Discord).
 
 Ideen:
 - [ ] Wochenliga mit Auf- und Abstieg (Saisons).
