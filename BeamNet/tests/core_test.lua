@@ -1271,6 +1271,12 @@ do
     check(BN.vote == nil, "Abstimmung nach dem Abmelden beendet")
 end
 
+-- --- Kalenderwoche ohne %G/%V (Windows) -----------------------------------------------------------------------------
+eq(BN.weekKey(1609632000), "2020-W53", "KW: So 3.1.2021 gehoert zu 2020")
+eq(BN.weekKey(1609718400), "2021-W01", "KW: Mo 4.1.2021")
+eq(BN.weekKey(1735516800), "2025-W01", "KW: Mo 30.12.2024 gehoert zu 2025")
+eq(BN.weekKey(1792022400), "2026-W42", "KW: 15.10.2026")
+
 -- Herunterfahren speichert alle.
 tick(1)
 _G[events.onShutdown]()

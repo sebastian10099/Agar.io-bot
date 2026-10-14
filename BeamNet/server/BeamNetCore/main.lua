@@ -389,9 +389,14 @@ local function monthKey(t)
 end
 BN.monthKey = monthKey
 
+-- ISO-Kalenderwoche (UTC), z. B. "2026-W42". Selbst berechnet: %G/%V gibt es unter Windows nicht.
 local function weekKey(t)
-    return os.date("!%G-W%V", t)
+    t = t or BN.now()
+    local wday = (os.date("!*t", t).wday + 5) % 7 + 1          -- Montag = 1 … Sonntag = 7
+    local thursday = os.date("!*t", t + (4 - wday) * 86400)    -- der Donnerstag bestimmt Jahr und Woche
+    return string.format("%04d-W%02d", thursday.year, math.floor((thursday.yday - 1) / 7) + 1)
 end
+BN.weekKey = weekKey
 
 local function fmtKm(km)
     if km >= 100 then return string.format("%.0f km", km) end
