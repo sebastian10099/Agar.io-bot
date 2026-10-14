@@ -95,7 +95,7 @@ beamnet restart all
 |---|---|
 | `/hilfe` | Liste der Befehle |
 | `/stats [Name]` | Level, Liga, XP, Kilometer, Fahrzeit, Höchstgeschwindigkeit, Rang, XP bis zum nächsten Level |
-| `/top [km \| xp \| woche]` | Bestenliste (Top 5) – nach XP, Gesamtkilometern oder Kilometern dieser Woche |
+| `/top [km \| xp \| woche \| vorwoche]` | Bestenliste (Top 5) – nach XP, Gesamtkilometern, Kilometern dieser oder der letzten Woche |
 | `/liga` | Alle Ligen und wie weit es bis zur nächsten ist |
 | `/server` | Alle BeamNet-Server mit Map und Spielerzahl (wechseln geht im BeamMP-Launcher) |
 | `/km` | Eigene Kilometer |
@@ -125,9 +125,11 @@ Gäste bekommen ihre Zeit, kommen aber nicht in die Rekordliste. Strecken gelten
 
 - **Kilometer**: Position jedes Fahrzeugs einmal pro Sekunde. Sprünge (Teleport, Zurücksetzen, über 540 km/h) und
   Messrauschen im Stand zählen nicht.
-- **XP** = 10 je km + 1 je Minute online. **Level** L braucht 25 × (L−1)² XP (Level 10 = 2.025 XP, Level 30 = 21.025 XP).
+- **XP** = 10 je km + 1 je Minute online + Renn-Bonus (15 je gültigem Lauf, +10 für eine persönliche Bestzeit,
+  +50 für einen Streckenrekord). **Level** L braucht 25 × (L−1)² XP (Level 10 = 2.025 XP, Level 30 = 21.025 XP).
 - **Ligen**: Bronze (0), Silber (500), Gold (2.000), Platin (6.000), Diamant (15.000), Legende (40.000 XP).
-- Level-Aufstiege und Liga-Wechsel werden im Chat verkündet.
+- Level-Aufstiege und Liga-Wechsel werden im Chat verkündet, beim Wochenwechsel (Montag 0 Uhr UTC) die
+  **Wochensieger** (Top 3 nach Kilometern).
 - Gäste (ohne BeamMP-Konto) werden nur für die laufende Sitzung gezählt.
 
 ### Daten

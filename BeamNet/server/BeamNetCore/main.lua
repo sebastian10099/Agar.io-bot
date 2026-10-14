@@ -8,13 +8,13 @@
 -- Installation: beamnet install-core  (oder diese Datei nach Resources/Server/BeamNetCore/main.lua kopieren)
 -- Anpassen ohne Code-Aenderung: <gemeinsamer Ordner>/config.json, z. B. {"publicHost": "1.2.3.4", "xpPerKm": 12}
 --
--- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche]  /liga  /server  /km
+-- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche|vorwoche]  /liga  /server  /km
 --               /rennen [Name|stop]  /rekorde [Name]   – Admins: /rennen neu|ziel|loeschen <Name>
 
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.1"
+BN.VERSION = "1.2"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -46,6 +46,10 @@ local defaults = {
     raceRadiusM = 12,
     raceTickMs = 250,
     raceMaxMinutes = 30,
+    -- Bonus-XP fuer Rennen: gueltiger Lauf, persoenliche Bestzeit, Streckenrekord.
+    raceFinishXp = 15,
+    racePersonalBestXp = 10,
+    raceRecordXp = 50,
     -- Wer Strecken anlegen darf: BeamMP-Namen oder -IDs (Gaeste nie).
     admins = {},
 }
@@ -427,7 +431,7 @@ end
 
 local function emptyRecord(id, name)
     return { id = id, name = name, km = 0, seconds = 0, weekKm = 0, week = weekKey(BN.now()), topSpeedKmh = 0,
-             firstSeen = BN.now(), lastSeen = BN.now(), lastServer = "" }
+             bonusXp = 0, firstSeen = BN.now(), lastSeen = BN.now(), lastServer = "" }
 end
 
 local function loadRecord(id, name)
@@ -440,13 +444,18 @@ local function loadRecord(id, name)
     rec.seconds = tonumber(rec.seconds) or 0
     rec.weekKm = tonumber(rec.weekKm) or 0
     rec.topSpeedKmh = tonumber(rec.topSpeedKmh) or 0
+    rec.bonusXp = tonumber(rec.bonusXp) or 0
+    rec.lastWeekKm = tonumber(rec.lastWeekKm) or 0
     rec.week = rec.week or weekKey(BN.now())
     return rec
 end
 
+-- Neue Woche: die Kilometer der alten Woche bleiben als lastWeek/lastWeekKm erhalten (fuer die Wochensieger).
 local function applyWeek(rec)
     local wk = weekKey(BN.now())
     if rec.week ~= wk then
+        rec.lastWeek = rec.week
+        rec.lastWeekKm = tonumber(rec.weekKm) or 0
         rec.week = wk
         rec.weekKm = 0
     end
@@ -458,11 +467,12 @@ function BN.addPlayer(pid)
     local ids = identifiers(pid)
     local id = safeId(ids.beammp)
     local session = { pid = pid, name = name, id = id, guest = id == nil, vehicles = {},
-                      pendingKm = 0, pendingSeconds = 0, pendingTop = 0 }
+                      pendingKm = 0, pendingSeconds = 0, pendingTop = 0, pendingBonus = 0 }
     session.record = id and loadRecord(id, name) or emptyRecord(nil, name)
     applyWeek(session.record)
-    session.level = BN.levelFor(BN.xpFor(session.record.km, session.record.seconds))
-    session.league = BN.leagueFor(BN.xpFor(session.record.km, session.record.seconds)).name
+    local xp = BN.xpFor(session.record.km, session.record.seconds) + session.record.bonusXp
+    session.level = BN.levelFor(xp)
+    session.league = BN.leagueFor(xp).name
     BN.players[pid] = session
     return session
 end
@@ -475,7 +485,7 @@ end
 -- damit ein schneller Serverwechsel (alter Server speichert noch, neuer hat schon geladen) nichts verliert.
 function BN.savePlayer(s)
     if not s or s.guest then return true end
-    if s.pendingKm == 0 and s.pendingSeconds == 0 and s.pendingTop == 0 and not s.dirty then return true end
+    if s.pendingKm == 0 and s.pendingSeconds == 0 and s.pendingTop == 0 and s.pendingBonus == 0 and not s.dirty then return true end
     ensureDir(C.sharedDir)
     ensureDir(playersDir())
     local rec = loadRecord(s.id, s.name)
@@ -484,9 +494,10 @@ function BN.savePlayer(s)
     rec.weekKm = rec.weekKm + s.pendingKm
     rec.seconds = rec.seconds + s.pendingSeconds
     rec.topSpeedKmh = math.max(rec.topSpeedKmh or 0, s.pendingTop)
+    rec.bonusXp = rec.bonusXp + s.pendingBonus
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
-    rec.xp = BN.xpFor(rec.km, rec.seconds)
+    rec.xp = BN.xpFor(rec.km, rec.seconds) + rec.bonusXp
     rec.level = BN.levelFor(rec.xp)
     rec.league = BN.leagueFor(rec.xp).name
     local ok, err = writeFileAtomic(playersDir() .. "/" .. s.id .. ".json", json.encode(rec))
@@ -495,7 +506,7 @@ function BN.savePlayer(s)
         return false
     end
     s.record = rec
-    s.pendingKm, s.pendingSeconds, s.pendingTop, s.dirty = 0, 0, 0, false
+    s.pendingKm, s.pendingSeconds, s.pendingTop, s.pendingBonus, s.dirty = 0, 0, 0, 0, false
     return true
 end
 
@@ -504,8 +515,10 @@ function BN.totals(s)
     local rec = s.record
     local km = rec.km + s.pendingKm
     local seconds = rec.seconds + s.pendingSeconds
-    local xp = BN.xpFor(km, seconds)
-    return { km = km, seconds = seconds, weekKm = rec.weekKm + s.pendingKm, xp = xp, level = BN.levelFor(xp),
+    local bonus = (rec.bonusXp or 0) + s.pendingBonus
+    local xp = BN.xpFor(km, seconds) + bonus
+    local weekKm = (rec.week == weekKey(BN.now()) and rec.weekKm or 0) + s.pendingKm
+    return { km = km, seconds = seconds, weekKm = weekKm, xp = xp, bonusXp = bonus, level = BN.levelFor(xp),
              league = BN.leagueFor(xp), topSpeedKmh = math.max(rec.topSpeedKmh or 0, s.pendingTop) }
 end
 
@@ -579,6 +592,7 @@ function BN.refreshBoard(force)
         if type(rec) == "table" and rec.id then
             rec.km = tonumber(rec.km) or 0
             rec.seconds = tonumber(rec.seconds) or 0
+            rec.bonusXp = tonumber(rec.bonusXp) or 0
             if rec.week ~= weekKey(now) then rec.weekKm = 0 end
             rec.weekKm = tonumber(rec.weekKm) or 0
             byId[rec.id] = rec
@@ -588,12 +602,12 @@ function BN.refreshBoard(force)
     for _, s in pairs(BN.players) do
         if not s.guest then
             local t = BN.totals(s)
-            byId[s.id] = { id = s.id, name = s.name, km = t.km, seconds = t.seconds, weekKm = t.weekKm }
+            byId[s.id] = { id = s.id, name = s.name, km = t.km, seconds = t.seconds, weekKm = t.weekKm, bonusXp = t.bonusXp }
         end
     end
     local list = {}
     for _, rec in pairs(byId) do
-        rec.xp = BN.xpFor(rec.km, rec.seconds)
+        rec.xp = BN.xpFor(rec.km, rec.seconds) + (rec.bonusXp or 0)
         list[#list + 1] = rec
     end
     table.sort(list, function(a, b)
@@ -602,6 +616,42 @@ function BN.refreshBoard(force)
     end)
     BN.board = { at = now, list = list }
     return list
+end
+
+-- Kilometer einer bestimmten Woche (aktuelle oder vergangene), absteigend.
+function BN.weekRanking(week)
+    local byId = {}
+    for _, file in ipairs(listJsonFiles(playersDir())) do
+        local rec = json.decode(readFile(file) or "")
+        if type(rec) == "table" and rec.id then
+            local km
+            if rec.week == week then km = tonumber(rec.weekKm) elseif rec.lastWeek == week then km = tonumber(rec.lastWeekKm) end
+            if km and km > 0 then byId[rec.id] = { name = rec.name, km = km } end
+        end
+    end
+    for _, s in pairs(BN.players) do
+        if not s.guest then
+            local rec, km = s.record, nil
+            if rec.week == week then km = (tonumber(rec.weekKm) or 0) + s.pendingKm
+            elseif rec.lastWeek == week then km = tonumber(rec.lastWeekKm) end
+            if km and km > 0 then byId[s.id] = { name = s.name, km = km } end
+        end
+    end
+    local list = {}
+    for _, e in pairs(byId) do list[#list + 1] = e end
+    table.sort(list, function(a, b)
+        if a.km ~= b.km then return a.km > b.km end
+        return tostring(a.name) < tostring(b.name)
+    end)
+    return list
+end
+
+function BN.announceWeek(week)
+    local list = BN.weekRanking(week)
+    if #list == 0 then return end
+    local parts = {}
+    for i = 1, math.min(3, #list) do parts[#parts + 1] = string.format("%d. %s (%s)", i, list[i].name, fmtKm(list[i].km)) end
+    chat(-1, "Wochensieger " .. tostring(week):gsub("^%d+%-W", "KW ") .. ": " .. table.concat(parts, " · "))
 end
 
 function BN.rankOf(id)
@@ -729,7 +779,7 @@ local function finishRace(s, time)
             for _, rec in ipairs(track.records) do
                 if rec.id == s.id then mine = rec end
             end
-            local improved = false
+            local improved, bonus = false, C.raceFinishXp
             if not mine then
                 mine = { id = s.id, name = s.name, time = time, at = BN.now() }
                 track.records[#track.records + 1] = mine
@@ -744,13 +794,21 @@ local function finishRace(s, time)
                 saveTracks(data)
                 local rank
                 for i, rec in ipairs(track.records) do if rec.id == s.id then rank = i end end
+                bonus = bonus + C.racePersonalBestXp
                 if rank == 1 and (not previousBest or time < previousBest) then
+                    bonus = bonus + C.raceRecordXp
                     chat(-1, string.format("Neuer Streckenrekord auf %s: %s mit %s!", r.name, s.name, BN.fmtRaceTime(time)))
                 else
                     chat(s.pid, string.format("Persönliche Bestzeit! Platz %d von %d.", rank or 0, #track.records))
                 end
             end
+            s.pendingBonus = s.pendingBonus + bonus
+            chat(s.pid, string.format("+%d XP", bonus))
+            checkProgress(s)
         end
+    else
+        s.pendingBonus = s.pendingBonus + C.raceFinishXp
+        chat(s.pid, string.format("+%d XP (nur für diese Sitzung)", C.raceFinishXp))
     end
     r.state, r.vid, r.startT, r.leftFinish = "armed", nil, nil, false
     chat(s.pid, "Für einen neuen Versuch zurück zum Start – beenden mit /rennen stop.")
@@ -835,7 +893,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    chat(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche] · /liga · /server · /km · /rennen · /rekorde")
+    chat(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde")
 end
 commands.help = commands.hilfe
 
@@ -879,6 +937,9 @@ function commands.top(pid, arg)
     elseif mode == "woche" or mode == "week" then
         table.sort(list, function(a, b) return a.weekKm > b.weekKm end)
         label, value = "Kilometer diese Woche", function(r) return fmtKm(r.weekKm) end
+    elseif mode == "vorwoche" or mode == "lastweek" then
+        list = BN.weekRanking(weekKey(BN.now() - 7 * 86400))
+        label, value = "Kilometer letzte Woche", function(r) return fmtKm(r.km) end
     else
         label, value = "XP", function(r) return string.format("%d XP (Level %d)", r.xp, BN.levelFor(r.xp)) end
     end
@@ -1100,6 +1161,9 @@ function BN.tick()
         end
     end
     local now = BN.now()
+    local wk = weekKey(now)
+    if BN.currentWeek and BN.currentWeek ~= wk then BN.announceWeek(BN.currentWeek) end
+    BN.currentWeek = wk
     if now - BN.lastStatus >= C.statusEverySec then BN.writeStatus() end
     if now - BN.lastSave >= C.saveEverySec then
         for _, s in pairs(BN.players) do BN.savePlayer(s) end

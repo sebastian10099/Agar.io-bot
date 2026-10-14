@@ -309,11 +309,16 @@ players[1] = { name = "Sebi", ids = { beammp = "1001" }, vehicles = { [0] = { po
 _G[events.onPlayerJoin](1)
 clock = clock + 8 * 86400
 tick(1)
+check(chatContains("Wochensieger KW %d+: 1%. Sebi %(13%.%d km%) · 2%. Max Mustermann %(5%.0 km%)"), "Wochensieger verkuendet")
 for _ = 1, 10 do move(1, 0, 10); tick(1) end
 BN.savePlayer(BN.players[1])
 rec = readJson(file1)
 near(rec.weekKm, 0.1, 1e-6, "Wochenkilometer neu begonnen")
 near(rec.km, 13.35, 1e-6, "Gesamtkilometer bleiben")
+near(rec.lastWeekKm, 13.25, 1e-6, "Vorwoche bleibt erhalten")
+_G[events.onChatMessage](1, "Sebi", "/top vorwoche")
+check(chatContains("Bestenliste Kilometer letzte Woche:", 1), "/top vorwoche Kopf")
+check(chatContains("1%. Sebi – 13%.%d km", 1) and chatContains("2%. Max Mustermann – 5%.0 km", 1), "/top vorwoche Reihenfolge")
 
 -- --- Anpassungen ueber config.json ---------------------------------------------------------------------------------
 local cfg = io.open(SHARED .. "/config.json", "w")
@@ -386,6 +391,8 @@ local tim = drive(5, 20, 980, 20, 103)                -- bei 980: Spielzeit 151
 at(5, 995, tim + 0.5)                                 -- Ziel bei 151.2667 ueberquert -> 49.0667 s
 check(chatContains("Ziel! sprint: 0:49%.1", 5), "Zielzeit interpoliert")
 check(chatContains("Neuer Streckenrekord auf sprint: Kaputt mit 0:49%.1!"), "Rekord verkuendet")
+check(chatContains("%+75 XP", 5), "Bonus fuer Lauf, Bestzeit und Rekord")
+eq(BN.totals(BN.players[5]).bonusXp, 75, "Bonus-XP in den Summen")
 eq(BN.players[5].race.state, "armed", "Nach dem Ziel wieder bereit")
 local records = readJson(SHARED .. "/races/gridmap_v2.json").tracks.sprint.records
 check(records and #records == 1 and math.abs(records[1].time - 49.0667) < 0.01, "Rekord gespeichert")
@@ -409,6 +416,7 @@ tim = drive(5, 995, 0, -50, 300)
 at(5, 20, tim + 1)
 tim = drive(5, 20, 990, 10, tim + 1)
 check(chatContains("Ziel! sprint: 1:", 5), "Langsamer Lauf gemessen")
+eq(BN.totals(BN.players[5]).bonusXp, 90, "Langsamer Lauf: nur Bonus fuer den Lauf")
 records = readJson(SHARED .. "/races/gridmap_v2.json").tracks.sprint.records
 eq(#records, 2, "Langsamer Lauf ersetzt die Bestzeit nicht")
 check(math.abs(records[2].time - 49.0667) < 0.01, "Bestzeit bleibt")
@@ -431,6 +439,7 @@ at(4, 0, 10); at(4, 20, 11)
 tim = drive(4, 20, 990, 50, 11)
 at(4, 1000, tim + 0.2)
 check(chatContains("Ziel! sprint:", 4), "Gast faehrt auf Zeit")
+check(chatContains("%+15 XP %(nur für diese Sitzung%)", 4), "Gast-Bonus nur fuer die Sitzung")
 eq(#readJson(SHARED .. "/races/gridmap_v2.json").tracks.sprint.records, 2, "Gast nicht in der Rekordliste")
 
 -- Rundkurs: Start = Ziel.
@@ -456,7 +465,9 @@ check(chatContains("gibt es auf dieser Map nicht", 5), "Unbekannte Strecke")
 -- Herunterfahren speichert alle.
 tick(1)
 _G[events.onShutdown]()
-check(readJson(SHARED .. "/players/3003.json") ~= nil, "Herunterfahren speichert")
+local saved = readJson(SHARED .. "/players/3003.json")
+check(saved ~= nil, "Herunterfahren speichert")
+check(saved and saved.bonusXp >= 90 and saved.xp >= 90, "Bonus-XP gespeichert und in XP enthalten")
 
 print(string.format("%s: %d Prüfungen bestanden, %d fehlgeschlagen", _VERSION, passed, failed))
 return failed
