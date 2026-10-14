@@ -104,7 +104,8 @@ local json = {}
 local escapes = { ['"'] = '\\"', ["\\"] = "\\\\", ["\b"] = "\\b", ["\f"] = "\\f", ["\n"] = "\\n", ["\r"] = "\\r", ["\t"] = "\\t" }
 
 local function encodeString(s)
-    return '"' .. s:gsub('[%c"\\]', function(c)
+    -- Feste Byte-Klasse statt %c: %c haengt von der Spracheinstellung ab (macOS zaehlt dort Bytes von Emojis mit).
+    return '"' .. s:gsub('[%z\1-\31\127"\\]', function(c)
         return escapes[c] or string.format("\\u%04x", c:byte())
     end) .. '"'
 end

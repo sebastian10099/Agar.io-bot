@@ -12,6 +12,7 @@ import argparse
 import contextlib
 import io
 import json
+import locale
 import os
 import re
 import runpy
@@ -270,6 +271,9 @@ def run_test(repo, cmd):
         code = 0
         try:
             os.chdir(repo)
+            # Wie auf dem BeamMP-Server: C-Zeichenklassen (sonst verhaelt sich Lua je nach Sprache anders).
+            with contextlib.suppress(locale.Error):
+                locale.setlocale(locale.LC_CTYPE, "C")
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
                 try:
                     runpy.run_path(os.path.join(repo, m.group(1)), run_name="__main__")
