@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.0"
+VERSION="1.1"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -231,6 +231,7 @@ cmd_doctor() {
             bad "$name: kein AuthKey – der Server erscheint nicht in der Serverliste"
             hint "AuthKey von https://keymaster.beammp.com in $ROOT/$nr/ServerConfig.toml eintragen"
         fi
+        check_core "$nr" "$port" "$name"
         if [[ " $seen_ports " == *" $port "* ]]; then bad "$name: Port $port ist doppelt vergeben"; fi
         seen_ports+=" $port"
         seen_maps+=" $map"
@@ -252,6 +253,27 @@ cmd_doctor() {
     check_system
 
     summary
+}
+
+# Laeuft BeamNetCore auf diesem Server? (nur wenn installiert und der Server laeuft)
+check_core() {
+    local nr=$1 port=$2 name=$3 updated now err
+    [[ -f $ROOT/$nr/Resources/Server/BeamNetCore/main.lua ]] || return 0
+    unit_active "$nr" || return 0
+    updated=$(grep -o '"updated"[[:space:]]*:[[:space:]]*[0-9]*' "$SHARED/servers/$port.json" 2>/dev/null | grep -o '[0-9]*$')
+    now=$(date +%s)
+    if [[ -n $updated && $((now - updated)) -le 90 ]]; then
+        ok "$name: BeamNetCore aktiv"
+    elif [[ -n $updated ]]; then
+        warn "$name: BeamNetCore meldet sich seit $(( (now - updated) / 60 )) min nicht mehr"
+        hint "beamnet logs $nr   (steht dort ein Fehler von BeamNetCore?)"
+    else
+        warn "$name: BeamNetCore ist installiert, hat sich aber noch nie gemeldet"
+        hint "Erst nach einem Neustart aktiv: beamnet restart $nr"
+    fi
+    err=$(tail -n 400 "$ROOT/$nr/Server.log" 2>/dev/null | grep -F "[BeamNetCore] Fehler" | tail -n 1)
+    [[ -n $err ]] && warn "$name: Fehlermeldung von BeamNetCore: ${err:0:160}"
+    return 0
 }
 
 check_agent() {
@@ -611,6 +633,36 @@ cmd_openclaw() {
     esac
 }
 
+# Entfernt IP-Adressen und AuthKeys, damit der Bericht gefahrlos geteilt werden kann.
+sanitize() {
+    sed -E -e 's/\b([0-9]{1,3}\.){3}[0-9]{1,3}\b/x.x.x.x/g' -e 's/(AuthKey[[:space:]]*=[[:space:]]*).*/\1***/I'
+}
+
+# Ein Bericht zum Hineinkopieren in den Chat: Status, Diagnose, Plugins, auffaellige Protokollzeilen.
+cmd_report() {
+    GREEN=""; YELLOW=""; RED=""; BOLD=""; RESET=""
+    local nr log lines
+    {
+        printf '=== BeamNet-Bericht %s · Werkzeug %s ===\n\n' "$(date '+%d.%m.%Y %H:%M')" "$VERSION"
+        echo "=== Status ==="
+        cmd_status
+        cmd_doctor
+        printf '\n=== Plugins ===\n'
+        cmd_plugins
+        printf '\n=== Auffällige Protokollzeilen (je Server höchstens 5) ===\n'
+        for nr in $(servers); do
+            log="$ROOT/$nr/Server.log"
+            [[ -f $log ]] || continue
+            lines=$(tail -n 400 "$log" | grep -iE "error|fehler|exception|failed|crash" | tail -n 5)
+            [[ -n $lines ]] && { echo "Server $nr:"; sed 's/^/  /' <<<"$lines"; }
+        done
+        printf '\n=== System ===\n'
+        uname -sr 2>/dev/null
+        uptime 2>/dev/null
+    } 2>&1 | sanitize
+    printf '\n(IP-Adressen und AuthKeys sind unkenntlich gemacht.)\n'
+}
+
 cmd_self_update() {
     need_root self-update
     local target tmp
@@ -628,6 +680,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
 
   beamnet status                 Übersicht: läuft?, Autostart, Prozess, Port, Spieler, Map
   beamnet doctor                 Diagnose mit Erklärung und Lösung je Problem
+  beamnet report                 Bericht zum Teilen (Status, Diagnose, Plugins, Fehlerzeilen; ohne IPs und AuthKeys)
   beamnet fix                    Repariert: wilde root-Prozesse, Dateirechte, Autostart, Start
   beamnet start|stop|restart [nr …|all]
   beamnet maps                   Maps aller Server und verfügbare Vanilla-Maps
@@ -657,6 +710,7 @@ main() {
     case $cmd in
         status|st) cmd_status ;;
         doctor|diagnose) cmd_doctor ;;
+        report|bericht) cmd_report ;;
         fix|reparieren) cmd_fix ;;
         start) cmd_start "$@" ;;
         stop) cmd_stop "$@" ;;

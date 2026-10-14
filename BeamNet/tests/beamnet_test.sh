@@ -238,6 +238,28 @@ out=$("$TOOL" status)
 contains "$out" "^1 +läuft .* 30814 +3/8 " "Status zeigt Spieler"
 contains "$out" "^2 +läuft .* 30815 +\\? " "Status ignoriert veraltete Spielerzahl"
 
+# Plugin-Check im doctor: Server 1 meldet sich frisch, Server 3 nie, Server 2 veraltet.
+echo "[LUA] [BeamNetCore] Fehler im Takt: attempt to index a nil value" >>"$T/root/2/Server.log"
+out=$("$TOOL" doctor)
+contains "$out" "Server 1 .*BeamNetCore aktiv" "doctor: Plugin aktiv"
+contains "$out" "Server 2 .*BeamNetCore meldet sich seit 10 min nicht mehr" "doctor: Plugin veraltet"
+contains "$out" "Server 3 .*BeamNetCore ist installiert, hat sich aber noch nie gemeldet" "doctor: Plugin nie gemeldet"
+contains "$out" "Server 2 .*Fehlermeldung von BeamNetCore: .*attempt to index" "doctor: Plugin-Fehler im Protokoll"
+
+# Bericht zum Teilen: ohne IP-Adressen und AuthKeys, ohne Farbcodes.
+echo "[INFO] Client 192.168.178.20 connected" >>"$T/root/1/Server.log"
+echo "[ERROR] Connection from 85.12.1.200 failed: timeout" >>"$T/root/1/Server.log"
+echo 'AuthKey = "geheim-1" # error' >>"$T/root/1/Server.log"
+out=$("$TOOL" report 2>&1)
+contains "$out" "=== BeamNet-Bericht" "report: Kopf"
+contains "$out" "=== Status ===" "report: Status"
+contains "$out" "BeamNet-Diagnose" "report: Diagnose"
+contains "$out" "=== Plugins ===" "report: Plugins"
+contains "$out" "Connection from x.x.x.x failed" "report: Fehlerzeile mit maskierter IP"
+lacks "$out" "85\\.12\\.1\\.200|192\\.168" "report: keine IP-Adressen"
+lacks "$out" "geheim-" "report: keine AuthKeys"
+lacks "$out" $'\e\\[' "report: keine Farbcodes"
+
 # OpenClaw
 out=$("$TOOL" openclaw status 2>&1)
 contains "$out" "Letzte Befehle von openclaw" "openclaw status"

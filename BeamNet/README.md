@@ -22,7 +22,8 @@ beamnet backup
 beamnet fix
 ```
 
-Die Ausgabe von `beamnet doctor` kannst du mir direkt in den Chat kopieren – sie enthält keine Passwörter oder AuthKeys.
+**Zum Teilen:** `beamnet report` erstellt einen Bericht mit Status, Diagnose, Plugins und auffälligen Protokollzeilen –
+IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den Chat kopieren.
 
 ## Befehle
 
@@ -30,6 +31,7 @@ Die Ausgabe von `beamnet doctor` kannst du mir direkt in den Chat kopieren – s
 |---|---|
 | `beamnet status` | Übersicht: läuft?, Autostart, wer den Prozess gestartet hat, Port, Spieler, Map, Name |
 | `beamnet doctor` | Diagnose mit Erklärung und Lösung je Problem (siehe unten) |
+| `beamnet report` | Bericht zum Teilen: Status + Diagnose + Plugins + Fehlerzeilen der Protokolle, ohne IPs und AuthKeys |
 | `beamnet fix` | Beendet „wilde“ Server-Prozesse (per `nohup` als root gestartet), setzt Dateirechte zurück, schaltet Autostart ein, startet alles sauber über systemd und prüft danach, ob die Server **an bleiben** |
 | `beamnet start / stop / restart [nr … \| all]` | Server steuern; `stop` und `restart` fragen vorher |
 | `beamnet maps` | Maps aller Server und die verfügbaren Vanilla-Maps |
@@ -48,7 +50,8 @@ Mit `-y` laufen Befehle ohne Rückfrage.
 ### Was `beamnet doctor` prüft
 
 - Jeder Server: systemd-Dienst vorhanden, läuft, Autostart an, kein Prozess außerhalb von systemd, Dateien gehören dem
-  Dienst-Benutzer `beammp`, AuthKey eingetragen, Port nicht doppelt, Port wirklich offen.
+  Dienst-Benutzer `beammp`, AuthKey eingetragen, Port nicht doppelt, Port wirklich offen, BeamNetCore meldet sich
+  (und keine Fehlermeldungen von BeamNetCore im Protokoll).
 - Mehrere Server mit derselben Map.
 - **OpenClaw**: läuft der Agent? Hat er in den letzten 24 h Server gestoppt oder beendet? Hat er sudo-Rechte?
 - cron-Aufgaben, die BeamMP betreffen (z. B. `auto_install.py` alle 2 Minuten als root).

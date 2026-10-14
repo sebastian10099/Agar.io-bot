@@ -1,6 +1,8 @@
 # BeamNet – Roadmap
 
 Erledigt (Version 1.1):
+- [x] `beamnet report`: Bericht zum Teilen (IP-Adressen und AuthKeys unkenntlich), `doctor` prüft, ob BeamNetCore
+      auf jedem Server läuft und ob es Fehler meldet.
 - [x] Zeitrennen: Strecken im Spiel anlegen (`/rennen neu`, `/rennen ziel`), Zeitmessung mit Spieluhr und
       Interpolation, Rundkurse, Rekordliste je Strecke, ungültig bei Reset/Teleport.
 
