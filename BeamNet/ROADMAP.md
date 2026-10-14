@@ -1,5 +1,14 @@
 # BeamNet – Roadmap
 
+Erledigt (Werkzeug 1.17) – Sicherheitsprüfung der neuen Funktionen:
+- [x] root folgt nie mehr Symlinks in Ordnern, die `beammp` gehören (vorher konnte ein manipuliertes Plugin über
+      vorbereitete Symlinks root dazu bringen, fremde Dateien zu überschreiben): Lebenszeichen, Map-Umstellung,
+      `install-core`, `admin`, `unban` und Ordnerrechte schreiben über einen Helfer mit exklusiven Zwischendateien;
+      Sicherungen von Konfiguration und Plugin liegen nur noch in `/root/beamnet-backups` (je Server die letzten 20).
+- [x] Discord: keine @-Erwähnungen, keine Steuerzeichen, kein ungeprüfter Text aus Abstimmungen.
+- [x] Nicht umgesetzte Abstimmungen werden gemeldet; Rotation: doppelte Maps und „all“ abgelehnt.
+- [x] Angriffstests mit Symlinks auf eine „Opferdatei“ (schlagen beim alten Werkzeug an).
+
 Erledigt (Plugin 1.11, Werkzeug 1.15):
 - [x] Kilometer je Map: das Plugin zählt sie pro Fahrer mit; Statusseite „Beliebteste Maps“, Profil mit Lieblingsmap
       und km je Map. Neue Datensätze laufen jetzt immer durch dieselbe Ergänzung wie geladene (kein Fehlen neuer Felder).

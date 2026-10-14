@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.16"
+VERSION="1.17"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -104,6 +104,93 @@ map_short() {
     m=${m#/levels/}
     printf '%s' "${m%%/*}"
 }
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Sicheres Schreiben als root in Ordner, die dem Dienst-Benutzer gehoeren (gemeinsamer Ordner, Server-Ordner):
+# nie einem Symlink folgen (sonst koennte beammp root dazu bringen, z. B. /etc/passwd zu ueberschreiben).
+#   safe put <Datei> <Modus> [<Besitzer>]   – stdin atomar schreiben (exklusive Zwischendatei, dann rename)
+#   safe get <Datei>                        – Inhalt ausgeben, nur wenn regulaere Datei und kein Symlink
+#   safe mapline <Datei> <Map> <Sicherungsordner> – Map-Zeile ersetzen, Sicherung im root-Ordner (letzte 20)
+#   safe chmoddir <Modus> <Ordner …>         – Rechte setzen, ohne Symlinks zu folgen
+read -r -d '' SAFE_PY <<'PY'
+import os, pwd, re, stat, sys, time
+
+def opendir(path):
+    return os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+
+def put(dest, data, mode, uid=-1, gid=-1):
+    d, base = os.path.split(os.path.abspath(dest))
+    dfd = opendir(d)
+    try:
+        name = ".beamnet-%s.tmp" % os.urandom(8).hex()
+        fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=dfd)
+        try:
+            with os.fdopen(fd, "wb", closefd=False) as f:
+                f.write(data)
+                f.flush()
+                if uid >= 0:
+                    os.fchown(fd, uid, gid)
+                os.fchmod(fd, mode)
+                os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(name, base, src_dir_fd=dfd, dst_dir_fd=dfd)
+    finally:
+        os.close(dfd)
+
+def get(path):
+    d, base = os.path.split(os.path.abspath(path))
+    dfd = opendir(d)
+    try:
+        fd = os.open(base, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd)
+    finally:
+        os.close(dfd)
+    with os.fdopen(fd, "rb") as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode):
+            raise OSError("keine regulaere Datei: " + path)
+        return f.read(), st
+
+cmd = sys.argv[1]
+try:
+    if cmd == "put":
+        uid = gid = -1
+        if len(sys.argv) > 4 and sys.argv[4]:
+            pw = pwd.getpwnam(sys.argv[4])
+            uid, gid = pw.pw_uid, pw.pw_gid
+        put(sys.argv[2], sys.stdin.buffer.read(), int(sys.argv[3], 8), uid, gid)
+    elif cmd == "get":
+        sys.stdout.buffer.write(get(sys.argv[2])[0])
+    elif cmd == "mapline":
+        path, mp, bdir = sys.argv[2], sys.argv[3], sys.argv[4]
+        data, st = get(path)
+        text = data.decode("utf-8", "surrogateescape")
+        pattern = re.compile(r"^([ \t]*)Map[ \t]*=.*$", re.M)
+        if not pattern.search(text):
+            sys.exit(3)
+        os.makedirs(bdir, mode=0o700, exist_ok=True)
+        os.chmod(bdir, 0o700)
+        prefix = os.path.basename(path) + "."
+        with open(os.path.join(bdir, prefix + time.strftime("%Y%m%d-%H%M%S")), "wb") as f:
+            f.write(data)
+        olds = sorted(n for n in os.listdir(bdir) if n.startswith(prefix))
+        for n in olds[:-20]:
+            os.remove(os.path.join(bdir, n))
+        new = pattern.sub(lambda m: m.group(1) + 'Map = "/levels/%s/info.json"' % mp, text)
+        put(path, new.encode("utf-8", "surrogateescape"), stat.S_IMODE(st.st_mode), st.st_uid, st.st_gid)
+    elif cmd == "chmoddir":
+        mode = int(sys.argv[2], 8)
+        for path in sys.argv[3:]:
+            fd = opendir(path)
+            try:
+                os.fchmod(fd, mode)
+            finally:
+                os.close(fd)
+except OSError as e:
+    print("beamnet: " + str(e), file=sys.stderr)
+    sys.exit(2)
+PY
+safe() { python3 -I -c "$SAFE_PY" "$@"; }
 
 unit() { printf '%s%s.service' "$UNIT_PREFIX" "$1"; }
 
@@ -524,12 +611,11 @@ cmd_maps() {
     printf 'Ändern: beamnet set-map <nr> <map>\n'
 }
 
-# write_map <nr> <map>: Map-Zeile in ServerConfig.toml ersetzen (alte Datei als .bak daneben).
+# write_map <nr> <map>: Map-Zeile in ServerConfig.toml ersetzen; die alte Datei kommt nach $BACKUP_DIR/config/<nr>
+# (nur root, die letzten 20). Folgt keinen Symlinks – der Server-Ordner gehoert dem Dienst-Benutzer.
 write_map() {
-    local file="$ROOT/$1/ServerConfig.toml"
-    grep -qE '^[[:space:]]*Map[[:space:]]*=' "$file" || return 1
-    cp -p "$file" "$file.bak-$(date +%Y%m%d-%H%M%S)"
-    sed -i -E "s|^([[:space:]]*)Map[[:space:]]*=.*|\\1Map = \"/levels/$2/info.json\"|" "$file"
+    mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
+    safe mapline "$ROOT/$1/ServerConfig.toml" "$2" "$BACKUP_DIR/config/$1"
 }
 
 cmd_set_map() {
@@ -545,7 +631,7 @@ cmd_set_map() {
     fi
     file="$ROOT/$nr/ServerConfig.toml"
     write_map "$nr" "$map" || die "In $file steht keine Map-Zeile."
-    ok "Server $nr: Map = $map (Sicherung der alten Konfiguration daneben)"
+    ok "Server $nr: Map = $map (alte Konfiguration gesichert in $BACKUP_DIR/config/$nr)"
     echo "BeamMP liest die Map nur beim Start."
     if confirm "Server $nr jetzt neu starten?"; then
         clear_maintenance "$nr"
@@ -643,9 +729,13 @@ cmd_players() {
 
 # Gemeinsamer Datenordner mit Rechten fuer den Dienst-Benutzer (sonst kann das Plugin nichts speichern).
 ensure_shared() {
-    mkdir -p "$SHARED/players" "$SHARED/servers" "$SHARED/races" "$SHARED/votes"
-    chown -R "$SERVICE_USER:$SERVICE_USER" "$SHARED"
-    chmod 775 "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races" "$SHARED/votes"
+    local d
+    for d in "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races" "$SHARED/votes"; do
+        [[ -L $d ]] && rm -f "$d"       # Symlinks hier nie folgen
+        mkdir -p "$d"
+    done
+    chown -hR "$SERVICE_USER:$SERVICE_USER" "$SHARED"
+    safe chmoddir 775 "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races" "$SHARED/votes"
 }
 
 # Holt das Plugin aus dem Ordner neben diesem Skript oder von GitHub
@@ -669,13 +759,24 @@ cmd_install_core() {
     list=$(servers)
     confirm "BeamNetCore auf allen Servern ($(tr '\n' ' ' <<<"$list"))installieren?" || { echo "Abgebrochen."; return 1; }
     ensure_shared
+    mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
     for nr in $list; do
         dest="$ROOT/$nr/Resources/Server/BeamNetCore"
+        if [[ -L $ROOT/$nr/Resources || -L $ROOT/$nr/Resources/Server || -L $dest ]]; then
+            bad "Server $nr: Plugin-Ordner ist ein Symlink – übersprungen (bitte prüfen)"
+            continue
+        fi
         mkdir -p "$dest"
-        [[ -f $dest/main.lua ]] && cp -p "$dest/main.lua" "$dest/main.lua.bak-$(date +%Y%m%d-%H%M%S)"
-        cp "$src" "$dest/main.lua"
-        chown -R "$SERVICE_USER:$SERVICE_USER" "$ROOT/$nr/Resources/Server/BeamNetCore"
-        ok "Server $nr: BeamNetCore installiert"
+        if [[ -f $dest/main.lua ]]; then
+            mkdir -p "$BACKUP_DIR/plugins/$nr"
+            safe get "$dest/main.lua" >"$BACKUP_DIR/plugins/$nr/main.lua.$(date +%Y%m%d-%H%M%S)" 2>/dev/null
+        fi
+        if safe put "$dest/main.lua" 644 "$SERVICE_USER" <"$src"; then
+            chown -h "$SERVICE_USER:$SERVICE_USER" "$dest"
+            ok "Server $nr: BeamNetCore installiert"
+        else
+            bad "Server $nr: BeamNetCore konnte nicht geschrieben werden"
+        fi
     done
     echo "Gemeinsame Daten: $SHARED"
     echo "BeamMP lädt das Plugin innerhalb weniger Sekunden selbst neu – ein Neustart ist nicht nötig."
@@ -762,7 +863,7 @@ json_escape() {
     text=${text//$'\n'/\\n}
     text=${text//$'\r'/}
     text=${text//$'\t'/ }
-    printf '%s' "$text"
+    printf '%s' "$text" | tr -d '\000-\010\013-\037\177'
 }
 
 # Nachricht an Discord (nur wenn ein Webhook eingetragen ist).
@@ -774,7 +875,8 @@ notify() {
         echo "DISCORD_WEBHOOK in $CONF sieht nicht wie ein Discord-Webhook aus – nichts gesendet." >&2
         return 1
     fi
-    curl -fsS -m 10 -H "Content-Type: application/json" -d "{\"content\":\"$(json_escape "$1")\"}" "$hook" >/dev/null \
+    curl -fsS -m 10 -H "Content-Type: application/json" \
+        -d "{\"content\":\"$(json_escape "$1")\",\"allowed_mentions\":{\"parse\":[]}}" "$hook" >/dev/null \
         || { echo "Discord-Meldung fehlgeschlagen" >&2; return 1; }
 }
 
@@ -812,12 +914,10 @@ vote_maps() {
 # Lebenszeichen fuer das Plugin: Waechter laeuft, Abstimmungen an/aus, erlaubte Maps.
 watch_heartbeat() {
     [[ -d $SHARED ]] || return 0
-    local enabled=true maps="" m tmp
+    local enabled=true maps="" m
     [[ $(conf_get MAP_VOTE) == 0 ]] && enabled=false
     for m in $(vote_maps); do maps+="${maps:+,}\"$m\""; done
-    tmp="$SHARED/.watch.json.tmp"
-    printf '{"at":%s,"mapVote":%s,"maps":[%s]}\n' "$(date +%s)" "$enabled" "$maps" >"$tmp" && chmod 644 "$tmp" \
-        && mv -f "$tmp" "$SHARED/watch.json"
+    printf '{"at":%s,"mapVote":%s,"maps":[%s]}\n' "$(date +%s)" "$enabled" "$maps" | safe put "$SHARED/watch.json" 644
 }
 
 # Auftraege aus Map-Abstimmungen (votes/<Port>.json vom Plugin) ausfuehren: Map pruefen, umstellen, neu starten.
@@ -825,9 +925,10 @@ watch_votes() {
     local -n vout=$1
     local file data port map at now nr n old
     now=$(date +%s)
+    [[ -d $SHARED/votes && ! -L $SHARED/votes ]] || return 0
     for file in "$SHARED"/votes/*.json; do
         [[ -f $file ]] || continue
-        data=$(head -c 4096 "$file")
+        data=$(safe get "$file" 2>/dev/null | head -c 4096)
         rm -f "$file"     # jeder Auftrag nur einmal, auch wenn er nicht ausgefuehrt wird
         port=$(grep -o '"port":[0-9]*' <<<"$data" | head -n1 | cut -d: -f2)
         map=$(grep -o '"map":"[^"]*"' <<<"$data" | head -n1 | cut -d'"' -f4)
@@ -836,21 +937,24 @@ watch_votes() {
         [[ $(conf_get MAP_VOTE) == 0 ]] && continue
         (( now - at <= 600 )) || continue                     # zu alt (Waechter lief nicht)
         if [[ ! $map =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ || " $(vote_maps) " != *" $map "* ]]; then
-            vout+=("⚠️ Map-Abstimmung auf Port $port: $map ist nicht erlaubt – ignoriert.")
+            vout+=("⚠️ Map-Abstimmung auf Port $port: Map nicht erlaubt – ignoriert.")
             continue
         fi
         nr=""
         for n in $(servers); do [[ $(cfg "$n" Port) == "$port" ]] && nr=$n; done
         [[ -n $nr ]] || continue
-        [[ -f $STATE_DIR/maintenance-$nr ]] && continue
-        unit_active "$nr" || continue
+        if [[ -f $STATE_DIR/maintenance-$nr ]] || ! unit_active "$nr"; then
+            vout+=("ℹ️ Map-Abstimmung auf Server $nr nicht umgesetzt: Server ist gestoppt oder in Wartung.")
+            continue
+        fi
         # Hoechstens ein Wechsel je Server in 5 Minuten.
         if [[ -f $STATE_DIR/mapvote-$nr ]] && (( now - $(cat "$STATE_DIR/mapvote-$nr" 2>/dev/null || echo 0) < 300 )); then
+            vout+=("ℹ️ Map-Abstimmung auf Server $nr nicht umgesetzt: erst vor Kurzem gewechselt.")
             continue
         fi
         old=$(map_short "$(cfg "$nr" Map)")
         [[ $old == "$map" ]] && continue
-        write_map "$nr" "$map" || { vout+=("⚠️ Server $nr: keine Map-Zeile in der Konfiguration – Abstimmung nicht umgesetzt."); continue; }
+        write_map "$nr" "$map" || { vout+=("⚠️ Server $nr: Konfiguration nicht änderbar – Abstimmung nicht umgesetzt."); continue; }
         echo "$now" >"$STATE_DIR/mapvote-$nr"
         if systemctl restart "$(unit "$nr")"; then
             vout+=("🗺️ Server $nr: Map per Abstimmung von $old auf $map gewechselt.")
@@ -885,7 +989,7 @@ watch_rotation() {
         cur=$(map_short "$(cfg "$nr" Map)")
         next=${maps[0]}
         for i in "${!maps[@]}"; do
-            [[ ${maps[$i]} == "$cur" ]] && next=${maps[$(( (i + 1) % ${#maps[@]} ))]}
+            if [[ ${maps[$i]} == "$cur" ]]; then next=${maps[$(( (i + 1) % ${#maps[@]} ))]}; break; fi
         done
         echo "$today" >"$STATE_DIR/rotate-$nr"
         [[ $next == "$cur" ]] && continue
@@ -912,6 +1016,7 @@ cmd_rotation() {
     fi
     need_root rotation
     nr=$1; shift
+    [[ $nr =~ ^[0-9]+$ ]] || die "Aufruf: beamnet rotation <nr> <map> <map> …   (eine Server-Nummer, nicht \"all\")"
     targets "$nr" >/dev/null
     if [[ ${1:-} == aus || ${1:-} == off ]]; then
         conf_set "ROTATE_$nr" ""
@@ -919,6 +1024,7 @@ cmd_rotation() {
         return 0
     fi
     [[ $# -ge 2 ]] || die "Aufruf: beamnet rotation <nr> <map> <map> …   (mindestens zwei Maps) oder: beamnet rotation <nr> aus"
+    [[ $(printf '%s\n' "$@" | sort | uniq -d) == "" ]] || die "Jede Map nur einmal angeben."
     for m in "$@"; do
         [[ $m =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]] || die "Ungültiger Map-Name: $m"
         [[ " $(vote_maps) " == *" $m "* ]] || die "$m ist weder Vanilla-Map noch in VOTE_MAPS eingetragen."
@@ -1133,9 +1239,11 @@ cmd_admin() {
     esac
     [[ $action == list || $# -gt 0 ]] || die "Aufruf: beamnet admin $action <BeamMP-Name oder -ID …>"
     [[ $action == list ]] || { need_root admin; ensure_shared; }
-    python3 -I - "$SHARED/config.json" "$action" "$@" <<'PY' || exit 1
+    local out
+    out=$(mktemp)
+    python3 -I - "$SHARED/config.json" "$out" "$action" "$@" <<'PY' || { rm -f "$out"; exit 1; }
 import json, os, re, sys
-path, action, names = sys.argv[1], sys.argv[2], sys.argv[3:]
+path, out, action, names = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
 try:
     with open(path, encoding="utf-8") as f:
         cfg = json.load(f)
@@ -1160,14 +1268,14 @@ for name in names:
     if action == "remove":
         admins = [a for a in admins if a.lower() != name.lower()]
 cfg["admins"] = admins
-tmp = path + ".tmp"
-with open(tmp, "w", encoding="utf-8") as f:
+with open(out, "w", encoding="utf-8") as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
-os.replace(tmp, path)
 print("Admins: " + (", ".join(admins) if admins else "keine"))
 print("Wirksam innerhalb einer Minute auf allen Servern.")
 PY
-    chown "$SERVICE_USER:$SERVICE_USER" "$SHARED/config.json" 2>/dev/null
+    # Ablegen ohne Symlinks zu folgen (der Ordner gehoert dem Dienst-Benutzer).
+    if [[ -s $out ]]; then safe put "$SHARED/config.json" 664 "$SERVICE_USER" <"$out" || { rm -f "$out"; die "config.json konnte nicht geschrieben werden."; }; fi
+    rm -f "$out"
     return 0
 }
 
@@ -1315,9 +1423,11 @@ cmd_unban() {
     need_root unban
     [[ $# -ge 1 ]] || die "Aufruf: beamnet unban <Name oder BeamMP-ID>"
     command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
-    python3 -I - "$SHARED/bans.json" "$*" <<'PY' || exit 1
+    local out
+    out=$(mktemp)
+    python3 -I - "$SHARED/bans.json" "$*" "$out" <<'PY' || { rm -f "$out"; exit 1; }
 import json, os, sys
-path, query = sys.argv[1], sys.argv[2].lower()
+path, query, out = sys.argv[1], sys.argv[2].lower(), sys.argv[3]
 try:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
@@ -1335,13 +1445,12 @@ if len(kept) == len(bans):
     print(f'Kein Bann für "{sys.argv[2]}" gefunden.')
     sys.exit(1)
 data["bans"] = kept
-tmp = path + ".tmp"
-with open(tmp, "w", encoding="utf-8") as f:
+with open(out, "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False)
-os.replace(tmp, path)
 print(f'Bann für "{sys.argv[2]}" aufgehoben ({len(bans) - len(kept)}).')
 PY
-    chown "$SERVICE_USER:$SERVICE_USER" "$SHARED/bans.json" 2>/dev/null
+    if [[ -s $out ]]; then safe put "$SHARED/bans.json" 664 "$SERVICE_USER" <"$out" || { rm -f "$out"; die "bans.json konnte nicht geschrieben werden."; }; fi
+    rm -f "$out"
     return 0
 }
 

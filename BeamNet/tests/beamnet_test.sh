@@ -190,7 +190,8 @@ rm -f "$T/state/beammp-6.service.sabotage"
 out=$("$TOOL" set-map 6 johnson_valley -y 2>&1)
 contains "$out" "Server 6: Map = johnson_valley" "set-map setzt Map"
 contains "$(cat "$T/root/6/ServerConfig.toml")" '^Map = "/levels/johnson_valley/info.json"$' "set-map schreibt Konfiguration"
-contains "$(ls "$T/root/6")" "ServerConfig.toml.bak-" "set-map sichert vorher"
+contains "$(ls "$T/backups/config/6")" "ServerConfig.toml\\.[0-9]{8}-[0-9]{6}" "set-map sichert vorher (im root-Ordner)"
+lacks "$(ls "$T/root/6")" "\\.bak-" "set-map: keine Sicherung im Server-Ordner"
 out=$("$TOOL" set-map --force 6 my_mod_map -y 2>&1)
 contains "$(cat "$T/root/6/ServerConfig.toml")" "my_mod_map" "set-map --force erlaubt Mod-Map"
 
@@ -305,7 +306,7 @@ sed -i 's/^AUTO_RESTART=0/AUTO_RESTART=1/; s|^DISCORD_WEBHOOK=|DISCORD_WEBHOOK=h
 : >"$T/curl.log"
 out=$("$TOOL" watch 2>&1)
 contains "$out" "🟡 Server 3 \\(italy\\) automatisch neu gestartet" "watch: automatischer Neustart"
-contains "$(cat "$T/curl.log")" '\{"content":"🟡 Server 3 \(italy\) automatisch neu gestartet\."\}' "watch: Discord-Nachricht als JSON"
+contains "$(cat "$T/curl.log")" '\{"content":"🟡 Server 3 \(italy\) automatisch neu gestartet\.","allowed_mentions":\{"parse":\[\]\}\}' "watch: Discord-Nachricht als JSON (ohne @-Erwähnungen)"
 contains "$(cat "$T/curl.log")" "https://discord.com/api/webhooks/1/abc" "watch: an den Webhook"
 
 # Bewusst gestoppt: keine Meldung, kein Neustart; Start hebt die Wartung auf.
@@ -402,7 +403,8 @@ lacks "$(cat "$T/actions")" "restart beammp-5" "watch: höchstens ein Wechsel in
 rm -f "$T/watch/mapvote-5"
 vote 30818 evil_mod
 out=$("$TOOL" watch 2>&1)
-contains "$out" "evil_mod ist nicht erlaubt" "watch: nur erlaubte Maps"
+contains "$out" "Port 30818: Map nicht erlaubt" "watch: nur erlaubte Maps"
+lacks "$out" "evil_mod" "watch: unerlaubter Text geht nicht nach Discord"
 contains "$(cat "$T/root/5/ServerConfig.toml")" "/levels/italy/" "watch: nicht erlaubte Map ändert nichts"
 sed -i 's/^VOTE_MAPS=.*/VOTE_MAPS=evil_mod/' "$T/beamnet.conf"
 vote 30818 evil_mod
@@ -669,7 +671,7 @@ rm -f "$T/root/shared/beamnet/bans.json"
 rm -rf "$T/root/shared/beamnet"
 : >"$T/actions"
 "$TOOL" admin add Sebi >/dev/null 2>&1
-contains "$(cat "$T/actions")" "chown -R $ME:$ME $T/root/shared/beamnet" "admin: Ordner bekommt den Dienst-Benutzer"
+contains "$(cat "$T/actions")" "chown -hR $ME:$ME $T/root/shared/beamnet" "admin: Ordner bekommt den Dienst-Benutzer"
 [[ -d $T/root/shared/beamnet/players ]] && pass || fail "admin: Unterordner angelegt"
 
 # (14) Sicherung im laufenden Betrieb: tar-Code 1 (Datei geaendert) ist kein Fehler.
@@ -737,6 +739,60 @@ cmp -s "$T/root/1/Resources/Server/BeamNetCore/main.lua" "$HERE/../server/BeamNe
 out=$(BEAMNET_RAW="file:///gibt/es/nicht" "$T/inst/beamnet" update -y 2>&1)
 contains "$out" "Download fehlgeschlagen" "update: Fehler beim Laden"
 mv "$T/curl.stub" "$T/bin/curl"
+
+# --- Sicherheit: root folgt nie Symlinks in Ordnern, die dem Dienst-Benutzer gehoeren ------------------------------
+S="$T/root/shared/beamnet"
+victim="$T/victim"
+mkdir -p "$victim/dir"
+echo "geheim" >"$victim/passwd"; chmod 600 "$victim/passwd"
+echo '{"bleibt":1}' >"$victim/dir/keep.json"; chmod 700 "$victim/dir"
+unchanged() { [[ $(cat "$victim/passwd") == geheim && $(stat -c %a "$victim/passwd") == 600 ]]; }
+# ServerConfig.toml als Symlink auf eine fremde Datei mit Map-Zeile: set-map schreibt nicht hindurch.
+printf 'root:x:0:0\nMap = "/levels/x/info.json"\n' >"$victim/system.conf"; chmod 600 "$victim/system.conf"
+mv "$T/root/6/ServerConfig.toml" "$T/cfg6.keep"
+ln -s "$victim/system.conf" "$T/root/6/ServerConfig.toml"
+"$TOOL" set-map 6 utah -y >/dev/null 2>&1
+contains "$(cat "$victim/system.conf")" "levels/x/" "Sicherheit: set-map folgt keinem Symlink"
+rm -f "$T/root/6/ServerConfig.toml"; mv "$T/cfg6.keep" "$T/root/6/ServerConfig.toml"
+# Lebenszeichen: watch.json als Symlink.
+ln -sf "$victim/passwd" "$S/watch.json"
+ln -sf "$victim/passwd" "$S/.watch.json.tmp"      # feste Zwischendatei der Version 1.11–1.16
+"$TOOL" watch >/dev/null 2>&1
+unchanged && pass || fail "Sicherheit: Lebenszeichen folgt keinem Symlink"
+[[ -f $S/watch.json && ! -L $S/watch.json ]] && pass || fail "Sicherheit: Lebenszeichen ersetzt den Symlink"
+# votes/ als Symlink auf einen fremden Ordner: dort wird nichts geloescht.
+rm -rf "$S/votes"; ln -s "$victim/dir" "$S/votes"
+"$TOOL" watch >/dev/null 2>&1
+[[ -f $victim/dir/keep.json ]] && pass || fail "Sicherheit: votes-Symlink – nichts gelöscht"
+rm -f "$S/votes"; mkdir -p "$S/votes"
+# Auftrag als Symlink auf eine fremde Datei.
+ln -s "$victim/passwd" "$S/votes/30818.json"
+"$TOOL" watch >/dev/null 2>&1
+unchanged && pass || fail "Sicherheit: Auftrags-Symlink wird nicht gelesen oder verändert"
+# install-core: main.lua als Symlink.
+rm -f "$T/root/2/Resources/Server/BeamNetCore/main.lua"
+ln -s "$victim/passwd" "$T/root/2/Resources/Server/BeamNetCore/main.lua"
+"$TOOL" install-core -y >/dev/null 2>&1
+unchanged && pass || fail "Sicherheit: install-core folgt keinem Symlink"
+[[ -f $T/root/2/Resources/Server/BeamNetCore/main.lua && ! -L $T/root/2/Resources/Server/BeamNetCore/main.lua ]] && pass \
+    || fail "Sicherheit: install-core ersetzt den Symlink durch das Plugin"
+baks=("$T"/root/2/Resources/Server/BeamNetCore/*.bak*)
+[[ ! -e ${baks[0]} ]] && pass || fail "Sicherheit: keine Plugin-Sicherung im Server-Ordner"
+# Gemeinsamer Ordner: Unterordner als Symlink bekommt keine fremden Rechte.
+rm -rf "$S/races"; ln -s "$victim/dir" "$S/races"
+"$TOOL" admin add Sicherheit >/dev/null 2>&1
+[[ $(stat -c %a "$victim/dir") == 700 ]] && pass || fail "Sicherheit: chmod folgt keinem Symlink"
+[[ -d $S/races && ! -L $S/races ]] && pass || fail "Sicherheit: Symlink-Unterordner wird ersetzt"
+"$TOOL" admin remove Sicherheit >/dev/null 2>&1
+# config.json als Symlink: nicht hindurch schreiben.
+mv "$S/config.json" "$T/config.keep" 2>/dev/null
+ln -s "$victim/passwd" "$S/config.json"
+"$TOOL" admin add Sicherheit >/dev/null 2>&1
+unchanged && pass || fail "Sicherheit: admin folgt keinem Symlink"
+rm -f "$S/config.json"; mv "$T/config.keep" "$S/config.json" 2>/dev/null
+# Rotation: doppelte Maps und "all" werden abgelehnt.
+contains "$("$TOOL" rotation 5 italy utah italy 2>&1)" "Jede Map nur einmal" "rotation: doppelte Maps abgelehnt"
+contains "$("$TOOL" rotation all italy utah 2>&1)" "eine Server-Nummer" "rotation: nur eine Server-Nummer"
 
 # Nicht als root: Aenderungen verweigert.
 out=$(FAKE_UID=1000 "$TOOL" restart all 2>&1)
