@@ -459,8 +459,20 @@ rm -f "$T/watch/rotate-5"; status5 0
 BEAMNET_HOUR=07 "$TOOL" watch >/dev/null 2>&1
 lacks "$(cat "$T/actions")" "restart beammp-5" "rotation: abschaltbar"
 
+# doctor prueft das Lebenszeichen des Waechters.
+"$TOOL" rotation 3 italy utah >/dev/null 2>&1
+"$TOOL" watch >/dev/null 2>&1
+out=$("$TOOL" doctor 2>&1)
+contains "$out" "Wächter läuft \\(zuletzt vor [0-9]+ s\\)" "doctor: Wächter läuft"
+contains "$out" "Server 3: tägliche Map-Rotation \\(italy utah\\)" "doctor: Rotation"
+"$TOOL" rotation 3 aus >/dev/null 2>&1
+echo "{\"at\":$(( $(date +%s) - 1200 )),\"mapVote\":true,\"maps\":[]}" >"$T/root/shared/beamnet/watch.json"
+out=$("$TOOL" doctor 2>&1)
+contains "$out" "letztes Lebenszeichen vor 20 Minuten – er läuft nicht mehr" "doctor: Wächter steht"
+
 out=$("$TOOL" watch uninstall 2>&1)
 contains "$out" "Wächter entfernt" "watch uninstall"
+contains "$("$TOOL" doctor 2>&1)" "Wächter nicht eingerichtet" "doctor: ohne Wächter ein Hinweis"
 [[ ! -f $T/systemd/beamnet-watch.timer && -f $T/beamnet.conf ]] && pass || fail "watch uninstall: Timer weg, Einstellungen bleiben"
 
 # --- Statusseite --------------------------------------------------------------------------------------------------

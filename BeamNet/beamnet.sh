@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.15"
+VERSION="1.16"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -259,6 +259,9 @@ cmd_doctor() {
     dup=$(tr ' ' '\n' <<<"$seen_maps" | grep -v '^$' | sort | uniq -d | tr '\n' ' ')
     [[ -n $dup ]] && warn "Mehrere Server mit derselben Map: $dup" && hint "beamnet maps   ·   beamnet set-map <nr> <map>"
 
+    title "BeamNet-Dienste"
+    check_watch
+
     title "Andere Programme, die an den Servern drehen"
     check_agent
     check_cron
@@ -270,6 +273,36 @@ cmd_doctor() {
     check_system
 
     summary
+}
+
+# Laeuft der Waechter wirklich? (Lebenszeichen watch.json; ohne ihn keine Ausfallmeldungen, Abstimmungen, Rotation)
+check_watch() {
+    local at age
+    if [[ ! -f $SYSTEMD_DIR/beamnet-watch.timer ]]; then
+        echo "  Wächter nicht eingerichtet – Ausfallmeldungen, Map-Abstimmung und Map-Rotation brauchen ihn."
+        hint "beamnet watch install"
+        return 0
+    fi
+    at=$(grep -o '"at":[0-9]*' "$SHARED/watch.json" 2>/dev/null | head -n1 | cut -d: -f2)
+    if [[ -z $at ]]; then
+        warn "Wächter eingerichtet, hat aber noch nie gemeldet"
+        hint "systemctl status beamnet-watch.timer   ·   beamnet watch (einmal von Hand)"
+        return 0
+    fi
+    age=$(( $(date +%s) - at ))
+    if (( age > 300 )); then
+        warn "Wächter eingerichtet, letztes Lebenszeichen vor $(( age / 60 )) Minuten – er läuft nicht mehr"
+        hint "systemctl enable --now beamnet-watch.timer   ·   journalctl -u beamnet-watch -n 20"
+    else
+        ok "Wächter läuft (zuletzt vor ${age} s)"
+    fi
+    [[ $(conf_get MAP_VOTE) == 0 ]] || ok "Map-Abstimmung an ($(vote_maps | wc -w) Maps)"
+    local nr list
+    for nr in $(servers); do
+        list=$(conf_get "ROTATE_$nr")
+        [[ -n $list ]] && ok "Server $nr: tägliche Map-Rotation ($list)"
+    done
+    return 0
 }
 
 # Laeuft BeamNetCore auf diesem Server? (nur wenn installiert und der Server laeuft)
