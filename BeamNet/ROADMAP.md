@@ -1,5 +1,8 @@
 # BeamNet – Roadmap
 
+Erledigt (Plugin 1.7):
+- [x] Tagesaufgaben: täglich eine netzwerkweit gleiche Aufgabe mit Bonus-XP, `/aufgabe`, Hinweis bei der Begrüßung.
+
 Erledigt (Plugin 1.6, Werkzeug 1.7):
 - [x] Erfolge: 13 Stück (km, Fahrzeit, Tempo, Rennen, Rekorde, Maps, Level) mit Bonus-XP, `/erfolge`, Anzeige auf
       der Statusseite.

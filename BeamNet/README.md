@@ -143,8 +143,17 @@ beamnet restart all
 | `/rennen stop` | Rennmodus beenden |
 | `/rekorde [Name]` | Top 5 einer Strecke bzw. die Rekorde aller Strecken der Map |
 | `/erfolge [Name]` | Freigeschaltete Erfolge und die nächsten mit Fortschritt |
+| `/aufgabe` | Tagesaufgabe und Fortschritt |
 
 Befehle anderer Plugins werden nicht abgefangen.
+
+### Tagesaufgaben
+
+Jeden Tag (ab 0 Uhr UTC) gibt es eine neue Aufgabe – auf allen Servern dieselbe, z. B. „Fahre heute 15 km“,
+„Erreiche heute 180 km/h“, „Sei heute 45 Minuten unterwegs“ oder „Fahre heute auf 3 verschiedenen Servern“. Wer sie
+schafft, bekommt einmal am Tag 40 Bonus-XP. Die Begrüßung nennt die Aufgabe, `/aufgabe` (`/daily`) zeigt den
+Fortschritt. Anpassen in `config.json`: `"challengeXp": 40`, `"challengeTypes": ["km", "speed", "time", "servers"]`
+(`"races"` dazunehmen, sobald es Strecken gibt).
 
 ### Erfolge
 

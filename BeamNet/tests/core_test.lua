@@ -796,6 +796,63 @@ do
     _G[events.onPlayerDisconnect](11); players[11] = nil
 end
 
+-- --- Tagesaufgaben ------------------------------------------------------------------------------------------------
+do
+    C.challengeTypes = { "km" }
+    local ch = BN.challengeFor()
+    check(ch and ch.kind == "km" and (ch.goal == 10 or ch.goal == 15 or ch.goal == 25), "Tagesaufgabe gewaehlt")
+    eq(BN.challengeFor(BN.dayNumber()).goal, ch.goal, "Aufgabe ist am selben Tag gleich (alle Server)")
+    players[12] = { name = "Daily", ids = { beammp = "1212" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } } }
+    join(12)
+    check(chatContains("Heute: Fahre heute " .. ch.goal .. " km %(/aufgabe%)", 12), "Begruessung nennt die Tagesaufgabe")
+    say(12, "/aufgabe")
+    check(chatContains("Tagesaufgabe: Fahre heute " .. ch.goal .. " km – 0/" .. ch.goal, 12), "/aufgabe zeigt Fortschritt")
+    tick(1)
+    local steps = math.ceil(ch.goal * 1000 / 50)
+    for _ = 1, steps - 1 do move(12, 0, 50); tick(1) end
+    check(not chatContains("Tagesaufgabe geschafft", 12), "Noch nicht geschafft")
+    local bonusBefore = BN.totals(BN.players[12]).bonusXp
+    move(12, 0, 60); tick(1)
+    check(chatContains("Tagesaufgabe geschafft: Fahre heute " .. ch.goal .. " km %(%+40 XP%)!", 12), "Tagesaufgabe geschafft")
+    eq(BN.totals(BN.players[12]).bonusXp - bonusBefore >= 40, true, "Belohnung gutgeschrieben")
+    for _ = 1, 5 do move(12, 0, 50); tick(1) end
+    eq(countChat("Tagesaufgabe geschafft: Fahre heute %d+ km %(%+", 12), 1, "Belohnung nur einmal")
+    say(12, "/aufgabe")
+    check(chatContains("Die nächste kommt in", 12), "/aufgabe nach Erledigung")
+    BN.savePlayer(BN.players[12])
+    local rec = readJson(SHARED .. "/players/1212.json")
+    check(rec.dayDone == true and rec.day == BN.dayNumber() and rec.dayKm >= ch.goal, "Tagesstand gespeichert")
+    -- Neu verbinden am selben Tag: kein zweites Mal.
+    _G[events.onPlayerDisconnect](12)
+    players[12] = { name = "Daily", ids = { beammp = "1212" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } } }
+    join(12)
+    for _ = 1, 3 do move(12, 0, 50); tick(1) end
+    eq(countChat("Tagesaufgabe geschafft: Fahre heute %d+ km %(%+", 12), 1, "Nach Neu-Verbinden nicht erneut belohnt")
+    -- Naechster Tag: neue Aufgabe, Zaehler bei 0.
+    clock = (BN.dayNumber() + 1) * 86400 + 60
+    tick(1)
+    local d = BN.dayTotals(BN.players[12])
+    check(not d.done and d.km < 1, "Neuer Tag: Zaehler zurueckgesetzt")
+    -- Aufgabe "verschiedene Server": heute schon auf einer anderen Map gefahren.
+    C.challengeTypes = { "servers" }
+    local ch2 = BN.challengeFor()
+    BN.players[12].record.day = BN.dayNumber()
+    BN.players[12].record.dayDone = false
+    BN.players[12].record.dayMaps = { italy = true, utah = true, derby = true }
+    tick(1)
+    check(chatContains("Tagesaufgabe geschafft: Fahre heute auf " .. ch2.goal .. " verschiedenen Servern", 12), "Aufgabe verschiedene Server")
+    -- Englisch.
+    say(12, "/lang en")
+    say(12, "/daily")
+    check(chatContains("Daily challenge done: Drive on " .. ch2.goal .. " different servers today%. The next one comes in", 12), "/daily auf Englisch")
+    -- Keine Arten erlaubt: keine Aufgabe.
+    C.challengeTypes = {}
+    say(12, "/daily")
+    check(chatContains("No daily challenge today%.", 12), "Ohne Arten keine Aufgabe")
+    C.challengeTypes = { "km", "speed", "time", "servers" }
+    _G[events.onPlayerDisconnect](12); players[12] = nil
+end
+
 -- Herunterfahren speichert alle.
 tick(1)
 _G[events.onShutdown]()

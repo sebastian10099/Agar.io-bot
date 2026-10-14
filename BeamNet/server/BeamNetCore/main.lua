@@ -10,14 +10,14 @@
 --
 -- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche|vorwoche]  /liga  /server  /km  /lang de|en
 -- (englisch: /help /stats /top [km|xp|week|lastweek] /league /server /km /race /records /lang)
---               /rennen [Name|stop]  /rekorde [Name]  /erfolge [Name]   – Admins: /rennen neu|ziel|loeschen <Name>
+--               /rennen [Name|stop]  /rekorde [Name]  /erfolge [Name]  /aufgabe   – Admins: /rennen neu|ziel|loeschen <Name>
 -- Moderation (Admins): /kick <Name> [Grund]  /ban <Name> [30m|2h|7d] [Grund]  /unban <Name>  /bans
 --                      /warn <Name> <Text>  /mute <Name> [Minuten]  /ansage <Text>
 
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.6"
+BN.VERSION = "1.7"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -49,6 +49,9 @@ local defaults = {
     language = "de",
     -- Erfolge an (true) oder aus (false).
     achievements = true,
+    -- Tagesaufgaben: Belohnung und erlaubte Arten (km, speed, time, servers, races – Rennen nur, wenn es Strecken gibt).
+    challengeXp = 40,
+    challengeTypes = { "km", "speed", "time", "servers" },
     -- Spamschutz: mehr als spamMessages Nachrichten in spamWindowSec Sekunden -> spamMuteSec stumm (Admins nie).
     spamMessages = 5,
     spamWindowSec = 5,
@@ -478,8 +481,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /erfolge · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /server · /km · /race · /records · /achievements · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /server · /km · /race · /records · /achievements · /daily · /lang",
     ["Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage"] =
         "Admin: /kick · /ban <name> [30m|2h|7d] [reason] · /unban · /bans · /warn · /mute · /announce",
     ["Du bist %s gefahren (diese Woche %s)."] = "You have driven %s (this week %s).",
@@ -561,6 +564,15 @@ local EN = {
     ["Interner Fehler – bitte einem Admin melden."] = "Internal error – please tell an admin.",
     ["Bitte etwas langsamer mit den Befehlen."] = "Please slow down with the commands.",
     ["Erfolg für %s: %s (+%d XP)"] = "Achievement for %s: %s (+%d XP)",
+    ["Tagesaufgabe geschafft: %s (+%d XP)!"] = "Daily challenge done: %s (+%d XP)!",
+    ["Tagesaufgabe geschafft: %s. Die nächste kommt in %s."] = "Daily challenge done: %s. The next one comes in %s.",
+    ["Tagesaufgabe: %s – %s/%s · noch %s · Belohnung %d XP"] = "Daily challenge: %s – %s/%s · %s left · reward %d XP",
+    ["Heute gibt es keine Tagesaufgabe."] = "No daily challenge today.",
+    ["Fahre heute %s km"] = "Drive %s km today",
+    ["Erreiche heute %s km/h"] = "Reach %s km/h today",
+    ["Sei heute %s Minuten unterwegs"] = "Spend %s minutes on the road today",
+    ["Fahre heute auf %s verschiedenen Servern"] = "Drive on %s different servers today",
+    ["Beende heute %s Rennen"] = "Finish %s races today",
     ["%s hat %d Erfolge freigeschaltet (+%d XP) – /erfolge"] = "%s unlocked %d achievements (+%d XP) – /achievements",
     ["Erfolge von %s: %d von %d"] = "Achievements of %s: %d of %d",
     ["Geschafft: %s"] = "Done: %s",
@@ -576,6 +588,7 @@ local EN = {
     ["Bann konnte nicht gespeichert werden (%s) – bitte beamnet doctor prüfen."] = "Could not save the ban (%s) – please check beamnet doctor.",
     ["Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server. English: /lang en"] =
         "Welcome to %s (%s)! Level %d · %s league · %s driven. /help for commands, /server for all servers. Deutsch: /lang de",
+    ["Heute: %s (/aufgabe)"] = "Today: %s (/daily)",
     ["Sprache: Deutsch. English: /lang en"] = "Language: English. Deutsch: /lang de",
     ["Sprache auf Deutsch gestellt."] = "Language set to English.",
     ["Sprachen: /lang de · /lang en"] = "Languages: /lang de · /lang en",
@@ -641,12 +654,37 @@ local function loadRecord(id, name)
     rec.recordsSet = tonumber(rec.recordsSet) or 0
     rec.maps = type(rec.maps) == "table" and rec.maps or {}
     rec.achievements = type(rec.achievements) == "table" and rec.achievements or {}
+    rec.day = tonumber(rec.day)
+    rec.dayKm = tonumber(rec.dayKm) or 0
+    rec.daySeconds = tonumber(rec.daySeconds) or 0
+    rec.dayRaces = tonumber(rec.dayRaces) or 0
+    rec.dayTop = tonumber(rec.dayTop) or 0
+    rec.dayMaps = type(rec.dayMaps) == "table" and rec.dayMaps or {}
+    rec.dayDone = rec.dayDone == true
     rec.lastWeekKm = tonumber(rec.lastWeekKm) or 0
     rec.week = rec.week or weekKey(BN.now())
     return rec
 end
 
 -- Neue Woche: die Kilometer der alten Woche bleiben als lastWeek/lastWeekKm erhalten (fuer die Wochensieger).
+-- Tag seit 1970 (UTC) – fuer die Tagesaufgabe.
+local function dayNumber(t)
+    return math.floor((t or BN.now()) / 86400)
+end
+BN.dayNumber = dayNumber
+
+-- Neuer Tag: Tageszaehler zuruecksetzen.
+local function applyDay(rec)
+    local today = dayNumber()
+    if rec.day ~= today then
+        rec.day = today
+        rec.dayKm, rec.daySeconds, rec.dayRaces, rec.dayTop = 0, 0, 0, 0
+        rec.dayMaps = {}
+        rec.dayDone = false
+    end
+end
+BN.applyDay = applyDay
+
 local function applyWeek(rec)
     local wk = weekKey(BN.now())
     if rec.week ~= wk then
@@ -664,7 +702,7 @@ function BN.addPlayer(pid)
     local id = safeId(ids.beammp)
     local session = { pid = pid, name = name, id = id, ip = ids.ip, guest = id == nil, vehicles = {},
                       pendingKm = 0, pendingSeconds = 0, pendingTop = 0, pendingBonus = 0,
-                      pendingRaces = 0, pendingRecords = 0, unlocked = {} }
+                      pendingRaces = 0, pendingRecords = 0, unlocked = {}, challengeDoneDay = nil }
     session.record = id and loadRecord(id, name) or emptyRecord(nil, name)
     if session.record.lang == "en" or session.record.lang == "de" then session.lang = session.record.lang end
     local mute = BN.findMute(id, ids.ip)
@@ -686,13 +724,21 @@ end
 function BN.savePlayer(s)
     if not s or s.guest then return true end
     if s.pendingKm == 0 and s.pendingSeconds == 0 and s.pendingTop == 0 and s.pendingBonus == 0 and not s.dirty
-        and s.pendingRaces == 0 and s.pendingRecords == 0 and next(s.unlocked) == nil then
+        and s.pendingRaces == 0 and s.pendingRecords == 0 and next(s.unlocked) == nil
+        and (s.challengeDoneDay == nil or s.challengeDoneDay == s.record.day and s.record.dayDone) then
         return true
     end
     ensureDir(C.sharedDir)
     ensureDir(playersDir())
     local rec = loadRecord(s.id, s.name)
     applyWeek(rec)
+    applyDay(rec)
+    rec.dayKm = rec.dayKm + s.pendingKm
+    rec.daySeconds = rec.daySeconds + s.pendingSeconds
+    rec.dayRaces = rec.dayRaces + s.pendingRaces
+    rec.dayTop = math.max(rec.dayTop, s.pendingTop)
+    if BN.server.map and BN.server.map ~= "?" then rec.dayMaps[BN.server.map] = true end
+    if s.challengeDoneDay == rec.day then rec.dayDone = true end
     rec.km = rec.km + s.pendingKm
     rec.weekKm = rec.weekKm + s.pendingKm
     rec.seconds = rec.seconds + s.pendingSeconds
@@ -735,7 +781,61 @@ function BN.totals(s)
     return { km = km, seconds = seconds, weekKm = weekKm, xp = xp, bonusXp = bonus, level = BN.levelFor(xp),
              league = BN.leagueFor(xp), topSpeedKmh = math.max(rec.topSpeedKmh or 0, s.pendingTop),
              races = (rec.racesFinished or 0) + (s.pendingRaces or 0), records = (rec.recordsSet or 0) + (s.pendingRecords or 0),
-             maps = maps }
+             maps = maps, day = BN.dayTotals(s) }
+end
+
+-- Heutige Werte (gespeichert + noch nicht gespeichert).
+function BN.dayTotals(s)
+    local rec, today = s.record, dayNumber()
+    local same = rec.day == today
+    local dayMaps = 0
+    local seen = {}
+    if same then for m in pairs(rec.dayMaps or {}) do seen[m] = true end end
+    if BN.server.map and BN.server.map ~= "?" then seen[BN.server.map] = true end
+    for _ in pairs(seen) do dayMaps = dayMaps + 1 end
+    return {
+        km = (same and rec.dayKm or 0) + s.pendingKm,
+        seconds = (same and rec.daySeconds or 0) + s.pendingSeconds,
+        races = (same and rec.dayRaces or 0) + (s.pendingRaces or 0),
+        top = math.max(same and rec.dayTop or 0, s.pendingTop),
+        servers = dayMaps,
+        done = (same and rec.dayDone) or s.challengeDoneDay == today,
+    }
+end
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- Tagesaufgabe: jeden Tag (UTC) eine neue, auf allen Servern dieselbe.
+
+BN.CHALLENGES = {
+    km = { text = "Fahre heute %s km", goals = { 10, 15, 25 }, value = function(d) return d.km end },
+    speed = { text = "Erreiche heute %s km/h", goals = { 150, 180, 220 }, value = function(d) return d.top end },
+    time = { text = "Sei heute %s Minuten unterwegs", goals = { 30, 45, 60 }, value = function(d) return d.seconds / 60 end },
+    servers = { text = "Fahre heute auf %s verschiedenen Servern", goals = { 2, 3, 2 }, value = function(d) return d.servers end },
+    races = { text = "Beende heute %s Rennen", goals = { 1, 2, 3 }, value = function(d) return d.races end },
+}
+
+function BN.challengeFor(day)
+    local types = {}
+    for _, name in ipairs(C.challengeTypes or {}) do
+        if BN.CHALLENGES[name] then types[#types + 1] = name end
+    end
+    if #types == 0 then return nil end
+    day = day or dayNumber()
+    local kind = types[(day % #types) + 1]
+    local def = BN.CHALLENGES[kind]
+    local goal = def.goals[(math.floor(day / #types) % #def.goals) + 1]
+    return { kind = kind, text = def.text, goal = goal, value = def.value }
+end
+
+function BN.checkChallenge(s)
+    local ch = BN.challengeFor()
+    if not ch then return end
+    local d = BN.dayTotals(s)
+    if d.done or ch.value(d) < ch.goal then return end
+    s.challengeDoneDay = dayNumber()
+    s.pendingBonus = s.pendingBonus + C.challengeXp
+    local lang = BN.langOf(s.pid)
+    chat(s.pid, tr(lang, "Tagesaufgabe geschafft: %s (+%d XP)!", tr(lang, ch.text, ch.goal), C.challengeXp))
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------
@@ -796,6 +896,7 @@ local function checkProgress(s)
         s.league = t.league.name
     end
     BN.checkAchievements(s)
+    BN.checkChallenge(s)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------
@@ -1412,7 +1513,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /erfolge · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
@@ -1840,6 +1941,23 @@ function commands.erfolge(pid, arg)
 end
 commands.achievements = commands.erfolge
 
+function commands.aufgabe(pid)
+    local s = session(pid)
+    local lang = BN.langOf(pid)
+    local ch = BN.challengeFor()
+    if not ch then say(pid, "Heute gibt es keine Tagesaufgabe.") return end
+    local d = BN.dayTotals(s)
+    local left = 86400 - (BN.now() % 86400)
+    if d.done then
+        say(pid, "Tagesaufgabe geschafft: %s. Die nächste kommt in %s.", tr(lang, ch.text, ch.goal), fmtDuration(left))
+    else
+        say(pid, "Tagesaufgabe: %s – %s/%s · noch %s · Belohnung %d XP", tr(lang, ch.text, ch.goal),
+            BN.fmtProgress(ch.value(d)), BN.fmtProgress(ch.goal), fmtDuration(left), C.challengeXp)
+    end
+end
+commands.daily = commands.aufgabe
+commands.challenge = commands.aufgabe
+
 function BN.fmtProgress(v)
     v = tonumber(v) or 0
     if v >= 100 or v == math.floor(v) then return string.format("%d", math.floor(v)) end
@@ -1952,6 +2070,11 @@ function BN_onPlayerJoin(pid)
     local t = BN.totals(s)
     say(pid, "Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server. English: /lang en",
         BN.server.name, BN.server.map, t.level, tr(BN.langOf(pid), t.league.name), fmtKm(t.km))
+    local ch = BN.challengeFor()
+    if ch and not BN.dayTotals(s).done then
+        local lang = BN.langOf(pid)
+        say(pid, "Heute: %s (/aufgabe)", tr(lang, ch.text, ch.goal))
+    end
     BN.writeStatus()
 end
 
