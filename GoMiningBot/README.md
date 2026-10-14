@@ -77,8 +77,8 @@ andere Werte bleiben unverändert.
 
 - **Selbstdiagnose:** Ampel in der Statusleiste mit Erklärungen; deutlicher Offline-Modus mit automatischem Neuverbinden.
 - **Sicherungen wiederherstellen** aus der Liste der automatischen Sicherungen oder aus einer Datei, mit Vorschau.
-- **Robuster:** Fuzz-Tests fanden und beseitigten drei mögliche Absturzstellen; Dauertest der Engine und Langzeittest der
-  App in der CI.
+- **Robuster:** Fuzz-Tests fanden und beseitigten vier mögliche Absturzstellen (u. a. bei beschädigten Dateien);
+  Dauertest der Engine und Langzeittest der App in der CI.
 - **Schnellerer Start** durch kompakten Kerzenspeicher; 90 Tage lokaler Verlauf.
 
 ## Neu in 4.3

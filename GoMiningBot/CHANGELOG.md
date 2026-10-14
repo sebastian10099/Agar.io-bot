@@ -23,9 +23,12 @@ Die Abschnitte hier werden als Release-Notizen und in der App unter „Was ist n
 
 **Robuster gegen kaputte Daten**
 - Neue Fuzz-Tests schicken Tausende verfälschte Antworten durch alle Leser (BingX-Kerzen, Orderbuch, Trades,
-  Livestream, Konto, Updates, Marktprotokoll, Profile, Sicherungen, Kerzenspeicher). Dabei wurden drei Stellen gefunden,
+  Livestream, Konto, Updates, Marktprotokoll, Profile, Sicherungen, Kerzenspeicher). Dabei wurden vier Stellen gefunden,
   an denen die App hätte abstürzen können, und behoben: riesige Zahlen (Fehlercodes, Trade-IDs, Folgenummern),
-  unsinnige Zeitstempel bei Kerzen und absurde Datumsangaben in beschädigten Dateien.
+  unsinnige Zeitstempel bei Kerzen, absurde Datumsangaben in beschädigten Dateien – und ein Fehler in Apples
+  JSON-Leser, der bei einem Steuerzeichen in einer beschädigten `simulation.json` abstürzt, statt einen Fehler zu melden
+  (die App wäre dann bei jedem Start abgestürzt). Alle Dateien werden jetzt vorher mit einem robusten Leser geprüft;
+  eine kaputte Datei wird wie bisher beiseitegelegt und die letzte Sicherung geladen.
 - Kerzen und Trades mit Zeitstempeln außerhalb von 2000 bis 2100 werden verworfen.
 - Dauertest der Engine: 48.000 Marktmomente mit Zufallskurs, Sprüngen und dünnen Orderbüchern, mit und ohne Limit-Kauf.
   Nach jedem Schritt wird geprüft: Bargeld nie negativ, Bestand gleich Summe der Lose, Vermögen endlich, begrenzte Listen.
