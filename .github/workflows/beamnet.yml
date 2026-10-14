@@ -1,0 +1,38 @@
+name: BeamNet (Werkzeug und Plugin)
+
+on:
+  push:
+    paths:
+      - 'BeamNet/**'
+      - '.github/workflows/beamnet.yml'
+  pull_request:
+    paths:
+      - 'BeamNet/**'
+      - '.github/workflows/beamnet.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Werkzeuge
+        run: pip install lupa shellcheck-py
+
+      - name: ShellCheck
+        run: shellcheck -S warning BeamNet/beamnet.sh BeamNet/tests/beamnet_test.sh
+
+      - name: Werkzeug-Tests (nachgebaute Server-Umgebung)
+        run: bash BeamNet/tests/beamnet_test.sh
+
+      - name: Plugin-Tests (Lua 5.3 wie BeamMP, 5.4, LuaJIT)
+        run: python3 BeamNet/tests/run_lua_tests.py
