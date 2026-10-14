@@ -57,7 +57,12 @@ TOML
 export BEAMNET_SHARED="$WORK/shared"
 started=$(date +%s)
 echo "Starte den Server für $RUN_SECONDS s …"
-(cd "$WORK" && timeout --signal=INT "$RUN_SECONDS" ./BeamMP-Server >"$WORK/out.log" 2>&1 </dev/null)
+(cd "$WORK" && timeout --signal=INT "$RUN_SECONDS" ./BeamMP-Server >"$WORK/out.log" 2>&1 </dev/null) &
+server=$!
+# Nach 15 s das Plugin aendern: laedt BeamMP es im laufenden Betrieb neu (wie nach "beamnet install-core")?
+sleep 15
+printf '\n-- Integrationstest: geaendert\n' >>"$WORK/Resources/Server/BeamNetCore/main.lua"
+wait "$server"
 code=$?
 echo "Server beendet (Code $code). Protokoll:"
 log="$WORK/out.log"
@@ -80,6 +85,12 @@ if [[ -f $WORK/shared/servers/30814.json ]]; then
     for f in positions vehicles identifiers timers files; do
         check "BeamMP-Funktion vorhanden: $f" "grep -q '\"$f\":true' '$WORK/shared/servers/30814.json'"
     done
+fi
+loads=$(grep -c "\[BeamNetCore\] [0-9.]* geladen" <<<"$all")
+if (( loads >= 2 )); then
+    echo "INFO Neu laden im laufenden Betrieb: ja ($loads-mal geladen)"
+else
+    echo "INFO Neu laden im laufenden Betrieb: nein (nur nach Neustart)"
 fi
 echo
 if [[ $fails -eq 0 ]]; then echo "Integrationstest bestanden ($tag)"; else echo "$fails Prüfung(en) fehlgeschlagen ($tag)"; fi
