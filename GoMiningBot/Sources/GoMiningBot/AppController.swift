@@ -132,9 +132,75 @@ final class AppController: ObservableObject {
     /// Kerzen), schreibt einen Bericht und beendet sich.
     private func scheduleSmokeReportIfRequested() {
         guard let out = ProcessInfo.processInfo.environment["GOMINING_SMOKE_OUT"], !out.isEmpty else { return }
+        if let raw = ProcessInfo.processInfo.environment["GOMINING_SOAK_SECONDS"], let seconds = Double(raw), seconds > 0 {
+            tasks.append(Task { [weak self] in await self?.runSoak(seconds: seconds, out: out) })
+            return
+        }
         tasks.append(Task { [weak self] in
             await self?.runSmokeScript(out: out)
         })
+    }
+
+    // MARK: - Langzeittest (CI)
+
+    /// Speicherbedarf wie in der Aktivitätsanzeige (phys_footprint) in MB.
+    static func memoryFootprintMB() -> Double {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        return result == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : 0
+    }
+
+    /// Verbrauchte Rechenzeit (Nutzer + System) in Sekunden.
+    static func cpuSeconds() -> Double {
+        var usage = rusage()
+        getrusage(RUSAGE_SELF, &usage)
+        return Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1e6
+            + Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1e6
+    }
+
+    /// Laeuft `seconds` lang mit Schattenkonten und misst Speicher und CPU. Waechst der Speicher deutlich oder ist die
+    /// CPU-Last hoch, steht im Bericht "AUFFÄLLIG" und der CI-Schritt schlaegt fehl.
+    private func runSoak(seconds: Double, out: String) async {
+        try? await Task.sleep(nanoseconds: 20_000_000_000)
+        if shadows.book.accounts.isEmpty {
+            addShadow(.current, name: "")
+            addShadow(.active, name: "")
+            addShadow(.maker, name: "")
+        }
+        let start = Date()
+        let cpuStart = Self.cpuSeconds()
+        let memStart = Self.memoryFootprintMB()
+        var memMax = memStart
+        var lines = ["Langzeittest über \(Int(seconds / 60)) Minuten", String(format: "  Start: %.1f MB", memStart)]
+        while Date().timeIntervalSince(start) < seconds {
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            let mem = Self.memoryFootprintMB()
+            memMax = max(memMax, mem)
+            let elapsed = Date().timeIntervalSince(start)
+            if Int(elapsed) % 300 < 60 {
+                lines.append(String(format: "  nach %3.0f min: %.1f MB · CPU %.1f s · %@", elapsed / 60, mem,
+                                    Self.cpuSeconds() - cpuStart, status.health.summary))
+            }
+        }
+        let elapsed = Date().timeIntervalSince(start)
+        let memEnd = Self.memoryFootprintMB()
+        let cpu = Self.cpuSeconds() - cpuStart
+        let cpuPercent = cpu / max(1, elapsed) * 100
+        let growth = memEnd - memStart
+        let suspicious = growth > 150 || cpuPercent > 25
+        lines.append(String(format: "Langzeittest: %@ (Speicher %.1f → %.1f MB, höchstens %.1f MB, Zuwachs %+.1f MB; CPU %.1f s = %.1f %%)",
+                            suspicious ? "AUFFÄLLIG" : "OK", memStart, memEnd, memMax, growth, cpu, cpuPercent))
+        for a in shadows.accounts {
+            lines.append("  Schattenkonto \(a.name): \(a.buys) Käufe, \(a.sells) Verkäufe, Verlauf \(a.history.points.count) Punkte")
+        }
+        let report = diagnosticsText() + "\n" + lines.joined(separator: "\n")
+        try? report.write(toFile: out, atomically: true, encoding: .utf8)
+        NSApp.terminate(nil)
     }
 
     private func runSmokeScript(out: String) async {
@@ -1502,6 +1568,7 @@ final class AppController: ObservableObject {
         lines.append("\(Self.appName) \(Self.version) · Bundle \(Bundle.main.bundleIdentifier ?? "?") · macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
         lines.append("Verbindung: \(status.connection)")
         lines.append("Livestream: \(status.stream) · letzte Daten vor \(lastStreamAt > 0 ? String(Int(nowTs() - lastStreamAt)) : "—") s")
+        lines.append(String(format: "Prozess: Speicher %.1f MB · CPU %.1f s", Self.memoryFootprintMB(), Self.cpuSeconds()))
         lines.append("Selbstdiagnose: \(status.health.summary)" + status.health.issues.map { "\n  - \($0.title): \($0.detail)" }.joined())
         lines.append("Konto: \(status.account)")
         lines.append("Handelsregeln: minQty \(rules.minQuantity), minNotional \(rules.minNotional), step \(rules.stepSize), verifiziert \(rules.verified), Kauf \(rules.buyEnabled), Verkauf \(rules.sellEnabled)")

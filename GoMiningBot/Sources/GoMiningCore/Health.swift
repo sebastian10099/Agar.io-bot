@@ -49,11 +49,23 @@ public struct HealthIssue: Hashable, Sendable, Identifiable {
     /// Was man tun kann (leer = nichts noetig).
     public var fix: String
     public var id: String { title }
+
+    public init(level: HealthLevel, title: String, detail: String, fix: String) {
+        self.level = level
+        self.title = title
+        self.detail = detail
+        self.fix = fix
+    }
 }
 
 public struct HealthReport: Sendable {
     public var level: HealthLevel
     public var issues: [HealthIssue]
+
+    public init(level: HealthLevel, issues: [HealthIssue]) {
+        self.level = level
+        self.issues = issues
+    }
 
     /// Kurzer Satz fuer die Statusleiste.
     public var summary: String {

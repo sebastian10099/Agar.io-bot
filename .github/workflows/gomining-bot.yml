@@ -115,6 +115,35 @@ jobs:
   # Zwischenstaende mit "[no-release]" in der Commit-Nachricht werden nicht veroeffentlicht.
   # Fester Download-Link fuer die jeweils neueste Version:
   # https://github.com/sebastian10099/Agar.io-bot/releases/latest/download/GoMining-Bot.zip
+  soak:
+    # Langzeittest: nur von Hand (Actions → Run workflow) oder mit [soak] in der Commit-Nachricht.
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[soak]')
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: App bauen
+        working-directory: GoMiningBot
+        run: ./build_app.sh
+
+      - name: Langzeittest (30 Minuten Live-Daten, Speicher und CPU)
+        working-directory: GoMiningBot
+        run: |
+          export GOMINING_DATA_DIR="$RUNNER_TEMP/gomining-soak"
+          export GOMINING_SMOKE_OUT="$PWD/soak-report.txt"
+          export GOMINING_SOAK_SECONDS=1800
+          "dist/GoMining Bot Pro.app/Contents/MacOS/GoMiningBotPro" > "$RUNNER_TEMP/soak.log" 2>&1 &
+          APP_PID=$!
+          for i in $(seq 1 2100); do
+            [ -f "$GOMINING_SMOKE_OUT" ] && break
+            kill -0 $APP_PID 2>/dev/null || break
+            sleep 1
+          done
+          cat "$GOMINING_SMOKE_OUT" 2>/dev/null || { echo "(kein Bericht)"; tail -n 40 "$RUNNER_TEMP/soak.log"; exit 1; }
+          kill $APP_PID 2>/dev/null || true
+          ! grep -q "Langzeittest: AUFFÄLLIG" "$GOMINING_SMOKE_OUT"
+
   release:
     needs: build
     if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[no-release]') && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/claude/friendly-goldberg-31l8fp')

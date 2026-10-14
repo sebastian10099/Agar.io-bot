@@ -3,6 +3,41 @@
 Jede Version erscheint automatisch als GitHub-Release mit der fertigen App (`GoMining-Bot.zip`).
 Die Abschnitte hier werden als Release-Notizen und in der App unter „Was ist neu“ angezeigt.
 
+## 4.4 – 14.10.2026
+
+**Selbstdiagnose und Offline-Modus**
+- Ampel in der Statusleiste (grün, orange, rot); ein Klick zeigt die Details: Livestream, Orderbuch, Kerzen, Netzwerk,
+  Fehlerhäufigkeit, Abweichung der Mac-Uhr und ruhiger Markt – jeweils mit Erklärung und was man tun kann.
+- Offline-Modus: Ist kein Netz da oder kommen eine Minute lang keine Marktdaten, zeigt ein rotes Banner das deutlich an,
+  mit „Jetzt neu verbinden“. Beim Übergang kommt eine Mitteilung (Schalter „Bei erreichter Schutzgrenze“).
+- Die App erkennt Netzwerkwechsel sofort über den macOS-Netzwerkstatus und verbindet sich automatisch neu, sobald das
+  Netz zurück ist.
+- „Diagnose kopieren“ enthält jetzt die Selbstdiagnose sowie Speicher- und CPU-Verbrauch der App.
+
+**Sicherungen wiederherstellen**
+- Einstellungen → Daten & Wartung → „Sicherungen wiederherstellen“: die automatischen Sicherungen (alle 30 Minuten,
+  12 bleiben) und die Sicherungen vor Zurücksetzen und Updates, mit Vorschau (Trades, realisiertes Ergebnis, Bargeld,
+  Bestand, letzter Trade) vor dem Wiederherstellen.
+- „Aus Datei wiederherstellen“ für exportierte Sicherungen oder eine `simulation.json`.
+- Vor jeder Wiederherstellung wird der aktuelle Stand selbst gesichert – es geht nichts verloren.
+
+**Robuster gegen kaputte Daten**
+- Neue Fuzz-Tests schicken Tausende verfälschte Antworten durch alle Leser (BingX-Kerzen, Orderbuch, Trades,
+  Livestream, Konto, Updates, Marktprotokoll, Profile, Sicherungen, Kerzenspeicher). Dabei wurden drei Stellen gefunden,
+  an denen die App hätte abstürzen können, und behoben: riesige Zahlen (Fehlercodes, Trade-IDs, Folgenummern),
+  unsinnige Zeitstempel bei Kerzen und absurde Datumsangaben in beschädigten Dateien.
+- Kerzen und Trades mit Zeitstempeln außerhalb von 2000 bis 2100 werden verworfen.
+- Dauertest der Engine: 48.000 Marktmomente mit Zufallskurs, Sprüngen und dünnen Orderbüchern, mit und ohne Limit-Kauf.
+  Nach jedem Schritt wird geprüft: Bargeld nie negativ, Bestand gleich Summe der Lose, Vermögen endlich, begrenzte Listen.
+- Langzeittest der App in der CI: 30 Minuten mit Live-Daten und Schattenkonten, misst Speicher und CPU (startet von Hand
+  oder mit `[soak]` in der Commit-Nachricht).
+
+**Schneller und mehr Verlauf**
+- Der Kerzenverlauf liegt jetzt in einem kompakten Binärformat statt JSON (rund 6 MB für 90 Tage, lädt in
+  Millisekunden) – die App startet schneller. Die alte Datei wird beim ersten Speichern übernommen.
+- Der lokale Verlauf reicht 90 statt 45 Tage.
+- Das Diagramm lädt beim Start die letzten 12 Stunden 1-Minuten-Kerzen nach; Herauszoomen geht sofort.
+
 ## 4.3 – 13.10.2026
 
 **Diagramm zum Zoomen und Verschieben**

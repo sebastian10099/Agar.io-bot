@@ -34,10 +34,11 @@ Grundsätze, die für jede Version gelten:
       Mindest-Kaufabstand“, Replay aus dem Protokoll); 100 bp war in der fallenden Woche noch besser.
 - [ ] Trendfilter neben dem Mindest-Kaufabstand neu bewerten (in dieser Woche kaum Unterschied).
 
-## Paket 4.4 – Zuverlässigkeit und Daten
-- [ ] Selbstdiagnose mit Hinweis bei hängenden Daten, deutlicher Offline-Modus.
-- [ ] Langzeittest (Speicher und CPU über Stunden) in der CI, Fuzz-Tests für die Parser.
-- [ ] Sicherungen importieren; Verlauf über Monate (Datenbank statt JSON, wenn nötig).
+## Paket 4.4 – Zuverlässigkeit und Daten (erledigt, siehe CHANGELOG)
+- [x] Selbstdiagnose mit Hinweis bei hängenden Daten, deutlicher Offline-Modus.
+- [x] Langzeittest (Speicher und CPU) in der CI, Fuzz-Tests für die Parser.
+- [x] Sicherungen wiederherstellen; Verlauf über Monate (kompakter Binärspeicher statt JSON – eine Datenbank ist dafür
+      nicht nötig).
 
 ## Später
 - [ ] Oberfläche auch auf Englisch.

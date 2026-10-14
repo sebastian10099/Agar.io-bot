@@ -73,6 +73,14 @@ wird weiterverwendet; macOS fragt beim ersten Zugriff einmal nach der Erlaubnis 
 Einmalige Anpassung: Der alte Standard für gleichzeitige Positionen (4 bzw. 8) wird auf **10** angehoben; bewusst
 andere Werte bleiben unverändert.
 
+## Neu in 4.4
+
+- **Selbstdiagnose:** Ampel in der Statusleiste mit Erklärungen; deutlicher Offline-Modus mit automatischem Neuverbinden.
+- **Sicherungen wiederherstellen** aus der Liste der automatischen Sicherungen oder aus einer Datei, mit Vorschau.
+- **Robuster:** Fuzz-Tests fanden und beseitigten drei mögliche Absturzstellen; Dauertest der Engine und Langzeittest der
+  App in der CI.
+- **Schnellerer Start** durch kompakten Kerzenspeicher; 90 Tage lokaler Verlauf.
+
 ## Neu in 4.3
 
 - **Diagramm zum Zoomen und Verschieben** (Trackpad oder Lupe, „Live“, „Alles“), Tooltips mit den Trades jeder Kerze.
