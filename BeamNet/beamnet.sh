@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.11"
+VERSION="1.12"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -867,6 +867,7 @@ watch_run() {
         echo "$state" >"$STATE_DIR/state-$nr"
     done
     watch_weekly msgs
+    watch_season msgs
     if (( ${#msgs[@]} > 0 )); then
         printf '%s\n' "${msgs[@]}"
         notify "$(printf '%s\n' "${msgs[@]}")"
@@ -902,6 +903,42 @@ print(" · ".join(f"{i + 1}. {n} ({k:.1f} km)" for i, (k, n) in enumerate(rows[:
 PY
 )
     [[ -n $line ]] && out+=("🏁 Wochensieger ${week/-W/ KW }: $line")
+    return 0
+}
+
+# Am 1. eines Monats einmal die Saisonsieger des Vormonats nach Discord (aus dem Archiv des Plugins oder den
+# Spielerdaten, falls das Archiv noch fehlt).
+watch_season() {
+    local -n sout=$1
+    local month line dom
+    dom=${BEAMNET_DOM:-$(date -u +%d)}
+    [[ $dom == 01 && -n $(conf_get DISCORD_WEBHOOK) && -d $SHARED/players ]] || return 0
+    command -v python3 >/dev/null || return 0
+    month=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
+    [[ -f $STATE_DIR/season-$month ]] && return 0
+    line=$(python3 -I - "$month" "$SHARED" <<'PY'
+import glob, json, os, sys
+month, shared = sys.argv[1], sys.argv[2]
+rows = []
+try:
+    with open(os.path.join(shared, "seasons", month + ".json"), encoding="utf-8") as f:
+        rows = [(float(e.get("xp", 0)), str(e.get("name", "?"))) for e in json.load(f).get("top", []) if isinstance(e, dict)]
+except Exception:
+    for path in glob.glob(os.path.join(shared, "players", "*.json")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                r = json.load(f)
+        except Exception:
+            continue
+        xp = r.get("monthXp") if r.get("month") == month else r.get("lastMonthXp") if r.get("lastMonth") == month else None
+        if isinstance(xp, (int, float)) and xp > 0:
+            rows.append((xp, str(r.get("name", "?"))))
+rows.sort(key=lambda x: (-x[0], x[1]))
+print(" · ".join(f"{i + 1}. {n} ({int(x)} XP)" for i, (x, n) in enumerate(rows[:3])))
+PY
+)
+    : >"$STATE_DIR/season-$month"
+    [[ -n $line ]] && sout+=("🏆 Saisonsieger $month: $line")
     return 0
 }
 

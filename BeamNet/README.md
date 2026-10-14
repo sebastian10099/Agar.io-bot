@@ -84,7 +84,7 @@ beamnet watch test         # Testnachricht an Discord
 - Er kämpft nicht gegen dich: Mit `beamnet stop` gestoppte Server gelten als Wartung (kein Alarm, kein Neustart), bis
   du sie mit `beamnet start` wieder startest.
 - Er kämpft nicht gegen OpenClaw: Hat der Agent einen Server gestoppt, meldet er das, startet aber nicht neu.
-- Montags postet er die **Wochensieger** der Vorwoche nach Discord.
+- Montags postet er die **Wochensieger** der Vorwoche nach Discord, am 1. jedes Monats die **Saisonsieger**.
 - Er setzt **Map-Abstimmungen** aus dem Chat um (siehe unten): Map in der Konfiguration ändern (alte Datei als
   Sicherung daneben), Server neu starten, nach Discord melden. Abschalten: `MAP_VOTE=0`; weitere erlaubte Maps
   (z. B. Mod-Maps, die alle Spieler haben): `VOTE_MAPS=meine_map andere_map`.

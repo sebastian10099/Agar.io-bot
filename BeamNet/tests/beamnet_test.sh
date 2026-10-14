@@ -356,6 +356,23 @@ contains "$out" "🏁 Wochensieger .* KW .*: 1\\. Sebi \\(42\\.5 km\\) · 2\\. M
 contains "$(cat "$T/curl.log")" "Wochensieger" "watch: Wochensieger an Discord"
 out=$(BEAMNET_DOW=1 "$TOOL" watch 2>&1)
 lacks "$out" "Wochensieger" "watch: Wochensieger nur einmal"
+# Saisonsieger am 1. des Monats nach Discord (aus dem Archiv, sonst aus den Spielerdaten; einmal je Monat).
+prevmonth=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
+mkdir -p "$T/root/shared/beamnet/seasons"
+echo "{\"month\":\"$prevmonth\",\"top\":[{\"name\":\"Sebi\",\"xp\":900},{\"name\":\"Max\",\"xp\":300}]}" >"$T/root/shared/beamnet/seasons/$prevmonth.json"
+: >"$T/curl.log"
+out=$(BEAMNET_DOM=02 "$TOOL" watch 2>&1)
+lacks "$out" "Saisonsieger" "watch: Saisonsieger nur am 1."
+out=$(BEAMNET_DOM=01 "$TOOL" watch 2>&1)
+contains "$out" "🏆 Saisonsieger $prevmonth: 1\\. Sebi \\(900 XP\\) · 2\\. Max \\(300 XP\\)" "watch: Saisonsieger aus dem Archiv"
+contains "$(cat "$T/curl.log")" "Saisonsieger" "watch: Saisonsieger an Discord"
+out=$(BEAMNET_DOM=01 "$TOOL" watch 2>&1)
+lacks "$out" "Saisonsieger" "watch: Saisonsieger nur einmal"
+rm -f "$T/watch/season-$prevmonth" "$T/root/shared/beamnet/seasons/$prevmonth.json"
+echo "{\"id\":\"1\",\"name\":\"Sebi\",\"lastMonth\":\"$prevmonth\",\"lastMonthXp\":120}" >"$T/root/shared/beamnet/players/1.json"
+echo "{\"id\":\"2\",\"name\":\"Max\",\"month\":\"$prevmonth\",\"monthXp\":450}" >"$T/root/shared/beamnet/players/2.json"
+out=$(BEAMNET_DOM=01 "$TOOL" watch 2>&1)
+contains "$out" "🏆 Saisonsieger $prevmonth: 1\\. Max \\(450 XP\\) · 2\\. Sebi \\(120 XP\\)" "watch: Saisonsieger aus den Spielerdaten"
 
 sed -i 's|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=http://example.com/hook|' "$T/beamnet.conf"
 rm -f "$T/state/beammp-1.service.active"

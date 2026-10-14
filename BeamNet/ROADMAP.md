@@ -1,5 +1,8 @@
 # BeamNet – Roadmap
 
+Erledigt (Werkzeug 1.12):
+- [x] Saisonsieger am 1. jedes Monats nach Discord (aus dem Saisonarchiv, sonst aus den Spielerdaten).
+
 Erledigt (Plugin 1.10, Werkzeug 1.11):
 - [x] Map-Abstimmung im Chat: `/vote map <Name>`, `/vote ja|nein`, Mehrheit der Spieler online; der Wächter prüft die
       Map gegen die erlaubte Liste, stellt um, startet neu und meldet nach Discord (höchstens ein Wechsel je Server in
@@ -88,5 +91,4 @@ Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamne
 
 Ideen:
 - [ ] Map-Rotation für einen Server (jeden Tag eine andere Map).
-- [ ] Saisonsieger zum Monatswechsel auch nach Discord (wie die Wochensieger).
 - [ ] Statusseite: Profilseite je Fahrer (Erfolge, Rekorde, Verlauf).
