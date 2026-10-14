@@ -661,6 +661,26 @@ function BN.rankOf(id)
     return nil, #BN.board.list
 end
 
+-- Welche BeamMP-Funktionen gibt es auf diesem Server? (Aeltere Server-Versionen haben nicht alles.)
+function BN.capabilities()
+    local function has(t, name) return type(t) == "table" and type(t[name]) == "function" end
+    return {
+        positions = has(MP, "GetPositionRaw"),
+        vehicles = has(MP, "GetPlayerVehicles"),
+        identifiers = has(MP, "GetPlayerIdentifiers"),
+        timers = has(MP, "CreateEventTimer"),
+        files = has(FS, "ListFiles"),
+    }
+end
+
+local capabilityEffects = {
+    positions = "keine Kilometer, keine Rennen (BeamMP-Server zu alt: MP.GetPositionRaw fehlt)",
+    vehicles = "keine Kilometer, keine Rennen (MP.GetPlayerVehicles fehlt)",
+    identifiers = "alle Spieler werden wie Gaeste behandelt, nichts wird gespeichert (MP.GetPlayerIdentifiers fehlt)",
+    timers = "kein Takt: nichts wird gezaehlt (MP.CreateEventTimer fehlt)",
+    files = "keine Bestenliste und keine Serverliste (FS.ListFiles fehlt)",
+}
+
 function BN.writeStatus()
     if not BN.server.port or BN.server.port == 0 then return end
     ensureDir(C.sharedDir)
@@ -669,7 +689,8 @@ function BN.writeStatus()
     for _, s in pairs(BN.players) do names[#names + 1] = s.name end
     table.sort(names)
     local status = { name = BN.server.name, port = BN.server.port, map = BN.server.map, players = #names,
-                     max = BN.server.maxPlayers, names = names, updated = BN.now(), version = BN.VERSION }
+                     max = BN.server.maxPlayers, names = names, updated = BN.now(), version = BN.VERSION,
+                     api = BN.capabilities(), lua = _VERSION }
     writeFileAtomic(serversDir() .. "/" .. tostring(BN.server.port) .. ".json", json.encode(status))
     BN.lastStatus = BN.now()
 end
@@ -1184,8 +1205,12 @@ function BN.init()
         end
     end
     BN.writeStatus()
-    print(string.format("[BeamNetCore] %s geladen · %s · Port %s · Map %s · Daten %s", BN.VERSION, BN.server.name,
-        tostring(BN.server.port), BN.server.map, C.sharedDir))
+    print(string.format("[BeamNetCore] %s geladen · %s · Port %s · Map %s · Daten %s · %s", BN.VERSION, BN.server.name,
+        tostring(BN.server.port), BN.server.map, C.sharedDir, _VERSION))
+    local caps = BN.capabilities()
+    for _, key in ipairs({ "positions", "vehicles", "identifiers", "timers", "files" }) do
+        if not caps[key] then print("[BeamNetCore] Warnung: " .. capabilityEffects[key]) end
+    end
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------

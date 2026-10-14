@@ -232,7 +232,8 @@ contains "$out" "eingeschaltet" "plugin-enable"
 
 # Spielerzahl aus dem Plugin-Status (frisch und veraltet)
 now=$(date +%s)
-echo "{\"server\":1,\"port\":30814,\"players\":3,\"max\":8,\"updated\":$now}" >"$T/root/shared/beamnet/servers/30814.json"
+echo "{\"server\":1,\"port\":30814,\"players\":3,\"max\":8,\"updated\":$now,\"api\":{\"positions\":true}}" >"$T/root/shared/beamnet/servers/30814.json"
+echo "{\"port\":30816,\"players\":0,\"max\":8,\"updated\":$now,\"api\":{\"files\":true,\"positions\":false}}" >"$T/root/shared/beamnet/servers/30816.json"
 echo "{\"server\":2,\"port\":30815,\"players\":5,\"max\":8,\"updated\":$((now - 600))}" >"$T/root/shared/beamnet/servers/30815.json"
 out=$("$TOOL" status)
 contains "$out" "^1 +läuft .* 30814 +3/8 " "Status zeigt Spieler"
@@ -243,7 +244,10 @@ echo "[LUA] [BeamNetCore] Fehler im Takt: attempt to index a nil value" >>"$T/ro
 out=$("$TOOL" doctor)
 contains "$out" "Server 1 .*BeamNetCore aktiv" "doctor: Plugin aktiv"
 contains "$out" "Server 2 .*BeamNetCore meldet sich seit 10 min nicht mehr" "doctor: Plugin veraltet"
-contains "$out" "Server 3 .*BeamNetCore ist installiert, hat sich aber noch nie gemeldet" "doctor: Plugin nie gemeldet"
+contains "$out" "Server 3 .*BeamNetCore aktiv" "doctor: Plugin Server 3 aktiv"
+contains "$out" "Server 3 .*BeamMP-Server zu alt" "doctor: fehlende BeamMP-Funktion"
+lacks "$out" "Server 1 .*BeamMP-Server zu alt" "doctor: Server 1 hat alle Funktionen"
+contains "$out" "Server 4 .*BeamNetCore ist installiert, hat sich aber noch nie gemeldet" "doctor: Plugin nie gemeldet"
 contains "$out" "Server 2 .*Fehlermeldung von BeamNetCore: .*attempt to index" "doctor: Plugin-Fehler im Protokoll"
 
 # Bericht zum Teilen: ohne IP-Adressen und AuthKeys, ohne Farbcodes.

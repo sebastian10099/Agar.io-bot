@@ -109,6 +109,13 @@ eq(BN.server.map, "gridmap_v2", "Map")
 eq(BN.server.maxPlayers, 8, "MaxPlayers")
 local st = readJson(SHARED .. "/servers/30814.json")
 check(st and st.players == 0 and st.updated == clock, "Status beim Laden geschrieben")
+check(st and st.api and st.api.positions == true and st.api.files == true, "Status meldet vorhandene BeamMP-Funktionen")
+do
+    local saved = MP.GetPositionRaw
+    MP.GetPositionRaw = nil
+    eq(BN.capabilities().positions, false, "Fehlende BeamMP-Funktion wird erkannt")
+    MP.GetPositionRaw = saved
+end
 
 -- --- JSON ----------------------------------------------------------------------------------------------------------
 local json = BN.json

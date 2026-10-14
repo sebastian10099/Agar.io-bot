@@ -273,6 +273,10 @@ check_core() {
     fi
     err=$(tail -n 400 "$ROOT/$nr/Server.log" 2>/dev/null | grep -F "[BeamNetCore] Fehler" | tail -n 1)
     [[ -n $err ]] && warn "$name: Fehlermeldung von BeamNetCore: ${err:0:160}"
+    if grep -q '"positions"[[:space:]]*:[[:space:]]*false' "$SHARED/servers/$port.json" 2>/dev/null; then
+        bad "$name: BeamMP-Server zu alt – Kilometer und Rennen funktionieren nicht (MP.GetPositionRaw fehlt)"
+        hint "BeamMP-Server aktualisieren: https://beammp.com"
+    fi
     return 0
 }
 
