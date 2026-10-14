@@ -1,6 +1,11 @@
 # BeamNet – Roadmap
 
-Erledigt (Version 1.2):
+Erledigt (Werkzeug 1.2):
+- [x] Wächter `beamnet watch`: Ausfälle und Rückkehr melden, Discord-Webhook, optionaler Neustart (Limit 3/Stunde,
+      nicht bei Wartung oder OpenClaw-Stopp), Wochensieger montags nach Discord.
+- [x] Plugin prüft beim Start die BeamMP-Funktionen; `doctor` warnt bei zu alten Servern.
+
+Erledigt (Plugin 1.2):
 - [x] Rennen geben XP (Lauf, Bestzeit, Rekord) und zählen damit für Level und Liga.
 - [x] Wochensieger: Verkündung beim Wochenwechsel, `/top vorwoche`.
 
@@ -20,9 +25,6 @@ Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamne
 - [ ] Auf dem echten Server prüfen: `beamnet doctor`, `beamnet fix`, BeamNetCore installieren, alte Plugins vergleichen.
 - [ ] Statusseite: `beamnet web` erzeugt jede Minute eine HTML-Seite mit allen Servern, Spielern und der Bestenliste
       (zum Teilen, z. B. in Discord).
-- [ ] Discord-Meldungen per Webhook: Server ausgefallen/wieder da, Level-Aufstiege, Wochensieger am Sonntag.
-- [ ] Wächter als systemd-Timer: startet ausgefallene Server neu und meldet es – erst, wenn der OpenClaw-Konflikt
-      geklärt ist (sonst kämpfen zwei Programme gegeneinander).
 
 Ideen:
 - [ ] Wochenliga mit Auf- und Abstieg (Saisons).

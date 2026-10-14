@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.1"
+VERSION="1.2"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -20,6 +20,11 @@ BACKUP_DIR="${BEAMNET_BACKUP_DIR:-/root/beamnet-backups}"
 AUTH_KEYS="${BEAMNET_AUTH_KEYS:-/root/.ssh/authorized_keys}"
 AGENT_USER="${BEAMNET_AGENT_USER:-openclaw}"
 WAIT_SECONDS="${BEAMNET_WAIT:-15}"
+CONF="${BEAMNET_CONF:-/etc/beamnet.conf}"
+STATE_DIR="${BEAMNET_STATE:-/var/lib/beamnet}"
+SYSTEMD_DIR="${BEAMNET_SYSTEMD_DIR:-/etc/systemd/system}"
+# Hoechstens so viele automatische Neustarts je Server und Stunde (Schutz vor Endlosschleifen).
+MAX_RESTARTS_PER_HOUR=3
 RAW_BASE="${BEAMNET_RAW:-https://raw.githubusercontent.com/sebastian10099/Agar.io-bot/claude/friendly-goldberg-31l8fp/BeamNet}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -360,6 +365,7 @@ cmd_start() {
     local list nr
     list=$(targets "$@") || exit 1
     for nr in $list; do
+        clear_maintenance "$nr"
         systemctl enable "$(unit "$nr")" >/dev/null 2>&1
         if systemctl start "$(unit "$nr")"; then echo "Server $nr gestartet"; else echo "Server $nr: Start fehlgeschlagen (beamnet logs $nr)"; fi
     done
@@ -367,12 +373,19 @@ cmd_start() {
     verify_running $list
 }
 
+# Wartung: Mit "beamnet stop" gestoppte Server startet der Waechter nicht neu und meldet sie nicht als Ausfall.
+set_maintenance() { mkdir -p "$STATE_DIR" 2>/dev/null && : >"$STATE_DIR/maintenance-$1"; }
+clear_maintenance() { rm -f "$STATE_DIR/maintenance-$1" 2>/dev/null; return 0; }
+
 cmd_stop() {
     need_root stop
     local list nr
     list=$(targets "$@") || exit 1
     confirm "Server $(tr '\n' ' ' <<<"$list")stoppen? Spieler darauf fliegen raus." || { echo "Abgebrochen."; return 1; }
-    for nr in $list; do systemctl stop "$(unit "$nr")" && echo "Server $nr gestoppt"; done
+    for nr in $list; do
+        systemctl stop "$(unit "$nr")" && echo "Server $nr gestoppt"
+        set_maintenance "$nr"
+    done
 }
 
 cmd_restart() {
@@ -380,7 +393,10 @@ cmd_restart() {
     local list nr
     list=$(targets "$@") || exit 1
     confirm "Server $(tr '\n' ' ' <<<"$list")neu starten? Spieler darauf fliegen kurz raus." || { echo "Abgebrochen."; return 1; }
-    for nr in $list; do systemctl restart "$(unit "$nr")" && echo "Server $nr neu gestartet"; done
+    for nr in $list; do
+        clear_maintenance "$nr"
+        systemctl restart "$(unit "$nr")" && echo "Server $nr neu gestartet"
+    done
     # shellcheck disable=SC2086
     verify_running $list
 }
@@ -439,6 +455,7 @@ cmd_fix() {
         unit_exists "$nr" || { bad "Server $nr hat keinen Dienst $(unit "$nr") – übersprungen"; continue; }
         unit_enabled "$nr" || { systemctl enable "$(unit "$nr")" >/dev/null 2>&1 && ok "Server $nr: Autostart an"; }
         if ! unit_active "$nr"; then
+            clear_maintenance "$nr"
             systemctl start "$(unit "$nr")" && started+="$nr "
         fi
     done
@@ -667,6 +684,205 @@ cmd_report() {
     printf '\n(IP-Adressen und AuthKeys sind unkenntlich gemacht.)\n'
 }
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Waechter (systemd-Timer, jede Minute)
+
+conf_get() {
+    [[ -f $CONF ]] || return 0
+    grep -m1 -E "^[[:space:]]*$1=" "$CONF" | cut -d= -f2- | sed -E 's/^[[:space:]]*"?//; s/"?[[:space:]]*$//'
+}
+
+json_escape() {
+    local text=$1
+    text=${text//\\/\\\\}
+    text=${text//\"/\\\"}
+    text=${text//$'\n'/\\n}
+    text=${text//$'\r'/}
+    text=${text//$'\t'/ }
+    printf '%s' "$text"
+}
+
+# Nachricht an Discord (nur wenn ein Webhook eingetragen ist).
+notify() {
+    local hook
+    hook=$(conf_get DISCORD_WEBHOOK)
+    [[ -n $hook ]] || return 0
+    if [[ ! $hook =~ ^https://(discord|discordapp)\.com/api/webhooks/ ]]; then
+        echo "DISCORD_WEBHOOK in $CONF sieht nicht wie ein Discord-Webhook aus – nichts gesendet." >&2
+        return 1
+    fi
+    curl -fsS -m 10 -H "Content-Type: application/json" -d "{\"content\":\"$(json_escape "$1")\"}" "$hook" >/dev/null \
+        || echo "Discord-Meldung fehlgeschlagen" >&2
+}
+
+# Wurde der Server in den letzten 15 Minuten vom Agenten gestoppt oder beendet?
+stopped_by_agent() {
+    journalctl --since "-15min" --no-pager 2>/dev/null \
+        | grep -E "$AGENT_USER : .*COMMAND=.*(stop|kill).*(beammp-$1([^0-9]|\$)|/$1/BeamMP)" >/dev/null
+}
+
+# Zaehlt automatische Neustarts der letzten Stunde; gibt 1 zurueck, wenn das Limit erreicht ist.
+restart_allowed() {
+    local file="$STATE_DIR/restarts-$1" now kept=() t
+    now=$(date +%s)
+    if [[ -f $file ]]; then
+        while read -r t; do [[ $t =~ ^[0-9]+$ ]] && (( now - t < 3600 )) && kept+=("$t"); done <"$file"
+    fi
+    if (( ${#kept[@]} >= MAX_RESTARTS_PER_HOUR )); then
+        printf '%s\n' "${kept[@]}" >"$file"
+        return 1
+    fi
+    kept+=("$now")
+    printf '%s\n' "${kept[@]}" >"$file"
+    return 0
+}
+
+watch_run() {
+    mkdir -p "$STATE_DIR"
+    local nr state last name msgs=() auto
+    auto=$(conf_get AUTO_RESTART)
+    for nr in $(servers); do
+        unit_exists "$nr" || continue
+        if unit_active "$nr"; then state=up; else state=down; fi
+        last=$(cat "$STATE_DIR/state-$nr" 2>/dev/null || echo "$state")
+        name="Server $nr ($(map_short "$(cfg "$nr" Map)"))"
+        if [[ $state == up ]]; then
+            [[ $last == down ]] && msgs+=("🟢 $name ist wieder online.")
+            rm -f "$STATE_DIR/limit-$nr"
+        elif [[ -f $STATE_DIR/maintenance-$nr ]] || ! unit_enabled "$nr"; then
+            :   # bewusst gestoppt oder ohne Autostart: kein Ausfall
+        else
+            [[ $last == up ]] && msgs+=("🔴 $name ist ausgefallen.")
+            if [[ $auto == 1 ]]; then
+                if stopped_by_agent "$nr"; then
+                    [[ $last == up ]] && msgs+=("   $name wurde von OpenClaw gestoppt – kein automatischer Neustart.")
+                elif restart_allowed "$nr"; then
+                    systemctl restart "$(unit "$nr")"
+                    if unit_active "$nr"; then
+                        state=up
+                        msgs+=("🟡 $name automatisch neu gestartet.")
+                    else
+                        msgs+=("   Neustart von $name fehlgeschlagen (beamnet logs $nr).")
+                    fi
+                elif [[ ! -f $STATE_DIR/limit-$nr ]]; then
+                    : >"$STATE_DIR/limit-$nr"
+                    msgs+=("⚠️ $name: zu viele Neustarts in einer Stunde – bitte prüfen (beamnet logs $nr).")
+                fi
+            fi
+        fi
+        echo "$state" >"$STATE_DIR/state-$nr"
+    done
+    watch_weekly msgs
+    if (( ${#msgs[@]} > 0 )); then
+        printf '%s\n' "${msgs[@]}"
+        notify "$(printf '%s\n' "${msgs[@]}")"
+    fi
+    return 0
+}
+
+# Montags einmal die Wochensieger der Vorwoche nach Discord (braucht python3 und BeamNetCore-Daten).
+watch_weekly() {
+    local -n out=$1
+    local week line dow
+    dow=${BEAMNET_DOW:-$(date -u +%u)}
+    [[ $dow == 1 && -n $(conf_get DISCORD_WEBHOOK) && -d $SHARED/players ]] || return 0
+    command -v python3 >/dev/null || return 0
+    week=$(date -u -d '7 days ago' +%G-W%V)
+    [[ -f $STATE_DIR/weekly-$week ]] && return 0
+    : >"$STATE_DIR/weekly-$week"
+    line=$(python3 -I - "$week" "$SHARED/players" <<'PY'
+import glob, json, sys
+week, folder = sys.argv[1], sys.argv[2]
+rows = []
+for path in glob.glob(folder + "/*.json"):
+    try:
+        with open(path, encoding="utf-8") as f:
+            r = json.load(f)
+    except Exception:
+        continue
+    km = r.get("weekKm") if r.get("week") == week else r.get("lastWeekKm") if r.get("lastWeek") == week else None
+    if isinstance(km, (int, float)) and km > 0:
+        rows.append((km, str(r.get("name", "?"))))
+rows.sort(key=lambda x: (-x[0], x[1]))
+print(" · ".join(f"{i + 1}. {n} ({k:.1f} km)" for i, (k, n) in enumerate(rows[:3])))
+PY
+)
+    [[ -n $line ]] && out+=("🏁 Wochensieger ${week/-W/ KW }: $line")
+    return 0
+}
+
+watch_install() {
+    need_root watch
+    local self
+    self=$(readlink -f "${BASH_SOURCE[0]}")
+    mkdir -p "$STATE_DIR" "$SYSTEMD_DIR"
+    if [[ ! -f $CONF ]]; then
+        cat >"$CONF" <<'EOF'
+# BeamNet-Waechter (beamnet watch) – Aenderungen gelten ab dem naechsten Lauf (jede Minute).
+#
+# Discord-Webhook: Discord-Server → Servereinstellungen → Integrationen → Webhooks → Neuer Webhook → URL kopieren.
+# Leer = keine Discord-Meldungen.
+DISCORD_WEBHOOK=
+# 1 = ausgefallene Server automatisch neu starten (hoechstens 3x pro Stunde; nicht, wenn mit "beamnet stop"
+# gestoppt oder von OpenClaw gestoppt). 0 = nur melden.
+AUTO_RESTART=0
+EOF
+        chmod 600 "$CONF"
+    fi
+    cat >"$SYSTEMD_DIR/beamnet-watch.service" <<EOF
+[Unit]
+Description=BeamNet-Waechter (prueft die BeamMP-Server)
+
+[Service]
+Type=oneshot
+ExecStart=$self watch
+EOF
+    cat >"$SYSTEMD_DIR/beamnet-watch.timer" <<'EOF'
+[Unit]
+Description=BeamNet-Waechter jede Minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60s
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now beamnet-watch.timer >/dev/null 2>&1
+    ok "Wächter eingerichtet (läuft jede Minute). Einstellungen: $CONF"
+    echo "Discord und automatischer Neustart sind aus, bis du sie dort einträgst."
+}
+
+watch_uninstall() {
+    need_root watch
+    systemctl disable --now beamnet-watch.timer >/dev/null 2>&1
+    rm -f "$SYSTEMD_DIR/beamnet-watch.service" "$SYSTEMD_DIR/beamnet-watch.timer"
+    systemctl daemon-reload
+    ok "Wächter entfernt (Einstellungen in $CONF bleiben)."
+}
+
+cmd_watch() {
+    case ${1:-run} in
+        run) need_root watch; watch_run ;;
+        install) watch_install ;;
+        uninstall) watch_uninstall ;;
+        test)
+            [[ -n $(conf_get DISCORD_WEBHOOK) ]] || die "Kein DISCORD_WEBHOOK in $CONF eingetragen."
+            notify "✅ BeamNet-Wächter: Testnachricht von $(hostname 2>/dev/null)" && ok "Testnachricht gesendet."
+            ;;
+        status)
+            if [[ -f $SYSTEMD_DIR/beamnet-watch.timer ]]; then ok "Wächter eingerichtet"; else echo "Wächter nicht eingerichtet (beamnet watch install)."; fi
+            if [[ -n $(conf_get DISCORD_WEBHOOK) ]]; then echo "Discord: an"; else echo "Discord: aus"; fi
+            if [[ $(conf_get AUTO_RESTART) == 1 ]]; then echo "Automatischer Neustart: an"; else echo "Automatischer Neustart: aus"; fi
+            ls "$STATE_DIR"/maintenance-* >/dev/null 2>&1 && echo "In Wartung (bewusst gestoppt): $(ls "$STATE_DIR"/maintenance-* | sed 's/.*maintenance-//' | tr '\n' ' ')"
+            return 0
+            ;;
+        *) die "Aufruf: beamnet watch [install|uninstall|status|test]" ;;
+    esac
+}
+
 cmd_self_update() {
     need_root self-update
     local target tmp
@@ -697,6 +913,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet backup                 Sichert Konfigurationen, Plugins und Dienste nach $BACKUP_DIR
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, /server) auf allen Servern
   beamnet openclaw status|pause|resume   OpenClaw-Agent ansehen, anhalten (einfrieren), fortsetzen
+  beamnet watch install|status|test|uninstall   Wächter: meldet Ausfälle (auch an Discord), optional Neustart
   beamnet self-update            Neueste Version dieses Werkzeugs laden
 
   Option -y: ohne Rückfrage ausführen.
@@ -729,6 +946,7 @@ main() {
         backup|sicherung) cmd_backup ;;
         install-core) cmd_install_core ;;
         openclaw) cmd_openclaw "$@" ;;
+        watch|waechter) cmd_watch "$@" ;;
         self-update|update) cmd_self_update ;;
         version|--version) echo "BeamNet $VERSION" ;;
         hilfe|help|-h|--help) cmd_help ;;

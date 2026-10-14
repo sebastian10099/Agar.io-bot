@@ -271,6 +271,98 @@ rm -f "$T/agent.user"
 out=$("$TOOL" doctor)
 contains "$out" "Kein Benutzer openclaw" "Ohne OpenClaw keine Warnung"
 
+# --- Waechter ------------------------------------------------------------------------------------------------------
+export BEAMNET_CONF="$T/beamnet.conf" BEAMNET_STATE="$T/watch" BEAMNET_SYSTEMD_DIR="$T/systemd"
+cat >"$T/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >>"$FAKE/curl.log"
+EOF
+chmod +x "$T/bin/curl"
+for nr in 1 2 3 4 5 6; do touch "$T/state/beammp-$nr.service.active" "$T/state/beammp-$nr.service.enabled"; done
+rm -f "$T"/state/*.sabotage
+: >"$T/actions"
+out=$("$TOOL" watch install 2>&1)
+contains "$out" "Wächter eingerichtet" "watch install"
+[[ -f $T/systemd/beamnet-watch.timer && -f $T/beamnet.conf ]] && pass || fail "watch install: Dateien fehlen"
+contains "$(cat "$T/systemd/beamnet-watch.service")" "^ExecStart=.*beamnet.sh watch$" "watch install: Dienst ruft das Werkzeug"
+contains "$(cat "$T/actions")" "enable --now" "watch install: Timer aktiviert"
+contains "$(cat "$T/beamnet.conf")" "^AUTO_RESTART=0$" "watch install: Neustart standardmaessig aus"
+
+out=$("$TOOL" watch 2>&1)
+lacks "$out" "ausgefallen|online" "watch: erste Runde ohne Meldung"
+rm -f "$T/state/beammp-3.service.active"
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🔴 Server 3 \\(italy\\) ist ausgefallen" "watch: Ausfall gemeldet"
+lacks "$(cat "$T/actions")" "restart beammp-3" "watch: ohne AUTO_RESTART kein Neustart"
+out=$("$TOOL" watch 2>&1)
+lacks "$out" "ausgefallen" "watch: Ausfall nur einmal gemeldet"
+
+sed -i 's/^AUTO_RESTART=0/AUTO_RESTART=1/; s|^DISCORD_WEBHOOK=|DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/abc|' "$T/beamnet.conf"
+: >"$T/curl.log"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🟡 Server 3 \\(italy\\) automatisch neu gestartet" "watch: automatischer Neustart"
+contains "$(cat "$T/curl.log")" '\{"content":"🟡 Server 3 \(italy\) automatisch neu gestartet\."\}' "watch: Discord-Nachricht als JSON"
+contains "$(cat "$T/curl.log")" "https://discord.com/api/webhooks/1/abc" "watch: an den Webhook"
+
+# Bewusst gestoppt: keine Meldung, kein Neustart; Start hebt die Wartung auf.
+"$TOOL" stop 2 -y >/dev/null
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+lacks "$out" "Server 2" "watch: Wartung wird nicht gemeldet"
+lacks "$(cat "$T/actions")" "restart beammp-2" "watch: Wartung wird nicht neu gestartet"
+out=$("$TOOL" watch status 2>&1)
+contains "$out" "In Wartung \\(bewusst gestoppt\\): 2" "watch status: Wartung"
+contains "$out" "Discord: an" "watch status: Discord"
+"$TOOL" start 2 >/dev/null
+[[ ! -f $T/watch/maintenance-2 ]] && pass || fail "start hebt Wartung auf"
+
+# Von OpenClaw gestoppt: melden, aber nicht dagegen ankaempfen.
+echo "Oct 14 10:00:00 srv sudo[9]: openclaw : PWD=/home/openclaw ; USER=root ; COMMAND=/usr/bin/systemctl stop beammp-4" >>"$T/journal.txt"
+rm -f "$T/state/beammp-4.service.active"
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "Server 4 \\(east_coast_usa\\) wurde von OpenClaw gestoppt – kein automatischer Neustart" "watch: OpenClaw erkannt"
+lacks "$(cat "$T/actions")" "restart beammp-4" "watch: kein Kampf gegen OpenClaw"
+
+# Server 6 startet nie: hoechstens 3 Neustarts pro Stunde, dann eine Warnung.
+touch "$T/state/beammp-6.service.sabotage"
+rm -f "$T/state/beammp-6.service.active"
+"$TOOL" watch >/dev/null 2>&1
+"$TOOL" watch >/dev/null 2>&1
+out=$("$TOOL" watch 2>&1)
+contains "$out" "Neustart von Server 6 .* fehlgeschlagen" "watch: Neustart fehlgeschlagen"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "zu viele Neustarts in einer Stunde" "watch: Neustart-Limit"
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+lacks "$out" "Server 6" "watch: Limit-Warnung nur einmal"
+lacks "$(cat "$T/actions")" "restart beammp-6" "watch: nach dem Limit kein Neustart"
+rm -f "$T/state/beammp-6.service.sabotage"
+touch "$T/state/beammp-6.service.active"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🟢 Server 6 \\(my_mod_map\\) ist wieder online" "watch: wieder online"
+
+# Wochensieger montags nach Discord (einmal je Woche).
+lastweek=$(date -u -d '7 days ago' +%G-W%V)
+echo "{\"id\":\"1\",\"name\":\"Sebi\",\"week\":\"$lastweek\",\"weekKm\":42.5}" >"$T/root/shared/beamnet/players/1.json"
+echo "{\"id\":\"2\",\"name\":\"Max\",\"lastWeek\":\"$lastweek\",\"lastWeekKm\":12}" >"$T/root/shared/beamnet/players/2.json"
+: >"$T/curl.log"
+out=$(BEAMNET_DOW=1 "$TOOL" watch 2>&1)
+contains "$out" "🏁 Wochensieger .* KW .*: 1\\. Sebi \\(42\\.5 km\\) · 2\\. Max \\(12\\.0 km\\)" "watch: Wochensieger"
+contains "$(cat "$T/curl.log")" "Wochensieger" "watch: Wochensieger an Discord"
+out=$(BEAMNET_DOW=1 "$TOOL" watch 2>&1)
+lacks "$out" "Wochensieger" "watch: Wochensieger nur einmal"
+
+sed -i 's|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=http://example.com/hook|' "$T/beamnet.conf"
+rm -f "$T/state/beammp-1.service.active"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "sieht nicht wie ein Discord-Webhook aus" "watch: falscher Webhook wird abgelehnt"
+
+out=$("$TOOL" watch uninstall 2>&1)
+contains "$out" "Wächter entfernt" "watch uninstall"
+[[ ! -f $T/systemd/beamnet-watch.timer && -f $T/beamnet.conf ]] && pass || fail "watch uninstall: Timer weg, Einstellungen bleiben"
+
 # Nicht als root: Aenderungen verweigert.
 out=$(FAKE_UID=1000 "$TOOL" restart all 2>&1)
 contains "$out" "Bitte als root" "restart verlangt root"

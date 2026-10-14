@@ -43,6 +43,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet backup` | Konfigurationen, Plugins und systemd-Dienste nach `/root/beamnet-backups` (die 20 neuesten bleiben) |
 | `beamnet install-core` | Installiert BeamNetCore auf allen Servern |
 | `beamnet openclaw status / pause / resume` | OpenClaw-Agent ansehen, anhalten (einfrieren, nichts wird gelöscht) und fortsetzen |
+| `beamnet watch install / status / test / uninstall` | Wächter einrichten (siehe unten) |
 | `beamnet self-update` | Neueste Version des Werkzeugs laden |
 
 Mit `-y` laufen Befehle ohne Rückfrage.
@@ -57,6 +58,22 @@ Mit `-y` laufen Befehle ohne Rückfrage.
 - cron-Aufgaben, die BeamMP betreffen (z. B. `auto_install.py` alle 2 Minuten als root).
 - SSH-Schlüssel: Anzahl, Fingerabdrücke, ob die Datei in den letzten 24 h geändert wurde.
 - Freier Speicherplatz und Arbeitsspeicher.
+
+### Wächter: Ausfälle melden, optional neu starten
+
+```bash
+beamnet watch install      # prüft ab jetzt jede Minute alle Server (systemd-Timer)
+nano /etc/beamnet.conf     # Discord-Webhook und automatischen Neustart eintragen
+beamnet watch test         # Testnachricht an Discord
+```
+
+- Meldet „🔴 Server 5 (utah) ist ausgefallen“ und „🟢 … ist wieder online“ – im Systemprotokoll und, wenn eingetragen,
+  per **Discord-Webhook**. Jeder Ausfall wird nur einmal gemeldet.
+- Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
+- Er kämpft nicht gegen dich: Mit `beamnet stop` gestoppte Server gelten als Wartung (kein Alarm, kein Neustart), bis
+  du sie mit `beamnet start` wieder startest.
+- Er kämpft nicht gegen OpenClaw: Hat der Agent einen Server gestoppt, meldet er das, startet aber nicht neu.
+- Montags postet er die **Wochensieger** der Vorwoche nach Discord.
 
 ## Stand vom 27.07.2026 (letzte Sitzung auf dem Server)
 
