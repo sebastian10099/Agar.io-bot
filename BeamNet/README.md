@@ -224,7 +224,11 @@ pip install lupa && python3 BeamNet/tests/run_lua_tests.py   # Plugin unter Lua 
 shellcheck BeamNet/beamnet.sh
 ```
 
-Die Tests laufen bei jeder Änderung automatisch auf GitHub (Workflow „BeamNet“).
+Die Tests laufen bei jeder Änderung automatisch auf GitHub (Workflow „BeamNet“). Dazu gehört ein Integrationstest mit
+dem **echten BeamMP-Server** (offizielle Linux-Version, derzeit 3.9.3): Das Plugin wird geladen, der Takt muss laufen,
+alle benötigten BeamMP-Funktionen müssen vorhanden sein, und es darf keine Fehlermeldung geben
+(`BeamNet/tests/beammp_integration.sh`). Was ohne echte Spieler nicht prüfbar ist: Positionen, Chat und Anmelden –
+das deckt der Test mit nachgebauter Schnittstelle ab.
 
 ## Nächste Ideen
 

@@ -55,6 +55,7 @@ UpdateReminderTime = "30s"
 TOML
 
 export BEAMNET_SHARED="$WORK/shared"
+started=$(date +%s)
 echo "Starte den Server für $RUN_SECONDS s …"
 (cd "$WORK" && timeout --signal=INT "$RUN_SECONDS" ./BeamMP-Server >"$WORK/out.log" 2>&1 </dev/null)
 code=$?
@@ -73,6 +74,9 @@ check "keine fehlenden BeamMP-Funktionen" '! grep -q "\[BeamNetCore\] Warnung" <
 check "Status-Datei geschrieben" '[[ -f $WORK/shared/servers/30814.json ]]'
 if [[ -f $WORK/shared/servers/30814.json ]]; then
     cat "$WORK/shared/servers/30814.json"; echo
+    updated=$(grep -o '"updated":[0-9]*' "$WORK/shared/servers/30814.json" | grep -o '[0-9]*$')
+    # Der Status wird alle 15 s aus dem Takt (MP.CreateEventTimer) geschrieben – ist er spaeter als der Start, laeuft der Takt.
+    check "Takt läuft (Status $(( ${updated:-0} - started )) s nach dem Start erneuert)" '[[ -n $updated ]] && (( updated - started >= 20 ))'
     for f in positions vehicles identifiers timers files; do
         check "BeamMP-Funktion vorhanden: $f" "grep -q '\"$f\":true' '$WORK/shared/servers/30814.json'"
     done

@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Tests):
+- [x] Integrationstest in der CI mit dem echten BeamMP-Server 3.9.3: Plugin lädt (Lua 5.3.5), onInit, Takt läuft,
+      alle fünf BeamMP-Funktionen vorhanden, keine Fehler.
+
 Erledigt (Werkzeug 1.5):
 - [x] Einrichtungs-Assistent `beamnet setup`; `beamnet admin add/remove/list` (wirksam ohne Neustart).
 - [x] Fehler behoben: `start/stop/restart all` brach ab, wenn im Server-Ordner ein Nicht-Server-Ordner (z. B. `shared`)
