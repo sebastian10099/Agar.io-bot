@@ -478,6 +478,109 @@ check(BN.loadTracks().tracks.runde == nil, "Strecke geloescht")
 say(5, "/rennen gibtsnicht")
 check(chatContains("gibt es auf dieser Map nicht", 5), "Unbekannte Strecke")
 
+-- --- Zwischenzeiten ------------------------------------------------------------------------------------------------
+eq(BN.fmtSplitDiff(1.26), "+1.3 s", "Abstand mit Plus")
+eq(BN.fmtSplitDiff(-0.8), "-0.8 s", "Abstand mit Minus")
+eq(BN.fmtSplitDiff(-0.04), "+0.0 s", "Kein -0.0")
+eq(BN.tr("en", "Zwischenzeit %d: %s (%s)", 2, "0:13.1", "-1.0 s"), "Split 2: 0:13.1 (-1.0 s)", "Zwischenzeit auf Englisch")
+eq(C.raceSplitM, 500, "Zwischenzeit alle 500 m")
+-- Gerade Strecke 3000 -> 5000 (Start und Ziel per Sprung gesetzt, Sebi faehrt dabei nichts).
+at(1, 3000, 7100)
+say(1, "/rennen neu zwischen")
+at(1, 5000, 7101)
+say(1, "/rennen ziel zwischen")
+check(chatContains("Ziel von zwischen gesetzt %(2000 m Luftlinie%)", 1), "Strecke fuer Zwischenzeiten")
+players[8] = { name = "Splitter", ids = { beammp = "8008" }, vehicles = {} }
+_G[events.onPlayerJoin](8)
+local splitLogStart = #chatLog
+local function splitCount(pid)
+    local n = 0
+    for _, c in ipairs(chatLog) do if c.pid == pid and c.msg:find("^Zwischenzeit") then n = n + 1 end end
+    return n
+end
+local function mySplits()
+    for _, r in ipairs(BN.loadTracks().tracks.zwischen.records or {}) do
+        if r.id == "8008" then return r.splits end
+    end
+end
+-- Startet einen Lauf ab x=3000: verlaesst den Startbereich (12 m) bei Spielzeit t0 + 1.2; Fahrstrecke = x - 3012.
+local function startRun(t0)
+    at(8, 3000, t0); at(8, 3010, t0 + 1); at(8, 3020, t0 + 2)
+    return t0 + 2
+end
+say(8, "/rennen zwischen")
+-- Lauf 1 mit 20 m/s: Marken bei 3512, 4012, 4512 -> 25.4 / 50.4 / 75.4 s; Ziel 99.2 s.
+tim = startRun(100)
+eq(BN.players[8].race.state, "running", "Lauf mit Zwischenzeiten gestartet")
+near(BN.players[8].race.runDist, 8, 1e-9, "Fahrstrecke ab Verlassen des Startbereichs")
+tim = drive(8, 3020, 4980, 20, tim)
+at(8, 5000, tim + 1)
+check(chatContains("Ziel! zwischen: 1:39%.2", 8), "Lauf 1 im Ziel")
+eq(splitCount(8), 0, "Ohne Bestzeit keine Zwischenzeiten im Chat")
+local sp = mySplits()
+check(type(sp) == "table" and #sp == 3, "Drei Zwischenzeiten gespeichert")
+near(sp and sp[1], 25.4, 1e-6, "Zwischenzeit 1 gespeichert")
+near(sp and sp[2], 50.4, 1e-6, "Zwischenzeit 2 gespeichert")
+near(sp and sp[3], 75.4, 1e-6, "Zwischenzeit 3 gespeichert")
+eq(BN.players[8].race.splits, nil, "Nach dem Ziel kein Laufzustand mehr")
+-- Lauf 2: erst schneller (25 m/s), dann langsamer (10 m/s); langsamer im Ziel -> Bestzeit und Zwischenzeiten bleiben.
+tim = startRun(300)
+tim = drive(8, 3020, 3520, 25, tim)                  -- Marke 1 bei 321.68 -> 20.48 s
+check(chatContains("^Zwischenzeit 1: 0:20%.5 %(%-4%.9 s%)$", 8), "Zwischenzeit 1 schneller als Bestzeit")
+eq(splitCount(8), 1, "Nur eine Zwischenzeit bis hier")
+tim = drive(8, 3520, 4020, 10, tim)                  -- Marke 2 bei 371.2 -> 70.0 s
+check(chatContains("^Zwischenzeit 2: 1:10%.0 %(%+19%.6 s%)$", 8), "Zwischenzeit 2 langsamer als Bestzeit")
+do
+    local others = 0
+    for i = splitLogStart + 1, #chatLog do
+        if chatLog[i].pid ~= 8 and chatLog[i].msg:find("Zwischenzeit") then others = others + 1 end
+    end
+    eq(others, 0, "Zwischenzeiten nur an den Fahrer")
+end
+tim = drive(8, 4020, 4980, 20, tim)
+at(8, 5000, tim + 1)
+check(chatContains("Ziel! zwischen: 1:59%.2", 8), "Lauf 2 langsamer im Ziel")
+eq(splitCount(8), 3, "Drei Zwischenzeiten im Lauf 2")
+sp = mySplits()
+near(sp and sp[1], 25.4, 1e-6, "Langsamer Lauf aendert die Zwischenzeiten nicht")
+-- Lauf 3 wird durch Zuruecksetzen ungueltig: Laufzustand weg, nichts gespeichert.
+tim = startRun(600)
+tim = drive(8, 3020, 3600, 40, tim)
+eq(splitCount(8), 4, "Zwischenzeit im abgebrochenen Lauf")
+_G[events.onVehicleReset](8, 0)
+check(chatContains("Fahrzeug zurückgesetzt – Lauf ungültig", 8), "Lauf 3 ungueltig")
+check(BN.players[8].race.runDist == nil and BN.players[8].race.splits == nil, "Ungueltiger Lauf setzt Zwischenzeiten zurueck")
+near(mySplits()[1], 25.4, 1e-6, "Ungueltiger Lauf speichert nichts")
+-- Lauf 4 mit 40 m/s: neue Bestzeit ersetzt die Zwischenzeiten.
+tim = startRun(800)
+tim = drive(8, 3020, 4980, 40, tim)                  -- Marke 1 nach 12.3 + 0.8 = 13.1 s
+check(chatContains("^Zwischenzeit 1: 0:13%.1 %(%-12%.3 s%)$", 8), "Zwischenzeit gegen die alte Bestzeit")
+at(8, 5000, tim + 1)
+check(chatContains("Neuer Streckenrekord auf zwischen: Splitter mit 0:50%.2!", 8), "Lauf 4 ist Bestzeit")
+sp = mySplits()
+check(type(sp) == "table" and #sp == 3, "Neue Bestzeit mit drei Zwischenzeiten")
+near(sp and sp[1], 13.1, 1e-6, "Zwischenzeiten der neuen Bestzeit")
+-- Englisch
+say(8, "/lang en")
+tim = startRun(1000)
+tim = drive(8, 3020, 3540, 40, tim)
+check(chatContains("^Split 1: 0:13%.1 %(%+0%.0 s%)$", 8), "Zwischenzeit auf Englisch im Chat")
+say(8, "/race stop")
+say(8, "/lang de")
+-- Hoechstens 60 Zwischenzeiten je Bestzeit.
+C.raceSplitM = 10
+say(8, "/rennen zwischen")
+tim = startRun(1200)
+tim = drive(8, 3020, 4980, 50, tim)
+at(8, 5000, tim + 1)
+sp = mySplits()
+check(type(sp) == "table" and #sp == 60, "Hoechstens 60 Zwischenzeiten (" .. tostring(sp and #sp) .. ")")
+C.raceSplitM = 500
+say(8, "/rennen stop")
+say(1, "/rennen loeschen zwischen")
+_G[events.onPlayerDisconnect](8)
+players[8] = nil
+
 -- --- Moderation ---------------------------------------------------------------------------------------------------
 local join = function(pid) _G[events.onPlayerJoin](pid) end
 local function writeJson(path, value)

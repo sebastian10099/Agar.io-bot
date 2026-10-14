@@ -72,6 +72,8 @@ local defaults = {
     raceRadiusM = 12,
     raceTickMs = 250,
     raceMaxMinutes = 30,
+    -- Zwischenzeiten alle raceSplitM Meter Fahrstrecke eines Laufs (0 = aus).
+    raceSplitM = 500,
     -- Bonus-XP fuer Rennen: gueltiger Lauf, persoenliche Bestzeit, Streckenrekord.
     raceFinishXp = 15,
     racePersonalBestXp = 10,
@@ -506,6 +508,7 @@ local EN = {
     ["Für einen neuen Versuch zurück zum Start – beenden mit /rennen stop."] = "For another try drive back to the start – quit with /race stop.",
     ["Am Start von %s. Los geht's, sobald du den Startbereich verlässt!"] = "At the start of %s. The clock starts when you leave the start area!",
     ["Zeit läuft! Ziel ist %.0f m entfernt."] = "Clock is running! The finish is %.0f m away.",
+    ["Zwischenzeit %d: %s (%s)"] = "Split %d: %s (%s)",
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
@@ -1377,6 +1380,16 @@ function BN.fmtRaceTime(seconds)
     return string.format("%d:%04.1f", m, seconds - m * 60)
 end
 
+-- Abstand zur eigenen Zwischenzeit mit Vorzeichen und einer Nachkommastelle ("+1.3 s", "-0.8 s").
+function BN.fmtSplitDiff(seconds)
+    local v = math.floor((seconds or 0) * 10 + 0.5) / 10
+    if v == 0 then v = 0 end                -- kein "-0.0"
+    return string.format("%+.1f s", v)
+end
+
+-- Hoechstens so viele Zwischenzeiten je Lauf.
+local MAX_SPLITS = 60
+
 local function racesFile()
     local map = tostring(BN.server.map or "unbekannt"):gsub("[^%w_-]", "_")
     return racesDir() .. "/" .. map .. ".json"
@@ -1424,6 +1437,43 @@ function BN.raceInvalid(s, why)
     local lang = BN.langOf(s.pid)
     chat(s.pid, tr(lang, "%s – Lauf ungültig. Neuer Versuch: zurück zum Start von %s.", tr(lang, why), r.name))
     r.state, r.vid, r.startT, r.leftFinish = "armed", nil, nil, false
+    r.runDist, r.splits, r.bestSplits = nil, nil, nil
+end
+
+-- Zwischenzeiten der eigenen Bestzeit auf einer Strecke (nil fuer Gaeste oder ohne Bestzeit).
+local function bestSplits(s, name)
+    if s.guest then return nil end
+    local track = BN.loadTracks().tracks[name]
+    if type(track) ~= "table" or type(track.records) ~= "table" then return nil end
+    for _, rec in ipairs(track.records) do
+        if type(rec) == "table" and rec.id == s.id then
+            return type(rec.splits) == "table" and rec.splits or nil
+        end
+    end
+    return nil
+end
+
+-- Waehrend eines Laufs: Fahrstrecke aufsummieren, an jeder Marke (alle C.raceSplitM Meter) die Laufzeit merken und
+-- mit der Zwischenzeit der eigenen Bestzeit vergleichen. Der Zeitpunkt wird wie beim Ziel im Abschnitt eingerechnet.
+local function raceSplits(s, prev, cur, t0, t1)
+    local r = s.race
+    local step = tonumber(C.raceSplitM) or 0
+    if step <= 0 then return end
+    local seg = dist(prev, cur)
+    local d0 = r.runDist or 0
+    r.runDist = d0 + seg
+    r.splits = r.splits or {}
+    while #r.splits < MAX_SPLITS and (#r.splits + 1) * step <= r.runDist do
+        local n = #r.splits + 1
+        local f = seg > 0 and (n * step - d0) / seg or 1
+        if f < 0 then f = 0 elseif f > 1 then f = 1 end
+        local t = t0 + (t1 - t0) * f - r.startT
+        r.splits[n] = t
+        local best = r.bestSplits and tonumber(r.bestSplits[n])
+        if best then
+            say(s.pid, "Zwischenzeit %d: %s (%s)", n, BN.fmtRaceTime(t), BN.fmtSplitDiff(t - best))
+        end
+    end
 end
 
 local function finishRace(s, time)
@@ -1447,6 +1497,14 @@ local function finishRace(s, time)
             elseif time < (tonumber(mine.time) or math.huge) then
                 mine.time, mine.at, mine.name = time, BN.now(), s.name
                 improved = true
+            end
+            if improved then
+                -- Zwischenzeiten der neuen Bestzeit (nur Marken vor dem Ziel)
+                local splits = {}
+                for _, t in ipairs(r.splits or {}) do
+                    if t < time and #splits < MAX_SPLITS then splits[#splits + 1] = t end
+                end
+                mine.splits = splits
             end
             table.sort(track.records, function(a, b) return (tonumber(a.time) or math.huge) < (tonumber(b.time) or math.huge) end)
             while #track.records > 50 do table.remove(track.records) end
@@ -1473,6 +1531,7 @@ local function finishRace(s, time)
         say(s.pid, "+%d XP (nur für diese Sitzung)", C.raceFinishXp)
     end
     r.state, r.vid, r.startT, r.leftFinish = "armed", nil, nil, false
+    r.runDist, r.splits, r.bestSplits = nil, nil, nil
     say(s.pid, "Für einen neuen Versuch zurück zum Start – beenden mit /rennen stop.")
 end
 
@@ -1501,6 +1560,9 @@ function BN.raceUpdate(s, vid, prev, cur, jump)
         if dist(cur, r.start) > radius then
             r.startT = crossTime(prev, cur, t0, t1, r.start, radius)
             r.state = "running"
+            -- Fahrstrecke ab dem Verlassen des Startbereichs (Anteil des Abschnitts nach dem Start)
+            r.runDist = t1 > t0 and dist(prev, cur) * (t1 - r.startT) / (t1 - t0) or 0
+            r.splits, r.bestSplits = {}, bestSplits(s, r.name)
             r.leftFinish = dist(cur, r.finish) > BN.leaveDistance()
             say(s.pid, "Zeit läuft! Ziel ist %.0f m entfernt.", dist(cur, r.finish))
         end
@@ -1511,6 +1573,7 @@ function BN.raceUpdate(s, vid, prev, cur, jump)
         BN.raceInvalid(s, "Zeitlimit überschritten")
         return
     end
+    raceSplits(s, prev, cur, t0, t1)
     local d = dist(cur, r.finish)
     if not r.leftFinish then
         if d > BN.leaveDistance() then r.leftFinish = true end
