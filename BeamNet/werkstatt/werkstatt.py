@@ -268,10 +268,12 @@ def run_test(repo, cmd):
     if m:
         out = io.StringIO()
         old = os.getcwd()
+        old_ctype = locale.setlocale(locale.LC_CTYPE)
         code = 0
         try:
             os.chdir(repo)
             # Wie auf dem BeamMP-Server: C-Zeichenklassen (sonst verhaelt sich Lua je nach Sprache anders).
+            # Danach unbedingt zuruecksetzen – sonst liest das Programm Git-Ausgaben mit Umlauten nicht mehr.
             with contextlib.suppress(locale.Error):
                 locale.setlocale(locale.LC_CTYPE, "C")
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
@@ -284,6 +286,8 @@ def run_test(repo, cmd):
                     code = 1
         finally:
             os.chdir(old)
+            with contextlib.suppress(locale.Error):
+                locale.setlocale(locale.LC_CTYPE, old_ctype)
         return code == 0, out.getvalue()
     bash = find_bash()
     if not bash:

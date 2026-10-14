@@ -44,7 +44,7 @@ class FakeOllama(http.server.BaseHTTPRequestHandler):
 
 
 def sh(*cmd, cwd=None):
-    return subprocess.run(cmd, cwd=cwd, check=True, capture_output=True, text=True).stdout
+    return subprocess.run(cmd, cwd=cwd, check=True, capture_output=True, text=True, encoding="utf-8").stdout
 
 
 class Edits(unittest.TestCase):
@@ -83,10 +83,14 @@ class Edits(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(os.path.dirname(d), "b.txt")))
 
     def test_builtin_plugin_tests(self):
+        import locale
+        before = locale.setlocale(locale.LC_CTYPE)
         repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         ok, out = W.run_test(repo, "python3 BeamNet/tests/run_lua_tests.py")
         self.assertTrue(ok, out[-2000:])
         self.assertIn("ALLES GRÜN", out)
+        # Die Spracheinstellung ist danach wieder wie vorher (sonst scheitern Git-Ausgaben mit Umlauten).
+        self.assertEqual(locale.setlocale(locale.LC_CTYPE), before)
 
     def test_pick_model(self):
         self.assertEqual(W.pick_model(["llama3:8b", "qwen3-coder:30b"]), "qwen3-coder:30b")
