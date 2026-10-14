@@ -10,14 +10,14 @@
 --
 -- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche|vorwoche]  /liga  /server  /km  /lang de|en
 -- (englisch: /help /stats /top [km|xp|week|lastweek] /league /server /km /race /records /lang)
---               /rennen [Name|stop]  /rekorde [Name]  /erfolge [Name]  /aufgabe   – Admins: /rennen neu|ziel|loeschen <Name>
+--               /rennen [Name|stop]  /rekorde [Name]  /erfolge [Name]  /aufgabe  /saison   – Admins: /rennen neu|ziel|loeschen <Name>
 -- Moderation (Admins): /kick <Name> [Grund]  /ban <Name> [30m|2h|7d] [Grund]  /unban <Name>  /bans
 --                      /warn <Name> <Text>  /mute <Name> [Minuten]  /ansage <Text>
 
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.7"
+BN.VERSION = "1.8"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -373,6 +373,12 @@ function BN.nextLeague(xp)
     return nil
 end
 
+-- Saison = Kalendermonat (UTC), z. B. "2026-10".
+local function monthKey(t)
+    return os.date("!%Y-%m", t or BN.now())
+end
+BN.monthKey = monthKey
+
 local function weekKey(t)
     return os.date("!%G-W%V", t)
 end
@@ -481,8 +487,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /server · /km · /race · /records · /achievements · /daily · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /km · /race · /records · /achievements · /daily · /lang",
     ["Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage"] =
         "Admin: /kick · /ban <name> [30m|2h|7d] [reason] · /unban · /bans · /warn · /mute · /announce",
     ["Du bist %s gefahren (diese Woche %s)."] = "You have driven %s (this week %s).",
@@ -565,6 +571,11 @@ local EN = {
     ["Bitte etwas langsamer mit den Befehlen."] = "Please slow down with the commands.",
     ["Erfolg für %s: %s (+%d XP)"] = "Achievement for %s: %s (+%d XP)",
     ["Tagesaufgabe geschafft: %s (+%d XP)!"] = "Daily challenge done: %s (+%d XP)!",
+    ["Saison %s beendet! %s"] = "Season %s is over! %s",
+    ["Saison %s (noch %d Tage):"] = "Season %s (%d days left):",
+    ["Noch keine Punkte in dieser Saison – einfach losfahren!"] = "No points in this season yet – just start driving!",
+    ["Du: Platz %s mit %d XP in dieser Saison"] = "You: rank %s with %d XP this season",
+    ["Letzte Saison (%s): %s"] = "Last season (%s): %s",
     ["Tagesaufgabe geschafft: %s. Die nächste kommt in %s."] = "Daily challenge done: %s. The next one comes in %s.",
     ["Tagesaufgabe: %s – %s/%s · noch %s · Belohnung %d XP"] = "Daily challenge: %s – %s/%s · %s left · reward %d XP",
     ["Heute gibt es keine Tagesaufgabe."] = "No daily challenge today.",
@@ -661,6 +672,8 @@ local function loadRecord(id, name)
     rec.dayTop = tonumber(rec.dayTop) or 0
     rec.dayMaps = type(rec.dayMaps) == "table" and rec.dayMaps or {}
     rec.dayDone = rec.dayDone == true
+    rec.monthStartXp = tonumber(rec.monthStartXp)
+    rec.lastMonthXp = tonumber(rec.lastMonthXp) or 0
     rec.lastWeekKm = tonumber(rec.lastWeekKm) or 0
     rec.week = rec.week or weekKey(BN.now())
     return rec
@@ -672,6 +685,20 @@ local function dayNumber(t)
     return math.floor((t or BN.now()) / 86400)
 end
 BN.dayNumber = dayNumber
+
+-- Neue Saison (Monat): XP-Stand zu Beginn merken; die alte Saison bleibt als lastMonth/lastMonthXp erhalten.
+-- Wird vor dem Addieren der neuen Werte aufgerufen, damit Start-XP = Stand vor diesem Speichern ist.
+function BN.applyMonth(rec)
+    local cur = monthKey()
+    if rec.month == cur and rec.monthStartXp then return end
+    local before = BN.xpFor(rec.km or 0, rec.seconds or 0) + (rec.bonusXp or 0)
+    if rec.month and rec.month ~= cur and rec.monthStartXp then
+        rec.lastMonth = rec.month
+        rec.lastMonthXp = math.max(0, before - rec.monthStartXp)
+    end
+    rec.month = cur
+    rec.monthStartXp = before
+end
 
 -- Neuer Tag: Tageszaehler zuruecksetzen.
 local function applyDay(rec)
@@ -733,6 +760,7 @@ function BN.savePlayer(s)
     local rec = loadRecord(s.id, s.name)
     applyWeek(rec)
     applyDay(rec)
+    BN.applyMonth(rec)
     rec.dayKm = rec.dayKm + s.pendingKm
     rec.daySeconds = rec.daySeconds + s.pendingSeconds
     rec.dayRaces = rec.dayRaces + s.pendingRaces
@@ -781,7 +809,15 @@ function BN.totals(s)
     return { km = km, seconds = seconds, weekKm = weekKm, xp = xp, bonusXp = bonus, level = BN.levelFor(xp),
              league = BN.leagueFor(xp), topSpeedKmh = math.max(rec.topSpeedKmh or 0, s.pendingTop),
              races = (rec.racesFinished or 0) + (s.pendingRaces or 0), records = (rec.recordsSet or 0) + (s.pendingRecords or 0),
-             maps = maps, day = BN.dayTotals(s) }
+             maps = maps, day = BN.dayTotals(s), monthXp = BN.monthXpOf(s, xp) }
+end
+
+-- In dieser Saison gesammelte XP einer Sitzung (gespeichert + noch nicht gespeichert).
+function BN.monthXpOf(s, xpNow)
+    local rec = s.record
+    local saved = BN.xpFor(rec.km or 0, rec.seconds or 0) + (rec.bonusXp or 0)
+    local start = (rec.month == monthKey() and rec.monthStartXp) or saved
+    return math.max(0, (xpNow or saved) - start)
 end
 
 -- Heutige Werte (gespeichert + noch nicht gespeichert).
@@ -1014,6 +1050,72 @@ function BN.weekRanking(week)
     end)
     BN.weekCache[week] = { at = BN.now(), list = list }
     return list
+end
+
+-- Saison-Rangliste (gesammelte XP im Monat), absteigend; zwischengespeichert wie die Bestenliste.
+BN.seasonCache = BN.seasonCache or {}
+
+function BN.seasonRanking(month)
+    local cached = BN.seasonCache[month]
+    if cached and BN.now() - cached.at < C.leaderboardEverySec then return cached.list end
+    local byId = {}
+    for _, file in ipairs(listJsonFiles(playersDir())) do
+        local rec = json.decode(readFile(file) or "")
+        if type(rec) == "table" and rec.id then
+            local xp
+            if rec.month == month and tonumber(rec.monthStartXp) then
+                local total = tonumber(rec.xp) or (BN.xpFor(tonumber(rec.km) or 0, tonumber(rec.seconds) or 0) + (tonumber(rec.bonusXp) or 0))
+                xp = total - rec.monthStartXp
+            elseif rec.lastMonth == month then
+                xp = tonumber(rec.lastMonthXp)
+            end
+            if xp and xp > 0 then byId[rec.id] = { name = rec.name, xp = math.floor(xp) } end
+        end
+    end
+    if month == monthKey() then
+        for _, s in pairs(BN.players) do
+            if not s.guest then
+                local xp = BN.totals(s).monthXp
+                if xp > 0 then byId[s.id] = { name = s.name, xp = math.floor(xp) } end
+            end
+        end
+    end
+    local list = {}
+    for id, e in pairs(byId) do e.id = id; list[#list + 1] = e end
+    table.sort(list, function(a, b)
+        if a.xp ~= b.xp then return a.xp > b.xp end
+        return tostring(a.name) < tostring(b.name)
+    end)
+    BN.seasonCache[month] = { at = BN.now(), list = list }
+    return list
+end
+
+local MONTHS_DE = { "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember" }
+local MONTHS_EN = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" }
+
+function BN.seasonName(month, lang)
+    local y, m = tostring(month):match("^(%d+)%-(%d+)$")
+    m = tonumber(m)
+    if not (y and m and m >= 1 and m <= 12) then return tostring(month) end
+    return ((lang == "en") and MONTHS_EN or MONTHS_DE)[m] .. " " .. y
+end
+
+-- Saisonende: Sieger verkuenden und (einmal) archivieren.
+function BN.endSeason(month)
+    BN.seasonCache[month] = nil
+    local list = BN.seasonRanking(month)
+    if #list == 0 then return end
+    local path = C.sharedDir .. "/seasons/" .. month .. ".json"
+    if not readFile(path) then
+        ensureDir(C.sharedDir)
+        ensureDir(C.sharedDir .. "/seasons")
+        local top = {}
+        for i = 1, math.min(10, #list) do top[i] = list[i] end
+        writeFileAtomic(path, json.encode({ month = month, top = top, at = BN.now() }))
+    end
+    local parts = {}
+    for i = 1, math.min(3, #list) do parts[#parts + 1] = string.format("%d. %s (%d XP)", i, list[i].name, list[i].xp) end
+    sayEach(function(lang) return tr(lang, "Saison %s beendet! %s", BN.seasonName(month, lang), table.concat(parts, " · ")) end)
 end
 
 function BN.announceWeek(week)
@@ -1513,7 +1615,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
@@ -1958,6 +2060,41 @@ end
 commands.daily = commands.aufgabe
 commands.challenge = commands.aufgabe
 
+function commands.saison(pid)
+    local s = session(pid)
+    local lang = BN.langOf(pid)
+    local month = monthKey()
+    local list = BN.seasonRanking(month)
+    local now = BN.now()
+    local y, m = month:match("^(%d+)%-(%d+)$")
+    y, m = tonumber(y), tonumber(m)
+    local nextStart = os.time({ year = m == 12 and y + 1 or y, month = m == 12 and 1 or m + 1, day = 1, hour = 0 })
+    -- os.time rechnet in Ortszeit; fuer die Restzeit genuegt Tagesgenauigkeit.
+    local daysLeft = math.max(0, math.ceil((nextStart - now) / 86400))
+    say(pid, "Saison %s (noch %d Tage):", BN.seasonName(month, lang), daysLeft)
+    if #list == 0 then
+        say(pid, "Noch keine Punkte in dieser Saison – einfach losfahren!")
+    else
+        for i = 1, math.min(5, #list) do chat(pid, string.format("%d. %s – %d XP", i, tostring(list[i].name), list[i].xp)) end
+    end
+    if not s.guest then
+        local mine, rank = BN.totals(s).monthXp, nil
+        for i, e in ipairs(list) do if e.id == s.id then rank = i end end
+        say(pid, "Du: Platz %s mit %d XP in dieser Saison", rank and tostring(rank) or "–", math.floor(mine))
+    end
+    local prev = monthKey(now - (tonumber(os.date("!%d", now)) + 1) * 86400)
+    local archive = json.decode(readFile(C.sharedDir .. "/seasons/" .. prev .. ".json") or "")
+    if type(archive) == "table" and type(archive.top) == "table" and archive.top[1] then
+        local parts = {}
+        for i = 1, math.min(3, #archive.top) do
+            local e = archive.top[i]
+            parts[#parts + 1] = string.format("%d. %s (%d XP)", i, tostring(e.name), tonumber(e.xp) or 0)
+        end
+        say(pid, "Letzte Saison (%s): %s", BN.seasonName(prev, lang), table.concat(parts, " · "))
+    end
+end
+commands.season = commands.saison
+
 function BN.fmtProgress(v)
     v = tonumber(v) or 0
     if v >= 100 or v == math.floor(v) then return string.format("%d", math.floor(v)) end
@@ -2026,6 +2163,9 @@ function BN.tick()
     local now = BN.now()
     local wk = weekKey(now)
     if BN.currentWeek and BN.currentWeek ~= wk then BN.announceWeek(BN.currentWeek) end
+    local mk = monthKey(now)
+    if BN.currentMonth and BN.currentMonth ~= mk then BN.endSeason(BN.currentMonth) end
+    BN.currentMonth = mk
     BN.currentWeek = wk
     BN.sync(false)
     if now - BN.lastStatus >= C.statusEverySec then BN.writeStatus() end

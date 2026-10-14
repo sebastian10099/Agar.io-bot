@@ -1,5 +1,8 @@
 # BeamNet – Roadmap
 
+Erledigt (Plugin 1.8, Werkzeug 1.9):
+- [x] Saisons: Monats-XP, `/saison`, Sieger und Archiv beim Monatswechsel, Statusseite.
+
 Erledigt (Werkzeug 1.8):
 - [x] `beamnet update` (Werkzeug + Plugin in einem Schritt, sicher gegen leere Downloads); `doctor` zeigt die
       Plugin-Version je Server und warnt bei unterschiedlichen Versionen.
@@ -68,6 +71,5 @@ Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamne
 - [ ] Auf dem echten Server prüfen: `beamnet doctor`, `beamnet fix`, BeamNetCore installieren, alte Plugins vergleichen.
 
 Ideen:
-- [ ] Wochenliga mit Auf- und Abstieg (Saisons).
 - [ ] Abstimmung im Chat: `/vote map <name>` wechselt die Map, wenn die Mehrheit zustimmt.
 - [ ] Map-Rotation für einen Server (jeden Tag eine andere Map).

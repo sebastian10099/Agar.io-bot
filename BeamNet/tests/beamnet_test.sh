@@ -372,7 +372,8 @@ now=$(date +%s)
 week=$(date -u +%G-W%V)
 echo "{\"name\":\"BeamNet | Server 1\",\"port\":30814,\"map\":\"gridmap_v2\",\"players\":2,\"max\":8,\"names\":[\"Sebi\",\"<b>Hacker</b>\"],\"updated\":$now}" >"$T/root/shared/beamnet/servers/30814.json"
 echo "{\"name\":\"Alt\",\"port\":30899,\"map\":\"x\",\"players\":9,\"max\":8,\"updated\":$((now - 3600))}" >"$T/root/shared/beamnet/servers/30899.json"
-echo "{\"id\":\"1\",\"name\":\"Sebi\",\"km\":120.4,\"seconds\":7200,\"xp\":1500,\"week\":\"$week\",\"weekKm\":33.3}" >"$T/root/shared/beamnet/players/1.json"
+month=$(date -u +%Y-%m)
+echo "{\"id\":\"1\",\"name\":\"Sebi\",\"km\":120.4,\"seconds\":7200,\"xp\":1500,\"week\":\"$week\",\"weekKm\":33.3,\"month\":\"$month\",\"monthStartXp\":1000}" >"$T/root/shared/beamnet/players/1.json"
 echo "{\"id\":\"2\",\"name\":\"<b>Hacker</b>\",\"km\":2,\"seconds\":60,\"bonusXp\":5}" >"$T/root/shared/beamnet/players/2.json"
 echo "kaputt" >"$T/root/shared/beamnet/players/3.json"
 mkdir -p "$T/root/shared/beamnet/races"
@@ -389,6 +390,7 @@ contains "$page" "&lt;b&gt;Hacker&lt;/b&gt;" "Statusseite: Namen werden maskiert
 lacks "$page" "<b>Hacker</b>" "Statusseite: kein HTML aus Spielernamen"
 contains "$page" "<td class=n>1</td><td>Sebi</td><td class=n>33.3 km</td>" "Statusseite: Woche"
 contains "$page" "<td>Italy</td><td>sprint</td><td>Sebi</td><td class=n>0:49.1</td>" "Statusseite: Rekorde"
+contains "$page" "<h2>Saison [A-Za-zä]+ [0-9]{4}</h2>.*<td class=n>1</td><td>Sebi</td><td class=n>500</td>" "Statusseite: Saison"
 contains "$page" "<th class=n>XP</th>" "Statusseite: Zahlenspalten rechtsbuendig"
 contains "$page" "</html>" "Statusseite: vollstaendig"
 echo "WEB_TITLE=Sebis Netz" >>"$T/beamnet.conf"

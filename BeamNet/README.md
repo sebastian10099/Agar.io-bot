@@ -148,8 +148,16 @@ beamnet restart all
 | `/rekorde [Name]` | Top 5 einer Strecke bzw. die Rekorde aller Strecken der Map |
 | `/erfolge [Name]` | Freigeschaltete Erfolge und die nächsten mit Fortschritt |
 | `/aufgabe` | Tagesaufgabe und Fortschritt |
+| `/saison` | Saison-Tabelle (Monat), eigener Platz, Vorsaison |
 
 Befehle anderer Plugins werden nicht abgefangen.
+
+### Saisons
+
+Jeder Kalendermonat ist eine Saison. Gezählt werden die in diesem Monat gesammelten XP (Kilometer, Fahrzeit, Rennen,
+Erfolge, Tagesaufgaben) – so haben auch Neue jeden Monat eine faire Chance. `/saison` (`/season`) zeigt die Tabelle,
+den eigenen Platz und die Sieger der letzten Saison; zum Monatswechsel werden die Sieger verkündet und unter
+`seasons/<Monat>.json` archiviert. Die Statusseite zeigt die laufende Saison.
 
 ### Tagesaufgaben
 

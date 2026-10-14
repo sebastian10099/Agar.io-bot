@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.8"
+VERSION="1.9"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1230,6 +1230,9 @@ def race_time(t):
 
 
 week = time.strftime("%G-W%V", time.gmtime(now))
+month = time.strftime("%Y-%m", time.gmtime(now))
+MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+season_title = f"{MONTHS[int(month[5:7]) - 1]} {month[:4]}"
 servers = [s for s in (load(p) for p in glob.glob(os.path.join(shared, "servers", "*.json")))
            if isinstance(s, dict) and now - num(s.get("updated")) <= 90]
 servers.sort(key=lambda s: num(s.get("port")))
@@ -1268,6 +1271,10 @@ top = [f"<tr><td class=n>{i}</td><td>{E(str(r.get('name', '?')))}</td><td class=
        for i, r in enumerate(by_xp, 1)]
 weekly = [f"<tr><td class=n>{i}</td><td>{E(str(r.get('name', '?')))}</td><td class=n>{km(num(r.get('weekKm')))}</td></tr>"
           for i, r in enumerate(by_week, 1)]
+season = sorted([(int(xp_of(r) - num(r.get("monthStartXp"))), str(r.get("name", "?"))) for r in players
+                 if r.get("month") == month and isinstance(r.get("monthStartXp"), (int, float))
+                 and xp_of(r) - num(r.get("monthStartXp")) > 0], key=lambda x: (-x[0], x[1]))[:10]
+season_rows = [f"<tr><td class=n>{i}</td><td>{E(n)}</td><td class=n>{xp}</td></tr>" for i, (xp, n) in enumerate(season, 1)]
 records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name', '?')))}</td><td class=n>{race_time(b.get('time'))}</td></tr>"
            for m, n, b in races]
 
@@ -1308,9 +1315,10 @@ footer {{ color:var(--muted); font-size:12px; margin-top:24px; }}
 <section><h2>Bestenliste</h2>{table(["#", "Name", "Level#", "Liga", "XP#", "Kilometer#", "Erfolge#"], top, "Noch keine Einträge – einfach losfahren!")}</section>
 <div class=grid>
 <section><h2>Diese Woche</h2>{table(["#", "Name", "Kilometer#"], weekly, "Diese Woche ist noch niemand gefahren.")}</section>
+<section><h2>Saison {E(season_title)}</h2>{table(["#", "Name", "XP#"], season_rows, "In dieser Saison noch keine Punkte.")}</section>
 <section><h2>Streckenrekorde</h2>{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>
 </div>
-<footer>Chat-Befehle im Spiel: /hilfe · /stats · /top · /liga · /server · /rennen · /rekorde</footer>
+<footer>Chat-Befehle im Spiel: /hilfe · /stats · /top · /liga · /saison · /aufgabe · /erfolge · /server · /rennen · /rekorde · /lang en</footer>
 </main></body></html>
 """
 tmp = out + ".tmp"

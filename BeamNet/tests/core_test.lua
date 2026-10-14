@@ -853,6 +853,53 @@ do
     _G[events.onPlayerDisconnect](12); players[12] = nil
 end
 
+-- --- Saisons (Monat) ----------------------------------------------------------------------------------------------
+do
+    eq(BN.monthKey(clock), "2025-10", "Testuhr steht im Oktober 2025")
+    players[13] = { name = "Saisonfahrer", ids = { beammp = "1313" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } } }
+    join(13)
+    tick(1)
+    for _ = 1, 100 do move(13, 0, 50); tick(1) end                -- 5 km
+    local mx = BN.totals(BN.players[13]).monthXp
+    check(mx >= 50, "Saison-XP gezaehlt (" .. mx .. ")")
+    say(13, "/saison")
+    check(chatContains("Saison Oktober 2025 %(noch %d+ Tage%):", 13), "/saison Kopf")
+    check(chatContains("Du: Platz %d+ mit %d+ XP in dieser Saison", 13), "/saison eigener Platz")
+    BN.savePlayer(BN.players[13])
+    local rec = readJson(SHARED .. "/players/1313.json")
+    check(rec.month == "2025-10" and rec.monthStartXp ~= nil, "Saisonbeginn gespeichert")
+    -- Vorhandene Spieler ohne Saisondaten starten bei ihrem jetzigen Stand (kein Riesenvorsprung).
+    local vet = readJson(SHARED .. "/players/4242.json")
+    check(vet.month == "2025-10" and vet.monthStartXp ~= nil, "Alte Datensaetze bekommen einen Saisonstart")
+    local rank = BN.seasonRanking("2025-10")
+    local found = false
+    for _, e in ipairs(rank) do if e.id == "1313" and e.xp >= 50 then found = true end end
+    check(found, "Saisonfahrer in der Saisonwertung")
+    for _, e in ipairs(rank) do
+        if e.id == "4242" then check(e.xp < 1000, "Veteran startet nicht mit seinen alten XP in die Saison (" .. e.xp .. ")") end
+    end
+    -- Monatswechsel: Sieger verkuenden, archivieren, neue Saison beginnt bei 0.
+    clock = 1761955200 + 30
+    tick(1)
+    check(chatContains("Saison Oktober 2025 beendet! 1%. "), "Saisonende verkuendet")
+    local archive = readJson(SHARED .. "/seasons/2025-10.json")
+    check(archive and archive.top and archive.top[1] and archive.top[1].xp > 0, "Saison archiviert")
+    for _ = 1, 10 do move(13, 0, 50); tick(1) end
+    local mx2 = BN.totals(BN.players[13]).monthXp
+    check(mx2 < mx, "Neue Saison beginnt neu (" .. mx2 .. " < " .. mx .. ")")
+    say(13, "/saison")
+    check(chatContains("Saison November 2025 %(noch %d+ Tage%):", 13), "/saison neue Saison")
+    check(chatContains("Letzte Saison %(Oktober 2025%): 1%. ", 13), "/saison zeigt Vorsaison")
+    BN.savePlayer(BN.players[13])
+    rec = readJson(SHARED .. "/players/1313.json")
+    check(rec.month == "2025-11" and rec.lastMonth == "2025-10" and rec.lastMonthXp >= 50, "Vorsaison im Datensatz")
+    -- Englisch.
+    say(13, "/lang en")
+    say(13, "/season")
+    check(chatContains("Season November 2025 %(%d+ days left%):", 13) and chatContains("Last season %(October 2025%)", 13), "/season auf Englisch")
+    _G[events.onPlayerDisconnect](13); players[13] = nil
+end
+
 -- Herunterfahren speichert alle.
 tick(1)
 _G[events.onShutdown]()
