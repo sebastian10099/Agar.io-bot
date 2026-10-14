@@ -10,10 +10,17 @@ Claude legt Aufgaben ab  →  Werkstatt (dein Laptop) + lokale KI  →  Test  �
 
 ## Herunterladen
 
-- **Windows:** https://github.com/sebastian10099/Agar.io-bot/releases/download/werkstatt/BeamNet-Werkstatt-Windows.exe
+- **Windows** (falls du auch einen Windows-PC hast): https://github.com/sebastian10099/Agar.io-bot/releases/download/werkstatt/BeamNet-Werkstatt-Windows.exe
   – doppelklicken. Beim ersten Start warnt Windows (unbekannter Herausgeber): *Weitere Informationen → Trotzdem ausführen*.
-- **Mac:** https://github.com/sebastian10099/Agar.io-bot/releases/download/werkstatt/BeamNet-Werkstatt-Mac.zip – entpacken, dann im Terminal:
-  `xattr -d com.apple.quarantine ~/Downloads/BeamNet-Werkstatt; ~/Downloads/BeamNet-Werkstatt`
+- **Mac (wie beim GoMining Bot):** Programm *Terminal* öffnen, diese Zeile einfügen, Enter – die App
+  **„BeamNet Werkstatt“** landet auf dem Schreibtisch und startet:
+
+  ```bash
+  T="$(mktemp -d)" && curl -fL -o "$T/w.zip" https://github.com/sebastian10099/Agar.io-bot/releases/download/werkstatt/BeamNet-Werkstatt-Mac.zip && ditto -x -k "$T/w.zip" "$T" && rm -rf ~/Desktop/"BeamNet Werkstatt.app" && mv "$T/BeamNet Werkstatt.app" ~/Desktop/ && xattr -cr ~/Desktop/"BeamNet Werkstatt.app" && open ~/Desktop/"BeamNet Werkstatt.app"
+  ```
+
+  Später einfach die App doppelklicken. Sie öffnet ein Terminal-Fenster, in dem du siehst, was sie macht (beim
+  ersten Mal fragt macOS, ob sie das Terminal steuern darf – *OK*). Beenden: Fenster schließen.
 
 ## Einmal vorbereiten
 

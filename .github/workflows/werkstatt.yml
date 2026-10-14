@@ -60,7 +60,17 @@ jobs:
           if [[ "${{ matrix.os }}" == windows-latest ]]; then
             cp BeamNet/werkstatt/dist/BeamNet-Werkstatt.exe "out/${{ matrix.file }}"
           else
-            (cd BeamNet/werkstatt/dist && zip -q "../../../out/${{ matrix.file }}" BeamNet-Werkstatt)
+            # Mac-App: Doppelklick oeffnet ein Terminal-Fenster mit der Werkstatt.
+            APP="out/BeamNet Werkstatt.app"
+            mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+            cp BeamNet/werkstatt/dist/BeamNet-Werkstatt "$APP/Contents/Resources/BeamNet-Werkstatt"
+            cp BeamNet/werkstatt/mac-start.sh "$APP/Contents/MacOS/BeamNetWerkstatt"
+            chmod +x "$APP/Contents/MacOS/BeamNetWerkstatt" "$APP/Contents/Resources/BeamNet-Werkstatt"
+            VERSION="$(tr -d ' \n\r' < BeamNet/werkstatt/VERSION)"
+            sed "s/__VERSION__/$VERSION/" BeamNet/werkstatt/Info.plist > "$APP/Contents/Info.plist"
+            (cd out && ditto -c -k --sequesterRsrc --keepParent "BeamNet Werkstatt.app" "${{ matrix.file }}")
+            # Pruefen, dass die App vollstaendig ist.
+            unzip -l "out/${{ matrix.file }}" | grep -q "Contents/Resources/BeamNet-Werkstatt"
           fi
       - uses: actions/upload-artifact@v4
         with:
@@ -96,7 +106,11 @@ jobs:
           **BeamNet-Werkstatt** – deine lokale KI arbeitet die Aufgaben von Claude ab, Claude prüft nur noch.
 
           - Windows: `BeamNet-Werkstatt-Windows.exe` laden und doppelklicken (Windows fragt beim ersten Mal: *Weitere Informationen → Trotzdem ausführen*).
-          - Mac: `BeamNet-Werkstatt-Mac.zip` laden, entpacken, im Terminal: `xattr -d com.apple.quarantine ~/Downloads/BeamNet-Werkstatt && ~/Downloads/BeamNet-Werkstatt`
+          - Mac (am einfachsten): Programm *Terminal* öffnen, diese Zeile einfügen und Enter drücken – die App landet auf dem Schreibtisch und startet:
+
+          ```bash
+          T="$(mktemp -d)" && curl -fL -o "$T/w.zip" https://github.com/sebastian10099/Agar.io-bot/releases/download/werkstatt/BeamNet-Werkstatt-Mac.zip && ditto -x -k "$T/w.zip" "$T" && rm -rf ~/Desktop/"BeamNet Werkstatt.app" && mv "$T/BeamNet Werkstatt.app" ~/Desktop/ && xattr -cr ~/Desktop/"BeamNet Werkstatt.app" && open ~/Desktop/"BeamNet Werkstatt.app"
+          ```
           - Voraussetzungen: Git und Ollama (oder LM Studio) mit einem Code-Modell, z. B. `ollama pull qwen3-coder:30b`.
 
           Anleitung: BeamNet/werkstatt/README.md im Projekt.

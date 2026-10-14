@@ -22,7 +22,7 @@ import time
 import urllib.error
 import urllib.request
 
-VERSION = "1.0"
+VERSION = "1.1"
 REPO_URL = "https://github.com/sebastian10099/Agar.io-bot.git"
 BASE = "claude/friendly-goldberg-31l8fp"
 TASK_DIR = "BeamNet/lokale-ki/aufgaben"
