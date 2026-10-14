@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.12"
+VERSION="1.13"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1374,11 +1374,21 @@ def achievements(r):
     return len(a) if isinstance(a, dict) else 0
 
 
-top = [f"<tr><td class=n>{i}</td><td>{E(str(r.get('name', '?')))}</td><td class=n>{level_of(xp_of(r))}</td>"
+ID_OK = __import__("re").compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def link(r, prefix=""):
+    """Name als Link auf die Profilseite (nur bei unbedenklicher ID)."""
+    name = E(str(r.get("name", "?")))
+    rid = str(r.get("id", ""))
+    return f'<a href="{prefix}p/{rid}.html">{name}</a>' if ID_OK.match(rid) else name
+
+
+top = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{level_of(xp_of(r))}</td>"
        f"<td>{E(league_of(xp_of(r)))}</td><td class=n>{xp_of(r)}</td><td class=n>{km(num(r.get('km')))}</td>"
        f"<td class=n>{achievements(r)}</td></tr>"
        for i, r in enumerate(by_xp, 1)]
-weekly = [f"<tr><td class=n>{i}</td><td>{E(str(r.get('name', '?')))}</td><td class=n>{km(num(r.get('weekKm')))}</td></tr>"
+weekly = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{km(num(r.get('weekKm')))}</td></tr>"
           for i, r in enumerate(by_week, 1)]
 def month_xp(r):
     """Saison-XP: Zaehler monthXp (ab 1.9) oder Stand minus Startwert (1.8)."""
@@ -1391,9 +1401,10 @@ def month_xp(r):
     return 0
 
 
-season = sorted([(month_xp(r), str(r.get("name", "?"))) for r in players if month_xp(r) > 0],
-                key=lambda x: (-x[0], x[1]))[:10]
-season_rows = [f"<tr><td class=n>{i}</td><td>{E(n)}</td><td class=n>{xp}</td></tr>" for i, (xp, n) in enumerate(season, 1)]
+season_all = sorted([(month_xp(r), str(r.get("name", "?")), r) for r in players if month_xp(r) > 0],
+                    key=lambda x: (-x[0], x[1]))
+season = season_all[:10]
+season_rows = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{xp}</td></tr>" for i, (xp, n, r) in enumerate(season, 1)]
 records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name', '?')))}</td><td class=n>{race_time(b.get('time'))}</td></tr>"
            for m, n, b in races]
 
@@ -1406,10 +1417,7 @@ def table(head, body, empty):
     return "<table><thead><tr>" + cells + "</tr></thead><tbody>" + "".join(body) + "</tbody></table>"
 
 
-page = f"""<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="60"><title>{E(title)} – Status</title>
-<style>
+STYLE = f"""<style>
 :root {{ --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7385; --line:#e3e6ec; --accent:#e8590c; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#14161b; --card:#1d2027; --text:#e8eaf0; --muted:#9aa2b3; --line:#2c303a; --accent:#ff8a3d; }} }}
 * {{ box-sizing:border-box; }}
@@ -1427,7 +1435,17 @@ td b {{ font-weight:600; }}
 .small {{ font-size:13px; color:var(--muted); }} .empty {{ color:var(--muted); margin:0; }}
 .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }} .grid section {{ margin:0; }}
 footer {{ color:var(--muted); font-size:12px; margin-top:24px; }}
-</style></head><body><main>
+a {{ color:inherit; text-decoration:none; border-bottom:1px dotted var(--muted); }} a:hover {{ color:var(--accent); }}
+.stats {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin:0; }}
+.stats div {{ background:var(--bg); border-radius:8px; padding:10px 12px; }} .stats b {{ display:block; font-size:20px; }}
+.tags span {{ display:inline-block; background:var(--bg); border-radius:999px; padding:3px 10px; margin:0 6px 6px 0; font-size:13px; }}
+</style>"""
+
+
+page = f"""<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60"><title>{E(title)} – Status</title>
+{STYLE}</head><body><main>
 <h1><span>{E(title)}</span> Status</h1>
 <div class=sub>{len(servers)} Server online · {online} Spieler · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))} (aktualisiert sich jede Minute)</div>
 <section><h2>Server</h2>{table(["Server", "Map", "Spieler#"], rows, "Gerade meldet sich kein Server.")}</section>
@@ -1440,11 +1458,87 @@ footer {{ color:var(--muted); font-size:12px; margin-top:24px; }}
 <footer>Chat-Befehle im Spiel: /hilfe · /stats · /top · /liga · /saison · /aufgabe · /erfolge · /server · /rennen · /rekorde · /lang en</footer>
 </main></body></html>
 """
-tmp = out + ".tmp"
-with open(tmp, "w", encoding="utf-8") as f:
-    f.write(page)
-os.chmod(tmp, 0o644)
-os.replace(tmp, out)
+def write(path, text):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+write(out, page)
+
+# --- Profilseite je Fahrer ------------------------------------------------------------------------------------------
+ACH = {"km10": "Erste 10 km", "km100": "100 km", "km1000": "1000 km", "hour1": "1 Stunde unterwegs",
+       "hours10": "10 Stunden unterwegs", "speed200": "200 km/h", "speed300": "300 km/h", "race1": "Erstes Rennen",
+       "race10": "10 Rennen", "record1": "Streckenrekord", "maps3": "Weltenbummler (3 Maps)",
+       "maps8": "Kenner aller Welten (8 Maps)", "level10": "Level 10"}
+pdir = os.path.join(os.path.dirname(out), "p")
+os.makedirs(pdir, exist_ok=True)
+ranked = sorted(players, key=lambda r: (-xp_of(r), str(r.get("name", ""))))
+season_rank = {id(r): i for i, (_, _, r) in enumerate(season_all, 1)}
+best = {}   # Spieler-ID -> [(Map, Strecke, Zeit, Platz)]
+for path in sorted(glob.glob(os.path.join(shared, "races", "*.json"))):
+    data = load(path)
+    tracks = data.get("tracks") if isinstance(data, dict) else None
+    if not isinstance(tracks, dict):
+        continue
+    for tname, t in sorted(tracks.items()):
+        recs = t.get("records") if isinstance(t, dict) else None
+        for pos, rec in enumerate(recs if isinstance(recs, list) else [], 1):
+            if isinstance(rec, dict) and rec.get("id"):
+                best.setdefault(str(rec["id"]), []).append((os.path.basename(path)[:-5], tname, rec.get("time"), pos))
+
+
+def hours(sec):
+    sec = num(sec)
+    return f"{sec / 3600:.1f} h" if sec >= 3600 else f"{int(sec // 60)} min"
+
+
+written = set()
+for rank, r in enumerate(ranked, 1):
+    rid = str(r.get("id"))
+    if not ID_OK.match(rid):
+        continue
+    xp = xp_of(r)
+    lvl = level_of(xp)
+    name = E(str(r.get("name", "?")))
+    ach = r.get("achievements") if isinstance(r.get("achievements"), dict) else {}
+    maps = r.get("maps") if isinstance(r.get("maps"), dict) else {}
+    tags_a = "".join(f"<span>{E(ACH.get(a, a))}</span>" for a in ACH if a in ach) or "<p class=empty>Noch keine Erfolge.</p>"
+    tags_m = "".join(f"<span>{E(map_name(m))}</span>" for m in sorted(maps)) or "<p class=empty>Noch keine Map.</p>"
+    sr = season_rank.get(id(r))
+    times = [f"<tr><td>{E(map_name(m))}</td><td>{E(str(t))}</td><td class=n>{race_time(tm)}</td><td class=n>{pos}</td></tr>"
+             for m, t, tm, pos in best.get(rid, [])]
+    stat = lambda label, value: f"<div>{label}<b>{value}</b></div>"
+    body = "".join([
+        stat("Level", lvl), stat("Liga", E(league_of(xp))), stat("XP", xp), stat("Rang", f"{rank} von {len(ranked)}"),
+        stat("Kilometer", km(num(r.get("km")))), stat("Fahrzeit", hours(r.get("seconds"))),
+        stat("Spitze", f"{int(num(r.get('topSpeedKmh')))} km/h"), stat("Rennen", int(num(r.get("racesFinished")))),
+        stat(f"Saison {E(season_title)}", f"{month_xp(r)} XP" + (f" · Platz {sr}" if sr else "")),
+    ])
+    profile = f"""<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60"><title>{name} – {E(title)}</title>
+{STYLE}</head><body><main>
+<div class=sub><a href="../index.html">← {E(title)} Status</a></div>
+<h1>{name}</h1>
+<div class=sub>Level {lvl} · Liga {E(league_of(xp))}{(" · zuletzt auf " + E(str(r.get("lastServer")))) if r.get("lastServer") else ""}</div>
+<section><div class=stats>{body}</div></section>
+<section><h2>Erfolge ({len([a for a in ACH if a in ach])} von {len(ACH)})</h2><div class=tags>{tags_a}</div></section>
+<div class=grid>
+<section><h2>Maps ({len(maps)})</h2><div class=tags>{tags_m}</div></section>
+<section><h2>Bestzeiten</h2>{table(["Map", "Strecke", "Zeit#", "Platz#"], times, "Noch keine Rennen.")}</section>
+</div>
+<footer>Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))}</footer>
+</main></body></html>
+"""
+    write(os.path.join(pdir, rid + ".html"), profile)
+    written.add(rid + ".html")
+# Seiten von Fahrern, die es nicht mehr gibt, entfernen.
+for old in glob.glob(os.path.join(pdir, "*.html")):
+    if os.path.basename(old) not in written:
+        os.remove(old)
 PY
 }
 

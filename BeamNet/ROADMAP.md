@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Werkzeug 1.13):
+- [x] Statusseite: Profilseite je Fahrer (Level, Liga, Rang, km, Fahrzeit, Spitze, Saison, Erfolge, Maps, Bestzeiten);
+      Namen in allen Tabellen verlinkt; Seiten verschwundener Fahrer werden entfernt.
+
 Erledigt (Werkzeug 1.12):
 - [x] Saisonsieger am 1. jedes Monats nach Discord (aus dem Saisonarchiv, sonst aus den Spielerdaten).
 
@@ -91,4 +95,3 @@ Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamne
 
 Ideen:
 - [ ] Map-Rotation für einen Server (jeden Tag eine andere Map).
-- [ ] Statusseite: Profilseite je Fahrer (Erfolge, Rekorde, Verlauf).
