@@ -723,11 +723,41 @@ local function normalizeRecord(rec, id, name)
 end
 BN.normalizeRecord = normalizeRecord
 
+-- Liest die Spielerdatei. Fehlt sie, beginnt ein neuer Datensatz. Kann sie nicht gelesen werden (Rechte, zu viele
+-- offene Dateien ...), gibt es nil und den Fehler: dann darf nichts gespeichert werden, sonst wuerde die echte Datei
+-- mit einem leeren Datensatz ueberschrieben. Ist sie kein gueltiges JSON, wird sie einmal als <id>.json.kaputt-<Zeit>
+-- beiseitegelegt (endet nicht auf .json, taucht also in keiner Liste auf) und neu begonnen – sonst kaeme der Spieler
+-- nie wieder zum Speichern.
+local ENOENT = 2
 local function loadRecord(id, name)
-    local data = readFile(playersDir() .. "/" .. id .. ".json")
-    local rec = data and json.decode(data)
-    if type(rec) ~= "table" then rec = emptyRecord(id, name) end
+    local path = playersDir() .. "/" .. id .. ".json"
+    local f, openErr, code = io.open(path, "rb")
+    if not f then
+        if code == ENOENT then return normalizeRecord(emptyRecord(id, name), id, name) end
+        return nil, openErr or "nicht lesbar"
+    end
+    local data, readErr = f:read("*a")
+    f:close()
+    if not data then return nil, readErr or "Lesefehler" end
+    local rec = json.decode(data)
+    if type(rec) ~= "table" then
+        local backup = path .. ".kaputt-" .. tostring(BN.now())
+        local moved, moveErr = os.rename(path, backup)
+        if not moved then return nil, "kaputte Datei nicht beiseitegelegt: " .. tostring(moveErr) end
+        print("[BeamNetCore] Kaputte Spielerdatei beiseitegelegt: " .. backup)
+        rec = emptyRecord(id, name)
+    end
     return normalizeRecord(rec, id, name)
+end
+
+-- Datensatz fuer eine Sitzung: ist die Datei gerade nicht lesbar, zunaechst ein leerer (savePlayer liest ohnehin neu
+-- und speichert erst, wenn die Datei wieder lesbar ist).
+local function sessionRecord(id, name)
+    if not id then return emptyRecord(nil, name) end
+    local rec, err = loadRecord(id, name)
+    if rec then return rec end
+    BN.logError("Spielerdatei " .. id, err)
+    return emptyRecord(id, name)
 end
 
 local function xpOf(rec)
@@ -809,7 +839,7 @@ function BN.normalizeSession(s)
     end
     s.challengeDoneDay = nil
     if s.achChecked == nil then s.achChecked = true end
-    if type(s.record) ~= "table" then s.record = s.id and loadRecord(s.id, s.name) or emptyRecord(nil, s.name) end
+    if type(s.record) ~= "table" then s.record = sessionRecord(s.id, s.name) end
     normalizeRecord(s.record, s.id, s.name)
     applyWeek(s.record)
     BN.applyMonth(s.record)
@@ -823,7 +853,7 @@ function BN.addPlayer(pid)
     local id = safeId(ids.beammp)
     -- achChecked = false: was bei der ersten Pruefung schon erreicht ist, wird nachtraeglich vergeben.
     local session = { pid = pid, name = name, id = id, ip = ids.ip, guest = id == nil, achChecked = false }
-    session.record = id and loadRecord(id, name) or emptyRecord(nil, name)
+    session.record = sessionRecord(id, name)
     BN.normalizeSession(session)
     if session.record.lang == "en" or session.record.lang == "de" then session.lang = session.record.lang end
     local mute = BN.findMute(id, ids.ip)
@@ -865,7 +895,12 @@ function BN.savePlayer(s)
     end
     ensureDir(C.sharedDir)
     ensureDir(playersDir())
-    local rec = loadRecord(s.id, s.name)
+    -- Datei nicht lesbar: nichts schreiben, die Zuwaechse bleiben fuer den naechsten Versuch erhalten.
+    local rec, loadErr = loadRecord(s.id, s.name)
+    if not rec then
+        BN.logError("Spielerdatei " .. s.id, loadErr)
+        return false
+    end
     applyWeek(rec)
     applyDay(rec)
     BN.applyMonth(rec)
@@ -903,7 +938,9 @@ function BN.savePlayer(s)
         rec.bonusXp = rec.bonusXp + (cr.xp or 0)
     end
     rec.dayDone = rec.lastChallengeDay == rec.day
-    if s.lang then rec.lang = s.lang end
+    -- Sprache nur, wenn sie in dieser Sitzung mit /lang geaendert wurde: sonst ueberschreibt ein Server nach einem
+    -- schnellen Wechsel die Wahl, die der Spieler inzwischen auf dem anderen Server getroffen hat.
+    if s.langChanged and s.lang then rec.lang = s.lang end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
     rec.xp = xpOf(rec)
@@ -919,6 +956,7 @@ function BN.savePlayer(s)
     s.record = rec
     s.pendingKm, s.pendingSeconds, s.pendingTop, s.pendingBonus, s.dirty = 0, 0, 0, 0, false
     s.pendingRaces, s.pendingRecords, s.unlocked, s.challengeReward = 0, 0, {}, nil
+    s.langChanged = nil
     return true
 end
 
@@ -1447,7 +1485,9 @@ local function bestSplits(s, name)
     if type(track) ~= "table" or type(track.records) ~= "table" then return nil end
     for _, rec in ipairs(track.records) do
         if type(rec) == "table" and rec.id == s.id then
-            return type(rec.splits) == "table" and rec.splits or nil
+            -- Nur Zwischenzeiten mit demselben Abstand der Marken sind vergleichbar.
+            if type(rec.splits) ~= "table" or tonumber(rec.splitM) ~= tonumber(C.raceSplitM) then return nil end
+            return rec.splits
         end
     end
     return nil
@@ -1455,7 +1495,8 @@ end
 
 -- Waehrend eines Laufs: Fahrstrecke aufsummieren, an jeder Marke (alle C.raceSplitM Meter) die Laufzeit merken und
 -- mit der Zwischenzeit der eigenen Bestzeit vergleichen. Der Zeitpunkt wird wie beim Ziel im Abschnitt eingerechnet.
-local function raceSplits(s, prev, cur, t0, t1)
+-- finishT: Laufzeit im Ziel, falls der Lauf in diesem Abschnitt endet – Marken ab dort zaehlen nicht mehr.
+local function raceSplits(s, prev, cur, t0, t1, finishT)
     local r = s.race
     local step = tonumber(C.raceSplitM) or 0
     if step <= 0 then return end
@@ -1468,6 +1509,7 @@ local function raceSplits(s, prev, cur, t0, t1)
         local f = seg > 0 and (n * step - d0) / seg or 1
         if f < 0 then f = 0 elseif f > 1 then f = 1 end
         local t = t0 + (t1 - t0) * f - r.startT
+        if finishT and t >= finishT then break end
         r.splits[n] = t
         local best = r.bestSplits and tonumber(r.bestSplits[n])
         if best then
@@ -1504,7 +1546,7 @@ local function finishRace(s, time)
                 for _, t in ipairs(r.splits or {}) do
                     if t < time and #splits < MAX_SPLITS then splits[#splits + 1] = t end
                 end
-                mine.splits = splits
+                mine.splits, mine.splitM = splits, C.raceSplitM
             end
             table.sort(track.records, function(a, b) return (tonumber(a.time) or math.huge) < (tonumber(b.time) or math.huge) end)
             while #track.records > 50 do table.remove(track.records) end
@@ -1573,15 +1615,16 @@ function BN.raceUpdate(s, vid, prev, cur, jump)
         BN.raceInvalid(s, "Zeitlimit überschritten")
         return
     end
-    raceSplits(s, prev, cur, t0, t1)
     local d = dist(cur, r.finish)
+    -- Erst das Ziel pruefen: eine Marke kurz hinter der Ziellinie darf nicht mehr als Zwischenzeit erscheinen.
+    local finishT
+    if r.leftFinish and d <= radius then finishT = crossTime(prev, cur, t0, t1, r.finish, radius) - r.startT end
+    raceSplits(s, prev, cur, t0, t1, finishT)
     if not r.leftFinish then
         if d > BN.leaveDistance() then r.leftFinish = true end
         return
     end
-    if d <= radius then
-        finishRace(s, crossTime(prev, cur, t0, t1, r.finish, radius) - r.startT)
-    end
+    if finishT then finishRace(s, finishT) end
 end
 
 -- Schnelle Abtastung nur fuer Spieler mit laufendem Rennen.
@@ -2227,7 +2270,7 @@ function commands.lang(pid, arg)
         say(pid, "Sprachen: /lang de · /lang en")
         return
     end
-    s.dirty = true
+    s.dirty, s.langChanged = true, true
     say(pid, "Sprache auf Deutsch gestellt.")
 end
 commands.language = commands.lang
@@ -2404,12 +2447,14 @@ function BN.voteForget(pid)
     BN.voteCheck(pid)
 end
 
--- Laeuft der Server 3 Minuten nach einer angenommenen Abstimmung noch, hat der Waechter den Auftrag nicht umgesetzt
--- (Wartung, kurz zuvor gewechselt, MAP_VOTE=0, Waechter aus): einmal melden und neue Abstimmungen wieder erlauben
--- (die Pause nach BN.lastVoteEnd gilt weiter).
+-- Laeuft der Server BN.MAP_CHANGE_TIMEOUT Sekunden (3 Minuten) nach einer angenommenen Abstimmung noch, hat der
+-- Waechter den Auftrag nicht umgesetzt (Wartung, kurz zuvor gewechselt, MAP_VOTE=0, Waechter aus): einmal melden und
+-- neue Abstimmungen wieder erlauben (die Pause nach BN.lastVoteEnd gilt weiter). Bis dahin sperrt /vote neue
+-- Abstimmungen – beide nutzen dieselbe Frist.
+BN.MAP_CHANGE_TIMEOUT = 180
 function BN.mapChangeCheck()
     local p = BN.mapChangePending
-    if not p or BN.now() - p.at < 180 then return end
+    if not p or BN.now() - p.at < BN.MAP_CHANGE_TIMEOUT then return end
     BN.mapChangePending = nil
     -- Liegt der Auftrag noch da (Waechter lief nicht), darf er nicht spaeter doch noch ausgefuehrt werden.
     local file = C.sharedDir .. "/votes/" .. tostring(BN.server.port) .. ".json"
@@ -2454,7 +2499,7 @@ function commands.vote(pid, arg)
     -- Neue Abstimmung
     if BN.vote then say(pid, "Es läuft schon eine Abstimmung (%s).", BN.mapName(BN.vote.map)) return end
     local now = BN.now()
-    if BN.mapChangePending and now - BN.mapChangePending.at < 300 then say(pid, "Die Map wird gleich gewechselt.") return end
+    if BN.mapChangePending and now - BN.mapChangePending.at < BN.MAP_CHANGE_TIMEOUT then say(pid, "Die Map wird gleich gewechselt.") return end
     local wait = BN.lastVoteEnd and (BN.lastVoteEnd + C.mapVoteCooldownMin * 60 - now) or 0
     if wait > 0 then say(pid, "Nächste Abstimmung in %s.", fmtDuration(wait)) return end
     local w = BN.watcherInfo()
@@ -2559,6 +2604,7 @@ function BN.tick()
         if online[pid] == nil then
             guarded("Speichern", BN.savePlayer, s)
             BN.players[pid] = nil
+            guarded("Abstimmung", BN.voteForget, pid)
         end
     end
     local now = BN.now()
