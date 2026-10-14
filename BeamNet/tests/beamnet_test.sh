@@ -740,6 +740,68 @@ out=$(BEAMNET_RAW="file:///gibt/es/nicht" "$T/inst/beamnet" update -y 2>&1)
 contains "$out" "Download fehlgeschlagen" "update: Fehler beim Laden"
 mv "$T/curl.stub" "$T/bin/curl"
 
+# --- Tageszusammenfassung (watch_daily) ---------------------------------------------------------------------------
+contains "$(cat "$T/beamnet.conf")" "^DAILY_SUMMARY=1$" "watch install: Tageszusammenfassung standardmaessig an"
+contains "$(cat "$T/beamnet.conf")" "^DAILY_HOUR=22$" "watch install: Tageszusammenfassung ab 22 Uhr"
+cp "$T/beamnet.conf" "$T/conf.keep"
+P="$T/root/shared/beamnet/players"
+mkdir -p "$P" "$T/root/shared/beamnet/races"
+mv "$P" "$T/players.keep"; mkdir -p "$P"
+today=$(( $(date +%s) / 86400 )); todaydate=$(date +%Y-%m-%d)
+rm -f "$T/watch/daily-$todaydate"
+sed -i '/^DAILY_/d; s|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/abc|' "$T/beamnet.conf"
+echo "{\"name\":\"Sebi\",\"day\":$today,\"dayKm\":40.2}" >"$P/1.json"
+echo "{\"name\":\"Max\",\"day\":$today,\"dayKm\":30}" >"$P/2.json"
+echo "{\"name\":\"Ana\",\"day\":$today,\"dayKm\":12}" >"$P/3.json"
+echo "{\"name\":\"Bo\",\"day\":$today,\"dayKm\":5.5}" >"$P/4.json"
+echo "{\"name\":\"Gestern\",\"day\":$(( today - 1 )),\"dayKm\":99}" >"$P/5.json"
+echo "{\"name\":\"Null\",\"day\":$today,\"dayKm\":0}" >"$P/6.json"
+echo "kaputt" >"$P/7.json"
+echo "{\"name\":\"Fremd\",\"day\":$today,\"dayKm\":500}" >"$T/fremd.json"
+ln -s "$T/fremd.json" "$P/8.json"
+now=$(date +%s)
+echo "{\"tracks\":{\"A\":{\"records\":[{\"name\":\"Sebi\",\"time\":61.2,\"at\":$now}]},\"B\":{\"records\":[{\"name\":\"Max\",\"time\":50,\"at\":$now},{\"name\":\"Ana\",\"time\":55,\"at\":$now}]},\"C\":{\"records\":[{\"name\":\"Alt\",\"time\":40,\"at\":$(( now - 3 * 86400 ))}]},\"D\":{\"records\":[]}}}" \
+    >"$T/root/shared/beamnet/races/italy.json"
+: >"$T/curl.log"
+out=$(BEAMNET_HOUR=21 "$TOOL" watch 2>&1)
+lacks "$out" "Heute im Netzwerk" "daily: nicht vor 22 Uhr"
+[[ ! -f $T/watch/daily-$todaydate ]] && pass || fail "daily: vor der Uhrzeit nicht als erledigt markiert"
+out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
+contains "$out" "📊 Heute im Netzwerk: 87\\.7 km von 4 Fahrern · Top: 1\\. Sebi \\(40\\.2 km\\) · 2\\. Max \\(30\\.0 km\\) · 3\\. Ana \\(12\\.0 km\\) · 2 neue Streckenrekorde" "daily: Zusammenfassung"
+lacks "$out" "Gestern|Fremd|Bo \\(" "daily: nur heute, kein Symlink, nur Top 3"
+contains "$(cat "$T/curl.log")" "Heute im Netzwerk" "daily: an Discord"
+[[ -f $T/watch/daily-$todaydate ]] && pass || fail "daily: als erledigt markiert"
+: >"$T/curl.log"
+out=$(BEAMNET_HOUR=23 "$TOOL" watch 2>&1)
+lacks "$out" "Heute im Netzwerk" "daily: nur einmal am Tag"
+# Eigene Uhrzeit, Einzahl und ein Rekord.
+rm -f "$T/watch/daily-$todaydate" "$P"/[2-4].json
+echo "{\"tracks\":{\"A\":{\"records\":[{\"name\":\"Sebi\",\"time\":61.2,\"at\":$now}]}}}" >"$T/root/shared/beamnet/races/italy.json"
+echo "DAILY_HOUR=8" >>"$T/beamnet.conf"
+out=$(BEAMNET_HOUR=09 "$TOOL" watch 2>&1)
+contains "$out" "📊 Heute im Netzwerk: 40\\.2 km von 1 Fahrer · Top: 1\\. Sebi \\(40\\.2 km\\) · 1 neuer Streckenrekord$" "daily: DAILY_HOUR, Einzahl"
+contains "$("$TOOL" watch status 2>&1)" "Tageszusammenfassung: an \\(täglich ab 8 Uhr\\)" "watch status: Tageszusammenfassung"
+# Niemand gefahren: keine Meldung.
+rm -f "$T/watch/daily-$todaydate" "$P"/1.json
+: >"$T/curl.log"
+out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
+lacks "$out" "Heute im Netzwerk" "daily: ohne Fahrer keine Meldung"
+[[ ! -s $T/curl.log ]] && pass || fail "daily: ohne Fahrer nichts an Discord"
+# DAILY_SUMMARY=0 schaltet ab.
+rm -f "$T/watch/daily-$todaydate"
+echo "{\"name\":\"Sebi\",\"day\":$today,\"dayKm\":40.2}" >"$P/1.json"
+echo "DAILY_SUMMARY=0" >>"$T/beamnet.conf"
+out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
+lacks "$out" "Heute im Netzwerk" "daily: DAILY_SUMMARY=0 schaltet ab"
+contains "$("$TOOL" watch status 2>&1)" "Tageszusammenfassung: aus" "watch status: Tageszusammenfassung aus"
+# Ohne Webhook: nichts.
+sed -i '/^DAILY_SUMMARY=/d; s|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=|' "$T/beamnet.conf"
+out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
+lacks "$out" "Heute im Netzwerk" "daily: ohne Webhook keine Zusammenfassung"
+rm -rf "$P" "$T/fremd.json" "$T/root/shared/beamnet/races/italy.json" "$T/watch/daily-$todaydate"
+mv "$T/players.keep" "$P"
+mv "$T/conf.keep" "$T/beamnet.conf"
+
 # --- Sicherheit: root folgt nie Symlinks in Ordnern, die dem Dienst-Benutzer gehoeren ------------------------------
 S="$T/root/shared/beamnet"
 victim="$T/victim"

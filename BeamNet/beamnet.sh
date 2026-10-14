@@ -1075,6 +1075,7 @@ watch_run() {
     watch_rotation msgs
     watch_weekly msgs
     watch_season msgs
+    watch_daily msgs
     if (( ${#msgs[@]} > 0 )); then
         printf '%s\n' "${msgs[@]}"
         notify "$(printf '%s\n' "${msgs[@]}")"
@@ -1149,6 +1150,78 @@ PY
     return 0
 }
 
+# Einmal am Tag ab DAILY_HOUR (Ortszeit, Standard 22) die Tageszusammenfassung nach Discord: Kilometer, Fahrer,
+# Top 3 und neue Streckenrekorde von heute (UTC-Tag wie im Plugin). DAILY_SUMMARY=0 schaltet ab. Ist heute niemand
+# gefahren, entfaellt die Meldung (der Tag gilt trotzdem als erledigt).
+daily_hour() {
+    local h
+    h=$(conf_get DAILY_HOUR)
+    if [[ $h =~ ^[0-9]{1,2}$ ]] && (( 10#$h <= 23 )); then echo $(( 10#$h )); else echo 22; fi
+}
+
+watch_daily() {
+    local -n dout=$1
+    local hour today line
+    [[ $(conf_get DAILY_SUMMARY) == 0 ]] && return 0
+    [[ -n $(conf_get DISCORD_WEBHOOK) && -d $SHARED/players && ! -L $SHARED/players ]] || return 0
+    command -v python3 >/dev/null || return 0
+    hour=${BEAMNET_HOUR:-$(date +%H)}
+    (( 10#$hour >= $(daily_hour) )) || return 0
+    today=$(date +%Y-%m-%d)
+    [[ -f $STATE_DIR/daily-$today ]] && return 0
+    # Nur regulaere Dateien, keinen Symlinks folgen, nicht an FIFOs haengen bleiben (Ordner gehoeren beammp).
+    line=$(python3 -I - "$(( $(date +%s) / 86400 ))" "$SHARED" <<'PY'
+import glob, json, os, stat, sys
+day, shared = int(sys.argv[1]), sys.argv[2]
+
+def load(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                return None
+            r = json.loads(f.read(4 * 1024 * 1024).decode("utf-8"))
+    except Exception:
+        return None
+    return r if isinstance(r, dict) else None
+
+rows = []
+for path in glob.glob(os.path.join(shared, "players", "*.json")):
+    r = load(path)
+    km = r.get("dayKm") if r and r.get("day") == day else None
+    if isinstance(km, (int, float)) and not isinstance(km, bool) and km > 0:
+        rows.append((float(km), str(r.get("name", "?"))))
+if not rows:
+    sys.exit(0)
+records = 0
+races = os.path.join(shared, "races")
+if os.path.isdir(races) and not os.path.islink(races):
+    for path in glob.glob(os.path.join(races, "*.json")):
+        tracks = (load(path) or {}).get("tracks")
+        for t in (tracks.values() if isinstance(tracks, dict) else []):
+            recs = t.get("records") if isinstance(t, dict) else None
+            best = recs[0] if isinstance(recs, list) and recs else None
+            at = best.get("at") if isinstance(best, dict) else None
+            if isinstance(at, (int, float)) and not isinstance(at, bool) and int(at // 86400) == day:
+                records += 1
+rows.sort(key=lambda x: (-x[0], x[1]))
+total = sum(k for k, _ in rows)
+parts = [f"{total:.1f} km von {len(rows)} " + ("Fahrer" if len(rows) == 1 else "Fahrern"),
+         "Top: " + " · ".join(f"{i + 1}. {n} ({k:.1f} km)" for i, (k, n) in enumerate(rows[:3]))]
+if records:
+    parts.append("1 neuer Streckenrekord" if records == 1 else f"{records} neue Streckenrekorde")
+print(" · ".join(parts))
+PY
+)
+    : >"$STATE_DIR/daily-$today"
+    find "$STATE_DIR" -maxdepth 1 -name 'daily-*' -mtime +7 -delete 2>/dev/null
+    [[ -n $line ]] && dout+=("📊 Heute im Netzwerk: $line")
+    return 0
+}
+
 watch_install() {
     need_root watch
     local self
@@ -1168,6 +1241,10 @@ AUTO_RESTART=0
 # die alle Spieler haben) mit Leerzeichen getrennt in VOTE_MAPS.
 MAP_VOTE=1
 VOTE_MAPS=
+# Tageszusammenfassung in Discord (Kilometer, Top 3, neue Streckenrekorde): 1 = an, 0 = aus.
+# DAILY_HOUR = ab dieser Stunde (Ortszeit, 0-23) einmal am Tag; ist heute niemand gefahren, kommt keine Meldung.
+DAILY_SUMMARY=1
+DAILY_HOUR=22
 EOF
         chmod 600 "$CONF"
     fi
@@ -1219,6 +1296,8 @@ cmd_watch() {
             if [[ -n $(conf_get DISCORD_WEBHOOK) ]]; then echo "Discord: an"; else echo "Discord: aus"; fi
             if [[ $(conf_get AUTO_RESTART) == 1 ]]; then echo "Automatischer Neustart: an"; else echo "Automatischer Neustart: aus"; fi
             if [[ $(conf_get MAP_VOTE) == 0 ]]; then echo "Map-Abstimmung: aus"; else echo "Map-Abstimmung: an ($(vote_maps | wc -w) Maps)"; fi
+            if [[ $(conf_get DAILY_SUMMARY) == 0 || -z $(conf_get DISCORD_WEBHOOK) ]]; then echo "Tageszusammenfassung: aus"
+            else echo "Tageszusammenfassung: an (täglich ab $(daily_hour) Uhr)"; fi
             ls "$STATE_DIR"/maintenance-* >/dev/null 2>&1 && echo "In Wartung (bewusst gestoppt): $(ls "$STATE_DIR"/maintenance-* | sed 's/.*maintenance-//' | tr '\n' ' ')"
             return 0
             ;;
