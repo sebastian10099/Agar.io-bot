@@ -36,3 +36,14 @@ jobs:
 
       - name: Plugin-Tests (Lua 5.3 wie BeamMP, 5.4, LuaJIT)
         run: python3 BeamNet/tests/run_lua_tests.py
+
+  beammp:
+    # Das Plugin im echten BeamMP-Server (offizielle Linux-Version) laden und das Protokoll pruefen.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: BeamNetCore im echten BeamMP-Server
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash BeamNet/tests/beammp_integration.sh
