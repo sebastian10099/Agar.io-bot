@@ -1556,7 +1556,7 @@ for line in sys.stdin:
 # ---------------------------------------------------------------------------------------------------------------------
 # Statusseite
 
-# Erzeugt index.html aus den gemeinsamen Daten von BeamNetCore (Server, Bestenliste, Wochenkilometer, Rekorde).
+# Erzeugt index.html (und api.json) aus den gemeinsamen Daten von BeamNetCore (Server, Bestenliste, Wochenkilometer, Rekorde).
 web_generate() {
     command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
     mkdir -p "$WEB_DIR" || die "Kann $WEB_DIR nicht anlegen."
@@ -1757,7 +1757,7 @@ page = f"""<!doctype html>
 <section><h2>Streckenrekorde</h2>{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>
 <section><h2>Beliebteste Maps</h2>{table(["Map", "Kilometer#", "Fahrer#"], popular_rows, "Noch keine Kilometer je Map.")}</section>
 </div>
-<footer>Chat-Befehle im Spiel: /hilfe · /stats · /top · /liga · /saison · /aufgabe · /erfolge · /server · /rennen · /rekorde · /lang en</footer>
+<footer>Chat-Befehle im Spiel: /hilfe · /stats · /top · /liga · /saison · /aufgabe · /erfolge · /server · /rennen · /rekorde · /lang en · <a href="api.json">api.json</a></footer>
 </main></body></html>
 """
 def write(path, text):
@@ -1769,6 +1769,32 @@ def write(path, text):
 
 
 write(out, page)
+
+# --- api.json: dieselben Daten maschinenlesbar (Discord-Bots, Webseiten) -----------------------------------------------
+# Nur ausgewaehlte Felder, damit nie etwas wie IP-Adressen aus den Rohdaten durchrutscht; IDs nur, wenn sie ID_OK sind.
+def api_id(r):
+    rid = str(r.get("id", ""))
+    return rid if ID_OK.match(rid) else None
+
+
+api = {
+    "generated": int(now),
+    "title": title,
+    "servers": [{"name": str(s.get("name", "?")), "port": int(num(s.get("port"))), "map": str(s.get("map", "?")),
+                 "mapName": map_name(s.get("map", "?")), "players": int(num(s.get("players"))), "max": int(num(s.get("max"))),
+                 "names": [str(n) for n in s.get("names")] if isinstance(s.get("names"), list) else []} for s in servers],
+    "online": online,
+    "top": [{"id": api_id(r), "name": str(r.get("name", "?")), "xp": xp_of(r), "level": level_of(xp_of(r)),
+             "league": league_of(xp_of(r)), "km": round(num(r.get("km")), 1)} for r in by_xp],
+    "week": [{"id": api_id(r), "name": str(r.get("name", "?")), "km": round(num(r.get("weekKm")), 1)} for r in by_week],
+    "season": {"month": month, "title": season_title,
+               "top": [{"id": api_id(r), "name": n, "xp": xp} for xp, n, r in season]},
+    "records": [{"map": m, "mapName": map_name(m), "track": str(n), "name": str(b.get("name", "?")),
+                 "time": round(max(0.0, num(b.get("time"))), 3)} for m, n, b in races],
+    "popularMaps": [{"map": m, "mapName": map_name(m), "km": round(v, 1), "drivers": d}
+                    for m, (v, d) in sorted(popular.items(), key=lambda x: (-x[1][0], x[0]))[:10]],
+}
+write(os.path.join(os.path.dirname(out), "api.json"), json.dumps(api, ensure_ascii=False, indent=1) + "\n")
 
 # --- Profilseite je Fahrer ------------------------------------------------------------------------------------------
 ACH = {"km10": "Erste 10 km", "km100": "100 km", "km1000": "1000 km", "hour1": "1 Stunde unterwegs",

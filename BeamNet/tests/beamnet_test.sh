@@ -528,6 +528,39 @@ contains "$page" "</html>" "Statusseite: vollstaendig"
 echo "WEB_TITLE=Sebis Netz" >>"$T/beamnet.conf"
 "$TOOL" web run >/dev/null 2>&1
 contains "$(cat "$T/web/index.html")" "<title>Sebis Netz – Status</title>" "Statusseite: eigener Titel"
+# api.json: dieselben Daten maschinenlesbar, ohne HTML-Maskierung und ohne IP-Adressen.
+[[ -f $T/web/api.json ]] && pass || fail "api.json: wird erzeugt"
+python3 -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$T/web/api.json" 2>/dev/null && pass || fail "api.json: gueltiges JSON"
+api=$(python3 -c '
+import json, sys
+a = json.load(open(sys.argv[1], encoding="utf-8"))
+d = lambda v: json.dumps(v, ensure_ascii=False, sort_keys=True)
+print("title", a["title"], "online", a["online"], "generated", type(a["generated"]).__name__)
+print("top1", d(a["top"][0]))
+print("server", d(a["servers"][0]))
+print("week", d(a["week"]))
+print("season", a["season"]["month"], a["season"]["title"], d(a["season"]["top"]))
+print("record", d(a["records"]))
+print("maps", d(a["popularMaps"]))
+' "$T/web/api.json" 2>&1)
+contains "$api" "^title Sebis Netz online 2 generated int$" "api.json: Titel, Spieler online, Zeitstempel"
+contains "$api" '^top1 \{"id": "1", "km": 120.4, "league": "Silber", "level": 8, "name": "Sebi", "xp": 1500\}$' "api.json: Bestenliste"
+contains "$api" '^server \{"map": "gridmap_v2", "mapName": "Grid Map", "max": 8, "name": "BeamNet \| Server 1", "names": \["Sebi", "<b>Hacker</b>"\], "players": 2, "port": 30814\}$' "api.json: Server (ohne HTML-Maskierung)"
+contains "$api" '^week \[\{"id": "1", "km": 33.3, "name": "Sebi"\}\]$' "api.json: Woche"
+contains "$api" "^season $(date -u +%Y-%m) [A-Za-zä]+ [0-9]{4} \\[\\{\"id\": \"1\", \"name\": \"Sebi\", \"xp\": 500\\}, \\{\"id\": \"4\", \"name\": \"Zaehler\", \"xp\": 321\\}\\]$" "api.json: Saison"
+contains "$api" '^record \[\{"map": "italy", "mapName": "Italy", "name": "Sebi", "time": 49.067, "track": "sprint"\}\]$' "api.json: Rekorde"
+contains "$api" '^maps \[\{"drivers": 1, "km": 30.5, "map": "italy", "mapName": "Italy"\}, \{"drivers": 1, "km": 9.5, "map": "utah", "mapName": "Utah, USA"\}\]$' "api.json: Beliebteste Maps"
+contains "$(cat "$T/web/index.html")" "<footer>.*<a href=\"api.json\">api.json</a></footer>" "Statusseite: Link auf api.json"
+# Unbekannte Felder (z. B. IP-Adressen) und unsichere IDs landen nie in api.json.
+cp "$T/root/shared/beamnet/servers/30814.json" "$T/server-api.bak"
+echo "{\"name\":\"S\",\"port\":30814,\"map\":\"italy\",\"players\":1,\"max\":8,\"ip\":\"203.0.113.7\",\"updated\":$(date +%s)}" >"$T/root/shared/beamnet/servers/30814.json"
+echo "{\"id\":\"../böse\",\"name\":\"X\",\"km\":1,\"ip\":\"198.51.100.9\"}" >"$T/root/shared/beamnet/players/5.json"
+"$TOOL" web run >/dev/null 2>&1
+lacks "$(cat "$T/web/api.json")" "203\\.0\\.113\\.7|198\\.51\\.100\\.9" "api.json: keine IP-Adressen"
+lacks "$(cat "$T/web/api.json")" "böse" "api.json: keine unsicheren IDs"
+contains "$(cat "$T/web/api.json")" '"id": null' "api.json: unsichere ID wird null"
+mv "$T/server-api.bak" "$T/root/shared/beamnet/servers/30814.json"
+rm -f "$T/root/shared/beamnet/players/5.json"
 
 : >"$T/actions"
 out=$("$TOOL" web install 99 2>&1)
