@@ -530,6 +530,8 @@ local EN = {
     ["Abstimmung angenommen, aber der Auftrag konnte nicht gespeichert werden – bitte einem Admin melden."] =
         "Vote passed, but the request could not be saved – please tell an admin.",
     ["Abstimmung für %s abgelehnt (%d:%d)."] = "Vote for %s failed (%d:%d).",
+    ["Der Map-Wechsel auf %s hat nicht geklappt – bitte einem Admin melden."] =
+        "The switch to %s did not work – please tell an admin.",
     ["Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage"] =
         "Admin: /kick · /ban <name> [30m|2h|7d] [reason] · /unban · /bans · /warn · /mute · /announce",
     ["Du bist %s gefahren (diese Woche %s)."] = "You have driven %s (this week %s).",
@@ -2291,18 +2293,21 @@ function BN.findMap(query, maps)
     return nil, hits
 end
 
-local function onlineSet()
+-- Spieler online; leaving (pid) zaehlt nicht mit (beim Abmelden steht er noch in der Liste).
+local function onlineSet(leaving)
     local set, n = {}, 0
-    for pid in pairs(MP and MP.GetPlayers and MP.GetPlayers() or {}) do set[pid] = true; n = n + 1 end
+    for pid in pairs(MP and MP.GetPlayers and MP.GetPlayers() or {}) do
+        if pid ~= leaving then set[pid] = true; n = n + 1 end
+    end
     return set, n
 end
 
 -- Wertet die laufende Abstimmung aus: Mehrheit aller Spieler online = angenommen; kann sie nicht mehr gewinnen oder ist
 -- die Zeit um, ist sie abgelehnt.
-function BN.voteCheck()
+function BN.voteCheck(leaving)
     local v = BN.vote
     if not v then return end
-    local online, n = onlineSet()
+    local online, n = onlineSet(leaving)
     local yes, no = 0, 0
     for pid in pairs(v.yes) do if online[pid] then yes = yes + 1 end end
     for pid in pairs(v.no) do if online[pid] then no = no + 1 end end
@@ -2326,6 +2331,27 @@ function BN.voteCheck()
         BN.vote, BN.lastVoteEnd = nil, now
         sayAll("Abstimmung für %s abgelehnt (%d:%d).", BN.mapName(v.map), yes, no)
     end
+end
+
+-- Spieler meldet sich ab: Stimme verwerfen (BeamMP vergibt freie pids neu) und neu auswerten.
+function BN.voteForget(pid)
+    if not BN.vote then return end
+    BN.vote.yes[pid], BN.vote.no[pid] = nil, nil
+    BN.voteCheck(pid)
+end
+
+-- Laeuft der Server 3 Minuten nach einer angenommenen Abstimmung noch, hat der Waechter den Auftrag nicht umgesetzt
+-- (Wartung, kurz zuvor gewechselt, MAP_VOTE=0, Waechter aus): einmal melden und neue Abstimmungen wieder erlauben
+-- (die Pause nach BN.lastVoteEnd gilt weiter).
+function BN.mapChangeCheck()
+    local p = BN.mapChangePending
+    if not p or BN.now() - p.at < 180 then return end
+    BN.mapChangePending = nil
+    -- Liegt der Auftrag noch da (Waechter lief nicht), darf er nicht spaeter doch noch ausgefuehrt werden.
+    local file = C.sharedDir .. "/votes/" .. tostring(BN.server.port) .. ".json"
+    local order = json.decode(readFile(file) or "")
+    if type(order) == "table" and order.at == p.at then os.remove(file) end
+    sayAll("Der Map-Wechsel auf %s hat nicht geklappt – bitte einem Admin melden.", BN.mapName(p.map))
 end
 
 local function voteStatus(pid)
@@ -2479,6 +2505,7 @@ function BN.tick()
     BN.currentMonth = mk
     BN.currentWeek = wk
     guarded("Abstimmung", BN.voteCheck)
+    guarded("Map-Wechsel", BN.mapChangeCheck)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)
@@ -2542,6 +2569,7 @@ function BN_onPlayerDisconnect(pid)
     local s = BN.players[pid]
     if s then guarded("Speichern", BN.savePlayer, s) end
     BN.players[pid] = nil
+    guarded("Abstimmung", BN.voteForget, pid)
     BN.writeStatus()
 end
 

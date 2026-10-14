@@ -1087,6 +1087,87 @@ do
     for pid = 40, 42 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
 end
 
+-- --- Abstimmung: Nachbesserungen -----------------------------------------------------------------------------------
+do
+    local maps = { "gridmap_v2", "west_coast_usa", "italy", "utah" }
+    local function heartbeat() writeJson(SHARED .. "/watch.json", { at = clock, mapVote = true, maps = maps }) end
+    local orderFile = SHARED .. "/votes/30814.json"
+    local others = {}       -- Spieler aus frueheren Abschnitten, die noch online sind
+    for pid in pairs(players) do others[#others + 1] = pid end
+    -- Der Wechsel aus dem vorigen Abschnitt wurde nie umgesetzt: verfaellt, sein Auftrag wird entfernt.
+    check(BN.mapChangePending ~= nil and readJson(orderFile) ~= nil, "Offener Wechsel aus dem vorigen Abschnitt")
+    tick(1)
+    check(BN.mapChangePending == nil, "Alter Wechsel verfaellt")
+    check(readJson(orderFile) == nil, "Nicht umgesetzter Auftrag entfernt")
+
+    local function enter(pid, name)
+        players[pid] = { name = name or ("Waehler" .. pid), ids = { beammp = tostring(5000 + pid) }, vehicles = {} }
+        join(pid)
+    end
+    local function leave(pid) _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    for pid = 50, 53 do enter(pid) end
+    say(53, "/lang en")
+    clock = clock + 11 * 60
+    heartbeat()
+
+    -- Stimmen gehen beim Abmelden verloren; ein neuer Spieler mit derselben pid erbt sie nicht.
+    say(50, "/vote map italy")
+    say(51, "/vote ja")
+    check(BN.vote and BN.vote.yes[51], "Stimme von 51 gezaehlt")
+    leave(51)
+    check(BN.vote and BN.vote.yes[51] == nil and BN.vote.no[51] == nil, "Stimme beim Abmelden verworfen")
+    enter(51, "Neuling")
+    check(BN.vote and BN.vote.yes[51] == nil, "Neuer Spieler mit alter pid erbt keine Stimme")
+    say(52, "/vote")
+    check(chatContains("Abstimmung: Italy – 1 ja, 0 nein", 52), "Stand ohne die alte Stimme")
+    -- 8 online (4 fruehere Spieler), 3 Nein-Stimmen: reicht noch nicht zum Ablehnen, auch nicht ohne 51.
+    eq(#others, 4, "Fruehere Spieler online")
+    say(52, "/vote nein")
+    say(others[1], "/vote nein")
+    say(others[2], "/vote nein")
+    local noVotes = 3
+    leave(51)
+    check(BN.vote ~= nil, "Abstimmung laeuft weiter, solange sie gewinnen kann")
+    -- Der einzige Ja-Waehler geht: jetzt nicht mehr zu gewinnen, sofort beendet (ohne Takt).
+    leave(50)
+    check(BN.vote == nil and chatContains("Abstimmung für Italy abgelehnt %(0:" .. noVotes .. "%)", 52), "Abstimmung endet, wenn sie nach dem Abmelden nicht mehr gewinnen kann")
+    check(chatContains("Vote for Italy failed %(0:" .. noVotes .. "%)", 53), "Ende der Abstimmung auf Englisch")
+
+    -- Angenommen, aber der Waechter setzt den Auftrag nicht um: nach 3 Minuten einmal melden.
+    enter(50)
+    enter(51)
+    clock = clock + 11 * 60
+    heartbeat()
+    os.remove(orderFile)
+    say(50, "/vote map utah")
+    for pid in pairs(players) do if pid ~= 50 then say(pid, "/vote ja") end end
+    check(BN.vote == nil and BN.mapChangePending and BN.mapChangePending.map == "utah", "Abstimmung angenommen, Wechsel offen")
+    check(readJson(orderFile) ~= nil, "Auftrag liegt bereit")
+    local failDe = "Der Map%-Wechsel auf Utah, USA hat nicht geklappt – bitte einem Admin melden%."
+    tick(170)
+    check(BN.mapChangePending ~= nil and countChat(failDe, 50) == 0, "Vor Ablauf von 3 Minuten keine Meldung")
+    say(52, "/vote map italy")
+    check(chatContains("Die Map wird gleich gewechselt", 52), "Waehrend des Wechsels keine neue Abstimmung")
+    tick(15)
+    check(BN.mapChangePending == nil, "Offener Wechsel nach 3 Minuten aufgegeben")
+    eq(countChat(failDe, 50), 1, "Fehlschlag gemeldet")
+    check(chatContains("The switch to Utah, USA did not work – please tell an admin%.", 53), "Fehlschlag auf Englisch")
+    check(readJson(orderFile) == nil, "Auftrag nach dem Fehlschlag entfernt")
+    tick(5)
+    eq(countChat(failDe, 50), 1, "Fehlschlag nur einmal gemeldet")
+    -- Neue Abstimmungen wieder moeglich, die Pause gilt aber weiter.
+    heartbeat()
+    say(52, "/vote map italy")
+    check(BN.vote == nil and chatContains("Nächste Abstimmung in", 52), "Pause gilt nach dem Fehlschlag weiter")
+    clock = clock + 11 * 60
+    heartbeat()
+    say(52, "/vote map italy")
+    check(BN.vote and BN.vote.map == "italy", "Nach der Pause wieder abstimmbar")
+    for pid = 50, 53 do leave(pid) end
+    tick(61)
+    check(BN.vote == nil, "Abstimmung nach dem Abmelden beendet")
+end
+
 -- Herunterfahren speichert alle.
 tick(1)
 _G[events.onShutdown]()
