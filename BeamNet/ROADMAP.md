@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Plugin 1.4):
+- [x] Deutsch und Englisch je Spieler (`/lang`), Rundmeldungen in der Sprache jedes Empfängers, englische Befehlsnamen;
+      Test prüft, dass jede Übersetzung dieselben Platzhalter hat.
+
 Erledigt (Tests):
 - [x] Integrationstest in der CI mit dem echten BeamMP-Server 3.9.3: Plugin lädt (Lua 5.3.5), onInit, Takt läuft,
       alle fünf BeamMP-Funktionen vorhanden, keine Fehler.
@@ -45,4 +49,3 @@ Ideen:
 - [ ] Wochenliga mit Auf- und Abstieg (Saisons).
 - [ ] Abstimmung im Chat: `/vote map <name>` wechselt die Map, wenn die Mehrheit zustimmt.
 - [ ] Map-Rotation für einen Server (jeden Tag eine andere Map).
-- [ ] Englische Texte je nach Spieler.

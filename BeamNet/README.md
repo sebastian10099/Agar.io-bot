@@ -145,6 +145,14 @@ beamnet restart all
 
 Befehle anderer Plugins werden nicht abgefangen.
 
+### Deutsch und Englisch
+
+Jeder Spieler wählt seine Sprache mit `/lang de` oder `/lang en`; die Wahl wird gespeichert und gilt auf allen
+Servern. Meldungen an alle (Level-Aufstiege, Rekorde, Ansagen, Wochensieger) bekommt jeder in seiner Sprache.
+Englische Befehlsnamen funktionieren ebenfalls: `/help`, `/league`, `/race [new|finish|delete|stop]`, `/records`,
+`/announce`, `/top week|lastweek`. Standardsprache für neue Spieler: `"language": "en"` in `config.json`
+(Standard ist Deutsch).
+
 ### Moderation (nur Admins)
 
 | Befehl | Wirkung |

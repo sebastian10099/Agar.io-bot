@@ -8,7 +8,8 @@
 -- Installation: beamnet install-core  (oder diese Datei nach Resources/Server/BeamNetCore/main.lua kopieren)
 -- Anpassen ohne Code-Aenderung: <gemeinsamer Ordner>/config.json, z. B. {"publicHost": "1.2.3.4", "xpPerKm": 12}
 --
--- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche|vorwoche]  /liga  /server  /km
+-- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche|vorwoche]  /liga  /server  /km  /lang de|en
+-- (englisch: /help /stats /top [km|xp|week|lastweek] /league /server /km /race /records /lang)
 --               /rennen [Name|stop]  /rekorde [Name]   – Admins: /rennen neu|ziel|loeschen <Name>
 -- Moderation (Admins): /kick <Name> [Grund]  /ban <Name> [30m|2h|7d] [Grund]  /unban <Name>  /bans
 --                      /warn <Name> <Text>  /mute <Name> [Minuten]  /ansage <Text>
@@ -16,7 +17,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.3"
+BN.VERSION = "1.4"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -44,6 +45,8 @@ local defaults = {
     -- Oeffentliche Adresse fuer /server (leer = nur Name und Port anzeigen).
     publicHost = "",
     announceLevelUps = true,
+    -- Standardsprache fuer Spieler ohne eigene Wahl: "de" oder "en" (jeder kann mit /lang umstellen).
+    language = "de",
     -- Spamschutz: mehr als spamMessages Nachrichten in spamWindowSec Sekunden -> spamMuteSec stumm (Admins nie).
     spamMessages = 5,
     spamWindowSec = 5,
@@ -435,6 +438,151 @@ local function chat(pid, text)
     if MP and MP.SendChatMessage then MP.SendChatMessage(pid, text) end
 end
 
+-- ---------------------------------------------------------------------------------------------------------------------
+-- Sprachen: Deutsch (Standard) und Englisch. Schluessel ist der deutsche Formattext; fehlt eine Uebersetzung, bleibt
+-- es Deutsch. Jeder Spieler waehlt mit /lang de|en, die Wahl wird gespeichert.
+
+local unpack = table.unpack or unpack
+
+local EN = {
+    ["%s ist jetzt Level %d!"] = "%s reached level %d!",
+    ["%s steigt in die Liga %s auf!"] = "%s moved up to the %s league!",
+    ["Wochensieger %s: %s"] = "Winners of %s: %s",
+    ["KW %s"] = "week %s",
+    ["%s – Lauf ungültig. Neuer Versuch: zurück zum Start von %s."] = "%s – run invalid. Try again: back to the start of %s.",
+    ["Fahrzeug zurückgesetzt"] = "Vehicle reset",
+    ["Sprung (Teleport)"] = "Jump (teleport)",
+    ["Zeitlimit überschritten"] = "Time limit exceeded",
+    ["Ziel! %s: %s"] = "Finish! %s: %s",
+    ["Neuer Streckenrekord auf %s: %s mit %s!"] = "New track record on %s: %s with %s!",
+    ["Persönliche Bestzeit! Platz %d von %d."] = "Personal best! Rank %d of %d.",
+    ["+%d XP (nur für diese Sitzung)"] = "+%d XP (this session only)",
+    ["Für einen neuen Versuch zurück zum Start – beenden mit /rennen stop."] = "For another try drive back to the start – quit with /race stop.",
+    ["Am Start von %s. Los geht's, sobald du den Startbereich verlässt!"] = "At the start of %s. The clock starts when you leave the start area!",
+    ["Zeit läuft! Ziel ist %.0f m entfernt."] = "Clock is running! The finish is %.0f m away.",
+    ["[Ansage] %s"] = "[Announcement] %s",
+    ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
+    ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /server · /km · /race · /records · /lang",
+    ["Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage"] =
+        "Admin: /kick · /ban <name> [30m|2h|7d] [reason] · /unban · /bans · /warn · /mute · /announce",
+    ["Du bist %s gefahren (diese Woche %s)."] = "You have driven %s (this week %s).",
+    ["Kein Spieler online mit dem Namen \"%s\"."] = "No player online named \"%s\".",
+    ["%s: Level %d · Liga %s · %d XP · %s · %s Fahrzeit · Spitze %.0f km/h"] = "%s: level %d · %s league · %d XP · %s · %s driving · top speed %.0f km/h",
+    ["Gast-Konto: Werte gelten nur für diese Sitzung (mit BeamMP-Konto werden sie gespeichert)."] =
+        "Guest account: values only count for this session (they are saved with a BeamMP account).",
+    ["Rang %s von %d · noch %d XP bis Level %d"] = "Rank %s of %d · %d XP to level %d",
+    ["Noch keine Bestenliste – einfach losfahren!"] = "No leaderboard yet – just start driving!",
+    ["Bestenliste %s:"] = "Leaderboard %s:",
+    ["Kilometer"] = "kilometers",
+    ["Kilometer diese Woche"] = "kilometers this week",
+    ["Kilometer letzte Woche"] = "kilometers last week",
+    ["%d XP (Level %d)"] = "%d XP (level %d)",
+    ["Ligen (XP): %s"] = "Leagues (XP): %s",
+    ["%s ab %d"] = "%s from %d",
+    ["Du: %s mit %d XP – noch %d XP bis %s."] = "You: %s with %d XP – %d XP to %s.",
+    ["Du: %s mit %d XP – höchste Liga erreicht!"] = "You: %s with %d XP – top league reached!",
+    ["Keine Serverliste verfügbar."] = "No server list available.",
+    ["BeamNet-Server (wechseln im BeamMP-Launcher):"] = "BeamNet servers (switch in the BeamMP launcher):",
+    ["Port %s"] = "port %s",
+    ["  ← hier"] = "  ← here",
+    ["Auf %s gibt es noch keine Strecken."] = "No tracks on %s yet.",
+    ["Strecken auf %s: %s"] = "Tracks on %s: %s",
+    ["%s (ohne Ziel)"] = "%s (no finish)",
+    ["%s (Rekord %s · %s)"] = "%s (record %s · %s)",
+    ["%s (noch keine Zeit)"] = "%s (no time yet)",
+    ["Starten: /rennen <Name> · beenden: /rennen stop · Rekorde: /rekorde <Name>"] =
+        "Start: /race <name> · quit: /race stop · records: /records <name>",
+    ["Admin: am Start /rennen neu <Name>, am Ziel /rennen ziel <Name>, entfernen /rennen loeschen <Name>"] =
+        "Admin: at the start /race new <name>, at the finish /race finish <name>, remove /race delete <name>",
+    ["Rennmodus beendet."] = "Race mode ended.",
+    ["Du bist in keinem Rennen."] = "You are not in a race.",
+    ["Strecken anlegen dürfen nur Admins (Eintrag \"admins\" in config.json)."] = "Only admins can create tracks (\"admins\" in config.json).",
+    ["Streckenname: 1–24 Zeichen, nur Buchstaben, Ziffern, _ und -"] = "Track name: 1–24 characters, letters, digits, _ and - only",
+    ["Strecke %s gibt es nicht."] = "Track %s does not exist.",
+    ["Strecke %s gelöscht."] = "Track %s deleted.",
+    ["Keine Position bekannt – setz dich in ein Fahrzeug und warte eine Sekunde."] = "No position known – get into a vehicle and wait a second.",
+    ["Strecke %s gibt es schon."] = "Track %s already exists.",
+    ["Start von %s gesetzt. Jetzt zum Ziel fahren und /rennen ziel %s schreiben."] = "Start of %s set. Now drive to the finish and type /race finish %s.",
+    ["Strecke %s gibt es nicht – zuerst /rennen neu %s"] = "Track %s does not exist – first /race new %s",
+    ["Ziel von %s gesetzt – Rundkurs (Start = Ziel). Starten: /rennen %s"] = "Finish of %s set – lap course (start = finish). Start: /race %s",
+    ["Ziel von %s gesetzt (%.0f m Luftlinie). Starten: /rennen %s"] = "Finish of %s set (%.0f m straight line). Start: /race %s",
+    ["Strecke \"%s\" gibt es auf dieser Map nicht. Liste: /rennen"] = "Track \"%s\" does not exist on this map. List: /race",
+    ["Strecke %s hat noch kein Ziel."] = "Track %s has no finish yet.",
+    ["Rennen %s: Fahr zum Start (%.0f m entfernt)."] = "Race %s: drive to the start (%.0f m away).",
+    ["Rennen %s: Fahr zum Start."] = "Race %s: drive to the start.",
+    ["Auf %s gibt es noch keine Zeiten."] = "No times on %s yet.",
+    ["Rekorde %s:"] = "Records %s:",
+    ["Noch keine Rekorde auf dieser Map."] = "No records on this map yet.",
+    ["Nur für Admins."] = "Admins only.",
+    ["Mehrere Spieler passen zu \"%s\" – bitte genauer."] = "Several players match \"%s\" – please be more specific.",
+    ["Aufruf: /kick <Name> [Grund] – Spieler muss auf diesem Server online sein."] = "Usage: /kick <name> [reason] – player must be online on this server.",
+    ["%s wurde vom Server geworfen."] = "%s was kicked from the server.",
+    ["Vom Server geworfen"] = "Kicked from the server",
+    ["Aufruf: /ban <Name> [30m|2h|7d] [Grund] – Name online, gespeichert oder BeamMP-ID."] =
+        "Usage: /ban <name> [30m|2h|7d] [reason] – name online, saved or BeamMP ID.",
+    ["Für diesen Spieler ist weder BeamMP-ID noch IP bekannt."] = "Neither BeamMP ID nor IP is known for this player.",
+    ["Admins können nicht gesperrt werden."] = "Admins cannot be banned.",
+    ["%s wurde für %s gesperrt."] = "%s was banned for %s.",
+    ["%s wurde dauerhaft gesperrt."] = "%s was banned permanently.",
+    ["Gesperrt auf allen BeamNet-Servern"] = "Banned on all BeamNet servers",
+    [" (bis %s)"] = " (until %s)",
+    ["Aufruf: /unban <Name oder BeamMP-ID>"] = "Usage: /unban <name or BeamMP ID>",
+    ["Kein Bann für \"%s\" gefunden."] = "No ban found for \"%s\".",
+    ["Bann für %s aufgehoben."] = "Ban for %s lifted.",
+    ["Keine aktiven Banns."] = "No active bans.",
+    ["%d aktive Banns:"] = "%d active bans:",
+    ["ohne Grund"] = "no reason",
+    [" · bis %s"] = " · until %s",
+    [" · dauerhaft"] = " · permanent",
+    ["Aufruf: /warn <Name> <Text> – Spieler muss auf diesem Server online sein."] = "Usage: /warn <name> <text> – player must be online on this server.",
+    ["Verwarnung von %s: %s"] = "Warning from %s: %s",
+    ["Verwarnung an %s gesendet."] = "Warning sent to %s.",
+    ["Aufruf: /mute <Name> [Minuten]"] = "Usage: /mute <name> [minutes]",
+    ["Du wurdest für %d min stummgeschaltet."] = "You have been muted for %d min.",
+    ["%s ist %d min stumm."] = "%s is muted for %d min.",
+    ["Aufruf: /ansage <Text> – erscheint auf allen BeamNet-Servern."] = "Usage: /announce <text> – shown on all BeamNet servers.",
+    ["Interner Fehler – bitte einem Admin melden."] = "Internal error – please tell an admin.",
+    ["Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server. English: /lang en"] =
+        "Welcome to %s (%s)! Level %d · %s league · %s driven. /help for commands, /server for all servers. Deutsch: /lang de",
+    ["Sprache: Deutsch. English: /lang en"] = "Language: English. Deutsch: /lang de",
+    ["Sprache auf Deutsch gestellt."] = "Language set to English.",
+    ["Sprachen: /lang de · /lang en"] = "Languages: /lang de · /lang en",
+    -- Ligen (Standardnamen)
+    ["Silber"] = "Silver", ["Platin"] = "Platinum", ["Diamant"] = "Diamond", ["Legende"] = "Legend",
+}
+BN.EN = EN
+
+function BN.langOf(pid)
+    local s = BN.players[pid]
+    local lang = (s and s.lang) or C.language
+    return lang == "en" and "en" or "de"
+end
+
+local function tr(lang, text, ...)
+    local f = (lang == "en" and EN[text]) or text
+    if select("#", ...) > 0 then return string.format(f, ...) end
+    return f
+end
+BN.tr = tr
+
+-- An einen Spieler, in seiner Sprache.
+local function say(pid, text, ...)
+    chat(pid, tr(BN.langOf(pid), text, ...))
+end
+
+-- An alle Spieler dieses Servers, jeweils in ihrer Sprache; build(lang) liefert den Text.
+local function sayEach(build)
+    local online = (MP and MP.GetPlayers and MP.GetPlayers()) or {}
+    for pid in pairs(online) do chat(pid, build(BN.langOf(pid))) end
+end
+
+local function sayAll(text, ...)
+    local args, n = { ... }, select("#", ...)
+    sayEach(function(lang) return tr(lang, text, unpack(args, 1, n)) end)
+end
+
 local function identifiers(pid)
     if not (MP and MP.GetPlayerIdentifiers) then return {} end
     local ok, ids = pcall(MP.GetPlayerIdentifiers, pid)
@@ -482,6 +630,7 @@ function BN.addPlayer(pid)
     local session = { pid = pid, name = name, id = id, ip = ids.ip, guest = id == nil, vehicles = {},
                       pendingKm = 0, pendingSeconds = 0, pendingTop = 0, pendingBonus = 0 }
     session.record = id and loadRecord(id, name) or emptyRecord(nil, name)
+    if session.record.lang == "en" or session.record.lang == "de" then session.lang = session.record.lang end
     applyWeek(session.record)
     local xp = BN.xpFor(session.record.km, session.record.seconds) + session.record.bonusXp
     session.level = BN.levelFor(xp)
@@ -508,6 +657,7 @@ function BN.savePlayer(s)
     rec.seconds = rec.seconds + s.pendingSeconds
     rec.topSpeedKmh = math.max(rec.topSpeedKmh or 0, s.pendingTop)
     rec.bonusXp = rec.bonusXp + s.pendingBonus
+    if s.lang then rec.lang = s.lang end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
     rec.xp = BN.xpFor(rec.km, rec.seconds) + rec.bonusXp
@@ -538,11 +688,12 @@ end
 local function checkProgress(s)
     local t = BN.totals(s)
     if t.level > (s.level or 1) then
-        if C.announceLevelUps then chat(-1, string.format("%s ist jetzt Level %d!", s.name, t.level)) end
+        if C.announceLevelUps then sayAll("%s ist jetzt Level %d!", s.name, t.level) end
         s.level = t.level
     end
     if t.league.name ~= s.league then
-        chat(-1, string.format("%s steigt in die Liga %s auf!", s.name, t.league.name))
+        local league = t.league.name
+        sayEach(function(lang) return tr(lang, "%s steigt in die Liga %s auf!", s.name, tr(lang, league)) end)
         s.league = t.league.name
     end
 end
@@ -664,7 +815,8 @@ function BN.announceWeek(week)
     if #list == 0 then return end
     local parts = {}
     for i = 1, math.min(3, #list) do parts[#parts + 1] = string.format("%d. %s (%s)", i, list[i].name, fmtKm(list[i].km)) end
-    chat(-1, "Wochensieger " .. tostring(week):gsub("^%d+%-W", "KW ") .. ": " .. table.concat(parts, " · "))
+    local number = tostring(week):match("W(%d+)$") or tostring(week)
+    sayEach(function(lang) return tr(lang, "Wochensieger %s: %s", tr(lang, "KW %s", number), table.concat(parts, " · ")) end)
 end
 
 function BN.rankOf(id)
@@ -796,13 +948,14 @@ end
 function BN.raceInvalid(s, why)
     local r = s.race
     if not r then return end
-    chat(s.pid, string.format("%s – Lauf ungültig. Neuer Versuch: zurück zum Start von %s.", why, r.name))
+    local lang = BN.langOf(s.pid)
+    chat(s.pid, tr(lang, "%s – Lauf ungültig. Neuer Versuch: zurück zum Start von %s.", tr(lang, why), r.name))
     r.state, r.vid, r.startT, r.leftFinish = "armed", nil, nil, false
 end
 
 local function finishRace(s, time)
     local r = s.race
-    chat(s.pid, string.format("Ziel! %s: %s", r.name, BN.fmtRaceTime(time)))
+    say(s.pid, "Ziel! %s: %s", r.name, BN.fmtRaceTime(time))
     if not s.guest then
         local data = BN.loadTracks()
         local track = data.tracks[r.name]
@@ -831,9 +984,9 @@ local function finishRace(s, time)
                 bonus = bonus + C.racePersonalBestXp
                 if rank == 1 and (not previousBest or time < previousBest) then
                     bonus = bonus + C.raceRecordXp
-                    chat(-1, string.format("Neuer Streckenrekord auf %s: %s mit %s!", r.name, s.name, BN.fmtRaceTime(time)))
+                    sayAll("Neuer Streckenrekord auf %s: %s mit %s!", r.name, s.name, BN.fmtRaceTime(time))
                 else
-                    chat(s.pid, string.format("Persönliche Bestzeit! Platz %d von %d.", rank or 0, #track.records))
+                    say(s.pid, "Persönliche Bestzeit! Platz %d von %d.", rank or 0, #track.records)
                 end
             end
             s.pendingBonus = s.pendingBonus + bonus
@@ -842,10 +995,10 @@ local function finishRace(s, time)
         end
     else
         s.pendingBonus = s.pendingBonus + C.raceFinishXp
-        chat(s.pid, string.format("+%d XP (nur für diese Sitzung)", C.raceFinishXp))
+        say(s.pid, "+%d XP (nur für diese Sitzung)", C.raceFinishXp)
     end
     r.state, r.vid, r.startT, r.leftFinish = "armed", nil, nil, false
-    chat(s.pid, "Für einen neuen Versuch zurück zum Start – beenden mit /rennen stop.")
+    say(s.pid, "Für einen neuen Versuch zurück zum Start – beenden mit /rennen stop.")
 end
 
 -- Wird bei jeder neuen Position eines Spielers mit laufendem Rennen aufgerufen.
@@ -857,7 +1010,7 @@ function BN.raceUpdate(s, vid, prev, cur, jump)
         if dist(cur, r.start) <= radius then
             r.state, r.vid = "ready", vid
             r.useTim = cur.tim ~= nil
-            chat(s.pid, string.format("Am Start von %s. Los geht's, sobald du den Startbereich verlässt!", r.name))
+            say(s.pid, "Am Start von %s. Los geht's, sobald du den Startbereich verlässt!", r.name)
         end
         return
     end
@@ -874,7 +1027,7 @@ function BN.raceUpdate(s, vid, prev, cur, jump)
             r.startT = crossTime(prev, cur, t0, t1, r.start, radius)
             r.state = "running"
             r.leftFinish = dist(cur, r.finish) > radius
-            chat(s.pid, string.format("Zeit läuft! Ziel ist %.0f m entfernt.", dist(cur, r.finish)))
+            say(s.pid, "Zeit läuft! Ziel ist %.0f m entfernt.", dist(cur, r.finish))
         end
         return
     end
@@ -948,10 +1101,10 @@ function BN.findBan(id, ip)
     return nil
 end
 
-local function banText(ban)
-    local text = "Gesperrt auf allen BeamNet-Servern"
+local function banText(ban, lang)
+    local text = tr(lang, "Gesperrt auf allen BeamNet-Servern")
     if ban.reason and ban.reason ~= "" then text = text .. ": " .. ban.reason end
-    if ban["until"] then text = text .. " (bis " .. os.date("%d.%m. %H:%M", ban["until"]) .. ")" end
+    if ban["until"] then text = text .. tr(lang, " (bis %s)", os.date("%d.%m. %H:%M", ban["until"])) end
     return text
 end
 BN.banText = banText
@@ -982,7 +1135,7 @@ function BN.sync(force)
         local ban = BN.findBan(s.id, s.ip)
         if ban then
             BN.savePlayer(s)
-            drop(pid, banText(ban))
+            drop(pid, banText(ban, BN.langOf(pid)))
             BN.players[pid] = nil
         end
     end
@@ -991,7 +1144,7 @@ function BN.sync(force)
         for _, a in ipairs(data.list) do
             if type(a) == "table" and a.id and not BN.seenAnnouncements[a.id] then
                 BN.seenAnnouncements[a.id] = true
-                if now - (tonumber(a.at) or 0) <= 120 then chat(-1, "[Ansage] " .. tostring(a.text)) end
+                if now - (tonumber(a.at) or 0) <= 120 then sayAll("[Ansage] %s", tostring(a.text)) end
             end
         end
     end
@@ -1016,7 +1169,7 @@ function BN.announce(text, by)
     ensureDir(C.sharedDir)
     writeFileAtomic(announcementsFile(), json.encode(data))
     BN.seenAnnouncements[id] = true
-    chat(-1, "[Ansage] " .. text)
+    sayAll("[Ansage] %s", text)
 end
 
 -- Spamschutz. Gibt true zurueck, wenn die Nachricht unterdrueckt werden soll.
@@ -1026,7 +1179,7 @@ function BN.spamCheck(s)
     if s.mutedUntil and now < s.mutedUntil then
         if not s.muteNoticeAt or now - s.muteNoticeAt >= 10 then
             s.muteNoticeAt = now
-            chat(s.pid, string.format("Du bist noch %d s stummgeschaltet.", s.mutedUntil - now))
+            say(s.pid, "Du bist noch %d s stummgeschaltet.", s.mutedUntil - now)
         end
         return true
     end
@@ -1041,7 +1194,7 @@ function BN.spamCheck(s)
         s.mutedUntil = now + C.spamMuteSec
         s.muteNoticeAt = now
         s.chatTimes = {}
-        chat(s.pid, string.format("Bitte nicht spammen – du bist %d s stummgeschaltet.", C.spamMuteSec))
+        say(s.pid, "Bitte nicht spammen – du bist %d s stummgeschaltet.", C.spamMuteSec)
         modlog({ action = "spam-mute", target = s.name, targetId = s.id, seconds = C.spamMuteSec })
         return true
     end
@@ -1100,9 +1253,9 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    chat(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /lang")
     if BN.isAdmin(BN.players[pid]) then
-        chat(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
+        say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
 end
 commands.help = commands.hilfe
@@ -1110,7 +1263,7 @@ commands.help = commands.hilfe
 function commands.km(pid)
     local s = session(pid)
     local t = BN.totals(s)
-    chat(pid, string.format("Du bist %s gefahren (diese Woche %s).", fmtKm(t.km), fmtKm(t.weekKm)))
+    say(pid, "Du bist %s gefahren (diese Woche %s).", fmtKm(t.km), fmtKm(t.weekKm))
 end
 
 function commands.stats(pid, arg)
@@ -1118,26 +1271,27 @@ function commands.stats(pid, arg)
     if arg and arg ~= "" then
         s = findPlayerByName(arg)
         if not s then
-            chat(pid, "Kein Spieler online mit dem Namen \"" .. arg .. "\".")
+            say(pid, "Kein Spieler online mit dem Namen \"%s\".", arg)
             return
         end
     end
     local t = BN.totals(s)
-    local line = string.format("%s: Level %d · Liga %s · %d XP · %s · %s Fahrzeit · Spitze %.0f km/h",
-        s.name, t.level, t.league.name, t.xp, fmtKm(t.km), fmtDuration(t.seconds), t.topSpeedKmh)
-    chat(pid, line)
+    local lang = BN.langOf(pid)
+    say(pid, "%s: Level %d · Liga %s · %d XP · %s · %s Fahrzeit · Spitze %.0f km/h",
+        s.name, t.level, tr(lang, t.league.name), t.xp, fmtKm(t.km), fmtDuration(t.seconds), t.topSpeedKmh)
     if s.guest then
-        chat(pid, "Gast-Konto: Werte gelten nur für diese Sitzung (mit BeamMP-Konto werden sie gespeichert).")
+        say(pid, "Gast-Konto: Werte gelten nur für diese Sitzung (mit BeamMP-Konto werden sie gespeichert).")
     else
         local rank, total = BN.rankOf(s.id)
         local nextLevel = BN.xpForLevel(t.level + 1)
-        chat(pid, string.format("Rang %s von %d · noch %d XP bis Level %d", rank and tostring(rank) or "–", total,
-            math.max(0, nextLevel - t.xp), t.level + 1))
+        say(pid, "Rang %s von %d · noch %d XP bis Level %d", rank and tostring(rank) or "–", total,
+            math.max(0, nextLevel - t.xp), t.level + 1)
     end
 end
 
 function commands.top(pid, arg)
     local mode = (arg or ""):lower()
+    local lang = BN.langOf(pid)
     local list = {}
     for _, rec in ipairs(BN.refreshBoard(false)) do list[#list + 1] = rec end
     local label, value
@@ -1151,13 +1305,13 @@ function commands.top(pid, arg)
         list = BN.weekRanking(weekKey(BN.now() - 7 * 86400))
         label, value = "Kilometer letzte Woche", function(r) return fmtKm(r.km) end
     else
-        label, value = "XP", function(r) return string.format("%d XP (Level %d)", r.xp, BN.levelFor(r.xp)) end
+        label, value = "XP", function(r) return tr(lang, "%d XP (Level %d)", r.xp, BN.levelFor(r.xp)) end
     end
     if #list == 0 then
-        chat(pid, "Noch keine Bestenliste – einfach losfahren!")
+        say(pid, "Noch keine Bestenliste – einfach losfahren!")
         return
     end
-    chat(pid, "Bestenliste " .. label .. ":")
+    say(pid, "Bestenliste %s:", tr(lang, label))
     for i = 1, math.min(5, #list) do
         chat(pid, string.format("%d. %s – %s", i, list[i].name or "?", value(list[i])))
     end
@@ -1167,26 +1321,28 @@ function commands.liga(pid)
     local s = session(pid)
     local t = BN.totals(s)
     local parts = {}
-    for _, league in ipairs(C.leagues) do parts[#parts + 1] = string.format("%s ab %d", league.name, league.xp) end
-    chat(pid, "Ligen (XP): " .. table.concat(parts, " · "))
+    local lang = BN.langOf(pid)
+    for _, league in ipairs(C.leagues) do parts[#parts + 1] = tr(lang, "%s ab %d", tr(lang, league.name), league.xp) end
+    say(pid, "Ligen (XP): %s", table.concat(parts, " · "))
     local nextL = BN.nextLeague(t.xp)
     if nextL then
-        chat(pid, string.format("Du: %s mit %d XP – noch %d XP bis %s.", t.league.name, t.xp, nextL.xp - t.xp, nextL.name))
+        say(pid, "Du: %s mit %d XP – noch %d XP bis %s.", tr(lang, t.league.name), t.xp, nextL.xp - t.xp, tr(lang, nextL.name))
     else
-        chat(pid, string.format("Du: %s mit %d XP – höchste Liga erreicht!", t.league.name, t.xp))
+        say(pid, "Du: %s mit %d XP – höchste Liga erreicht!", tr(lang, t.league.name), t.xp)
     end
 end
 
 function commands.server(pid)
     local list = BN.serverList()
+    local lang = BN.langOf(pid)
     if #list == 0 then
-        chat(pid, "Keine Serverliste verfügbar.")
+        say(pid, "Keine Serverliste verfügbar.")
         return
     end
-    chat(pid, "BeamNet-Server (wechseln im BeamMP-Launcher):")
+    say(pid, "BeamNet-Server (wechseln im BeamMP-Launcher):")
     for _, st in ipairs(list) do
-        local addr = C.publicHost ~= "" and (C.publicHost .. ":" .. tostring(st.port)) or ("Port " .. tostring(st.port))
-        local here = tonumber(st.port) == tonumber(BN.server.port) and "  ← hier" or ""
+        local addr = C.publicHost ~= "" and (C.publicHost .. ":" .. tostring(st.port)) or tr(lang, "Port %s", tostring(st.port))
+        local here = tonumber(st.port) == tonumber(BN.server.port) and tr(lang, "  ← hier") or ""
         chat(pid, string.format("%s · %s · %d/%d · %s%s", st.name or "?", st.map or "?", tonumber(st.players) or 0,
             tonumber(st.max) or 0, addr, here))
     end
@@ -1199,25 +1355,26 @@ local function listTracks(pid, s)
     for name in pairs(data.tracks) do names[#names + 1] = name end
     table.sort(names)
     if #names == 0 then
-        chat(pid, "Auf " .. tostring(BN.server.map) .. " gibt es noch keine Strecken.")
+        say(pid, "Auf %s gibt es noch keine Strecken.", tostring(BN.server.map))
     else
         local parts = {}
         for _, name in ipairs(names) do
             local t = data.tracks[name]
             local best = type(t.records) == "table" and t.records[1]
+            local lang = BN.langOf(pid)
             if not t.finish then
-                parts[#parts + 1] = name .. " (ohne Ziel)"
+                parts[#parts + 1] = tr(lang, "%s (ohne Ziel)", name)
             elseif best then
-                parts[#parts + 1] = string.format("%s (Rekord %s · %s)", name, BN.fmtRaceTime(tonumber(best.time)), tostring(best.name))
+                parts[#parts + 1] = tr(lang, "%s (Rekord %s · %s)", name, BN.fmtRaceTime(tonumber(best.time)), tostring(best.name))
             else
-                parts[#parts + 1] = name .. " (noch keine Zeit)"
+                parts[#parts + 1] = tr(lang, "%s (noch keine Zeit)", name)
             end
         end
-        chat(pid, "Strecken auf " .. tostring(BN.server.map) .. ": " .. table.concat(parts, ", "))
-        chat(pid, "Starten: /rennen <Name> · beenden: /rennen stop · Rekorde: /rekorde <Name>")
+        say(pid, "Strecken auf %s: %s", tostring(BN.server.map), table.concat(parts, ", "))
+        say(pid, "Starten: /rennen <Name> · beenden: /rennen stop · Rekorde: /rekorde <Name>")
     end
     if BN.isAdmin(s) then
-        chat(pid, "Admin: am Start /rennen neu <Name>, am Ziel /rennen ziel <Name>, entfernen /rennen loeschen <Name>")
+        say(pid, "Admin: am Start /rennen neu <Name>, am Ziel /rennen ziel <Name>, entfernen /rennen loeschen <Name>")
     end
 end
 
@@ -1226,58 +1383,61 @@ function commands.rennen(pid, arg)
     local words = {}
     for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
     local sub = (words[1] or ""):lower()
+    -- Englische Unterbefehle
+    local aliases = { new = "neu", finish = "ziel", delete = "loeschen", remove = "loeschen", ["end"] = "stop", quit = "stop" }
+    sub = aliases[sub] or sub
     if sub == "" then
         listTracks(pid, s)
         return
     end
     if sub == "stop" or sub == "ende" then
         if s.race then
-            chat(pid, "Rennmodus beendet.")
+            say(pid, "Rennmodus beendet.")
             s.race = nil
         else
-            chat(pid, "Du bist in keinem Rennen.")
+            say(pid, "Du bist in keinem Rennen.")
         end
         return
     end
     if sub == "neu" or sub == "ziel" or sub == "loeschen" or sub == "löschen" then
         if not BN.isAdmin(s) then
-            chat(pid, "Strecken anlegen dürfen nur Admins (Eintrag \"admins\" in config.json).")
+            say(pid, "Strecken anlegen dürfen nur Admins (Eintrag \"admins\" in config.json).")
             return
         end
         local name = trackName(words[2])
         if not name then
-            chat(pid, "Streckenname: 1–24 Zeichen, nur Buchstaben, Ziffern, _ und -")
+            say(pid, "Streckenname: 1–24 Zeichen, nur Buchstaben, Ziffern, _ und -")
             return
         end
         local data = BN.loadTracks()
         local track = data.tracks[name]
         if sub == "loeschen" or sub == "löschen" then
-            if not track then chat(pid, "Strecke " .. name .. " gibt es nicht.") return end
+            if not track then say(pid, "Strecke %s gibt es nicht.", name) return end
             data.tracks[name] = nil
             saveTracks(data)
-            chat(pid, "Strecke " .. name .. " gelöscht.")
+            say(pid, "Strecke %s gelöscht.", name)
             return
         end
         local pos = currentPosition(s)
         if not pos then
-            chat(pid, "Keine Position bekannt – setz dich in ein Fahrzeug und warte eine Sekunde.")
+            say(pid, "Keine Position bekannt – setz dich in ein Fahrzeug und warte eine Sekunde.")
             return
         end
         if sub == "neu" then
-            if track then chat(pid, "Strecke " .. name .. " gibt es schon.") return end
+            if track then say(pid, "Strecke %s gibt es schon.", name) return end
             data.tracks[name] = { start = point(pos), by = s.name, created = BN.now(), records = {} }
             saveTracks(data)
-            chat(pid, "Start von " .. name .. " gesetzt. Jetzt zum Ziel fahren und /rennen ziel " .. name .. " schreiben.")
+            say(pid, "Start von %s gesetzt. Jetzt zum Ziel fahren und /rennen ziel %s schreiben.", name, name)
         else
-            if not track then chat(pid, "Strecke " .. name .. " gibt es nicht – zuerst /rennen neu " .. name) return end
+            if not track then say(pid, "Strecke %s gibt es nicht – zuerst /rennen neu %s", name, name) return end
             track.finish = point(pos)
             track.records = {}           -- neues Ziel: alte Zeiten passen nicht mehr
             saveTracks(data)
             local d = dist(point(pos), point(track.start))
             if d <= C.raceRadiusM then
-                chat(pid, "Ziel von " .. name .. " gesetzt – Rundkurs (Start = Ziel). Starten: /rennen " .. name)
+                say(pid, "Ziel von %s gesetzt – Rundkurs (Start = Ziel). Starten: /rennen %s", name, name)
             else
-                chat(pid, string.format("Ziel von %s gesetzt (%.0f m Luftlinie). Starten: /rennen %s", name, d, name))
+                say(pid, "Ziel von %s gesetzt (%.0f m Luftlinie). Starten: /rennen %s", name, d, name)
             end
         end
         return
@@ -1286,19 +1446,19 @@ function commands.rennen(pid, arg)
     local name = trackName(sub)
     local track = name and BN.loadTracks().tracks[name]
     if not track then
-        chat(pid, "Strecke \"" .. tostring(words[1]) .. "\" gibt es auf dieser Map nicht. Liste: /rennen")
+        say(pid, "Strecke \"%s\" gibt es auf dieser Map nicht. Liste: /rennen", tostring(words[1]))
         return
     end
     if not track.finish then
-        chat(pid, "Strecke " .. name .. " hat noch kein Ziel.")
+        say(pid, "Strecke %s hat noch kein Ziel.", name)
         return
     end
     s.race = { name = name, start = point(track.start), finish = point(track.finish), state = "armed" }
     local pos = currentPosition(s)
     if pos then
-        chat(pid, string.format("Rennen %s: Fahr zum Start (%.0f m entfernt).", name, dist(point(pos), s.race.start)))
+        say(pid, "Rennen %s: Fahr zum Start (%.0f m entfernt).", name, dist(point(pos), s.race.start))
     else
-        chat(pid, "Rennen " .. name .. ": Fahr zum Start.")
+        say(pid, "Rennen %s: Fahr zum Start.", name)
     end
 end
 
@@ -1307,10 +1467,10 @@ function commands.rekorde(pid, arg)
     local name = trackName(arg)
     if name then
         local track = data.tracks[name]
-        if not track then chat(pid, "Strecke " .. name .. " gibt es nicht.") return end
+        if not track then say(pid, "Strecke %s gibt es nicht.", name) return end
         local records = type(track.records) == "table" and track.records or {}
-        if #records == 0 then chat(pid, "Auf " .. name .. " gibt es noch keine Zeiten.") return end
-        chat(pid, "Rekorde " .. name .. ":")
+        if #records == 0 then say(pid, "Auf %s gibt es noch keine Zeiten.", name) return end
+        say(pid, "Rekorde %s:", name)
         for i = 1, math.min(5, #records) do
             chat(pid, string.format("%d. %s – %s", i, tostring(records[i].name), BN.fmtRaceTime(tonumber(records[i].time))))
         end
@@ -1321,7 +1481,7 @@ function commands.rekorde(pid, arg)
         if type(t.records) == "table" and t.records[1] then names[#names + 1] = n end
     end
     table.sort(names)
-    if #names == 0 then chat(pid, "Noch keine Rekorde auf dieser Map.") return end
+    if #names == 0 then say(pid, "Noch keine Rekorde auf dieser Map.") return end
     for _, n in ipairs(names) do
         local best = data.tracks[n].records[1]
         chat(pid, string.format("%s: %s – %s", n, tostring(best.name), BN.fmtRaceTime(tonumber(best.time))))
@@ -1331,7 +1491,7 @@ end
 local function adminOnly(pid)
     local s = session(pid)
     if BN.isAdmin(s) then return s end
-    chat(pid, "Nur für Admins.")
+    say(pid, "Nur für Admins.")
     return nil
 end
 
@@ -1346,16 +1506,16 @@ function commands.kick(pid, arg)
     if not admin then return end
     local words = splitArgs(arg)
     local target, why = findTarget(words[1])
-    if why then chat(pid, "Mehrere Spieler passen zu \"" .. tostring(words[1]) .. "\" – bitte genauer.") return end
+    if why then say(pid, "Mehrere Spieler passen zu \"%s\" – bitte genauer.", tostring(words[1])) return end
     if not target or not target.online then
-        chat(pid, "Aufruf: /kick <Name> [Grund] – Spieler muss auf diesem Server online sein.")
+        say(pid, "Aufruf: /kick <Name> [Grund] – Spieler muss auf diesem Server online sein.")
         return
     end
     local reason = table.concat(words, " ", 2)
     BN.savePlayer(target.online)
-    drop(target.online.pid, "Vom Server geworfen" .. (reason ~= "" and (": " .. reason) or ""))
+    drop(target.online.pid, tr(BN.langOf(target.online.pid), "Vom Server geworfen") .. (reason ~= "" and (": " .. reason) or ""))
     BN.players[target.online.pid] = nil
-    chat(-1, string.format("%s wurde vom Server geworfen.", target.name))
+    sayAll("%s wurde vom Server geworfen.", target.name)
     modlog({ action = "kick", by = admin.name, target = target.name, targetId = target.id, reason = reason })
 end
 
@@ -1364,17 +1524,17 @@ function commands.ban(pid, arg)
     if not admin then return end
     local words = splitArgs(arg)
     local target, why = findTarget(words[1])
-    if why then chat(pid, "Mehrere Spieler passen zu \"" .. tostring(words[1]) .. "\" – bitte genauer.") return end
+    if why then say(pid, "Mehrere Spieler passen zu \"%s\" – bitte genauer.", tostring(words[1])) return end
     if not target then
-        chat(pid, "Aufruf: /ban <Name> [30m|2h|7d] [Grund] – Name online, gespeichert oder BeamMP-ID.")
+        say(pid, "Aufruf: /ban <Name> [30m|2h|7d] [Grund] – Name online, gespeichert oder BeamMP-ID.")
         return
     end
     if not target.id and not target.ip then
-        chat(pid, "Für diesen Spieler ist weder BeamMP-ID noch IP bekannt.")
+        say(pid, "Für diesen Spieler ist weder BeamMP-ID noch IP bekannt.")
         return
     end
     if target.online and BN.isAdmin(target.online) then
-        chat(pid, "Admins können nicht gesperrt werden.")
+        say(pid, "Admins können nicht gesperrt werden.")
         return
     end
     local duration = BN.parseDuration(words[2])
@@ -1388,27 +1548,27 @@ function commands.ban(pid, arg)
     modlog({ action = "ban", by = admin.name, target = target.name, targetId = target.id, reason = reason, ["until"] = ban["until"] })
     if target.online then
         BN.savePlayer(target.online)
-        drop(target.online.pid, banText(ban))
+        drop(target.online.pid, banText(ban, BN.langOf(target.online.pid)))
         BN.players[target.online.pid] = nil
     end
-    chat(-1, string.format("%s wurde %s gesperrt.", target.name, duration and ("für " .. words[2]) or "dauerhaft"))
+    if duration then sayAll("%s wurde für %s gesperrt.", target.name, words[2]) else sayAll("%s wurde dauerhaft gesperrt.", target.name) end
 end
 
 function commands.unban(pid, arg)
     local admin = adminOnly(pid)
     if not admin then return end
     local query = tostring(arg or ""):lower()
-    if query == "" then chat(pid, "Aufruf: /unban <Name oder BeamMP-ID>") return end
+    if query == "" then say(pid, "Aufruf: /unban <Name oder BeamMP-ID>") return end
     local data = BN.loadBans()
     local kept, removed = {}, 0
     for _, ban in ipairs(data.bans) do
         if tostring(ban.name):lower() == query or tostring(ban.id) == query then removed = removed + 1 else kept[#kept + 1] = ban end
     end
-    if removed == 0 then chat(pid, "Kein Bann für \"" .. arg .. "\" gefunden.") return end
+    if removed == 0 then say(pid, "Kein Bann für \"%s\" gefunden.", arg) return end
     data.bans = kept
     saveBans(data)
     modlog({ action = "unban", by = admin.name, target = arg })
-    chat(pid, string.format("Bann für %s aufgehoben.", arg))
+    say(pid, "Bann für %s aufgehoben.", arg)
 end
 
 function commands.bans(pid)
@@ -1417,12 +1577,13 @@ function commands.bans(pid)
     for _, ban in ipairs(BN.loadBans().bans) do
         if not ban["until"] or tonumber(ban["until"]) > now then active[#active + 1] = ban end
     end
-    if #active == 0 then chat(pid, "Keine aktiven Banns.") return end
-    chat(pid, string.format("%d aktive Banns:", #active))
+    local lang = BN.langOf(pid)
+    if #active == 0 then say(pid, "Keine aktiven Banns.") return end
+    say(pid, "%d aktive Banns:", #active)
     for i = math.max(1, #active - 4), #active do
         local b = active[i]
-        chat(pid, string.format("%s – %s%s", tostring(b.name), b.reason ~= "" and tostring(b.reason) or "ohne Grund",
-            b["until"] and (" · bis " .. os.date("%d.%m. %H:%M", b["until"])) or " · dauerhaft"))
+        chat(pid, string.format("%s – %s%s", tostring(b.name), (b.reason and b.reason ~= "") and tostring(b.reason) or tr(lang, "ohne Grund"),
+            b["until"] and tr(lang, " · bis %s", os.date("%d.%m. %H:%M", b["until"])) or tr(lang, " · dauerhaft")))
     end
 end
 
@@ -1433,11 +1594,11 @@ function commands.warn(pid, arg)
     local target = findTarget(words[1])
     local text = table.concat(words, " ", 2)
     if not target or not target.online or text == "" then
-        chat(pid, "Aufruf: /warn <Name> <Text> – Spieler muss auf diesem Server online sein.")
+        say(pid, "Aufruf: /warn <Name> <Text> – Spieler muss auf diesem Server online sein.")
         return
     end
-    chat(target.online.pid, "Verwarnung von " .. admin.name .. ": " .. text)
-    chat(pid, "Verwarnung an " .. target.name .. " gesendet.")
+    say(target.online.pid, "Verwarnung von %s: %s", admin.name, text)
+    say(pid, "Verwarnung an %s gesendet.", target.name)
     modlog({ action = "warn", by = admin.name, target = target.name, targetId = target.id, reason = text })
 end
 
@@ -1446,21 +1607,47 @@ function commands.mute(pid, arg)
     if not admin then return end
     local words = splitArgs(arg)
     local target = findTarget(words[1])
-    if not target or not target.online then chat(pid, "Aufruf: /mute <Name> [Minuten]") return end
+    if not target or not target.online then say(pid, "Aufruf: /mute <Name> [Minuten]") return end
     local minutes = tonumber(words[2]) or 10
     target.online.mutedUntil = BN.now() + minutes * 60
-    chat(target.online.pid, string.format("Du wurdest für %d min stummgeschaltet.", minutes))
-    chat(pid, string.format("%s ist %d min stumm.", target.name, minutes))
+    say(target.online.pid, "Du wurdest für %d min stummgeschaltet.", minutes)
+    say(pid, "%s ist %d min stumm.", target.name, minutes)
     modlog({ action = "mute", by = admin.name, target = target.name, targetId = target.id, minutes = minutes })
 end
 
 function commands.ansage(pid, arg)
     local admin = adminOnly(pid)
     if not admin then return end
-    if not arg or arg == "" then chat(pid, "Aufruf: /ansage <Text> – erscheint auf allen BeamNet-Servern.") return end
+    if not arg or arg == "" then say(pid, "Aufruf: /ansage <Text> – erscheint auf allen BeamNet-Servern.") return end
     BN.announce(arg, admin.name)
     modlog({ action = "ansage", by = admin.name, reason = arg })
 end
+
+function commands.lang(pid, arg)
+    local s = session(pid)
+    local choice = tostring(arg or ""):lower()
+    if choice == "en" or choice == "english" or choice == "englisch" then
+        s.lang = "en"
+    elseif choice == "de" or choice == "deutsch" or choice == "german" then
+        s.lang = "de"
+    elseif choice == "" then
+        say(pid, "Sprache: Deutsch. English: /lang en")
+        return
+    else
+        say(pid, "Sprachen: /lang de · /lang en")
+        return
+    end
+    s.dirty = true
+    say(pid, "Sprache auf Deutsch gestellt.")
+end
+commands.language = commands.lang
+commands.sprache = commands.lang
+
+-- Englische Befehlsnamen
+commands.league = commands.liga
+commands.race = commands.rennen
+commands.records = commands.rekorde
+commands.announce = commands.ansage
 
 BN.commands = commands
 
@@ -1474,7 +1661,7 @@ function BN.handleChat(pid, message)
     local ok, err = pcall(handler, pid, arg)
     if not ok then
         print("[BeamNetCore] Fehler in /" .. cmd .. ": " .. tostring(err))
-        chat(pid, "Interner Fehler – bitte einem Admin melden.")
+        say(pid, "Interner Fehler – bitte einem Admin melden.")
     end
     return true
 end
@@ -1549,8 +1736,8 @@ end
 function BN_onPlayerJoin(pid)
     local s = BN.addPlayer(pid)
     local t = BN.totals(s)
-    chat(pid, string.format("Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server.",
-        BN.server.name, BN.server.map, t.level, t.league.name, fmtKm(t.km)))
+    say(pid, "Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server. English: /lang en",
+        BN.server.name, BN.server.map, t.level, tr(BN.langOf(pid), t.league.name), fmtKm(t.km))
     BN.writeStatus()
 end
 
@@ -1570,10 +1757,14 @@ end
 -- Gesperrte Spieler gar nicht erst hereinlassen (Rueckgabe eines Textes = Ablehnung mit diesem Grund).
 function BN_onPlayerAuth(name, role, isGuest, identifiers)
     local ids = type(identifiers) == "table" and identifiers or {}
-    local ban = BN.findBan(safeId(ids.beammp), ids.ip)
+    local id = safeId(ids.beammp)
+    local ban = BN.findBan(id, ids.ip)
     if ban then
         print("[BeamNetCore] Gesperrter Spieler abgewiesen: " .. tostring(name))
-        return banText(ban)
+        local lang = C.language
+        local rec = id and json.decode(readFile(playersDir() .. "/" .. id .. ".json") or "")
+        if type(rec) == "table" and (rec.lang == "en" or rec.lang == "de") then lang = rec.lang end
+        return banText(ban, lang)
     end
 end
 

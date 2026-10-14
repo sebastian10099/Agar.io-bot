@@ -479,9 +479,9 @@ local join = function(pid) _G[events.onPlayerJoin](pid) end
 local function writeJson(path, value)
     local f = io.open(path, "w"); f:write(json.encode(value)); f:close()
 end
-local function countChat(pattern)
+local function countChat(pattern, pid)
     local n = 0
-    for _, c in ipairs(chatLog) do if c.msg:find(pattern) then n = n + 1 end end
+    for _, c in ipairs(chatLog) do if (pid == nil or c.pid == pid) and c.msg:find(pattern) then n = n + 1 end end
     return n
 end
 
@@ -547,12 +547,12 @@ ann[#ann + 1] = { id = "x-1", text = "Gruss von Server 7", by = "Admin7", at = c
 writeJson(SHARED .. "/announcements.json", { list = ann })
 tick(C.syncEverySec + 1)
 tick(C.syncEverySec + 1)
-eq(countChat("%[Ansage%] Gruss von Server 7"), 1, "Ansage eines anderen Servers genau einmal")
-eq(countChat("%[Ansage%] Neustart in 5 Minuten"), 1, "Eigene Ansage nicht doppelt")
+eq(countChat("%[Ansage%] Gruss von Server 7", 1), 1, "Ansage eines anderen Servers genau einmal")
+eq(countChat("%[Ansage%] Neustart in 5 Minuten", 1), 1, "Eigene Ansage nicht doppelt")
 BN.seenAnnouncements = {}
 BN.init()
 tick(C.syncEverySec + 1)
-eq(countChat("%[Ansage%] Gruss von Server 7"), 1, "Nach Neustart keine alten Ansagen")
+eq(countChat("%[Ansage%] Gruss von Server 7", 1), 1, "Nach Neustart keine alten Ansagen")
 
 -- Spamschutz (Admins ausgenommen).
 local results = {}
@@ -585,6 +585,74 @@ for line in io.lines(SHARED .. "/modlog.jsonl") do
 end
 check(logLines >= 8, "Moderationsprotokoll fuehrt alles (" .. logLines .. " Eintraege)")
 clock = clock + 200
+
+-- --- Englisch -------------------------------------------------------------------------------------------------------
+say(5, "/lang")
+check(chatContains("Sprache: Deutsch%. English: /lang en", 5), "/lang zeigt Sprache")
+say(5, "/lang en")
+check(chatContains("Language set to English%.", 5), "/lang en")
+say(5, "/km")
+check(chatContains("You have driven %d+%.%d km %(this week", 5), "/km auf Englisch")
+say(5, "/help")
+check(chatContains("BeamNet commands: /stats %[name%]", 5), "/help auf Englisch")
+say(5, "/league")
+check(chatContains("Leagues %(XP%): .+ from 0", 5), "/league auf Englisch")
+eq(BN.tr("en", "Silber"), "Silver", "Standard-Liga uebersetzt")
+eq(BN.tr("en", "Anfänger"), "Anfänger", "Eigene Liga-Namen bleiben")
+eq(BN.tr("de", "Silber"), "Silber", "Deutsch unveraendert")
+say(5, "/records sprint")
+check(chatContains("Records sprint:", 5), "/records auf Englisch")
+say(5, "/race")
+check(chatContains("Tracks on gridmap_v2: sprint %(record ", 5), "/race listet Strecken")
+say(5, "/lang klingonisch")
+check(chatContains("Languages: /lang de · /lang en", 5), "Unbekannte Sprache")
+-- Rundmeldung: jeder in seiner Sprache.
+say(1, "/ansage Gleich gibt es Pizza")
+check(chatContains("%[Announcement%] Gleich gibt es Pizza", 5) and chatContains("%[Ansage%] Gleich gibt es Pizza", 1), "Ansage je Sprache")
+say(1, "/announce Test2")
+check(chatContains("%[Ansage%] Test2", 1), "/announce als Alias")
+-- Admin auf Englisch: /race new|finish|delete
+say(1, "/lang en")
+at(1, 2000, 9000)
+say(1, "/race new hill")
+check(chatContains("Start of hill set%. Now drive to the finish and type /race finish hill%.", 1), "/race new")
+drive(1, 2000, 2600, 50, 9000)
+say(1, "/race finish hill")
+check(chatContains("Finish of hill set %(600 m straight line%)", 1), "/race finish")
+say(1, "/race delete hill")
+check(chatContains("Track hill deleted%.", 1), "/race delete")
+say(1, "/lang de")
+-- Sprache wird gespeichert und beim naechsten Join verwendet.
+BN.savePlayer(BN.players[5])
+eq(readJson(SHARED .. "/players/3003.json").lang, "en", "Sprache gespeichert")
+_G[events.onPlayerDisconnect](5)
+players[5] = { name = "Kaputt", ids = { beammp = "3003" }, vehicles = {} }
+join(5)
+check(chatContains("Welcome to BeamNet | Server 1 %(gridmap_v2%)! Level %d+ · %a+ league", 5), "Begruessung auf Englisch")
+-- Bann-Text in der Sprache des Gesperrten.
+writeJson(SHARED .. "/bans.json", { bans = { { id = "3003", name = "Kaputt", reason = "Test", by = "Sebi", at = clock } } })
+local denyEn = _G[events.onPlayerAuth]("Kaputt", "USER", false, { beammp = "3003" })
+check(type(denyEn) == "string" and denyEn:find("^Banned on all BeamNet servers: Test"), "Bann-Text auf Englisch")
+writeJson(SHARED .. "/bans.json", { bans = {} })
+-- Standardsprache Englisch fuer neue Spieler.
+C.language = "en"
+players[7] = { name = "Newbie", ids = { beammp = "7007" }, vehicles = {} }
+join(7)
+check(chatContains("Welcome to BeamNet", 7), "Standardsprache Englisch")
+C.language = "de"
+players[7] = nil
+_G[events.onPlayerDisconnect](7)
+-- Alle englischen Texte haben dieselben Platzhalter wie die deutschen.
+local function holes(text)
+    local list = {}
+    for h in text:gmatch("%%[%d%.]*[sdf]") do list[#list + 1] = h end
+    return table.concat(list, ",")
+end
+local mismatch = {}
+for de, en in pairs(BN.EN) do
+    if holes(de) ~= holes(en) then mismatch[#mismatch + 1] = de end
+end
+check(#mismatch == 0, "Platzhalter stimmen ueberein: " .. table.concat(mismatch, " | "))
 
 -- Herunterfahren speichert alle.
 tick(1)
