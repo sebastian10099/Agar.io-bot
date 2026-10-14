@@ -10,14 +10,14 @@
 --
 -- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche|vorwoche]  /liga  /server  /km  /lang de|en
 -- (englisch: /help /stats /top [km|xp|week|lastweek] /league /server /km /race /records /lang)
---               /rennen [Name|stop]  /rekorde [Name]   – Admins: /rennen neu|ziel|loeschen <Name>
+--               /rennen [Name|stop]  /rekorde [Name]  /erfolge [Name]   – Admins: /rennen neu|ziel|loeschen <Name>
 -- Moderation (Admins): /kick <Name> [Grund]  /ban <Name> [30m|2h|7d] [Grund]  /unban <Name>  /bans
 --                      /warn <Name> <Text>  /mute <Name> [Minuten]  /ansage <Text>
 
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.5"
+BN.VERSION = "1.6"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -47,6 +47,8 @@ local defaults = {
     announceLevelUps = true,
     -- Standardsprache fuer Spieler ohne eigene Wahl: "de" oder "en" (jeder kann mit /lang umstellen).
     language = "de",
+    -- Erfolge an (true) oder aus (false).
+    achievements = true,
     -- Spamschutz: mehr als spamMessages Nachrichten in spamWindowSec Sekunden -> spamMuteSec stumm (Admins nie).
     spamMessages = 5,
     spamWindowSec = 5,
@@ -476,8 +478,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /server · /km · /race · /records · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /erfolge · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /server · /km · /race · /records · /achievements · /lang",
     ["Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage"] =
         "Admin: /kick · /ban <name> [30m|2h|7d] [reason] · /unban · /bans · /warn · /mute · /announce",
     ["Du bist %s gefahren (diese Woche %s)."] = "You have driven %s (this week %s).",
@@ -558,6 +560,19 @@ local EN = {
     ["Aufruf: /ansage <Text> – erscheint auf allen BeamNet-Servern."] = "Usage: /announce <text> – shown on all BeamNet servers.",
     ["Interner Fehler – bitte einem Admin melden."] = "Internal error – please tell an admin.",
     ["Bitte etwas langsamer mit den Befehlen."] = "Please slow down with the commands.",
+    ["Erfolg für %s: %s (+%d XP)"] = "Achievement for %s: %s (+%d XP)",
+    ["%s hat %d Erfolge freigeschaltet (+%d XP) – /erfolge"] = "%s unlocked %d achievements (+%d XP) – /achievements",
+    ["Erfolge von %s: %d von %d"] = "Achievements of %s: %d of %d",
+    ["Geschafft: %s"] = "Done: %s",
+    ["Als Nächstes: %s"] = "Next: %s",
+    ["Erste 10 km"] = "First 10 km",
+    ["1 Stunde unterwegs"] = "1 hour on the road",
+    ["10 Stunden unterwegs"] = "10 hours on the road",
+    ["Erstes Rennen"] = "First race",
+    ["10 Rennen"] = "10 races",
+    ["Streckenrekord"] = "Track record",
+    ["Weltenbummler (3 Maps)"] = "Globetrotter (3 maps)",
+    ["Kenner aller Welten (8 Maps)"] = "World expert (8 maps)",
     ["Bann konnte nicht gespeichert werden (%s) – bitte beamnet doctor prüfen."] = "Could not save the ban (%s) – please check beamnet doctor.",
     ["Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server. English: /lang en"] =
         "Welcome to %s (%s)! Level %d · %s league · %s driven. /help for commands, /server for all servers. Deutsch: /lang de",
@@ -607,7 +622,8 @@ end
 
 local function emptyRecord(id, name)
     return { id = id, name = name, km = 0, seconds = 0, weekKm = 0, week = weekKey(BN.now()), topSpeedKmh = 0,
-             bonusXp = 0, firstSeen = BN.now(), lastSeen = BN.now(), lastServer = "" }
+             bonusXp = 0, racesFinished = 0, recordsSet = 0, maps = {}, achievements = {},
+             firstSeen = BN.now(), lastSeen = BN.now(), lastServer = "" }
 end
 
 local function loadRecord(id, name)
@@ -621,6 +637,10 @@ local function loadRecord(id, name)
     rec.weekKm = tonumber(rec.weekKm) or 0
     rec.topSpeedKmh = tonumber(rec.topSpeedKmh) or 0
     rec.bonusXp = tonumber(rec.bonusXp) or 0
+    rec.racesFinished = tonumber(rec.racesFinished) or 0
+    rec.recordsSet = tonumber(rec.recordsSet) or 0
+    rec.maps = type(rec.maps) == "table" and rec.maps or {}
+    rec.achievements = type(rec.achievements) == "table" and rec.achievements or {}
     rec.lastWeekKm = tonumber(rec.lastWeekKm) or 0
     rec.week = rec.week or weekKey(BN.now())
     return rec
@@ -643,7 +663,8 @@ function BN.addPlayer(pid)
     local ids = identifiers(pid)
     local id = safeId(ids.beammp)
     local session = { pid = pid, name = name, id = id, ip = ids.ip, guest = id == nil, vehicles = {},
-                      pendingKm = 0, pendingSeconds = 0, pendingTop = 0, pendingBonus = 0 }
+                      pendingKm = 0, pendingSeconds = 0, pendingTop = 0, pendingBonus = 0,
+                      pendingRaces = 0, pendingRecords = 0, unlocked = {} }
     session.record = id and loadRecord(id, name) or emptyRecord(nil, name)
     if session.record.lang == "en" or session.record.lang == "de" then session.lang = session.record.lang end
     local mute = BN.findMute(id, ids.ip)
@@ -664,7 +685,10 @@ end
 -- damit ein schneller Serverwechsel (alter Server speichert noch, neuer hat schon geladen) nichts verliert.
 function BN.savePlayer(s)
     if not s or s.guest then return true end
-    if s.pendingKm == 0 and s.pendingSeconds == 0 and s.pendingTop == 0 and s.pendingBonus == 0 and not s.dirty then return true end
+    if s.pendingKm == 0 and s.pendingSeconds == 0 and s.pendingTop == 0 and s.pendingBonus == 0 and not s.dirty
+        and s.pendingRaces == 0 and s.pendingRecords == 0 and next(s.unlocked) == nil then
+        return true
+    end
     ensureDir(C.sharedDir)
     ensureDir(playersDir())
     local rec = loadRecord(s.id, s.name)
@@ -674,6 +698,12 @@ function BN.savePlayer(s)
     rec.seconds = rec.seconds + s.pendingSeconds
     rec.topSpeedKmh = math.max(rec.topSpeedKmh or 0, s.pendingTop)
     rec.bonusXp = rec.bonusXp + s.pendingBonus
+    rec.racesFinished = rec.racesFinished + s.pendingRaces
+    rec.recordsSet = rec.recordsSet + s.pendingRecords
+    if BN.server.map and BN.server.map ~= "?" then rec.maps[BN.server.map] = true end
+    for id, at in pairs(s.unlocked) do
+        if not rec.achievements[id] then rec.achievements[id] = at end
+    end
     if s.lang then rec.lang = s.lang end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
@@ -687,6 +717,7 @@ function BN.savePlayer(s)
     end
     s.record = rec
     s.pendingKm, s.pendingSeconds, s.pendingTop, s.pendingBonus, s.dirty = 0, 0, 0, 0, false
+    s.pendingRaces, s.pendingRecords, s.unlocked = 0, 0, {}
     return true
 end
 
@@ -698,8 +729,59 @@ function BN.totals(s)
     local bonus = (rec.bonusXp or 0) + s.pendingBonus
     local xp = BN.xpFor(km, seconds) + bonus
     local weekKm = (rec.week == weekKey(BN.now()) and rec.weekKm or 0) + s.pendingKm
+    local maps = 0
+    for _ in pairs(rec.maps or {}) do maps = maps + 1 end
+    if BN.server.map and BN.server.map ~= "?" and not (rec.maps or {})[BN.server.map] then maps = maps + 1 end
     return { km = km, seconds = seconds, weekKm = weekKm, xp = xp, bonusXp = bonus, level = BN.levelFor(xp),
-             league = BN.leagueFor(xp), topSpeedKmh = math.max(rec.topSpeedKmh or 0, s.pendingTop) }
+             league = BN.leagueFor(xp), topSpeedKmh = math.max(rec.topSpeedKmh or 0, s.pendingTop),
+             races = (rec.racesFinished or 0) + (s.pendingRaces or 0), records = (rec.recordsSet or 0) + (s.pendingRecords or 0),
+             maps = maps }
+end
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- Erfolge: einmalig je Spieler, mit Bonus-XP. Wert und Ziel fuer die Fortschrittsanzeige in /erfolge.
+
+BN.ACHIEVEMENTS = {
+    { id = "km10", name = "Erste 10 km", xp = 20, value = function(t) return t.km end, goal = 10 },
+    { id = "km100", name = "100 km", xp = 50, value = function(t) return t.km end, goal = 100 },
+    { id = "km1000", name = "1000 km", xp = 200, value = function(t) return t.km end, goal = 1000 },
+    { id = "hour1", name = "1 Stunde unterwegs", xp = 20, value = function(t) return t.seconds / 3600 end, goal = 1 },
+    { id = "hours10", name = "10 Stunden unterwegs", xp = 100, value = function(t) return t.seconds / 3600 end, goal = 10 },
+    { id = "speed200", name = "200 km/h", xp = 30, value = function(t) return t.topSpeedKmh end, goal = 200 },
+    { id = "speed300", name = "300 km/h", xp = 60, value = function(t) return t.topSpeedKmh end, goal = 300 },
+    { id = "race1", name = "Erstes Rennen", xp = 10, value = function(t) return t.races end, goal = 1 },
+    { id = "race10", name = "10 Rennen", xp = 50, value = function(t) return t.races end, goal = 10 },
+    { id = "record1", name = "Streckenrekord", xp = 50, value = function(t) return t.records end, goal = 1 },
+    { id = "maps3", name = "Weltenbummler (3 Maps)", xp = 30, value = function(t) return t.maps end, goal = 3 },
+    { id = "maps8", name = "Kenner aller Welten (8 Maps)", xp = 80, value = function(t) return t.maps end, goal = 8 },
+    { id = "level10", name = "Level 10", xp = 0, value = function(t) return t.level end, goal = 10 },
+}
+
+function BN.hasAchievement(s, id)
+    return (s.record.achievements or {})[id] ~= nil or s.unlocked[id] ~= nil
+end
+
+-- Prueft alle Erfolge; neue werden verkuendet (mehrere auf einmal zusammengefasst) und geben Bonus-XP.
+function BN.checkAchievements(s)
+    if C.achievements == false then return end
+    local t = BN.totals(s)
+    local new, xp = {}, 0
+    for _, a in ipairs(BN.ACHIEVEMENTS) do
+        if not BN.hasAchievement(s, a.id) and a.value(t) >= a.goal then
+            s.unlocked[a.id] = BN.now()
+            new[#new + 1] = a
+            xp = xp + a.xp
+        end
+    end
+    if #new == 0 then return end
+    s.pendingBonus = s.pendingBonus + xp
+    if #new <= 2 then
+        for _, a in ipairs(new) do
+            sayEach(function(lang) return tr(lang, "Erfolg für %s: %s (+%d XP)", s.name, tr(lang, a.name), a.xp) end)
+        end
+    else
+        sayEach(function(lang) return tr(lang, "%s hat %d Erfolge freigeschaltet (+%d XP) – /erfolge", s.name, #new, xp) end)
+    end
 end
 
 local function checkProgress(s)
@@ -713,6 +795,7 @@ local function checkProgress(s)
         sayEach(function(lang) return tr(lang, "%s steigt in die Liga %s auf!", s.name, tr(lang, league)) end)
         s.league = t.league.name
     end
+    BN.checkAchievements(s)
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------
@@ -1012,12 +1095,14 @@ local function finishRace(s, time)
                 bonus = bonus + C.racePersonalBestXp
                 if rank == 1 and (not previousBest or time < previousBest) then
                     bonus = bonus + C.raceRecordXp
+                    s.pendingRecords = s.pendingRecords + 1
                     sayAll("Neuer Streckenrekord auf %s: %s mit %s!", r.name, s.name, BN.fmtRaceTime(time))
                 else
                     say(s.pid, "Persönliche Bestzeit! Platz %d von %d.", rank or 0, #track.records)
                 end
             end
             s.pendingBonus = s.pendingBonus + bonus
+            s.pendingRaces = s.pendingRaces + 1
             chat(s.pid, string.format("+%d XP", bonus))
             checkProgress(s)
         end
@@ -1327,7 +1412,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde · /erfolge · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
@@ -1728,6 +1813,38 @@ commands.league = commands.liga
 commands.race = commands.rennen
 commands.records = commands.rekorde
 commands.announce = commands.ansage
+
+function commands.erfolge(pid, arg)
+    local s = session(pid)
+    if arg and arg ~= "" then
+        s = findPlayerByName(arg)
+        if not s then say(pid, "Kein Spieler online mit dem Namen \"%s\".", arg) return end
+    end
+    local lang = BN.langOf(pid)
+    local t = BN.totals(s)
+    local done, open = {}, {}
+    for _, a in ipairs(BN.ACHIEVEMENTS) do
+        if BN.hasAchievement(s, a.id) then
+            done[#done + 1] = tr(lang, a.name)
+        else
+            open[#open + 1] = string.format("%s %s/%s", tr(lang, a.name), BN.fmtProgress(a.value(t)), BN.fmtProgress(a.goal))
+        end
+    end
+    say(pid, "Erfolge von %s: %d von %d", s.name, #done, #BN.ACHIEVEMENTS)
+    if #done > 0 then say(pid, "Geschafft: %s", table.concat(done, ", ")) end
+    if #open > 0 then
+        local next3 = {}
+        for i = 1, math.min(3, #open) do next3[i] = open[i] end
+        say(pid, "Als Nächstes: %s", table.concat(next3, " · "))
+    end
+end
+commands.achievements = commands.erfolge
+
+function BN.fmtProgress(v)
+    v = tonumber(v) or 0
+    if v >= 100 or v == math.floor(v) then return string.format("%d", math.floor(v)) end
+    return string.format("%.1f", v)
+end
 
 BN.commands = commands
 

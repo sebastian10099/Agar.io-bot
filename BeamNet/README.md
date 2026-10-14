@@ -142,8 +142,16 @@ beamnet restart all
 | `/rennen <Name>` | Auf Zeit fahren: zum Start fahren, die Zeit läuft ab dem Verlassen des Startbereichs |
 | `/rennen stop` | Rennmodus beenden |
 | `/rekorde [Name]` | Top 5 einer Strecke bzw. die Rekorde aller Strecken der Map |
+| `/erfolge [Name]` | Freigeschaltete Erfolge und die nächsten mit Fortschritt |
 
 Befehle anderer Plugins werden nicht abgefangen.
+
+### Erfolge
+
+13 Erfolge, die jeder nur einmal bekommt – mit Bonus-XP und Meldung im Chat (bei vielen auf einmal zusammengefasst):
+10 / 100 / 1000 km, 1 und 10 Stunden unterwegs, 200 und 300 km/h, erstes Rennen, 10 Rennen, Streckenrekord,
+3 und 8 verschiedene Maps (über alle Server), Level 10. `/erfolge [Name]` (`/achievements`) zeigt, was geschafft ist und
+was als Nächstes kommt. Abschalten: `"achievements": false` in `config.json`.
 
 ### Deutsch und Englisch
 

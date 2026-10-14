@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.6"
+VERSION="1.7"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1246,8 +1246,14 @@ for s in servers:
     rows.append(f"<tr><td><b>{E(str(s.get('name', '?')))}</b>" + (f"<div class=small>{who}</div>" if who else "") +
                 f"</td><td>{E(map_name(s.get('map', '?')))}</td>"
                 f"<td class=n>{int(num(s.get('players')))}/{int(num(s.get('max')))}</td></tr>")
+def achievements(r):
+    a = r.get("achievements")
+    return len(a) if isinstance(a, dict) else 0
+
+
 top = [f"<tr><td class=n>{i}</td><td>{E(str(r.get('name', '?')))}</td><td class=n>{level_of(xp_of(r))}</td>"
-       f"<td>{E(league_of(xp_of(r)))}</td><td class=n>{xp_of(r)}</td><td class=n>{km(num(r.get('km')))}</td></tr>"
+       f"<td>{E(league_of(xp_of(r)))}</td><td class=n>{xp_of(r)}</td><td class=n>{km(num(r.get('km')))}</td>"
+       f"<td class=n>{achievements(r)}</td></tr>"
        for i, r in enumerate(by_xp, 1)]
 weekly = [f"<tr><td class=n>{i}</td><td>{E(str(r.get('name', '?')))}</td><td class=n>{km(num(r.get('weekKm')))}</td></tr>"
           for i, r in enumerate(by_week, 1)]
@@ -1288,7 +1294,7 @@ footer {{ color:var(--muted); font-size:12px; margin-top:24px; }}
 <h1><span>{E(title)}</span> Status</h1>
 <div class=sub>{len(servers)} Server online · {online} Spieler · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))} (aktualisiert sich jede Minute)</div>
 <section><h2>Server</h2>{table(["Server", "Map", "Spieler#"], rows, "Gerade meldet sich kein Server.")}</section>
-<section><h2>Bestenliste</h2>{table(["#", "Name", "Level#", "Liga", "XP#", "Kilometer#"], top, "Noch keine Einträge – einfach losfahren!")}</section>
+<section><h2>Bestenliste</h2>{table(["#", "Name", "Level#", "Liga", "XP#", "Kilometer#", "Erfolge#"], top, "Noch keine Einträge – einfach losfahren!")}</section>
 <div class=grid>
 <section><h2>Diese Woche</h2>{table(["#", "Name", "Kilometer#"], weekly, "Diese Woche ist noch niemand gefahren.")}</section>
 <section><h2>Streckenrekorde</h2>{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>

@@ -405,7 +405,9 @@ at(5, 995, tim + 0.5)                                 -- Ziel bei 151.2667 ueber
 check(chatContains("Ziel! sprint: 0:49%.1", 5), "Zielzeit interpoliert")
 check(chatContains("Neuer Streckenrekord auf sprint: Kaputt mit 0:49%.1!"), "Rekord verkuendet")
 check(chatContains("%+75 XP", 5), "Bonus fuer Lauf, Bestzeit und Rekord")
-eq(BN.totals(BN.players[5]).bonusXp, 75, "Bonus-XP in den Summen")
+check(chatContains("Erfolg für Kaputt: Erstes Rennen %(%+10 XP%)") and chatContains("Erfolg für Kaputt: Streckenrekord %(%+50 XP%)"),
+    "Erfolge fuer erstes Rennen und Rekord")
+eq(BN.totals(BN.players[5]).bonusXp, 135, "Erfolgs-XP in den Summen")
 eq(BN.players[5].race.state, "armed", "Nach dem Ziel wieder bereit")
 local records = readJson(SHARED .. "/races/gridmap_v2.json").tracks.sprint.records
 check(records and #records == 1 and math.abs(records[1].time - 49.0667) < 0.01, "Rekord gespeichert")
@@ -429,7 +431,7 @@ tim = drive(5, 995, 0, -50, 300)
 at(5, 20, tim + 1)
 tim = drive(5, 20, 990, 10, tim + 1)
 check(chatContains("Ziel! sprint: 1:", 5), "Langsamer Lauf gemessen")
-eq(BN.totals(BN.players[5]).bonusXp, 90, "Langsamer Lauf: nur Bonus fuer den Lauf")
+eq(BN.totals(BN.players[5]).bonusXp, 150, "Langsamer Lauf: nur Bonus fuer den Lauf")
 records = readJson(SHARED .. "/races/gridmap_v2.json").tracks.sprint.records
 eq(#records, 2, "Langsamer Lauf ersetzt die Bestzeit nicht")
 check(math.abs(records[2].time - 49.0667) < 0.01, "Bestzeit bleibt")
@@ -750,6 +752,49 @@ eq(countChat("Du bist", 8), n0 + 1, "Nach der Pause wieder Befehle")
 C.commandLimit = 100000
 _G[events.onPlayerDisconnect](8); players[8] = nil
 _G[events.onPlayerDisconnect](9); players[9] = nil
+
+-- --- Erfolge -----------------------------------------------------------------------------------------------------
+do
+    -- Alter Hase: viele Erfolge auf einmal -> eine zusammenfassende Meldung.
+    writeJson(SHARED .. "/players/4242.json", { id = "4242", name = "Veteran", km = 1500, seconds = 40000, topSpeedKmh = 310,
+        maps = { italy = true, utah = true } })
+    players[10] = { name = "Veteran", ids = { beammp = "4242" }, vehicles = {} }
+    join(10)
+    tick(1)
+    check(chatContains("Veteran hat %d+ Erfolge freigeschaltet %(%+%d+ XP%) – /erfolge"), "Mehrere Erfolge zusammengefasst")
+    local v = BN.players[10]
+    for _, id in ipairs({ "km10", "km100", "km1000", "hour1", "hours10", "speed200", "speed300", "maps3", "level10" }) do
+        check(BN.hasAchievement(v, id), "Erfolg " .. id)
+    end
+    check(not BN.hasAchievement(v, "race1") and not BN.hasAchievement(v, "maps8"), "Nicht verdiente Erfolge fehlen")
+    say(10, "/erfolge")
+    check(chatContains("Erfolge von Veteran: 9 von 13", 10), "/erfolge zaehlt")
+    check(chatContains("Als Nächstes: Erstes Rennen 0/1", 10), "/erfolge zeigt Fortschritt")
+    BN.savePlayer(v)
+    local saved = readJson(SHARED .. "/players/4242.json")
+    check(saved.achievements and saved.achievements.km1000 and saved.maps.gridmap_v2 and saved.maps.italy, "Erfolge und Maps gespeichert")
+    -- Neu verbinden: keine doppelte Meldung.
+    _G[events.onPlayerDisconnect](10)
+    local before = countChat("Veteran hat")
+    players[10] = { name = "Veteran", ids = { beammp = "4242" }, vehicles = {} }
+    join(10)
+    tick(1)
+    eq(countChat("Veteran hat"), before, "Erfolge nach Neu-Verbinden nicht erneut gemeldet")
+    -- Englisch.
+    say(10, "/lang en")
+    say(10, "/achievements")
+    check(chatContains("Achievements of Veteran: 9 of 13", 10) and chatContains("Next: First race 0/1", 10), "/achievements auf Englisch")
+    -- Abschaltbar.
+    C.achievements = false
+    players[11] = { name = "Ohne", ids = { beammp = "1111" }, vehicles = {} }
+    writeJson(SHARED .. "/players/1111.json", { id = "1111", name = "Ohne", km = 50 })
+    join(11)
+    tick(1)
+    check(not chatContains("Erfolg für Ohne"), "Erfolge abschaltbar")
+    C.achievements = true
+    _G[events.onPlayerDisconnect](10); players[10] = nil
+    _G[events.onPlayerDisconnect](11); players[11] = nil
+end
 
 -- Herunterfahren speichert alle.
 tick(1)

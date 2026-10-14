@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Plugin 1.6, Werkzeug 1.7):
+- [x] Erfolge: 13 Stück (km, Fahrzeit, Tempo, Rennen, Rekorde, Maps, Level) mit Bonus-XP, `/erfolge`, Anzeige auf
+      der Statusseite.
+
 Erledigt (Plugin 1.5, Werkzeug 1.6) – 15 Funde einer unabhängigen Code-Prüfung behoben, jeweils mit Test:
 - [x] Volle Platte: Dateien werden nur ersetzt, wenn das Schreiben vollständig geklappt hat (vorher: leere Spieler-
       oder Bann-Dateien möglich); Hilfsdateien je Server eindeutig.
