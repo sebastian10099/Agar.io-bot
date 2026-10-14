@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.13"
+VERSION="1.14"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -828,6 +828,73 @@ watch_votes() {
     return 0
 }
 
+# Taegliche Map-Rotation (ROTATE_<nr>="italy utah ..."): ab ROTATE_HOUR (Ortszeit, Standard 6) einmal am Tag zur
+# naechsten Map der Liste – nur wenn der Server leer ist (laut BeamNetCore), sonst beim naechsten Lauf erneut.
+watch_rotation() {
+    local -n rout=$1
+    local nr list hour start today cur next pl m maps i
+    hour=${BEAMNET_HOUR:-$(date +%H)}
+    start=$(conf_get ROTATE_HOUR)
+    [[ $start =~ ^[0-9]+$ ]] || start=6
+    (( 10#$hour >= 10#$start )) || return 0
+    today=$(date +%Y-%m-%d)
+    for nr in $(servers); do
+        list=$(conf_get "ROTATE_$nr" | tr ',' ' ')
+        [[ -n $list ]] || continue
+        [[ $(cat "$STATE_DIR/rotate-$nr" 2>/dev/null) == "$today" ]] && continue
+        [[ -f $STATE_DIR/maintenance-$nr ]] && continue
+        unit_active "$nr" || continue
+        pl=$(players_of "$(cfg "$nr" Port)")
+        [[ $pl == 0/* ]] || continue        # nur leer – und nur mit aktuellen Plugin-Daten
+        maps=()
+        for m in $list; do [[ $m =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]] && maps+=("$m"); done
+        (( ${#maps[@]} > 0 )) || continue
+        cur=$(map_short "$(cfg "$nr" Map)")
+        next=${maps[0]}
+        for i in "${!maps[@]}"; do
+            [[ ${maps[$i]} == "$cur" ]] && next=${maps[$(( (i + 1) % ${#maps[@]} ))]}
+        done
+        echo "$today" >"$STATE_DIR/rotate-$nr"
+        [[ $next == "$cur" ]] && continue
+        write_map "$nr" "$next" || continue
+        if systemctl restart "$(unit "$nr")"; then
+            rout+=("🔄 Server $nr: Map des Tages ist jetzt $next (vorher $cur).")
+        else
+            rout+=("⚠️ Server $nr: Neustart nach dem Map-Wechsel fehlgeschlagen (beamnet logs $nr).")
+        fi
+    done
+    return 0
+}
+
+# beamnet rotation [<nr> <map> <map> … | <nr> aus]: taegliche Map-Rotation festlegen oder anzeigen.
+cmd_rotation() {
+    local nr m list
+    if [[ $# -eq 0 ]]; then
+        for nr in $(servers); do
+            list=$(conf_get "ROTATE_$nr")
+            [[ -n $list ]] && echo "Server $nr: $list"
+        done
+        echo "Wechsel täglich ab $(conf_get ROTATE_HOUR | grep -E '^[0-9]+$' || echo 6) Uhr, sobald der Server leer ist (braucht beamnet watch)."
+        return 0
+    fi
+    need_root rotation
+    nr=$1; shift
+    targets "$nr" >/dev/null
+    if [[ ${1:-} == aus || ${1:-} == off ]]; then
+        conf_set "ROTATE_$nr" ""
+        ok "Server $nr: keine Map-Rotation mehr."
+        return 0
+    fi
+    [[ $# -ge 2 ]] || die "Aufruf: beamnet rotation <nr> <map> <map> …   (mindestens zwei Maps) oder: beamnet rotation <nr> aus"
+    for m in "$@"; do
+        [[ $m =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]] || die "Ungültiger Map-Name: $m"
+        [[ " $(vote_maps) " == *" $m "* ]] || die "$m ist weder Vanilla-Map noch in VOTE_MAPS eingetragen."
+    done
+    conf_set "ROTATE_$nr" "$*"
+    ok "Server $nr: täglich wechselnd $*"
+    [[ -f $SYSTEMD_DIR/beamnet-watch.timer ]] || echo "Hinweis: Der Wechsel braucht den Wächter – beamnet watch install"
+}
+
 watch_run() {
     mkdir -p "$STATE_DIR"
     local nr state last name msgs=() auto
@@ -866,6 +933,7 @@ watch_run() {
         fi
         echo "$state" >"$STATE_DIR/state-$nr"
     done
+    watch_rotation msgs
     watch_weekly msgs
     watch_season msgs
     if (( ${#msgs[@]} > 0 )); then
@@ -1657,6 +1725,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet start|stop|restart [nr …|all]
   beamnet maps                   Maps aller Server und verfügbare Vanilla-Maps
   beamnet set-map <nr> <map>     Map ändern (sichert die Konfiguration, fragt vor dem Neustart)
+  beamnet rotation [<nr> <map> …|<nr> aus]  Tägliche Map-Rotation (Wechsel, wenn der Server leer ist)
   beamnet logs <nr> [zeilen]     Letzte Zeilen des Server-Protokolls
   beamnet plugins                Installierte Server-Plugins je Server
   beamnet plugin-disable <name>  Plugin auf allen Servern abschalten (verschiebt nach Server.disabled)
@@ -1694,6 +1763,7 @@ main() {
         restart|neustart) cmd_restart "$@" ;;
         maps) cmd_maps ;;
         set-map) cmd_set_map "$@" ;;
+        rotation|rotate) cmd_rotation "$@" ;;
         logs|log) cmd_logs "$@" ;;
         plugins) cmd_plugins ;;
         plugin-disable) cmd_plugin_toggle disable "$@" ;;

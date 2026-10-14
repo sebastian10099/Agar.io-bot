@@ -43,6 +43,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet start / stop / restart [nr … \| all]` | Server steuern; `stop` und `restart` fragen vorher |
 | `beamnet maps` | Maps aller Server und die verfügbaren Vanilla-Maps |
 | `beamnet set-map <nr> <map>` | Map ändern (sichert vorher, fragt vor dem Neustart); Mod-Maps mit `--force` |
+| `beamnet rotation <nr> <map> <map> …` | Tägliche Map-Rotation: jeden Tag die nächste Map der Liste, sobald der Server leer ist (`… <nr> aus` beendet sie) |
 | `beamnet logs <nr> [zeilen]` | Letzte Zeilen des Server-Protokolls |
 | `beamnet plugins` | Installierte (und abgeschaltete) Plugins je Server |
 | `beamnet plugin-disable <name>` / `plugin-enable <name>` | Plugin auf allen Servern ab- oder einschalten – verschiebt nur nach `Resources/Server.disabled`, löscht nichts |
@@ -85,6 +86,8 @@ beamnet watch test         # Testnachricht an Discord
   du sie mit `beamnet start` wieder startest.
 - Er kämpft nicht gegen OpenClaw: Hat der Agent einen Server gestoppt, meldet er das, startet aber nicht neu.
 - Montags postet er die **Wochensieger** der Vorwoche nach Discord, am 1. jedes Monats die **Saisonsieger**.
+- Er wechselt bei eingerichteter **Map-Rotation** (`beamnet rotation 5 italy utah west_coast_usa`) einmal am Tag ab
+  6 Uhr (`ROTATE_HOUR`) die Map – aber nur, wenn gerade niemand auf dem Server fährt; sonst versucht er es später.
 - Er setzt **Map-Abstimmungen** aus dem Chat um (siehe unten): Map in der Konfiguration ändern (alte Datei als
   Sicherung daneben), Server neu starten, nach Discord melden. Abschalten: `MAP_VOTE=0`; weitere erlaubte Maps
   (z. B. Mod-Maps, die alle Spieler haben): `VOTE_MAPS=meine_map andere_map`.

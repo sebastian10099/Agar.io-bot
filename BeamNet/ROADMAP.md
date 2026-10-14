@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Werkzeug 1.14):
+- [x] Tägliche Map-Rotation je Server (`beamnet rotation`): Wechsel ab `ROTATE_HOUR`, nur wenn der Server leer ist,
+      einmal am Tag, Meldung nach Discord.
+
 Erledigt (Werkzeug 1.13):
 - [x] Statusseite: Profilseite je Fahrer (Level, Liga, Rang, km, Fahrzeit, Spitze, Saison, Erfolge, Maps, Bestzeiten);
       Namen in allen Tabellen verlinkt; Seiten verschwundener Fahrer werden entfernt.
@@ -94,4 +98,5 @@ Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamne
 - [ ] Auf dem echten Server prüfen: `beamnet doctor`, `beamnet fix`, BeamNetCore installieren, alte Plugins vergleichen.
 
 Ideen:
-- [ ] Map-Rotation für einen Server (jeden Tag eine andere Map).
+- [ ] Rangliste der Server: welcher Server/welche Map wird am meisten gefahren (km je Map auf der Statusseite).
+- [ ] Geister-Rennen: bei `/rennen` die Bestzeit als Zwischenzeit-Vergleich an Kontrollpunkten.

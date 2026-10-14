@@ -423,6 +423,42 @@ contains "$(cat "$T/root/shared/beamnet/watch.json")" '"mapVote":false' "watch: 
 contains "$("$TOOL" watch status 2>&1)" "Map-Abstimmung: aus" "watch status: Abstimmung"
 sed -i 's/^MAP_VOTE=.*/MAP_VOTE=1/; s/^VOTE_MAPS=.*/VOTE_MAPS=/' "$T/beamnet.conf"
 
+# Taegliche Map-Rotation (nur wenn der Server leer ist, einmal am Tag).
+out=$("$TOOL" rotation 5 italy 2>&1)
+contains "$out" "mindestens zwei Maps" "rotation: mindestens zwei Maps"
+out=$("$TOOL" rotation 5 italy mond 2>&1)
+contains "$out" "mond ist weder Vanilla-Map" "rotation: nur erlaubte Maps"
+out=$("$TOOL" rotation 5 italy utah 2>&1)
+contains "$out" "Server 5: täglich wechselnd italy utah" "rotation: festgelegt"
+contains "$("$TOOL" rotation 2>&1)" "Server 5: italy utah" "rotation: Anzeige"
+status5() { echo "{\"port\":30818,\"players\":$1,\"max\":8,\"updated\":$(date +%s)}" >"$T/root/shared/beamnet/servers/30818.json"; }
+status5 0
+: >"$T/actions"
+BEAMNET_HOUR=05 "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/actions")" "restart beammp-5" "rotation: nicht vor der Uhrzeit"
+status5 2
+BEAMNET_HOUR=07 "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/actions")" "restart beammp-5" "rotation: nicht, solange jemand fährt"
+status5 0
+out=$(BEAMNET_HOUR=07 "$TOOL" watch 2>&1)
+contains "$out" "🔄 Server 5: Map des Tages ist jetzt italy \\(vorher evil_mod\\)" "rotation: Wechsel, sobald leer"
+contains "$(cat "$T/root/5/ServerConfig.toml")" '^Map = "/levels/italy/info.json"$' "rotation: Map in der Konfiguration"
+: >"$T/actions"
+status5 0
+BEAMNET_HOUR=08 "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/actions")" "restart beammp-5" "rotation: nur einmal am Tag"
+rm -f "$T/watch/rotate-5"; status5 0
+out=$(BEAMNET_HOUR=07 "$TOOL" watch 2>&1)
+contains "$out" "Map des Tages ist jetzt utah \\(vorher italy\\)" "rotation: nächster Tag, nächste Map"
+rm -f "$T/watch/rotate-5"; status5 0
+out=$(BEAMNET_HOUR=07 "$TOOL" watch 2>&1)
+contains "$out" "Map des Tages ist jetzt italy \\(vorher utah\\)" "rotation: Liste beginnt von vorn"
+"$TOOL" rotation 5 aus >/dev/null 2>&1
+rm -f "$T/watch/rotate-5"; status5 0
+: >"$T/actions"
+BEAMNET_HOUR=07 "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/actions")" "restart beammp-5" "rotation: abschaltbar"
+
 out=$("$TOOL" watch uninstall 2>&1)
 contains "$out" "Wächter entfernt" "watch uninstall"
 [[ ! -f $T/systemd/beamnet-watch.timer && -f $T/beamnet.conf ]] && pass || fail "watch uninstall: Timer weg, Einstellungen bleiben"
