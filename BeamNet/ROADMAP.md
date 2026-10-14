@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Plugin 1.3, Werkzeug 1.4):
+- [x] Moderation: `/kick`, `/ban` (auf allen Servern, mit Dauer, Gäste per IP, auch offline), `/unban`, `/bans`,
+      `/warn`, `/mute`, `/ansage` an alle Server, Spamschutz, Moderationsprotokoll; `beamnet bans/unban/modlog`.
+
 Erledigt (Werkzeug 1.3):
 - [x] Statusseite `beamnet web`: Server, wer fährt, Bestenliste, Wochenkilometer, Rekorde; jede Minute neu,
       kleiner abgeschotteter Webserver, hell/dunkel, fürs Handy.

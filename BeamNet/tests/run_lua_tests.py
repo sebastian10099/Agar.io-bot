@@ -9,7 +9,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGIN = os.path.join(HERE, "..", "server", "BeamNetCore", "main.lua")
-TEST = os.path.join(HERE, "core_test.lua")
+TEST = os.path.join(HERE, os.environ.get("BEAMNET_TEST_FILE", "core_test.lua"))
 
 
 def run(runtime_name: str) -> int:

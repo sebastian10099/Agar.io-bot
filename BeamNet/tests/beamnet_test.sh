@@ -405,6 +405,31 @@ contains "$(cat "$T/actions")" "enable --now" "web install: aktiviert"
 out=$("$TOOL" web uninstall 2>&1)
 [[ ! -f $T/systemd/beamnet-web.service ]] && pass || fail "web uninstall"
 
+# --- Moderation ----------------------------------------------------------------------------------------------------
+out=$("$TOOL" bans 2>&1)
+contains "$out" "Keine Banns" "bans: leer"
+now=$(date +%s)
+cat >"$T/root/shared/beamnet/bans.json" <<EOF
+{"bans":[{"id":"2002","name":"Max","reason":"Beleidigung","by":"Sebi","at":$now,"until":$((now + 7200))},
+{"ip":"7.7.7.7","name":"Gast42","reason":"Spam","by":"Sebi","at":$now},
+{"id":"5","name":"Alt","reason":"vorbei","by":"Sebi","at":1,"until":2}]}
+EOF
+out=$("$TOOL" bans 2>&1)
+contains "$out" "^Max \\(2002\\) – Beleidigung – bis .* – von Sebi" "bans: Zeitbann"
+contains "$out" "^Gast42 \\(IP 7\\.7\\.7\\.7\\) – Spam – bis dauerhaft" "bans: IP-Bann"
+contains "$out" "\\(1 abgelaufene Banns gespeichert\\)" "bans: abgelaufene"
+lacks "$out" "^Alt " "bans: abgelaufene nicht als aktiv"
+out=$("$TOOL" unban max 2>&1)
+contains "$out" 'Bann für "max" aufgehoben \(1\)' "unban"
+lacks "$("$TOOL" bans)" "^Max " "unban wirkt"
+out=$("$TOOL" unban niemand 2>&1)
+contains "$out" 'Kein Bann für "niemand"' "unban: unbekannt"
+printf '%s\n' "{\"action\":\"ban\",\"by\":\"Sebi\",\"target\":\"Max\",\"reason\":\"Beleidigung\",\"at\":$now,\"server\":30814,\"until\":$((now + 7200))}" \
+    '{"action":"kick","by":"Sebi","target":"Tom","reason":"","at":1,"server":30815}' 'kaputt' >"$T/root/shared/beamnet/modlog.jsonl"
+out=$("$TOOL" modlog 2>&1)
+contains "$out" "Port 30814 · Sebi: ban Max Beleidigung \\(bis " "modlog: Bann"
+contains "$out" "Port 30815 · Sebi: kick Tom$" "modlog: Kick"
+
 # Nicht als root: Aenderungen verweigert.
 out=$(FAKE_UID=1000 "$TOOL" restart all 2>&1)
 contains "$out" "Bitte als root" "restart verlangt root"

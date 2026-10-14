@@ -4,7 +4,8 @@ Zwei Teile, beide getestet:
 
 1. **`beamnet`** – ein Befehl für die Server-Konsole: zeigt den Zustand aller Server, findet Probleme und repariert sie.
 2. **`BeamNetCore`** – ein Server-Plugin: Kilometer, Fahrzeit, XP und Level, Ligen, Bestenliste, **Zeitrennen mit
-   Rekordliste** und eine Liste aller Server im Chat – gemeinsam für alle Server.
+   Rekordliste**, **Moderation** (Banns auf allen Servern, Ansagen, Spamschutz) und eine Liste aller Server im Chat –
+   gemeinsam für alle Server.
 
 ## Schnellstart (Web-Konsole des Servers, als root)
 
@@ -45,6 +46,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet openclaw status / pause / resume` | OpenClaw-Agent ansehen, anhalten (einfrieren, nichts wird gelöscht) und fortsetzen |
 | `beamnet watch install / status / test / uninstall` | Wächter einrichten (siehe unten) |
 | `beamnet web install [port]` / `web uninstall` | Statusseite als Webseite (siehe unten), Standard-Port 8080 |
+| `beamnet bans` / `unban <Name>` / `modlog [n]` | Banns ansehen und aufheben, Moderationsprotokoll lesen |
 | `beamnet self-update` | Neueste Version des Werkzeugs laden |
 
 Mit `-y` laufen Befehle ohne Rückfrage.
@@ -138,6 +140,23 @@ beamnet restart all
 
 Befehle anderer Plugins werden nicht abgefangen.
 
+### Moderation (nur Admins)
+
+| Befehl | Wirkung |
+|---|---|
+| `/kick <Name> [Grund]` | Wirft den Spieler vom Server |
+| `/ban <Name> [30m\|2h\|7d] [Grund]` | Sperrt auf **allen** BeamNet-Servern – sofort, auch wenn er gerade woanders fährt; ohne Dauer dauerhaft. Gäste werden über die IP gesperrt. Funktioniert auch für Spieler, die offline sind |
+| `/unban <Name>` · `/bans` | Bann aufheben · aktive Banns zeigen |
+| `/warn <Name> <Text>` | Verwarnung nur an diesen Spieler |
+| `/mute <Name> [Minuten]` | Im Chat stummschalten (Standard 10 min) |
+| `/ansage <Text>` | Nachricht auf allen Servern gleichzeitig, z. B. „Neustart in 5 Minuten“ |
+
+- Teilnamen genügen (`/ban max`), solange sie eindeutig sind – sonst passiert nichts und es kommt ein Hinweis.
+- Admins können nicht gesperrt werden und haben keinen Spamschutz.
+- **Spamschutz** für alle anderen: mehr als 5 Nachrichten in 5 Sekunden → 30 Sekunden stumm (einstellbar:
+  `spamMessages`, `spamWindowSec`, `spamMuteSec` in `config.json`). Befehle funktionieren weiter.
+- Alles landet im Moderationsprotokoll (`modlog.jsonl`, lesbar mit `beamnet modlog`).
+
 ### Zeitrennen
 
 Admins legen Strecken direkt im Spiel an – keine Koordinaten nötig:
@@ -173,6 +192,7 @@ Alles liegt in `/srv/beammp/shared/beamnet/`:
   Hilfsdatei, dann umbenennen) – ein Absturz hinterlässt keine halbe Datei.
 - `servers/<Port>.json` – jeder Server meldet alle 15 s Name, Map und Spieler (daraus entstehen `/server` und `beamnet status`).
 - `races/<Map>.json` – Strecken und Rekorde je Map.
+- `bans.json`, `announcements.json`, `modlog.jsonl` – Banns, Ansagen, Moderationsprotokoll (für alle Server).
 - `config.json` (optional) – Einstellungen ohne Code-Änderung, z. B.:
 
 ```json

@@ -27,6 +27,11 @@ function MP.RegisterEvent(ev, fn) events[ev] = fn end
 function MP.CreateEventTimer(ev, ms) timers[ev] = ms end
 function MP.CancelEventTimer(ev) timers[ev] = nil end
 function MP.SendChatMessage(pid, msg) chatLog[#chatLog + 1] = { pid = pid, msg = msg } end
+local drops = {}
+function MP.DropPlayer(pid, reason)
+    drops[#drops + 1] = { pid = pid, reason = reason }
+    players[pid] = nil
+end
 function MP.GetPlayers()
     local t = {}
     for pid, p in pairs(players) do t[pid] = p.name end
@@ -468,6 +473,108 @@ say(1, "/rennen loeschen runde")
 check(BN.loadTracks().tracks.runde == nil, "Strecke geloescht")
 say(5, "/rennen gibtsnicht")
 check(chatContains("gibt es auf dieser Map nicht", 5), "Unbekannte Strecke")
+
+-- --- Moderation ---------------------------------------------------------------------------------------------------
+local join = function(pid) _G[events.onPlayerJoin](pid) end
+local function writeJson(path, value)
+    local f = io.open(path, "w"); f:write(json.encode(value)); f:close()
+end
+local function countChat(pattern)
+    local n = 0
+    for _, c in ipairs(chatLog) do if c.msg:find(pattern) then n = n + 1 end end
+    return n
+end
+
+say(5, "/kick Sebi")
+check(chatContains("Nur für Admins", 5), "Moderation nur fuer Admins")
+check(chatContains("Admin: /kick", 1) == false, "Admin-Hilfe nicht ungefragt")
+say(1, "/hilfe")
+check(chatContains("Admin: /kick", 1), "Admins sehen ihre Befehle in /hilfe")
+
+players[2] = { name = "Max Mustermann", ids = { beammp = "2002", ip = "9.9.9.9" }, vehicles = {} }
+join(2)
+say(1, "/warn max Bitte langsamer")
+check(chatContains("Verwarnung von Sebi: Bitte langsamer", 2), "Verwarnung kommt an")
+say(1, "/kick max Test")
+check(drops[#drops].pid == 2 and drops[#drops].reason == "Vom Server geworfen: Test", "Kick mit Grund")
+check(BN.players[2] == nil, "Kick entfernt Sitzung")
+check(chatContains("Max Mustermann wurde vom Server geworfen"), "Kick verkuendet")
+
+-- Mehrdeutiger Teilname: nichts passiert.
+local dropsBefore = #drops
+say(1, "/ban a")
+check(chatContains("Mehrere Spieler passen zu \"a\"", 1) and #drops == dropsBefore, "Mehrdeutiger Name wird abgelehnt")
+
+-- Zeitbann fuer einen Spieler, der offline ist (aus den gespeicherten Spielern).
+say(1, "/ban max 2h Beleidigung")
+local bans = readJson(SHARED .. "/bans.json").bans
+check(#bans == 1 and bans[1].id == "2002" and bans[1]["until"] == clock + 7200 and bans[1].reason == "Beleidigung", "Bann gespeichert")
+check(chatContains("Max Mustermann wurde für 2h gesperrt"), "Bann verkuendet")
+local deny = _G[events.onPlayerAuth]("Max Mustermann", "USER", false, { beammp = "2002" })
+check(type(deny) == "string" and deny:find("Gesperrt auf allen BeamNet%-Servern: Beleidigung %(bis "), "Gesperrter Spieler wird abgewiesen")
+eq(_G[events.onPlayerAuth]("Sebi", "USER", false, { beammp = "1001" }), nil, "Andere kommen rein")
+eq(_G[events.onPlayerAuth]("Alt", "USER", false, nil), nil, "Ohne Kennungen kein Fehler")
+clock = clock + 7201
+eq(_G[events.onPlayerAuth]("Max Mustermann", "USER", false, { beammp = "2002" }), nil, "Zeitbann laeuft ab")
+
+-- Bann von einem anderen Server trifft einen Spieler, der hier online ist.
+players[2] = { name = "Max Mustermann", ids = { beammp = "2002" }, vehicles = {} }
+join(2)
+writeJson(SHARED .. "/bans.json", { bans = { { id = "2002", name = "Max", reason = "anderer Server", by = "Admin7", at = clock } } })
+tick(C.syncEverySec + 1)
+check(drops[#drops].pid == 2 and drops[#drops].reason:find("anderer Server"), "Bann eines anderen Servers wirkt sofort")
+say(1, "/unban max")
+eq(#readJson(SHARED .. "/bans.json").bans, 0, "Bann aufgehoben")
+
+-- Gaeste werden ueber die IP gesperrt; Admins nie.
+players[6] = { name = "Gast42", ids = { ip = "7.7.7.7" }, vehicles = {} }
+join(6)
+say(1, "/ban gast42 Spam")
+bans = readJson(SHARED .. "/bans.json").bans
+check(bans[1].ip == "7.7.7.7" and bans[1].id == nil, "Gast-Bann ueber IP")
+check(type(_G[events.onPlayerAuth]("Gast99", "GUEST", true, { ip = "7.7.7.7" })) == "string", "Gast mit gesperrter IP abgewiesen")
+say(1, "/ban sebi")
+check(chatContains("Admins können nicht gesperrt werden", 1), "Admins sind geschuetzt")
+say(1, "/bans")
+check(chatContains("1 aktive Banns:", 1) and chatContains("Gast42 – Spam · dauerhaft", 1), "Bannliste")
+
+-- Ansagen an alle Server.
+say(1, "/ansage Neustart in 5 Minuten")
+check(chatContains("%[Ansage%] Neustart in 5 Minuten"), "Ansage auf diesem Server")
+local ann = readJson(SHARED .. "/announcements.json").list
+check(#ann == 1 and ann[1].text == "Neustart in 5 Minuten" and ann[1].by == "Sebi", "Ansage fuer alle Server gespeichert")
+ann[#ann + 1] = { id = "x-1", text = "Gruss von Server 7", by = "Admin7", at = clock }
+writeJson(SHARED .. "/announcements.json", { list = ann })
+tick(C.syncEverySec + 1)
+tick(C.syncEverySec + 1)
+eq(countChat("%[Ansage%] Gruss von Server 7"), 1, "Ansage eines anderen Servers genau einmal")
+eq(countChat("%[Ansage%] Neustart in 5 Minuten"), 1, "Eigene Ansage nicht doppelt")
+BN.seenAnnouncements = {}
+BN.init()
+tick(C.syncEverySec + 1)
+eq(countChat("%[Ansage%] Gruss von Server 7"), 1, "Nach Neustart keine alten Ansagen")
+
+-- Spamschutz (Admins ausgenommen).
+local results = {}
+for i = 1, 6 do results[i] = say(5, "spam " .. i) end
+check(results[5] == nil and results[6] == 1, "Sechste Nachricht in 5 s wird gestoppt")
+check(chatContains("Bitte nicht spammen – du bist 30 s stummgeschaltet", 5), "Spam-Hinweis")
+eq(say(5, "noch was"), 1, "Waehrend der Stummschaltung gesperrt")
+eq(say(5, "/km"), 1, "Befehle gehen trotzdem")
+clock = clock + 31
+eq(say(5, "wieder da"), nil, "Nach Ablauf wieder frei")
+for i = 1, 10 do say(1, "admin " .. i) end
+eq(say(1, "admin x"), nil, "Admins ohne Spamschutz")
+say(1, "/mute kaputt 2")
+eq(say(5, "hallo"), 1, "Manuell stummgeschaltet")
+
+local logLines = 0
+for line in io.lines(SHARED .. "/modlog.jsonl") do
+    logLines = logLines + 1
+    check(json.decode(line) ~= nil, "Protokollzeile ist JSON")
+end
+check(logLines >= 8, "Moderationsprotokoll fuehrt alles (" .. logLines .. " Eintraege)")
+clock = clock + 200
 
 -- Herunterfahren speichert alle.
 tick(1)

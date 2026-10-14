@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.3"
+VERSION="1.4"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -885,6 +885,85 @@ cmd_watch() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Moderation (Daten von BeamNetCore)
+
+cmd_bans() {
+    command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
+    python3 -I - "$SHARED/bans.json" <<'PY'
+import json, sys, time
+try:
+    with open(sys.argv[1], encoding="utf-8") as f:
+        data = json.load(f)
+except FileNotFoundError:
+    print("Keine Banns.")
+    sys.exit(0)
+except Exception:
+    print("bans.json ist fehlerhaft.")
+    sys.exit(1)
+now = time.time()
+bans = [b for b in data.get("bans", []) if isinstance(b, dict)]
+active = [b for b in bans if not b.get("until") or b["until"] > now]
+if not active:
+    print("Keine aktiven Banns.")
+for b in active:
+    until = time.strftime("%d.%m.%Y %H:%M", time.localtime(b["until"])) if b.get("until") else "dauerhaft"
+    who = b.get("id") or ("IP " + b["ip"] if b.get("ip") else "?")
+    print(f"{b.get('name', '?')} ({who}) – {b.get('reason') or 'ohne Grund'} – bis {until} – von {b.get('by', '?')}")
+if len(bans) > len(active):
+    print(f"({len(bans) - len(active)} abgelaufene Banns gespeichert)")
+PY
+}
+
+cmd_unban() {
+    need_root unban
+    [[ $# -ge 1 ]] || die "Aufruf: beamnet unban <Name oder BeamMP-ID>"
+    command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
+    python3 -I - "$SHARED/bans.json" "$*" <<'PY' || exit 1
+import json, os, sys
+path, query = sys.argv[1], sys.argv[2].lower()
+try:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+except FileNotFoundError:
+    print("Keine Banns.")
+    sys.exit(1)
+bans = [b for b in data.get("bans", []) if isinstance(b, dict)]
+kept = [b for b in bans if str(b.get("name", "")).lower() != query and str(b.get("id", "")) != query]
+if len(kept) == len(bans):
+    print(f'Kein Bann für "{sys.argv[2]}" gefunden.')
+    sys.exit(1)
+data["bans"] = kept
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False)
+os.replace(tmp, path)
+print(f'Bann für "{sys.argv[2]}" aufgehoben ({len(bans) - len(kept)}).')
+PY
+    chown "$SERVICE_USER:$SERVICE_USER" "$SHARED/bans.json" 2>/dev/null
+    return 0
+}
+
+cmd_modlog() {
+    local lines=${1:-20}
+    [[ $lines =~ ^[0-9]+$ ]] || die "Aufruf: beamnet modlog [anzahl]"
+    [[ -f $SHARED/modlog.jsonl ]] || { echo "Noch keine Moderation protokolliert."; return 0; }
+    command -v python3 >/dev/null || { tail -n "$lines" "$SHARED/modlog.jsonl"; return 0; }
+    tail -n "$lines" "$SHARED/modlog.jsonl" | python3 -I -c '
+import json, sys, time
+for line in sys.stdin:
+    try:
+        e = json.loads(line)
+    except Exception:
+        continue
+    when = time.strftime("%d.%m. %H:%M", time.localtime(e.get("at", 0)))
+    extra = e.get("reason") or ""
+    if e.get("until"):
+        extra += " (bis " + time.strftime("%d.%m. %H:%M", time.localtime(e["until"])) + ")"
+    print(f"{when} · Port {e.get("server", "?")} · {e.get("by", "System")}: {e.get("action")} {e.get("target", "")} {extra}".rstrip())
+'
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
 # Statusseite
 
 # Erzeugt index.html aus den gemeinsamen Daten von BeamNetCore (Server, Bestenliste, Wochenkilometer, Rekorde).
@@ -1146,7 +1225,8 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet plugin-enable <name>   … und wieder einschalten
   beamnet players                Spieler je Server (mit Plugin BeamNetCore)
   beamnet backup                 Sichert Konfigurationen, Plugins und Dienste nach $BACKUP_DIR
-  beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, /server) auf allen Servern
+  beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, Moderation) auf allen Servern
+  beamnet bans · unban <Name> · modlog [n]   Banns ansehen/aufheben, Moderationsprotokoll
   beamnet openclaw status|pause|resume   OpenClaw-Agent ansehen, anhalten (einfrieren), fortsetzen
   beamnet watch install|status|test|uninstall   Wächter: meldet Ausfälle (auch an Discord), optional Neustart
   beamnet web install [port]     Statusseite (Server, Bestenliste, Rekorde) als Webseite, Standard-Port 8080
@@ -1184,6 +1264,9 @@ main() {
         openclaw) cmd_openclaw "$@" ;;
         watch|waechter) cmd_watch "$@" ;;
         web|statusseite) cmd_web "$@" ;;
+        bans) cmd_bans ;;
+        unban) cmd_unban "$@" ;;
+        modlog) cmd_modlog "$@" ;;
         self-update|update) cmd_self_update ;;
         version|--version) echo "BeamNet $VERSION" ;;
         hilfe|help|-h|--help) cmd_help ;;

@@ -10,11 +10,13 @@
 --
 -- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche|vorwoche]  /liga  /server  /km
 --               /rennen [Name|stop]  /rekorde [Name]   – Admins: /rennen neu|ziel|loeschen <Name>
+-- Moderation (Admins): /kick <Name> [Grund]  /ban <Name> [30m|2h|7d] [Grund]  /unban <Name>  /bans
+--                      /warn <Name> <Text>  /mute <Name> [Minuten]  /ansage <Text>
 
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.2"
+BN.VERSION = "1.3"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -42,6 +44,12 @@ local defaults = {
     -- Oeffentliche Adresse fuer /server (leer = nur Name und Port anzeigen).
     publicHost = "",
     announceLevelUps = true,
+    -- Spamschutz: mehr als spamMessages Nachrichten in spamWindowSec Sekunden -> spamMuteSec stumm (Admins nie).
+    spamMessages = 5,
+    spamWindowSec = 5,
+    spamMuteSec = 30,
+    -- Wie oft Banns und Ansagen der anderen Server gelesen werden (s).
+    syncEverySec = 3,
     -- Zeitrennen: Radius von Start- und Zielbereich (m), Abtastung waehrend eines Laufs (ms), Hoechstdauer (min).
     raceRadiusM = 12,
     raceTickMs = 250,
@@ -302,6 +310,9 @@ end
 local function playersDir() return C.sharedDir .. "/players" end
 local function serversDir() return C.sharedDir .. "/servers" end
 local function racesDir() return C.sharedDir .. "/races" end
+local function bansFile() return C.sharedDir .. "/bans.json" end
+local function announcementsFile() return C.sharedDir .. "/announcements.json" end
+local function modlogFile() return C.sharedDir .. "/modlog.jsonl" end
 
 -- Dateiname aus der BeamMP-ID (nur Ziffern und Buchstaben – nie Pfade aus Spielereingaben).
 local function safeId(id)
@@ -466,7 +477,7 @@ function BN.addPlayer(pid)
     local name = (MP and MP.GetPlayerName and MP.GetPlayerName(pid)) or ("Spieler " .. tostring(pid))
     local ids = identifiers(pid)
     local id = safeId(ids.beammp)
-    local session = { pid = pid, name = name, id = id, guest = id == nil, vehicles = {},
+    local session = { pid = pid, name = name, id = id, ip = ids.ip, guest = id == nil, vehicles = {},
                       pendingKm = 0, pendingSeconds = 0, pendingTop = 0, pendingBonus = 0 }
     session.record = id and loadRecord(id, name) or emptyRecord(nil, name)
     applyWeek(session.record)
@@ -898,6 +909,174 @@ function BN.raceTick()
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------
+-- Moderation: Banns (auf allen Servern), Ansagen an alle Server, Spamschutz, Protokoll
+
+BN.seenAnnouncements = BN.seenAnnouncements or {}
+BN.lastSync = BN.lastSync or -math.huge
+
+local function modlog(entry)
+    entry.at = BN.now()
+    entry.server = BN.server.port
+    ensureDir(C.sharedDir)
+    local f = io.open(modlogFile(), "a")
+    if f then
+        f:write(json.encode(entry), "\n")
+        f:close()
+    end
+end
+
+function BN.loadBans()
+    local data = json.decode(readFile(bansFile()) or "")
+    if type(data) ~= "table" or type(data.bans) ~= "table" then return { bans = {} } end
+    return data
+end
+
+local function saveBans(data)
+    ensureDir(C.sharedDir)
+    return writeFileAtomic(bansFile(), json.encode(data))
+end
+
+-- Aktiver Bann fuer BeamMP-ID oder (bei Gaesten) IP-Adresse.
+function BN.findBan(id, ip)
+    local now = BN.now()
+    for _, ban in ipairs(BN.loadBans().bans) do
+        local active = not ban["until"] or tonumber(ban["until"]) > now
+        if active and ((id and ban.id == id) or (ip and ban.ip and ban.ip == ip)) then return ban end
+    end
+    return nil
+end
+
+local function banText(ban)
+    local text = "Gesperrt auf allen BeamNet-Servern"
+    if ban.reason and ban.reason ~= "" then text = text .. ": " .. ban.reason end
+    if ban["until"] then text = text .. " (bis " .. os.date("%d.%m. %H:%M", ban["until"]) .. ")" end
+    return text
+end
+BN.banText = banText
+
+-- "30m", "2h", "7d" -> Sekunden
+function BN.parseDuration(text)
+    local n, unit = tostring(text or ""):match("^(%d+)([mhd])$")
+    if not n then return nil end
+    local factor = ({ m = 60, h = 3600, d = 86400 })[unit]
+    return tonumber(n) * factor
+end
+
+local function drop(pid, reason)
+    if MP and MP.DropPlayer then pcall(MP.DropPlayer, pid, reason) end
+end
+
+-- Liest Banns und Ansagen der anderen Server (alle syncEverySec Sekunden).
+function BN.sync(force)
+    local now = BN.now()
+    if not force and now - BN.lastSync < C.syncEverySec then return end
+    BN.lastSync = now
+    for pid, s in pairs(BN.players) do
+        local ban = BN.findBan(s.id, s.ip)
+        if ban then
+            BN.savePlayer(s)
+            drop(pid, banText(ban))
+            BN.players[pid] = nil
+        end
+    end
+    local data = json.decode(readFile(announcementsFile()) or "")
+    if type(data) == "table" and type(data.list) == "table" then
+        for _, a in ipairs(data.list) do
+            if type(a) == "table" and a.id and not BN.seenAnnouncements[a.id] then
+                BN.seenAnnouncements[a.id] = true
+                if now - (tonumber(a.at) or 0) <= 120 then chat(-1, "[Ansage] " .. tostring(a.text)) end
+            end
+        end
+    end
+end
+
+-- Beim Start: alte Ansagen nicht wiederholen.
+function BN.markAnnouncementsSeen()
+    local data = json.decode(readFile(announcementsFile()) or "")
+    if type(data) == "table" and type(data.list) == "table" then
+        for _, a in ipairs(data.list) do
+            if type(a) == "table" and a.id then BN.seenAnnouncements[a.id] = true end
+        end
+    end
+end
+
+function BN.announce(text, by)
+    local data = json.decode(readFile(announcementsFile()) or "")
+    if type(data) ~= "table" or type(data.list) ~= "table" then data = { list = {} } end
+    local id = string.format("%d-%s-%d", BN.now(), tostring(BN.server.port), math.random(100000, 999999))
+    data.list[#data.list + 1] = { id = id, text = text, by = by, at = BN.now() }
+    while #data.list > 20 do table.remove(data.list, 1) end
+    ensureDir(C.sharedDir)
+    writeFileAtomic(announcementsFile(), json.encode(data))
+    BN.seenAnnouncements[id] = true
+    chat(-1, "[Ansage] " .. text)
+end
+
+-- Spamschutz. Gibt true zurueck, wenn die Nachricht unterdrueckt werden soll.
+function BN.spamCheck(s)
+    if BN.isAdmin(s) then return false end
+    local now = BN.now()
+    if s.mutedUntil and now < s.mutedUntil then
+        if not s.muteNoticeAt or now - s.muteNoticeAt >= 10 then
+            s.muteNoticeAt = now
+            chat(s.pid, string.format("Du bist noch %d s stummgeschaltet.", s.mutedUntil - now))
+        end
+        return true
+    end
+    s.chatTimes = s.chatTimes or {}
+    local kept = {}
+    for _, t in ipairs(s.chatTimes) do
+        if now - t < C.spamWindowSec then kept[#kept + 1] = t end
+    end
+    kept[#kept + 1] = now
+    s.chatTimes = kept
+    if #kept > C.spamMessages then
+        s.mutedUntil = now + C.spamMuteSec
+        s.muteNoticeAt = now
+        s.chatTimes = {}
+        chat(s.pid, string.format("Bitte nicht spammen – du bist %d s stummgeschaltet.", C.spamMuteSec))
+        modlog({ action = "spam-mute", target = s.name, targetId = s.id, seconds = C.spamMuteSec })
+        return true
+    end
+    return false
+end
+
+-- Spieler zu einem Namen: online (genau, sonst eindeutiger Teilname), dann gespeicherte Spieler (ebenso),
+-- zuletzt eine BeamMP-ID. Zweiter Rueckgabewert "mehrdeutig", wenn mehrere passen – dann wird nichts getan.
+local function findTarget(query)
+    query = tostring(query or "")
+    if query == "" then return nil end
+    local lower = query:lower()
+    local function pick(candidates, nameOf, make)
+        for _, c in ipairs(candidates) do
+            if nameOf(c):lower() == lower then return make(c) end
+        end
+        local hit, count = nil, 0
+        for _, c in ipairs(candidates) do
+            if nameOf(c):lower():find(lower, 1, true) then hit, count = c, count + 1 end
+        end
+        if count == 1 then return make(hit) end
+        if count > 1 then return nil, "mehrdeutig" end
+        return nil
+    end
+    local online = {}
+    for _, s in pairs(BN.players) do online[#online + 1] = s end
+    local target, why = pick(online, function(s) return s.name end,
+        function(s) return { online = s, id = s.id, ip = s.ip, name = s.name } end)
+    if target or why then return target, why end
+    local records = {}
+    for _, file in ipairs(listJsonFiles(playersDir())) do
+        local rec = json.decode(readFile(file) or "")
+        if type(rec) == "table" and rec.id then records[#records + 1] = rec end
+    end
+    target, why = pick(records, function(r) return tostring(r.name) end, function(r) return { id = r.id, name = r.name } end)
+    if target or why then return target, why end
+    if safeId(query) and query:match("^%d+$") then return { id = query, name = query } end
+    return nil
+end
+BN.findTarget = findTarget
+
+-- ---------------------------------------------------------------------------------------------------------------------
 -- Chat-Befehle
 
 local commands = {}
@@ -915,6 +1094,9 @@ end
 
 function commands.hilfe(pid)
     chat(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /server · /km · /rennen · /rekorde")
+    if BN.isAdmin(BN.players[pid]) then
+        chat(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
+    end
 end
 commands.help = commands.hilfe
 
@@ -1139,6 +1321,140 @@ function commands.rekorde(pid, arg)
     end
 end
 
+local function adminOnly(pid)
+    local s = session(pid)
+    if BN.isAdmin(s) then return s end
+    chat(pid, "Nur für Admins.")
+    return nil
+end
+
+local function splitArgs(arg)
+    local words = {}
+    for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
+    return words
+end
+
+function commands.kick(pid, arg)
+    local admin = adminOnly(pid)
+    if not admin then return end
+    local words = splitArgs(arg)
+    local target, why = findTarget(words[1])
+    if why then chat(pid, "Mehrere Spieler passen zu \"" .. tostring(words[1]) .. "\" – bitte genauer.") return end
+    if not target or not target.online then
+        chat(pid, "Aufruf: /kick <Name> [Grund] – Spieler muss auf diesem Server online sein.")
+        return
+    end
+    local reason = table.concat(words, " ", 2)
+    BN.savePlayer(target.online)
+    drop(target.online.pid, "Vom Server geworfen" .. (reason ~= "" and (": " .. reason) or ""))
+    BN.players[target.online.pid] = nil
+    chat(-1, string.format("%s wurde vom Server geworfen.", target.name))
+    modlog({ action = "kick", by = admin.name, target = target.name, targetId = target.id, reason = reason })
+end
+
+function commands.ban(pid, arg)
+    local admin = adminOnly(pid)
+    if not admin then return end
+    local words = splitArgs(arg)
+    local target, why = findTarget(words[1])
+    if why then chat(pid, "Mehrere Spieler passen zu \"" .. tostring(words[1]) .. "\" – bitte genauer.") return end
+    if not target then
+        chat(pid, "Aufruf: /ban <Name> [30m|2h|7d] [Grund] – Name online, gespeichert oder BeamMP-ID.")
+        return
+    end
+    if not target.id and not target.ip then
+        chat(pid, "Für diesen Spieler ist weder BeamMP-ID noch IP bekannt.")
+        return
+    end
+    if target.online and BN.isAdmin(target.online) then
+        chat(pid, "Admins können nicht gesperrt werden.")
+        return
+    end
+    local duration = BN.parseDuration(words[2])
+    local reason = table.concat(words, " ", duration and 3 or 2)
+    local data = BN.loadBans()
+    local ban = { id = target.id, ip = (not target.id) and target.ip or nil, name = target.name, reason = reason,
+                  by = admin.name, at = BN.now() }
+    if duration then ban["until"] = BN.now() + duration end
+    data.bans[#data.bans + 1] = ban
+    saveBans(data)
+    modlog({ action = "ban", by = admin.name, target = target.name, targetId = target.id, reason = reason, ["until"] = ban["until"] })
+    if target.online then
+        BN.savePlayer(target.online)
+        drop(target.online.pid, banText(ban))
+        BN.players[target.online.pid] = nil
+    end
+    chat(-1, string.format("%s wurde %s gesperrt.", target.name, duration and ("für " .. words[2]) or "dauerhaft"))
+end
+
+function commands.unban(pid, arg)
+    local admin = adminOnly(pid)
+    if not admin then return end
+    local query = tostring(arg or ""):lower()
+    if query == "" then chat(pid, "Aufruf: /unban <Name oder BeamMP-ID>") return end
+    local data = BN.loadBans()
+    local kept, removed = {}, 0
+    for _, ban in ipairs(data.bans) do
+        if tostring(ban.name):lower() == query or tostring(ban.id) == query then removed = removed + 1 else kept[#kept + 1] = ban end
+    end
+    if removed == 0 then chat(pid, "Kein Bann für \"" .. arg .. "\" gefunden.") return end
+    data.bans = kept
+    saveBans(data)
+    modlog({ action = "unban", by = admin.name, target = arg })
+    chat(pid, string.format("Bann für %s aufgehoben.", arg))
+end
+
+function commands.bans(pid)
+    if not adminOnly(pid) then return end
+    local now, active = BN.now(), {}
+    for _, ban in ipairs(BN.loadBans().bans) do
+        if not ban["until"] or tonumber(ban["until"]) > now then active[#active + 1] = ban end
+    end
+    if #active == 0 then chat(pid, "Keine aktiven Banns.") return end
+    chat(pid, string.format("%d aktive Banns:", #active))
+    for i = math.max(1, #active - 4), #active do
+        local b = active[i]
+        chat(pid, string.format("%s – %s%s", tostring(b.name), b.reason ~= "" and tostring(b.reason) or "ohne Grund",
+            b["until"] and (" · bis " .. os.date("%d.%m. %H:%M", b["until"])) or " · dauerhaft"))
+    end
+end
+
+function commands.warn(pid, arg)
+    local admin = adminOnly(pid)
+    if not admin then return end
+    local words = splitArgs(arg)
+    local target = findTarget(words[1])
+    local text = table.concat(words, " ", 2)
+    if not target or not target.online or text == "" then
+        chat(pid, "Aufruf: /warn <Name> <Text> – Spieler muss auf diesem Server online sein.")
+        return
+    end
+    chat(target.online.pid, "Verwarnung von " .. admin.name .. ": " .. text)
+    chat(pid, "Verwarnung an " .. target.name .. " gesendet.")
+    modlog({ action = "warn", by = admin.name, target = target.name, targetId = target.id, reason = text })
+end
+
+function commands.mute(pid, arg)
+    local admin = adminOnly(pid)
+    if not admin then return end
+    local words = splitArgs(arg)
+    local target = findTarget(words[1])
+    if not target or not target.online then chat(pid, "Aufruf: /mute <Name> [Minuten]") return end
+    local minutes = tonumber(words[2]) or 10
+    target.online.mutedUntil = BN.now() + minutes * 60
+    chat(target.online.pid, string.format("Du wurdest für %d min stummgeschaltet.", minutes))
+    chat(pid, string.format("%s ist %d min stumm.", target.name, minutes))
+    modlog({ action = "mute", by = admin.name, target = target.name, targetId = target.id, minutes = minutes })
+end
+
+function commands.ansage(pid, arg)
+    local admin = adminOnly(pid)
+    if not admin then return end
+    if not arg or arg == "" then chat(pid, "Aufruf: /ansage <Text> – erscheint auf allen BeamNet-Servern.") return end
+    BN.announce(arg, admin.name)
+    modlog({ action = "ansage", by = admin.name, reason = arg })
+end
+
 BN.commands = commands
 
 -- Gibt true zurueck, wenn die Nachricht ein BeamNet-Befehl war.
@@ -1185,6 +1501,7 @@ function BN.tick()
     local wk = weekKey(now)
     if BN.currentWeek and BN.currentWeek ~= wk then BN.announceWeek(BN.currentWeek) end
     BN.currentWeek = wk
+    BN.sync(false)
     if now - BN.lastStatus >= C.statusEverySec then BN.writeStatus() end
     if now - BN.lastSave >= C.saveEverySec then
         for _, s in pairs(BN.players) do BN.savePlayer(s) end
@@ -1195,6 +1512,7 @@ end
 function BN.init()
     BN.initialized = true
     loadOverrides()
+    BN.markAnnouncementsSeen()
     BN.server = BN.readServerConfig(C.serverConfig)
     ensureDir(C.sharedDir)
     ensureDir(playersDir())
@@ -1237,6 +1555,18 @@ end
 
 function BN_onChatMessage(pid, _, message)
     if BN.handleChat(pid, message) then return 1 end
+    local s = BN.players[pid]
+    if s and type(message) == "string" and not message:match("^%s*/") and BN.spamCheck(s) then return 1 end
+end
+
+-- Gesperrte Spieler gar nicht erst hereinlassen (Rueckgabe eines Textes = Ablehnung mit diesem Grund).
+function BN_onPlayerAuth(name, role, isGuest, identifiers)
+    local ids = type(identifiers) == "table" and identifiers or {}
+    local ban = BN.findBan(safeId(ids.beammp), ids.ip)
+    if ban then
+        print("[BeamNetCore] Gesperrter Spieler abgewiesen: " .. tostring(name))
+        return banText(ban)
+    end
 end
 
 function BN_onVehicleReset(pid, vid)
@@ -1265,6 +1595,7 @@ end
 if MP and MP.RegisterEvent then
     MP.RegisterEvent("onInit", "BN_onInit")
     MP.RegisterEvent("onPlayerJoin", "BN_onPlayerJoin")
+    MP.RegisterEvent("onPlayerAuth", "BN_onPlayerAuth")
     MP.RegisterEvent("onPlayerDisconnect", "BN_onPlayerDisconnect")
     MP.RegisterEvent("onChatMessage", "BN_onChatMessage")
     MP.RegisterEvent("onVehicleReset", "BN_onVehicleReset")
