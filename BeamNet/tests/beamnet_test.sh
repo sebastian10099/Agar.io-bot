@@ -289,6 +289,7 @@ contains "$out" "Wächter eingerichtet" "watch install"
 contains "$(cat "$T/systemd/beamnet-watch.service")" "^ExecStart=.*beamnet.sh watch$" "watch install: Dienst ruft das Werkzeug"
 contains "$(cat "$T/actions")" "enable --now" "watch install: Timer aktiviert"
 contains "$(cat "$T/beamnet.conf")" "^AUTO_RESTART=0$" "watch install: Neustart standardmaessig aus"
+contains "$(cat "$T/beamnet.conf")" "^MAP_VOTE=1$" "watch install: Map-Abstimmung standardmaessig an"
 
 out=$("$TOOL" watch 2>&1)
 lacks "$out" "ausgefallen|online" "watch: erste Runde ohne Meldung"
@@ -360,6 +361,50 @@ sed -i 's|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=http://example.com/hook|' "$T/beam
 rm -f "$T/state/beammp-1.service.active"
 out=$("$TOOL" watch 2>&1)
 contains "$out" "sieht nicht wie ein Discord-Webhook aus" "watch: falscher Webhook wird abgelehnt"
+
+# Map-Abstimmung: Lebenszeichen fuer das Plugin und Auftraege aus votes/<Port>.json.
+V="$T/root/shared/beamnet/votes"
+mkdir -p "$V"
+"$TOOL" watch >/dev/null 2>&1
+hb=$(cat "$T/root/shared/beamnet/watch.json")
+contains "$hb" '^\{"at":[0-9]+,"mapVote":true,"maps":\["gridmap_v2",.*"automation_test_track"\]\}$' "watch: Lebenszeichen mit Maps"
+python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$T/root/shared/beamnet/watch.json" && pass || fail "watch: Lebenszeichen ist gültiges JSON"
+vote() { echo "{\"at\":${3:-$(date +%s)},\"by\":\"Sebi \\\"map\\\":\\\"x\\\"\",\"from\":\"utah\",\"map\":\"$2\",\"no\":0,\"online\":3,\"port\":$1,\"yes\":2}" >"$V/$1.json"; }
+vote 30818 italy
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🗺️ Server 5: Map per Abstimmung von utah auf italy gewechselt" "watch: Abstimmung umgesetzt"
+contains "$(cat "$T/root/5/ServerConfig.toml")" '^Map = "/levels/italy/info.json"$' "watch: Map in der Konfiguration"
+contains "$(cat "$T/actions")" "restart beammp-5" "watch: Neustart nach Abstimmung"
+[[ ! -f $V/30818.json ]] && pass || fail "watch: Auftrag erledigt und entfernt"
+vote 30818 utah
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+lacks "$(cat "$T/actions")" "restart beammp-5" "watch: höchstens ein Wechsel in 5 Minuten"
+[[ ! -f $V/30818.json ]] && pass || fail "watch: auch abgewiesene Aufträge werden entfernt"
+rm -f "$T/watch/mapvote-5"
+vote 30818 evil_mod
+out=$("$TOOL" watch 2>&1)
+contains "$out" "evil_mod ist nicht erlaubt" "watch: nur erlaubte Maps"
+contains "$(cat "$T/root/5/ServerConfig.toml")" "/levels/italy/" "watch: nicht erlaubte Map ändert nichts"
+sed -i 's/^VOTE_MAPS=.*/VOTE_MAPS=evil_mod/' "$T/beamnet.conf"
+vote 30818 evil_mod
+out=$("$TOOL" watch 2>&1)
+contains "$out" "von italy auf evil_mod gewechselt" "watch: VOTE_MAPS erlaubt weitere Maps"
+contains "$(cat "$T/root/shared/beamnet/watch.json")" '"evil_mod"\]' "watch: Lebenszeichen nennt VOTE_MAPS"
+rm -f "$T/watch/mapvote-5"
+vote 30818 utah $(( $(date +%s) - 3600 ))
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+lacks "$(cat "$T/actions")" "restart beammp-5" "watch: alte Aufträge verfallen"
+sed -i 's/^MAP_VOTE=.*/MAP_VOTE=0/' "$T/beamnet.conf"
+vote 30818 utah
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+lacks "$(cat "$T/actions")" "restart beammp-5" "watch: MAP_VOTE=0 schaltet ab"
+contains "$(cat "$T/root/shared/beamnet/watch.json")" '"mapVote":false' "watch: Lebenszeichen meldet aus"
+contains "$("$TOOL" watch status 2>&1)" "Map-Abstimmung: aus" "watch status: Abstimmung"
+sed -i 's/^MAP_VOTE=.*/MAP_VOTE=1/; s/^VOTE_MAPS=.*/VOTE_MAPS=/' "$T/beamnet.conf"
 
 out=$("$TOOL" watch uninstall 2>&1)
 contains "$out" "Wächter entfernt" "watch uninstall"

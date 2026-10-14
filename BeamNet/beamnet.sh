@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.10"
+VERSION="1.11"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -491,6 +491,14 @@ cmd_maps() {
     printf 'Ändern: beamnet set-map <nr> <map>\n'
 }
 
+# write_map <nr> <map>: Map-Zeile in ServerConfig.toml ersetzen (alte Datei als .bak daneben).
+write_map() {
+    local file="$ROOT/$1/ServerConfig.toml"
+    grep -qE '^[[:space:]]*Map[[:space:]]*=' "$file" || return 1
+    cp -p "$file" "$file.bak-$(date +%Y%m%d-%H%M%S)"
+    sed -i -E "s|^([[:space:]]*)Map[[:space:]]*=.*|\\1Map = \"/levels/$2/info.json\"|" "$file"
+}
+
 cmd_set_map() {
     need_root set-map
     local force=0
@@ -503,12 +511,7 @@ cmd_set_map() {
         die "$map ist keine bekannte Vanilla-Map. Für Mod-Maps: beamnet set-map --force $nr $map"
     fi
     file="$ROOT/$nr/ServerConfig.toml"
-    cp -p "$file" "$file.bak-$(date +%Y%m%d-%H%M%S)"
-    if grep -qE '^[[:space:]]*Map[[:space:]]*=' "$file"; then
-        sed -i -E "s|^([[:space:]]*)Map[[:space:]]*=.*|\\1Map = \"/levels/$map/info.json\"|" "$file"
-    else
-        die "In $file steht keine Map-Zeile."
-    fi
+    write_map "$nr" "$map" || die "In $file steht keine Map-Zeile."
     ok "Server $nr: Map = $map (Sicherung der alten Konfiguration daneben)"
     echo "BeamMP liest die Map nur beim Start."
     if confirm "Server $nr jetzt neu starten?"; then
@@ -607,9 +610,9 @@ cmd_players() {
 
 # Gemeinsamer Datenordner mit Rechten fuer den Dienst-Benutzer (sonst kann das Plugin nichts speichern).
 ensure_shared() {
-    mkdir -p "$SHARED/players" "$SHARED/servers" "$SHARED/races"
+    mkdir -p "$SHARED/players" "$SHARED/servers" "$SHARED/races" "$SHARED/votes"
     chown -R "$SERVICE_USER:$SERVICE_USER" "$SHARED"
-    chmod 775 "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races"
+    chmod 775 "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races" "$SHARED/votes"
 }
 
 # Holt das Plugin aus dem Ordner neben diesem Skript oder von GitHub
@@ -764,10 +767,73 @@ restart_allowed() {
     return 0
 }
 
+# Maps fuer Abstimmungen: Vanilla-Maps plus VOTE_MAPS aus der Einstellungsdatei (z. B. Mod-Maps, die alle haben).
+vote_maps() {
+    local m list=$KNOWN_MAPS
+    for m in $(conf_get VOTE_MAPS | tr ',' ' '); do
+        [[ $m =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ && " $list " != *" $m "* ]] && list+=" $m"
+    done
+    printf '%s' "$list"
+}
+
+# Lebenszeichen fuer das Plugin: Waechter laeuft, Abstimmungen an/aus, erlaubte Maps.
+watch_heartbeat() {
+    [[ -d $SHARED ]] || return 0
+    local enabled=true maps="" m tmp
+    [[ $(conf_get MAP_VOTE) == 0 ]] && enabled=false
+    for m in $(vote_maps); do maps+="${maps:+,}\"$m\""; done
+    tmp="$SHARED/.watch.json.tmp"
+    printf '{"at":%s,"mapVote":%s,"maps":[%s]}\n' "$(date +%s)" "$enabled" "$maps" >"$tmp" && chmod 644 "$tmp" \
+        && mv -f "$tmp" "$SHARED/watch.json"
+}
+
+# Auftraege aus Map-Abstimmungen (votes/<Port>.json vom Plugin) ausfuehren: Map pruefen, umstellen, neu starten.
+watch_votes() {
+    local -n vout=$1
+    local file data port map at now nr n old
+    now=$(date +%s)
+    for file in "$SHARED"/votes/*.json; do
+        [[ -f $file ]] || continue
+        data=$(head -c 4096 "$file")
+        rm -f "$file"     # jeder Auftrag nur einmal, auch wenn er nicht ausgefuehrt wird
+        port=$(grep -o '"port":[0-9]*' <<<"$data" | head -n1 | cut -d: -f2)
+        map=$(grep -o '"map":"[^"]*"' <<<"$data" | head -n1 | cut -d'"' -f4)
+        at=$(grep -o '"at":[0-9]*' <<<"$data" | head -n1 | cut -d: -f2)
+        [[ -n $port && -n $map && -n $at ]] || continue
+        [[ $(conf_get MAP_VOTE) == 0 ]] && continue
+        (( now - at <= 600 )) || continue                     # zu alt (Waechter lief nicht)
+        if [[ ! $map =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ || " $(vote_maps) " != *" $map "* ]]; then
+            vout+=("⚠️ Map-Abstimmung auf Port $port: $map ist nicht erlaubt – ignoriert.")
+            continue
+        fi
+        nr=""
+        for n in $(servers); do [[ $(cfg "$n" Port) == "$port" ]] && nr=$n; done
+        [[ -n $nr ]] || continue
+        [[ -f $STATE_DIR/maintenance-$nr ]] && continue
+        unit_active "$nr" || continue
+        # Hoechstens ein Wechsel je Server in 5 Minuten.
+        if [[ -f $STATE_DIR/mapvote-$nr ]] && (( now - $(cat "$STATE_DIR/mapvote-$nr" 2>/dev/null || echo 0) < 300 )); then
+            continue
+        fi
+        old=$(map_short "$(cfg "$nr" Map)")
+        [[ $old == "$map" ]] && continue
+        write_map "$nr" "$map" || { vout+=("⚠️ Server $nr: keine Map-Zeile in der Konfiguration – Abstimmung nicht umgesetzt."); continue; }
+        echo "$now" >"$STATE_DIR/mapvote-$nr"
+        if systemctl restart "$(unit "$nr")"; then
+            vout+=("🗺️ Server $nr: Map per Abstimmung von $old auf $map gewechselt.")
+        else
+            vout+=("⚠️ Server $nr: Neustart nach der Map-Abstimmung fehlgeschlagen (beamnet logs $nr).")
+        fi
+    done
+    return 0
+}
+
 watch_run() {
     mkdir -p "$STATE_DIR"
     local nr state last name msgs=() auto
     auto=$(conf_get AUTO_RESTART)
+    watch_heartbeat
+    watch_votes msgs
     for nr in $(servers); do
         unit_exists "$nr" || continue
         if unit_active "$nr"; then state=up; else state=down; fi
@@ -854,6 +920,10 @@ DISCORD_WEBHOOK=
 # 1 = ausgefallene Server automatisch neu starten (hoechstens 3x pro Stunde; nicht, wenn mit "beamnet stop"
 # gestoppt oder von OpenClaw gestoppt). 0 = nur melden.
 AUTO_RESTART=0
+# Map-Abstimmung im Chat (/vote map <Name>): 1 = an, 0 = aus. Erlaubt sind die Vanilla-Maps; weitere (z. B. Mod-Maps,
+# die alle Spieler haben) mit Leerzeichen getrennt in VOTE_MAPS.
+MAP_VOTE=1
+VOTE_MAPS=
 EOF
         chmod 600 "$CONF"
     fi
@@ -904,6 +974,7 @@ cmd_watch() {
             if [[ -f $SYSTEMD_DIR/beamnet-watch.timer ]]; then ok "Wächter eingerichtet"; else echo "Wächter nicht eingerichtet (beamnet watch install)."; fi
             if [[ -n $(conf_get DISCORD_WEBHOOK) ]]; then echo "Discord: an"; else echo "Discord: aus"; fi
             if [[ $(conf_get AUTO_RESTART) == 1 ]]; then echo "Automatischer Neustart: an"; else echo "Automatischer Neustart: aus"; fi
+            if [[ $(conf_get MAP_VOTE) == 0 ]]; then echo "Map-Abstimmung: aus"; else echo "Map-Abstimmung: an ($(vote_maps | wc -w) Maps)"; fi
             ls "$STATE_DIR"/maintenance-* >/dev/null 2>&1 && echo "In Wartung (bewusst gestoppt): $(ls "$STATE_DIR"/maintenance-* | sed 's/.*maintenance-//' | tr '\n' ' ')"
             return 0
             ;;

@@ -10,14 +10,15 @@
 --
 -- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche|vorwoche]  /liga  /server  /km  /lang de|en
 -- (englisch: /help /stats /top [km|xp|week|lastweek] /league /server /km /race /records /lang)
---               /rennen [Name|stop]  /rekorde [Name]  /erfolge [Name]  /aufgabe  /saison   – Admins: /rennen neu|ziel|loeschen <Name>
+--               /rennen [Name|stop]  /rekorde [Name]  /erfolge [Name]  /aufgabe  /saison  /vote map <Name>|ja|nein
+--               – Admins: /rennen neu|ziel|loeschen <Name>
 -- Moderation (Admins): /kick <Name> [Grund]  /ban <Name> [30m|2h|7d] [Grund]  /unban <Name>  /bans
 --                      /warn <Name> <Text>  /mute <Name> [Minuten]  /ansage <Text>
 
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.9"
+BN.VERSION = "1.10"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -49,6 +50,10 @@ local defaults = {
     language = "de",
     -- Erfolge an (true) oder aus (false).
     achievements = true,
+    -- Map-Abstimmung (/vote map <Name>): an/aus, Dauer (s), Pause danach (min). Braucht den Waechter (beamnet watch).
+    mapVote = true,
+    mapVoteSec = 60,
+    mapVoteCooldownMin = 10,
     -- Eine Map zaehlt (Erfolge, Tagesaufgabe "verschiedene Server") erst ab so vielen km in der Sitzung.
     mapMinKm = 0.1,
     -- Tagesaufgaben: Belohnung und erlaubte Arten (km, speed, time, servers, races – Rennen nur, wenn es Strecken gibt).
@@ -428,10 +433,11 @@ end
 
 -- Werte, die ganze Zahlen sein muessen (z. B. "+40 XP" im Chat).
 local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBestXp = true, raceRecordXp = true,
-                       spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true }
+                       spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true,
+                       mapVoteSec = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
-                     spamWindowSec = 1 }
+                     spamWindowSec = 1, mapVoteSec = 15 }
 
 function BN.loadOverrides()
     local data = readFile(C.sharedDir .. "/config.json")
@@ -502,8 +508,28 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /km · /race · /records · /achievements · /daily · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /km · /race · /records · /achievements · /daily · /vote · /lang",
+    ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
+    ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
+    ["Stimme gezählt."] = "Vote counted.",
+    ["Abstimmung: %s – %d ja, %d nein, noch %d s. /vote ja oder /vote nein"] = "Vote: %s – %d yes, %d no, %d s left. /vote yes or /vote no",
+    ["Map-Abstimmung ist auf diesem Netzwerk nicht eingerichtet (Admin: beamnet watch install)."] =
+        "Map voting is not set up on this network (admin: beamnet watch install).",
+    ["Map-Abstimmung: /vote map <Name> – möglich: %s"] = "Map vote: /vote map <name> – available: %s",
+    ["Es läuft schon eine Abstimmung (%s)."] = "A vote is already running (%s).",
+    ["Die Map wird gleich gewechselt."] = "The map is about to change.",
+    ["Nächste Abstimmung in %s."] = "Next vote possible in %s.",
+    ["Mehrdeutig: %s"] = "Ambiguous: %s",
+    ["Unbekannte Map: %s. Möglich: %s"] = "Unknown map: %s. Available: %s",
+    ["%s läuft hier bereits."] = "%s is already running here.",
+    ["%s möchte auf %s wechseln (Neustart). Abstimmen: /vote ja oder /vote nein (%d s)"] =
+        "%s wants to switch to %s (restart). Vote: /vote yes or /vote no (%d s)",
+    ["Abstimmung angenommen (%d:%d): Wechsel auf %s – der Server startet in etwa einer Minute neu."] =
+        "Vote passed (%d:%d): switching to %s – the server restarts in about a minute.",
+    ["Abstimmung angenommen, aber der Auftrag konnte nicht gespeichert werden – bitte einem Admin melden."] =
+        "Vote passed, but the request could not be saved – please tell an admin.",
+    ["Abstimmung für %s abgelehnt (%d:%d)."] = "Vote for %s failed (%d:%d).",
     ["Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage"] =
         "Admin: /kick · /ban <name> [30m|2h|7d] [reason] · /unban · /bans · /warn · /mute · /announce",
     ["Du bist %s gefahren (diese Woche %s)."] = "You have driven %s (this week %s).",
@@ -1741,7 +1767,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
@@ -2221,6 +2247,140 @@ function commands.saison(pid)
 end
 commands.season = commands.saison
 
+-- ---------------------------------------------------------------------------------------------------------------------
+-- Map-Abstimmung: /vote map <Name>, dann /vote ja|nein. Bei Mehrheit schreibt das Plugin einen Auftrag nach
+-- votes/<Port>.json; der Waechter (beamnet watch, laeuft jede Minute als root) prueft die Map, stellt um und startet
+-- den Server neu. Ohne laufenden Waechter (watch.json fehlt oder ist alt) gibt es keine Abstimmung.
+
+BN.MAP_NAMES = {
+    gridmap_v2 = "Grid Map", smallgrid = "Small Grid", west_coast_usa = "West Coast, USA", east_coast_usa = "East Coast, USA",
+    italy = "Italy", utah = "Utah, USA", jungle_rock_island = "Jungle Rock Island", small_island = "Small Island, USA",
+    hirochi_raceway = "Hirochi Raceway", johnson_valley = "Johnson Valley", industrial = "Industrial Site",
+    derby = "Derby Arenas", automation_test_track = "Automation Test Track",
+}
+
+function BN.mapName(map)
+    return BN.MAP_NAMES[map] or (tostring(map):gsub("_", " "))
+end
+
+-- Lebenszeichen des Waechters mit den erlaubten Maps; nil, wenn er nicht (mehr) laeuft oder Abstimmungen aus sind.
+function BN.watcherInfo()
+    local w = json.decode(readFile(C.sharedDir .. "/watch.json") or "")
+    if type(w) ~= "table" or not tonumber(w.at) or BN.now() - tonumber(w.at) > 300 then return nil end
+    if w.mapVote == false or type(w.maps) ~= "table" or #w.maps == 0 then return nil end
+    return w
+end
+
+-- Map zu einer Eingabe: genauer Name, Anzeigename oder eindeutiger Teil davon. Gibt map oder nil, Kandidaten zurueck.
+function BN.findMap(query, maps)
+    local q = tostring(query or ""):lower():gsub("[%s_,%-]+", " ")
+    q = q:gsub("^ +", ""):gsub(" +$", "")
+    if q == "" then return nil, {} end
+    local hits = {}
+    for _, m in ipairs(maps) do
+        local key = tostring(m):lower():gsub("_", " ")
+        local pretty = BN.mapName(m):lower():gsub("[%s_,%-]+", " ")
+        if key == q or pretty == q then return m, { m } end
+        if key:find(q, 1, true) or pretty:find(q, 1, true) then hits[#hits + 1] = m end
+    end
+    if #hits == 1 then return hits[1], hits end
+    return nil, hits
+end
+
+local function onlineSet()
+    local set, n = {}, 0
+    for pid in pairs(MP and MP.GetPlayers and MP.GetPlayers() or {}) do set[pid] = true; n = n + 1 end
+    return set, n
+end
+
+-- Wertet die laufende Abstimmung aus: Mehrheit aller Spieler online = angenommen; kann sie nicht mehr gewinnen oder ist
+-- die Zeit um, ist sie abgelehnt.
+function BN.voteCheck()
+    local v = BN.vote
+    if not v then return end
+    local online, n = onlineSet()
+    local yes, no = 0, 0
+    for pid in pairs(v.yes) do if online[pid] then yes = yes + 1 end end
+    for pid in pairs(v.no) do if online[pid] then no = no + 1 end end
+    local needed = math.floor(n / 2) + 1
+    local now = BN.now()
+    if n > 0 and yes >= needed then
+        BN.vote, BN.lastVoteEnd = nil, now
+        ensureDir(C.sharedDir)
+        ensureDir(C.sharedDir .. "/votes")
+        local order = { port = BN.server.port, map = v.map, from = BN.server.map, by = v.by, at = now, yes = yes, no = no, online = n }
+        local ok = writeFileAtomic(C.sharedDir .. "/votes/" .. tostring(BN.server.port) .. ".json", json.encode(order))
+        if not ok then
+            sayAll("Abstimmung angenommen, aber der Auftrag konnte nicht gespeichert werden – bitte einem Admin melden.")
+            return
+        end
+        BN.mapChangePending = { map = v.map, at = now }
+        -- Vor dem Neustart alles sichern.
+        for _, s in pairs(BN.players) do pcall(BN.savePlayer, s) end
+        sayAll("Abstimmung angenommen (%d:%d): Wechsel auf %s – der Server startet in etwa einer Minute neu.", yes, no, BN.mapName(v.map))
+    elseif n == 0 or n - no < needed or now >= v.endsAt then
+        BN.vote, BN.lastVoteEnd = nil, now
+        sayAll("Abstimmung für %s abgelehnt (%d:%d).", BN.mapName(v.map), yes, no)
+    end
+end
+
+local function voteStatus(pid)
+    local v = BN.vote
+    local yes, no = 0, 0
+    for _ in pairs(v.yes) do yes = yes + 1 end
+    for _ in pairs(v.no) do no = no + 1 end
+    say(pid, "Abstimmung: %s – %d ja, %d nein, noch %d s. /vote ja oder /vote nein", BN.mapName(v.map), yes, no,
+        math.max(0, v.endsAt - BN.now()))
+end
+
+function commands.vote(pid, arg)
+    local s = session(pid)
+    if not C.mapVote then say(pid, "Map-Abstimmungen sind ausgeschaltet.") return end
+    local sub, rest = tostring(arg or ""):match("^(%S*)%s*(.-)$")
+    sub = sub:lower()
+    local yesWords = { ja = true, j = true, yes = true, y = true }
+    local noWords = { nein = true, n = true, no = true }
+    if yesWords[sub] or noWords[sub] then
+        if not BN.vote then say(pid, "Gerade läuft keine Abstimmung.") return end
+        BN.vote.yes[pid] = yesWords[sub] or nil
+        BN.vote.no[pid] = noWords[sub] or nil
+        say(pid, "Stimme gezählt.")
+        BN.voteCheck()
+        return
+    end
+    if sub ~= "map" then
+        if BN.vote then voteStatus(pid) return end
+        local w = BN.watcherInfo()
+        if not w then say(pid, "Map-Abstimmung ist auf diesem Netzwerk nicht eingerichtet (Admin: beamnet watch install).") return end
+        local list = {}
+        for _, m in ipairs(w.maps) do if m ~= BN.server.map then list[#list + 1] = m end end
+        say(pid, "Map-Abstimmung: /vote map <Name> – möglich: %s", table.concat(list, ", "))
+        return
+    end
+    -- Neue Abstimmung
+    if BN.vote then say(pid, "Es läuft schon eine Abstimmung (%s).", BN.mapName(BN.vote.map)) return end
+    local now = BN.now()
+    if BN.mapChangePending and now - BN.mapChangePending.at < 300 then say(pid, "Die Map wird gleich gewechselt.") return end
+    local wait = BN.lastVoteEnd and (BN.lastVoteEnd + C.mapVoteCooldownMin * 60 - now) or 0
+    if wait > 0 then say(pid, "Nächste Abstimmung in %s.", fmtDuration(wait)) return end
+    local w = BN.watcherInfo()
+    if not w then say(pid, "Map-Abstimmung ist auf diesem Netzwerk nicht eingerichtet (Admin: beamnet watch install).") return end
+    local map, hits = BN.findMap(rest, w.maps)
+    if not map then
+        if #hits > 1 then
+            say(pid, "Mehrdeutig: %s", table.concat(hits, ", "))
+        else
+            say(pid, "Unbekannte Map: %s. Möglich: %s", rest, table.concat(w.maps, ", "))
+        end
+        return
+    end
+    if map == BN.server.map then say(pid, "%s läuft hier bereits.", BN.mapName(map)) return end
+    BN.vote = { map = map, by = s.name, endsAt = now + C.mapVoteSec, yes = { [pid] = true }, no = {} }
+    sayAll("%s möchte auf %s wechseln (Neustart). Abstimmen: /vote ja oder /vote nein (%d s)", s.name, BN.mapName(map), C.mapVoteSec)
+    BN.voteCheck()
+end
+commands.abstimmung = commands.vote
+
 function BN.fmtProgress(v)
     v = tonumber(v) or 0
     if v >= 100 or v == math.floor(v) then return string.format("%d", math.floor(v)) end
@@ -2314,6 +2474,7 @@ function BN.tick()
     if BN.currentMonth and BN.currentMonth ~= mk then guarded("Saisonende", BN.endSeason, BN.currentMonth) end
     BN.currentMonth = mk
     BN.currentWeek = wk
+    guarded("Abstimmung", BN.voteCheck)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)

@@ -85,6 +85,9 @@ beamnet watch test         # Testnachricht an Discord
   du sie mit `beamnet start` wieder startest.
 - Er kämpft nicht gegen OpenClaw: Hat der Agent einen Server gestoppt, meldet er das, startet aber nicht neu.
 - Montags postet er die **Wochensieger** der Vorwoche nach Discord.
+- Er setzt **Map-Abstimmungen** aus dem Chat um (siehe unten): Map in der Konfiguration ändern (alte Datei als
+  Sicherung daneben), Server neu starten, nach Discord melden. Abschalten: `MAP_VOTE=0`; weitere erlaubte Maps
+  (z. B. Mod-Maps, die alle Spieler haben): `VOTE_MAPS=meine_map andere_map`.
 
 ### Statusseite für die Community
 
@@ -151,6 +154,7 @@ beamnet restart all
 | `/erfolge [Name]` | Freigeschaltete Erfolge und die nächsten mit Fortschritt |
 | `/aufgabe` | Tagesaufgabe und Fortschritt |
 | `/saison` | Saison-Tabelle (Monat), eigener Platz, Vorsaison |
+| `/vote map <Name>` | Abstimmung über eine andere Map starten (`/vote ja`, `/vote nein`; `/vote` zeigt Stand oder Maps) |
 
 Befehle anderer Plugins werden nicht abgefangen.
 
@@ -162,6 +166,15 @@ Betreten für frühere Fahrten nachträglich bekommt, geben XP, zählen aber nic
 zeigt die Tabelle, den eigenen Platz und die Sieger der letzten Saison; zum Monatswechsel werden die Sieger verkündet
 und unter `seasons/<Monat>.json` archiviert. Lief beim Monatswechsel kein Server, holt der erste Server, der wieder
 läuft, das Archiv still nach. Die Statusseite zeigt die laufende Saison.
+
+### Map-Abstimmung
+
+`/vote map italy` (auch Teilnamen wie `/vote map west`) startet eine Abstimmung auf diesem Server; alle anderen
+stimmen mit `/vote ja` oder `/vote nein` (englisch `/vote yes|no`). Stimmt mehr als die Hälfte der Spieler online zu,
+werden alle Daten gesichert und der Wächter stellt innerhalb etwa einer Minute die Map um und startet den Server neu.
+Ohne Mehrheit nach 60 s ist sie abgelehnt; danach 10 Minuten Pause. Funktioniert nur mit eingerichtetem Wächter
+(`beamnet watch install`) – ohne ihn sagt das Plugin das ehrlich, statt etwas zu versprechen. Anpassen in
+`config.json`: `"mapVote": false`, `"mapVoteSec": 60`, `"mapVoteCooldownMin": 10`.
 
 ### Tagesaufgaben
 

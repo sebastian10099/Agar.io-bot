@@ -1012,6 +1012,80 @@ do
     _G[events.onPlayerDisconnect](30); players[30] = nil
 end
 
+-- --- Map-Abstimmung ---------------------------------------------------------------------------------------------------
+do
+    for pid = 40, 42 do
+        players[pid] = { name = "Waehler" .. pid, ids = { beammp = tostring(4000 + pid) }, vehicles = {} }
+        join(pid)
+    end
+    say(41, "/lang en")
+    os.remove(SHARED .. "/watch.json")
+    say(40, "/vote map italy")
+    check(chatContains("Map%-Abstimmung ist auf diesem Netzwerk nicht eingerichtet", 40), "Ohne Waechter keine Abstimmung")
+    check(BN.vote == nil, "Ohne Waechter keine Abstimmung gestartet")
+    local maps = { "gridmap_v2", "west_coast_usa", "east_coast_usa", "italy", "utah" }
+    local function heartbeat() writeJson(SHARED .. "/watch.json", { at = clock, mapVote = true, maps = maps }) end
+    heartbeat()
+    eq(BN.findMap("Italy", maps), "italy", "Map: Name")
+    eq(BN.findMap("utah, usa", maps), "utah", "Map: Anzeigename")
+    eq(BN.findMap("west", maps), "west_coast_usa", "Map: eindeutiger Teil")
+    local none, hits = BN.findMap("coast", maps)
+    check(none == nil and #hits == 2, "Map: mehrdeutig")
+    say(40, "/vote")
+    check(chatContains("Map%-Abstimmung: /vote map <Name> – möglich: west_coast_usa, east_coast_usa, italy, utah", 40), "/vote zeigt Maps ohne die aktuelle")
+    say(40, "/vote map gridmap")
+    check(chatContains("Grid Map läuft hier bereits", 40), "Aktuelle Map nicht waehlbar")
+    say(40, "/vote map mond")
+    check(chatContains("Unbekannte Map: mond", 40), "Unbekannte Map")
+    say(40, "/vote map coast")
+    check(chatContains("Mehrdeutig: west_coast_usa, east_coast_usa", 40), "Mehrdeutige Map")
+    say(40, "/vote ja")
+    check(chatContains("Gerade läuft keine Abstimmung", 40), "Ja ohne Abstimmung")
+
+    -- Abgelehnt: alle anderen sagen nein.
+    say(40, "/vote map italy")
+    check(BN.vote and BN.vote.map == "italy", "Abstimmung gestartet")
+    check(chatContains("Waehler40 möchte auf Italy wechseln %(Neustart%)%. Abstimmen: /vote ja oder /vote nein %(60 s%)", 42), "Abstimmung angekuendigt")
+    check(chatContains("Waehler40 wants to switch to Italy %(restart%)", 41), "Abstimmung auf Englisch")
+    say(42, "/vote")
+    check(chatContains("Abstimmung: Italy – 1 ja, 0 nein", 42), "/vote zeigt den Stand")
+    for pid in pairs(players) do if pid ~= 40 then say(pid, "/vote nein") end end
+    check(BN.vote == nil and chatContains("Abstimmung für Italy abgelehnt %(1:", 40), "Abstimmung abgelehnt")
+    say(40, "/vote map utah")
+    check(chatContains("Nächste Abstimmung in", 40), "Pause nach einer Abstimmung")
+
+    -- Zeit abgelaufen.
+    clock = clock + 11 * 60
+    heartbeat()
+    say(40, "/vote map utah")
+    check(BN.vote and BN.vote.map == "utah", "Neue Abstimmung nach der Pause")
+    tick(61)
+    check(BN.vote == nil and chatContains("Abstimmung für Utah, USA abgelehnt", 40), "Abstimmung endet nach Ablauf der Zeit")
+
+    -- Angenommen: Mehrheit sagt ja -> Auftrag fuer den Waechter, vorher wird gespeichert.
+    clock = clock + 11 * 60
+    heartbeat()
+    os.remove(SHARED .. "/votes/30814.json")
+    say(40, "/vote map west")
+    BN.players[40].pendingKm = 1.5
+    for pid in pairs(players) do if pid ~= 40 then say(pid, "/vote yes") end end
+    check(BN.vote == nil and chatContains("Abstimmung angenommen %(%d+:0%): Wechsel auf West Coast, USA – der Server startet in etwa einer Minute neu%.", 40), "Abstimmung angenommen")
+    local order = readJson(SHARED .. "/votes/30814.json")
+    check(order and order.map == "west_coast_usa" and order.port == 30814 and order.from == "gridmap_v2" and order.at == clock, "Auftrag fuer den Waechter geschrieben")
+    check(readJson(SHARED .. "/players/4040.json").km >= 1.5, "Vor dem Neustart gespeichert")
+    say(42, "/vote map italy")
+    check(chatContains("Die Map wird gleich gewechselt", 42), "Keine neue Abstimmung waehrend des Wechsels")
+    -- Waechter laeuft nicht mehr (Lebenszeichen alt) oder Abstimmungen aus.
+    clock = clock + 20 * 60
+    say(42, "/vote map italy")
+    check(chatContains("Map%-Abstimmung ist auf diesem Netzwerk nicht eingerichtet", 42), "Altes Lebenszeichen = kein Waechter")
+    C.mapVote = false
+    say(42, "/vote")
+    check(chatContains("Map%-Abstimmungen sind ausgeschaltet", 42), "Abstimmungen abschaltbar")
+    C.mapVote = true
+    for pid = 40, 42 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+end
+
 -- Herunterfahren speichert alle.
 tick(1)
 _G[events.onShutdown]()

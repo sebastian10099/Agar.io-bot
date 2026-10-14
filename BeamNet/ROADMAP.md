@@ -1,5 +1,10 @@
 # BeamNet – Roadmap
 
+Erledigt (Plugin 1.10, Werkzeug 1.11):
+- [x] Map-Abstimmung im Chat: `/vote map <Name>`, `/vote ja|nein`, Mehrheit der Spieler online; der Wächter prüft die
+      Map gegen die erlaubte Liste, stellt um, startet neu und meldet nach Discord (höchstens ein Wechsel je Server in
+      5 Minuten). Das Plugin bietet die Abstimmung nur an, wenn der Wächter läuft (Lebenszeichen `watch.json`).
+
 Erledigt (Plugin 1.9, Werkzeug 1.10) – 8 Funde einer zweiten Code-Prüfung behoben, jeweils mit Test:
 - [x] Update im laufenden Betrieb: Sitzungen der alten Version werden um neue Felder ergänzt (vorher: Fehler in jedem
       Takt); jeder Spieler wird im Takt einzeln abgesichert, Fehler landen gedrosselt im Log.
@@ -82,5 +87,6 @@ Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamne
 - [ ] Auf dem echten Server prüfen: `beamnet doctor`, `beamnet fix`, BeamNetCore installieren, alte Plugins vergleichen.
 
 Ideen:
-- [ ] Abstimmung im Chat: `/vote map <name>` wechselt die Map, wenn die Mehrheit zustimmt.
 - [ ] Map-Rotation für einen Server (jeden Tag eine andere Map).
+- [ ] Saisonsieger zum Monatswechsel auch nach Discord (wie die Wochensieger).
+- [ ] Statusseite: Profilseite je Fahrer (Erfolge, Rekorde, Verlauf).
