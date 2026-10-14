@@ -29,11 +29,13 @@ ldd "$WORK/BeamMP-Server" | grep "not found" && echo "(fehlende Bibliotheken –
 
 mkdir -p "$WORK/Resources/Server/BeamNetCore" "$WORK/Resources/Client" "$WORK/shared"
 cp "$PLUGIN" "$WORK/Resources/Server/BeamNetCore/main.lua"
+# Ohne AuthKey startet BeamMP nicht. Ein Platzhalter genuegt, damit Plugins geladen werden; die Anmeldung beim
+# BeamMP-Backend schlaegt dann fehl, das ist fuer diesen Test egal.
 cat >"$WORK/ServerConfig.toml" <<TOML
 [General]
 Name = "BeamNet | CI-Test"
 Port = 30814
-AuthKey = "${BEAMMP_AUTH_KEY:-}"
+AuthKey = "${BEAMMP_AUTH_KEY:-00000000-0000-4000-8000-000000000000}"
 Private = true
 MaxPlayers = 8
 MaxCars = 1
@@ -42,6 +44,14 @@ Description = "Integrationstest"
 ResourceFolder = "Resources"
 Debug = true
 LogChat = true
+InformationPacket = true
+IP = "::"
+Tags = "Freeroam"
+AllowGuests = true
+
+[Misc]
+ImScaredOfUpdates = true
+UpdateReminderTime = "30s"
 TOML
 
 export BEAMNET_SHARED="$WORK/shared"
@@ -55,6 +65,7 @@ sed 's/^/  | /' "$log" | tail -n 120
 
 fails=0
 check() { if eval "$2"; then echo "OK   $1"; else echo "FEHLER $1"; fails=$((fails + 1)); fi; }
+# shellcheck disable=SC2034  # wird in den eval-Pruefungen benutzt
 all=$(cat "$WORK/out.log" "$WORK/Server.log" 2>/dev/null)
 check "Plugin geladen" 'grep -q "\[BeamNetCore\] [0-9.]* geladen" <<<"$all"'
 check "keine Lua-Fehler von BeamNetCore" '! grep -qiE "BeamNetCore.*(error|fehler)|(error|fehler).*BeamNetCore" <<<"$all"'
