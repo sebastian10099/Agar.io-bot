@@ -17,7 +17,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.8"
+BN.VERSION = "1.9"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -49,6 +49,8 @@ local defaults = {
     language = "de",
     -- Erfolge an (true) oder aus (false).
     achievements = true,
+    -- Eine Map zaehlt (Erfolge, Tagesaufgabe "verschiedene Server") erst ab so vielen km in der Sitzung.
+    mapMinKm = 0.1,
     -- Tagesaufgaben: Belohnung und erlaubte Arten (km, speed, time, servers, races – Rennen nur, wenn es Strecken gibt).
     challengeXp = 40,
     challengeTypes = { "km", "speed", "time", "servers" },
@@ -424,6 +426,13 @@ function BN.readServerConfig(path)
     return info
 end
 
+-- Werte, die ganze Zahlen sein muessen (z. B. "+40 XP" im Chat).
+local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBestXp = true, raceRecordXp = true,
+                       spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true }
+-- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
+local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
+                     spamWindowSec = 1 }
+
 function BN.loadOverrides()
     local data = readFile(C.sharedDir .. "/config.json")
     if not data then return end
@@ -438,6 +447,12 @@ function BN.loadOverrides()
         if k == "leagues" then
             if BN.validLeagues(v) then C.leagues = v else print("[BeamNetCore] config.json: leagues ungueltig, Standard bleibt") end
         elseif defaults[k] ~= nil and type(v) == type(defaults[k]) and k ~= "sharedDir" then
+            if type(v) == "number" then
+                -- Keine negativen Werte; ganze Zahlen dort, wo sie im Chat mit %d ausgegeben werden.
+                if v ~= v or v == math.huge or v == -math.huge then v = defaults[k] end
+                v = math.max(MIN_VALUES[k] or 0, v)
+                if INTEGER_KEYS[k] then v = math.floor(v) end
+            end
             C[k] = v
         end
     end
@@ -647,57 +662,70 @@ end
 local function emptyRecord(id, name)
     return { id = id, name = name, km = 0, seconds = 0, weekKm = 0, week = weekKey(BN.now()), topSpeedKmh = 0,
              bonusXp = 0, racesFinished = 0, recordsSet = 0, maps = {}, achievements = {},
+             dayKm = 0, daySeconds = 0, dayRaces = 0, dayTop = 0, dayMaps = {}, lastMonthXp = 0, lastWeekKm = 0,
              firstSeen = BN.now(), lastSeen = BN.now(), lastServer = "" }
 end
+
+-- Ergaenzt fehlende oder kaputte Felder: alte Dateien und Sitzungen aus einer aelteren Plugin-Version
+-- (Update im laufenden Betrieb) bekommen so alles, was die neue Version erwartet.
+local function normalizeRecord(rec, id, name)
+    rec.id = id or rec.id
+    rec.name = name or rec.name
+    for _, k in ipairs({ "km", "seconds", "weekKm", "topSpeedKmh", "bonusXp", "racesFinished", "recordsSet",
+                         "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm" }) do
+        rec[k] = tonumber(rec[k]) or 0
+    end
+    for _, k in ipairs({ "maps", "achievements", "dayMaps" }) do
+        if type(rec[k]) ~= "table" then rec[k] = {} end
+    end
+    rec.day = tonumber(rec.day)
+    rec.lastChallengeDay = tonumber(rec.lastChallengeDay)
+    -- Bis 1.8 gab es nur dayDone (bezogen auf rec.day).
+    if rec.lastChallengeDay == nil and rec.dayDone == true and rec.day then rec.lastChallengeDay = rec.day end
+    rec.dayDone = rec.day ~= nil and rec.lastChallengeDay == rec.day
+    rec.monthXp = tonumber(rec.monthXp)
+    rec.monthStartXp = tonumber(rec.monthStartXp)
+    rec.week = rec.week or weekKey(BN.now())
+    return rec
+end
+BN.normalizeRecord = normalizeRecord
 
 local function loadRecord(id, name)
     local data = readFile(playersDir() .. "/" .. id .. ".json")
     local rec = data and json.decode(data)
     if type(rec) ~= "table" then return emptyRecord(id, name) end
-    rec.id = id
-    rec.name = name or rec.name
-    rec.km = tonumber(rec.km) or 0
-    rec.seconds = tonumber(rec.seconds) or 0
-    rec.weekKm = tonumber(rec.weekKm) or 0
-    rec.topSpeedKmh = tonumber(rec.topSpeedKmh) or 0
-    rec.bonusXp = tonumber(rec.bonusXp) or 0
-    rec.racesFinished = tonumber(rec.racesFinished) or 0
-    rec.recordsSet = tonumber(rec.recordsSet) or 0
-    rec.maps = type(rec.maps) == "table" and rec.maps or {}
-    rec.achievements = type(rec.achievements) == "table" and rec.achievements or {}
-    rec.day = tonumber(rec.day)
-    rec.dayKm = tonumber(rec.dayKm) or 0
-    rec.daySeconds = tonumber(rec.daySeconds) or 0
-    rec.dayRaces = tonumber(rec.dayRaces) or 0
-    rec.dayTop = tonumber(rec.dayTop) or 0
-    rec.dayMaps = type(rec.dayMaps) == "table" and rec.dayMaps or {}
-    rec.dayDone = rec.dayDone == true
-    rec.monthStartXp = tonumber(rec.monthStartXp)
-    rec.lastMonthXp = tonumber(rec.lastMonthXp) or 0
-    rec.lastWeekKm = tonumber(rec.lastWeekKm) or 0
-    rec.week = rec.week or weekKey(BN.now())
-    return rec
+    return normalizeRecord(rec, id, name)
 end
 
--- Neue Woche: die Kilometer der alten Woche bleiben als lastWeek/lastWeekKm erhalten (fuer die Wochensieger).
+local function xpOf(rec)
+    return BN.xpFor(rec.km or 0, rec.seconds or 0) + (rec.bonusXp or 0)
+end
+
 -- Tag seit 1970 (UTC) – fuer die Tagesaufgabe.
 local function dayNumber(t)
     return math.floor((t or BN.now()) / 86400)
 end
 BN.dayNumber = dayNumber
 
--- Neue Saison (Monat): XP-Stand zu Beginn merken; die alte Saison bleibt als lastMonth/lastMonthXp erhalten.
--- Wird vor dem Addieren der neuen Werte aufgerufen, damit Start-XP = Stand vor diesem Speichern ist.
+-- Neue Saison (Monat): die XP der alten Saison bleiben als lastMonth/lastMonthXp erhalten, der Zaehler monthXp
+-- beginnt bei 0. monthXp waechst nur um echte Zuwaechse (siehe savePlayer). Bis 1.8 gab es stattdessen den
+-- Startwert monthStartXp – solche Datensaetze werden hier umgestellt.
 function BN.applyMonth(rec)
     local cur = monthKey()
-    if rec.month == cur and rec.monthStartXp then return end
-    local before = BN.xpFor(rec.km or 0, rec.seconds or 0) + (rec.bonusXp or 0)
-    if rec.month and rec.month ~= cur and rec.monthStartXp then
-        rec.lastMonth = rec.month
-        rec.lastMonthXp = math.max(0, before - rec.monthStartXp)
+    if rec.month == cur and rec.monthXp then return end
+    local gained = tonumber(rec.monthXp)
+    if not gained and tonumber(rec.monthStartXp) then gained = math.max(0, xpOf(rec) - rec.monthStartXp) end
+    if rec.month == cur then
+        rec.monthXp = gained or 0
+    else
+        if rec.month then
+            rec.lastMonth = rec.month
+            rec.lastMonthXp = gained or 0
+        end
+        rec.month = cur
+        rec.monthXp = 0
     end
-    rec.month = cur
-    rec.monthStartXp = before
+    rec.monthStartXp = nil
 end
 
 -- Neuer Tag: Tageszaehler zuruecksetzen.
@@ -707,11 +735,12 @@ local function applyDay(rec)
         rec.day = today
         rec.dayKm, rec.daySeconds, rec.dayRaces, rec.dayTop = 0, 0, 0, 0
         rec.dayMaps = {}
-        rec.dayDone = false
     end
+    rec.dayDone = rec.lastChallengeDay == rec.day
 end
 BN.applyDay = applyDay
 
+-- Neue Woche: die Kilometer der alten Woche bleiben als lastWeek/lastWeekKm erhalten (fuer die Wochensieger).
 local function applyWeek(rec)
     local wk = weekKey(BN.now())
     if rec.week ~= wk then
@@ -722,20 +751,51 @@ local function applyWeek(rec)
     end
 end
 
+-- Hat der Spieler in dieser Sitzung auf dieser Map wirklich etwas gefahren? (Nur dann zaehlt die Map –
+-- kurz vorbeischauen reicht nicht fuer Erfolge und die Tagesaufgabe "verschiedene Server".)
+local function currentMap(s)
+    local map = BN.server.map
+    if map and map ~= "?" and (s.sessionKm or 0) >= C.mapMinKm then return map end
+    return nil
+end
+
+-- Ergaenzt Felder, die eine aeltere Plugin-Version in laufenden Sitzungen noch nicht angelegt hat.
+function BN.normalizeSession(s)
+    if type(s.vehicles) ~= "table" then s.vehicles = {} end
+    for _, k in ipairs({ "pendingKm", "pendingSeconds", "pendingTop", "pendingBonus", "pendingRaces", "pendingRecords",
+                         "sessionKm" }) do
+        s[k] = tonumber(s[k]) or 0
+    end
+    if type(s.unlocked) ~= "table" then s.unlocked = {} end
+    for id, u in pairs(s.unlocked) do
+        -- Bis 1.8 stand hier nur der Zeitpunkt; die XP steckten schon in pendingBonus.
+        if type(u) ~= "table" then s.unlocked[id] = { at = tonumber(u) or BN.now(), xp = 0 } end
+    end
+    if s.challengeDoneDay and not s.challengeReward then
+        s.challengeReward = { day = s.challengeDoneDay, xp = 0 }     -- XP stecken ebenfalls schon in pendingBonus
+    end
+    s.challengeDoneDay = nil
+    if s.achChecked == nil then s.achChecked = true end
+    if type(s.record) ~= "table" then s.record = s.id and loadRecord(s.id, s.name) or emptyRecord(nil, s.name) end
+    normalizeRecord(s.record, s.id, s.name)
+    applyWeek(s.record)
+    BN.applyMonth(s.record)
+    return s
+end
+
 -- Neue Sitzung (Join oder Plugin-Neustart mit Spielern online).
 function BN.addPlayer(pid)
     local name = (MP and MP.GetPlayerName and MP.GetPlayerName(pid)) or ("Spieler " .. tostring(pid))
     local ids = identifiers(pid)
     local id = safeId(ids.beammp)
-    local session = { pid = pid, name = name, id = id, ip = ids.ip, guest = id == nil, vehicles = {},
-                      pendingKm = 0, pendingSeconds = 0, pendingTop = 0, pendingBonus = 0,
-                      pendingRaces = 0, pendingRecords = 0, unlocked = {}, challengeDoneDay = nil }
+    -- achChecked = false: was bei der ersten Pruefung schon erreicht ist, wird nachtraeglich vergeben.
+    local session = { pid = pid, name = name, id = id, ip = ids.ip, guest = id == nil, achChecked = false }
     session.record = id and loadRecord(id, name) or emptyRecord(nil, name)
+    BN.normalizeSession(session)
     if session.record.lang == "en" or session.record.lang == "de" then session.lang = session.record.lang end
     local mute = BN.findMute(id, ids.ip)
     if mute then session.mutedUntil = mute["until"] end
-    applyWeek(session.record)
-    local xp = BN.xpFor(session.record.km, session.record.seconds) + session.record.bonusXp
+    local xp = xpOf(session.record)
     session.level = BN.levelFor(xp)
     session.league = BN.leagueFor(xp).name
     BN.players[pid] = session
@@ -746,13 +806,28 @@ local function session(pid)
     return BN.players[pid] or BN.addPlayer(pid)
 end
 
+-- Erfolge und Tagesaufgabe, die die Datei noch nicht kennt: XP gesamt und davon nachtraeglich vergebene XP.
+local function pendingRewards(s)
+    local rec, xp, retro = s.record, 0, 0
+    for id, u in pairs(s.unlocked) do
+        if not rec.achievements[id] then
+            xp = xp + (u.xp or 0)
+            if u.retro then retro = retro + (u.xp or 0) end
+        end
+    end
+    local cr = s.challengeReward
+    if cr and (rec.lastChallengeDay or -1) < cr.day then xp = xp + (cr.xp or 0) end
+    return xp, retro
+end
+
 -- Speichert die Zuwaechse seit dem letzten Speichern. Die Datei wird dabei frisch gelesen und nur ergaenzt,
 -- damit ein schneller Serverwechsel (alter Server speichert noch, neuer hat schon geladen) nichts verliert.
+-- Belohnungen (Erfolge, Tagesaufgabe) zaehlen nur, wenn die Datei sie noch nicht kennt – sonst gaebe es sie bei
+-- einem schnellen Wechsel auf beiden Servern.
 function BN.savePlayer(s)
     if not s or s.guest then return true end
     if s.pendingKm == 0 and s.pendingSeconds == 0 and s.pendingTop == 0 and s.pendingBonus == 0 and not s.dirty
-        and s.pendingRaces == 0 and s.pendingRecords == 0 and next(s.unlocked) == nil
-        and (s.challengeDoneDay == nil or s.challengeDoneDay == s.record.day and s.record.dayDone) then
+        and s.pendingRaces == 0 and s.pendingRecords == 0 and next(s.unlocked) == nil and not s.challengeReward then
         return true
     end
     ensureDir(C.sharedDir)
@@ -761,29 +836,45 @@ function BN.savePlayer(s)
     applyWeek(rec)
     applyDay(rec)
     BN.applyMonth(rec)
+    local xpBefore = xpOf(rec)
+    local map = currentMap(s)
     rec.dayKm = rec.dayKm + s.pendingKm
     rec.daySeconds = rec.daySeconds + s.pendingSeconds
     rec.dayRaces = rec.dayRaces + s.pendingRaces
     rec.dayTop = math.max(rec.dayTop, s.pendingTop)
-    if BN.server.map and BN.server.map ~= "?" then rec.dayMaps[BN.server.map] = true end
-    if s.challengeDoneDay == rec.day then rec.dayDone = true end
+    if map then
+        rec.dayMaps[map] = true
+        rec.maps[map] = true
+    end
     rec.km = rec.km + s.pendingKm
     rec.weekKm = rec.weekKm + s.pendingKm
     rec.seconds = rec.seconds + s.pendingSeconds
-    rec.topSpeedKmh = math.max(rec.topSpeedKmh or 0, s.pendingTop)
+    rec.topSpeedKmh = math.max(rec.topSpeedKmh, s.pendingTop)
     rec.bonusXp = rec.bonusXp + s.pendingBonus
     rec.racesFinished = rec.racesFinished + s.pendingRaces
     rec.recordsSet = rec.recordsSet + s.pendingRecords
-    if BN.server.map and BN.server.map ~= "?" then rec.maps[BN.server.map] = true end
-    for id, at in pairs(s.unlocked) do
-        if not rec.achievements[id] then rec.achievements[id] = at end
+    local retroXp = 0
+    for id, u in pairs(s.unlocked) do
+        if not rec.achievements[id] then
+            rec.achievements[id] = u.at or BN.now()
+            rec.bonusXp = rec.bonusXp + (u.xp or 0)
+            if u.retro then retroXp = retroXp + (u.xp or 0) end
+        end
     end
+    local cr = s.challengeReward
+    if cr and (rec.lastChallengeDay or -1) < cr.day then
+        rec.lastChallengeDay = cr.day
+        rec.bonusXp = rec.bonusXp + (cr.xp or 0)
+    end
+    rec.dayDone = rec.lastChallengeDay == rec.day
     if s.lang then rec.lang = s.lang end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
-    rec.xp = BN.xpFor(rec.km, rec.seconds) + rec.bonusXp
+    rec.xp = xpOf(rec)
     rec.level = BN.levelFor(rec.xp)
     rec.league = BN.leagueFor(rec.xp).name
+    -- Saison: nur echte Zuwaechse, keine nachtraeglich vergebenen Erfolge fuer fruehere Fahrten.
+    rec.monthXp = rec.monthXp + math.max(0, rec.xp - xpBefore - retroXp)
     local ok, err = writeFileAtomic(playersDir() .. "/" .. s.id .. ".json", json.encode(rec))
     if not ok then
         print("[BeamNetCore] Speichern fehlgeschlagen fuer " .. s.name .. ": " .. tostring(err))
@@ -791,7 +882,7 @@ function BN.savePlayer(s)
     end
     s.record = rec
     s.pendingKm, s.pendingSeconds, s.pendingTop, s.pendingBonus, s.dirty = 0, 0, 0, 0, false
-    s.pendingRaces, s.pendingRecords, s.unlocked = 0, 0, {}
+    s.pendingRaces, s.pendingRecords, s.unlocked, s.challengeReward = 0, 0, {}, nil
     return true
 end
 
@@ -800,24 +891,27 @@ function BN.totals(s)
     local rec = s.record
     local km = rec.km + s.pendingKm
     local seconds = rec.seconds + s.pendingSeconds
-    local bonus = (rec.bonusXp or 0) + s.pendingBonus
+    local rewards, retro = pendingRewards(s)
+    local bonus = rec.bonusXp + s.pendingBonus + rewards
     local xp = BN.xpFor(km, seconds) + bonus
     local weekKm = (rec.week == weekKey(BN.now()) and rec.weekKm or 0) + s.pendingKm
     local maps = 0
-    for _ in pairs(rec.maps or {}) do maps = maps + 1 end
-    if BN.server.map and BN.server.map ~= "?" and not (rec.maps or {})[BN.server.map] then maps = maps + 1 end
+    for _ in pairs(rec.maps) do maps = maps + 1 end
+    local map = currentMap(s)
+    if map and not rec.maps[map] then maps = maps + 1 end
     return { km = km, seconds = seconds, weekKm = weekKm, xp = xp, bonusXp = bonus, level = BN.levelFor(xp),
-             league = BN.leagueFor(xp), topSpeedKmh = math.max(rec.topSpeedKmh or 0, s.pendingTop),
-             races = (rec.racesFinished or 0) + (s.pendingRaces or 0), records = (rec.recordsSet or 0) + (s.pendingRecords or 0),
-             maps = maps, day = BN.dayTotals(s), monthXp = BN.monthXpOf(s, xp) }
+             league = BN.leagueFor(xp), topSpeedKmh = math.max(rec.topSpeedKmh, s.pendingTop),
+             races = rec.racesFinished + s.pendingRaces, records = rec.recordsSet + s.pendingRecords,
+             maps = maps, day = BN.dayTotals(s), monthXp = BN.monthXpOf(s, xp, retro) }
 end
 
--- In dieser Saison gesammelte XP einer Sitzung (gespeichert + noch nicht gespeichert).
-function BN.monthXpOf(s, xpNow)
+-- In dieser Saison gesammelte XP einer Sitzung (gespeichert + noch nicht gespeichert, ohne nachtraegliche Erfolge).
+function BN.monthXpOf(s, xpNow, retro)
     local rec = s.record
-    local saved = BN.xpFor(rec.km or 0, rec.seconds or 0) + (rec.bonusXp or 0)
-    local start = (rec.month == monthKey() and rec.monthStartXp) or saved
-    return math.max(0, (xpNow or saved) - start)
+    local saved = xpOf(rec)
+    if retro == nil then retro = select(2, pendingRewards(s)) end
+    local base = (rec.month == monthKey() and rec.monthXp) or 0
+    return math.max(0, base + (xpNow or saved) - saved - retro)
 end
 
 -- Heutige Werte (gespeichert + noch nicht gespeichert).
@@ -826,16 +920,18 @@ function BN.dayTotals(s)
     local same = rec.day == today
     local dayMaps = 0
     local seen = {}
-    if same then for m in pairs(rec.dayMaps or {}) do seen[m] = true end end
-    if BN.server.map and BN.server.map ~= "?" then seen[BN.server.map] = true end
+    if same then for m in pairs(rec.dayMaps) do seen[m] = true end end
+    local map = currentMap(s)
+    if map then seen[map] = true end
     for _ in pairs(seen) do dayMaps = dayMaps + 1 end
+    local cr = s.challengeReward
     return {
         km = (same and rec.dayKm or 0) + s.pendingKm,
         seconds = (same and rec.daySeconds or 0) + s.pendingSeconds,
-        races = (same and rec.dayRaces or 0) + (s.pendingRaces or 0),
+        races = (same and rec.dayRaces or 0) + s.pendingRaces,
         top = math.max(same and rec.dayTop or 0, s.pendingTop),
         servers = dayMaps,
-        done = (same and rec.dayDone) or s.challengeDoneDay == today,
+        done = rec.lastChallengeDay == today or (cr ~= nil and cr.day == today),
     }
 end
 
@@ -868,8 +964,9 @@ function BN.checkChallenge(s)
     if not ch then return end
     local d = BN.dayTotals(s)
     if d.done or ch.value(d) < ch.goal then return end
-    s.challengeDoneDay = dayNumber()
-    s.pendingBonus = s.pendingBonus + C.challengeXp
+    -- Belohnung von gestern noch nicht gespeichert (kurz nach Mitternacht)? Erst sichern, dann die neue merken.
+    if s.challengeReward then BN.savePlayer(s) end
+    s.challengeReward = { day = dayNumber(), xp = C.challengeXp }
     local lang = BN.langOf(s.pid)
     chat(s.pid, tr(lang, "Tagesaufgabe geschafft: %s (+%d XP)!", tr(lang, ch.text, ch.goal), C.challengeXp))
 end
@@ -894,23 +991,27 @@ BN.ACHIEVEMENTS = {
 }
 
 function BN.hasAchievement(s, id)
-    return (s.record.achievements or {})[id] ~= nil or s.unlocked[id] ~= nil
+    return s.record.achievements[id] ~= nil or s.unlocked[id] ~= nil
 end
 
 -- Prueft alle Erfolge; neue werden verkuendet (mehrere auf einmal zusammengefasst) und geben Bonus-XP.
 function BN.checkAchievements(s)
     if C.achievements == false then return end
     local t = BN.totals(s)
+    -- Erste Pruefung nach dem Betreten: was jetzt schon erreicht ist, stammt aus frueheren Fahrten. Diese Erfolge
+    -- gibt es nachtraeglich (mit XP), sie zaehlen aber nicht fuer die laufende Saison.
+    local retro = not s.achChecked
+    s.achChecked = true
     local new, xp = {}, 0
     for _, a in ipairs(BN.ACHIEVEMENTS) do
         if not BN.hasAchievement(s, a.id) and a.value(t) >= a.goal then
-            s.unlocked[a.id] = BN.now()
+            -- Gutgeschrieben wird beim Speichern (nur wenn die Datei den Erfolg noch nicht kennt).
+            s.unlocked[a.id] = { at = BN.now(), xp = a.xp, retro = retro }
             new[#new + 1] = a
             xp = xp + a.xp
         end
     end
     if #new == 0 then return end
-    s.pendingBonus = s.pendingBonus + xp
     if #new <= 2 then
         for _, a in ipairs(new) do
             sayEach(function(lang) return tr(lang, "Erfolg für %s: %s (+%d XP)", s.name, tr(lang, a.name), a.xp) end)
@@ -956,6 +1057,7 @@ function BN.track(pid, vid, pos, tim, vel)
         if d >= C.minStepM and dt > 0 and d / dt <= C.maxSpeedMps then
             counted = d
             s.pendingKm = s.pendingKm + d / 1000
+            s.sessionKm = s.sessionKm + d / 1000
         elseif dt > 0 and d / dt > C.maxSpeedMps then
             jump = true
         end
@@ -1063,9 +1165,13 @@ function BN.seasonRanking(month)
         local rec = json.decode(readFile(file) or "")
         if type(rec) == "table" and rec.id then
             local xp
-            if rec.month == month and tonumber(rec.monthStartXp) then
-                local total = tonumber(rec.xp) or (BN.xpFor(tonumber(rec.km) or 0, tonumber(rec.seconds) or 0) + (tonumber(rec.bonusXp) or 0))
-                xp = total - rec.monthStartXp
+            if rec.month == month then
+                xp = tonumber(rec.monthXp)
+                if not xp and tonumber(rec.monthStartXp) then
+                    -- Datensatz von 1.8 (Startwert statt Zaehler)
+                    local total = tonumber(rec.xp) or (BN.xpFor(tonumber(rec.km) or 0, tonumber(rec.seconds) or 0) + (tonumber(rec.bonusXp) or 0))
+                    xp = total - tonumber(rec.monthStartXp)
+                end
             elseif rec.lastMonth == month then
                 xp = tonumber(rec.lastMonthXp)
             end
@@ -1100,12 +1206,23 @@ function BN.seasonName(month, lang)
     return ((lang == "en") and MONTHS_EN or MONTHS_DE)[m] .. " " .. y
 end
 
--- Saisonende: Sieger verkuenden und (einmal) archivieren.
-function BN.endSeason(month)
+-- Vorsaison (Vormonat) zu einem Zeitpunkt: Tag des Monats zurueck landet sicher im Vormonat.
+local function previousMonthKey(t)
+    t = t or BN.now()
+    return monthKey(t - tonumber(os.date("!%d", t)) * 86400)
+end
+BN.previousMonthKey = previousMonthKey
+
+local function seasonFile(month)
+    return C.sharedDir .. "/seasons/" .. month .. ".json"
+end
+
+-- Saisonende: Sieger verkuenden (ausser quiet) und einmal archivieren. true, wenn es eine Wertung gab.
+function BN.endSeason(month, quiet)
     BN.seasonCache[month] = nil
     local list = BN.seasonRanking(month)
-    if #list == 0 then return end
-    local path = C.sharedDir .. "/seasons/" .. month .. ".json"
+    if #list == 0 then return false end
+    local path = seasonFile(month)
     if not readFile(path) then
         ensureDir(C.sharedDir)
         ensureDir(C.sharedDir .. "/seasons")
@@ -1113,9 +1230,18 @@ function BN.endSeason(month)
         for i = 1, math.min(10, #list) do top[i] = list[i] end
         writeFileAtomic(path, json.encode({ month = month, top = top, at = BN.now() }))
     end
+    if quiet then return true end
     local parts = {}
     for i = 1, math.min(3, #list) do parts[#parts + 1] = string.format("%d. %s (%d XP)", i, list[i].name, list[i].xp) end
     sayEach(function(lang) return tr(lang, "Saison %s beendet! %s", BN.seasonName(month, lang), table.concat(parts, " · ")) end)
+    return true
+end
+
+-- Nachholen, falls beim Monatswechsel kein Server lief: fehlt das Archiv der Vorsaison, wird es jetzt still geschrieben.
+function BN.ensureSeasonArchive()
+    local prev = previousMonthKey()
+    if readFile(seasonFile(prev)) then return false end
+    return BN.endSeason(prev, true)
 end
 
 function BN.announceWeek(week)
@@ -2082,8 +2208,8 @@ function commands.saison(pid)
         for i, e in ipairs(list) do if e.id == s.id then rank = i end end
         say(pid, "Du: Platz %s mit %d XP in dieser Saison", rank and tostring(rank) or "–", math.floor(mine))
     end
-    local prev = monthKey(now - (tonumber(os.date("!%d", now)) + 1) * 86400)
-    local archive = json.decode(readFile(C.sharedDir .. "/seasons/" .. prev .. ".json") or "")
+    local prev = previousMonthKey(now)
+    local archive = json.decode(readFile(seasonFile(prev)) or "")
     if type(archive) == "table" and type(archive.top) == "table" and archive.top[1] then
         local parts = {}
         for i = 1, math.min(3, #archive.top) do
@@ -2138,39 +2264,64 @@ end
 -- ---------------------------------------------------------------------------------------------------------------------
 -- Takt
 
+-- Fehler hoechstens einmal pro Minute je Stelle ins Log (ein Dauerfehler wuerde es sonst im Sekundentakt fluten).
+BN.errorLog = BN.errorLog or {}
+function BN.logError(where, err)
+    local now = BN.now()
+    local last = BN.errorLog[where]
+    if last and now - last < 60 then return end
+    BN.errorLog[where] = now
+    print("[BeamNetCore] Fehler (" .. where .. "): " .. tostring(err))
+end
+
+-- Fuehrt fn abgesichert aus: ein Fehler an einer Stelle legt nie den ganzen Takt lahm.
+local function guarded(where, fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok then BN.logError(where, err) end
+    return ok, err
+end
+BN.guarded = guarded
+
+local function tickPlayer(pid)
+    local s = session(pid)
+    s.pendingSeconds = s.pendingSeconds + C.tickMs / 1000
+    local vehicles = MP.GetPlayerVehicles and MP.GetPlayerVehicles(pid) or nil
+    if type(vehicles) == "table" then
+        for vid in pairs(vehicles) do
+            local ok, raw = pcall(MP.GetPositionRaw, pid, vid)
+            if ok and type(raw) == "table" and raw.pos then BN.track(pid, vid, raw.pos, tonumber(raw.tim), raw.vel) end
+        end
+    end
+    checkProgress(s)
+end
+
 function BN.tick()
     if not MP then return end
     local online = MP.GetPlayers and MP.GetPlayers() or {}
-    for pid in pairs(online) do
-        local s = session(pid)
-        s.pendingSeconds = s.pendingSeconds + C.tickMs / 1000
-        local vehicles = MP.GetPlayerVehicles and MP.GetPlayerVehicles(pid) or nil
-        if type(vehicles) == "table" then
-            for vid in pairs(vehicles) do
-                local ok, raw = pcall(MP.GetPositionRaw, pid, vid)
-                if ok and type(raw) == "table" and raw.pos then BN.track(pid, vid, raw.pos, tonumber(raw.tim), raw.vel) end
-            end
-        end
-        checkProgress(s)
-    end
+    -- Jeder Spieler einzeln abgesichert: ein fehlerhafter Datensatz trifft nur diesen Spieler.
+    for pid in pairs(online) do guarded("Takt Spieler " .. tostring(pid), tickPlayer, pid) end
     -- Sitzungen von Spielern entfernen, die ohne Abmeldung verschwunden sind.
     for pid, s in pairs(BN.players) do
         if online[pid] == nil then
-            BN.savePlayer(s)
+            guarded("Speichern", BN.savePlayer, s)
             BN.players[pid] = nil
         end
     end
     local now = BN.now()
     local wk = weekKey(now)
-    if BN.currentWeek and BN.currentWeek ~= wk then BN.announceWeek(BN.currentWeek) end
+    if BN.currentWeek and BN.currentWeek ~= wk then guarded("Wochensieger", BN.announceWeek, BN.currentWeek) end
     local mk = monthKey(now)
-    if BN.currentMonth and BN.currentMonth ~= mk then BN.endSeason(BN.currentMonth) end
+    if BN.currentMonth and BN.currentMonth ~= mk then guarded("Saisonende", BN.endSeason, BN.currentMonth) end
     BN.currentMonth = mk
     BN.currentWeek = wk
-    BN.sync(false)
-    if now - BN.lastStatus >= C.statusEverySec then BN.writeStatus() end
+    if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
+        BN.lastSeasonCheck = now
+        guarded("Saisonarchiv", BN.ensureSeasonArchive)
+    end
+    guarded("Abgleich", BN.sync, false)
+    if now - BN.lastStatus >= C.statusEverySec then guarded("Status", BN.writeStatus) end
     if now - BN.lastSave >= C.saveEverySec then
-        for _, s in pairs(BN.players) do BN.savePlayer(s) end
+        for _, s in pairs(BN.players) do guarded("Speichern", BN.savePlayer, s) end
         BN.lastSave = now
     end
 end
@@ -2184,6 +2335,10 @@ function BN.init()
     ensureDir(C.sharedDir)
     ensureDir(playersDir())
     ensureDir(serversDir())
+    -- Update im laufenden Betrieb: Sitzungen der alten Version um neue Felder ergaenzen.
+    for pid, s in pairs(BN.players) do
+        if not guarded("Sitzung " .. tostring(pid) .. " umstellen", BN.normalizeSession, s) then BN.players[pid] = nil end
+    end
     if MP and MP.GetPlayers then
         for pid in pairs(MP.GetPlayers() or {}) do
             if not BN.players[pid] then BN.addPlayer(pid) end
@@ -2220,7 +2375,7 @@ end
 
 function BN_onPlayerDisconnect(pid)
     local s = BN.players[pid]
-    if s then BN.savePlayer(s) end
+    if s then guarded("Speichern", BN.savePlayer, s) end
     BN.players[pid] = nil
     BN.writeStatus()
 end
@@ -2264,8 +2419,8 @@ function BN_onVehicleDeleted(pid, vid)
 end
 
 function BN_onShutdown()
-    for _, s in pairs(BN.players) do BN.savePlayer(s) end
-    BN.writeStatus()
+    for _, s in pairs(BN.players) do guarded("Speichern", BN.savePlayer, s) end
+    guarded("Status", BN.writeStatus)
 end
 
 function BN_Tick()

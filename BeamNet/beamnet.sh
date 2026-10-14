@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.9"
+VERSION="1.10"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -612,10 +612,11 @@ ensure_shared() {
     chmod 775 "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races"
 }
 
-# Holt das Plugin aus dem Ordner neben diesem Skript oder von GitHub.
+# Holt das Plugin aus dem Ordner neben diesem Skript oder von GitHub
+# (BEAMNET_FORCE_DOWNLOAD=1: immer von GitHub, z. B. bei "beamnet update").
 core_source() {
     local local_file="$SCRIPT_DIR/server/BeamNetCore/main.lua" tmp
-    if [[ -f $local_file ]]; then
+    if [[ -f $local_file && ${BEAMNET_FORCE_DOWNLOAD:-0} != 1 ]]; then
         echo "$local_file"
         return
     fi
@@ -1271,9 +1272,19 @@ top = [f"<tr><td class=n>{i}</td><td>{E(str(r.get('name', '?')))}</td><td class=
        for i, r in enumerate(by_xp, 1)]
 weekly = [f"<tr><td class=n>{i}</td><td>{E(str(r.get('name', '?')))}</td><td class=n>{km(num(r.get('weekKm')))}</td></tr>"
           for i, r in enumerate(by_week, 1)]
-season = sorted([(int(xp_of(r) - num(r.get("monthStartXp"))), str(r.get("name", "?"))) for r in players
-                 if r.get("month") == month and isinstance(r.get("monthStartXp"), (int, float))
-                 and xp_of(r) - num(r.get("monthStartXp")) > 0], key=lambda x: (-x[0], x[1]))[:10]
+def month_xp(r):
+    """Saison-XP: Zaehler monthXp (ab 1.9) oder Stand minus Startwert (1.8)."""
+    if r.get("month") != month:
+        return 0
+    if isinstance(r.get("monthXp"), (int, float)):
+        return int(r["monthXp"])
+    if isinstance(r.get("monthStartXp"), (int, float)):
+        return int(xp_of(r) - r["monthStartXp"])
+    return 0
+
+
+season = sorted([(month_xp(r), str(r.get("name", "?"))) for r in players if month_xp(r) > 0],
+                key=lambda x: (-x[0], x[1]))[:10]
 season_rows = [f"<tr><td class=n>{i}</td><td>{E(n)}</td><td class=n>{xp}</td></tr>" for i, (xp, n) in enumerate(season, 1)]
 records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name', '?')))}</td><td class=n>{race_time(b.get('time'))}</td></tr>"
            for m, n, b in races]
@@ -1412,7 +1423,11 @@ cmd_self_update() {
     bash -n "$tmp" || { rm -f "$tmp"; die "Heruntergeladene Datei ist fehlerhaft"; }
     grep -q '^VERSION=' "$tmp" || { rm -f "$tmp"; die "Heruntergeladene Datei ist kein BeamNet-Werkzeug"; }
     # Neue Datei statt Ueberschreiben: das laufende Skript liest so ungestoert weiter.
-    install -m 755 "$tmp" "$target.new" && mv -f "$target.new" "$target" && rm -f "$tmp"
+    if ! { install -m 755 "$tmp" "$target.new" && mv -f "$target.new" "$target"; }; then
+        rm -f "$tmp" "$target.new"
+        die "Werkzeug konnte nicht ersetzt werden ($target) – alte Version bleibt"
+    fi
+    rm -f "$tmp"
     ok "Werkzeug aktualisiert: $target (jetzt Version $(grep -m1 '^VERSION=' "$target" | cut -d'"' -f2))"
 }
 
@@ -1423,6 +1438,8 @@ cmd_update() {
     target=$(readlink -f "${BASH_SOURCE[0]}")
     cmd_self_update
     echo "Aktualisiere jetzt das Plugin auf allen Servern …"
+    # Immer die neueste Plugin-Version von GitHub (nicht eine evtl. veraltete Kopie neben dem Skript).
+    export BEAMNET_FORCE_DOWNLOAD=1
     if [[ $YES -eq 1 ]]; then exec "$target" install-core -y; else exec "$target" install-core; fi
 }
 

@@ -24,7 +24,9 @@ Discord → Statusseite → Neustart. Mit Enter wird ein Schritt übersprungen.
 Lieber einzeln? `beamnet status` und `beamnet doctor` ändern nichts; `beamnet backup` und `beamnet fix` reparieren.
 
 **Später auf den neuesten Stand:** `beamnet update` – lädt das neueste Werkzeug und aktualisiert das Plugin auf allen
-Servern (ohne Neustart, BeamMP lädt es selbst neu). `beamnet doctor` zeigt die Plugin-Version je Server.
+Servern (ohne Neustart, BeamMP lädt es selbst neu; laufende Sitzungen werden dabei automatisch umgestellt).
+`beamnet doctor` zeigt die Plugin-Version je Server. Ist das Werkzeug älter als 1.8 (`beamnet version`), danach
+einmal `beamnet install-core` ausführen – alte Versionen aktualisieren nur sich selbst.
 
 **Zum Teilen:** `beamnet report` erstellt einen Bericht mit Status, Diagnose, Plugins und auffälligen Protokollzeilen –
 IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den Chat kopieren.
@@ -154,25 +156,29 @@ Befehle anderer Plugins werden nicht abgefangen.
 
 ### Saisons
 
-Jeder Kalendermonat ist eine Saison. Gezählt werden die in diesem Monat gesammelten XP (Kilometer, Fahrzeit, Rennen,
-Erfolge, Tagesaufgaben) – so haben auch Neue jeden Monat eine faire Chance. `/saison` (`/season`) zeigt die Tabelle,
-den eigenen Platz und die Sieger der letzten Saison; zum Monatswechsel werden die Sieger verkündet und unter
-`seasons/<Monat>.json` archiviert. Die Statusseite zeigt die laufende Saison.
+Jeder Kalendermonat (UTC) ist eine Saison. Gezählt werden die in diesem Monat gesammelten XP (Kilometer, Fahrzeit,
+Rennen, Erfolge, Tagesaufgaben) – so haben auch Neue jeden Monat eine faire Chance. Erfolge, die jemand beim ersten
+Betreten für frühere Fahrten nachträglich bekommt, geben XP, zählen aber nicht für die Saison. `/saison` (`/season`)
+zeigt die Tabelle, den eigenen Platz und die Sieger der letzten Saison; zum Monatswechsel werden die Sieger verkündet
+und unter `seasons/<Monat>.json` archiviert. Lief beim Monatswechsel kein Server, holt der erste Server, der wieder
+läuft, das Archiv still nach. Die Statusseite zeigt die laufende Saison.
 
 ### Tagesaufgaben
 
 Jeden Tag (ab 0 Uhr UTC) gibt es eine neue Aufgabe – auf allen Servern dieselbe, z. B. „Fahre heute 15 km“,
 „Erreiche heute 180 km/h“, „Sei heute 45 Minuten unterwegs“ oder „Fahre heute auf 3 verschiedenen Servern“. Wer sie
-schafft, bekommt einmal am Tag 40 Bonus-XP. Die Begrüßung nennt die Aufgabe, `/aufgabe` (`/daily`) zeigt den
-Fortschritt. Anpassen in `config.json`: `"challengeXp": 40`, `"challengeTypes": ["km", "speed", "time", "servers"]`
+schafft, bekommt einmal am Tag 40 Bonus-XP – auch bei schnellem Serverwechsel nur einmal. Ein Server zählt für
+„verschiedene Server“, sobald man dort mindestens 100 m gefahren ist. Die Begrüßung nennt die Aufgabe, `/aufgabe`
+(`/daily`) zeigt den Fortschritt. Anpassen in `config.json`: `"challengeXp": 40`, `"challengeTypes": ["km", "speed", "time", "servers"]`
 (`"races"` dazunehmen, sobald es Strecken gibt).
 
 ### Erfolge
 
 13 Erfolge, die jeder nur einmal bekommt – mit Bonus-XP und Meldung im Chat (bei vielen auf einmal zusammengefasst):
 10 / 100 / 1000 km, 1 und 10 Stunden unterwegs, 200 und 300 km/h, erstes Rennen, 10 Rennen, Streckenrekord,
-3 und 8 verschiedene Maps (über alle Server), Level 10. `/erfolge [Name]` (`/achievements`) zeigt, was geschafft ist und
-was als Nächstes kommt. Abschalten: `"achievements": false` in `config.json`.
+3 und 8 verschiedene Maps (über alle Server; eine Map zählt ab 100 m Fahrt dort, `"mapMinKm": 0.1`), Level 10.
+`/erfolge [Name]` (`/achievements`) zeigt, was geschafft ist und was als Nächstes kommt. Abschalten:
+`"achievements": false` in `config.json`.
 
 ### Deutsch und Englisch
 

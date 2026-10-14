@@ -376,6 +376,8 @@ month=$(date -u +%Y-%m)
 echo "{\"id\":\"1\",\"name\":\"Sebi\",\"km\":120.4,\"seconds\":7200,\"xp\":1500,\"week\":\"$week\",\"weekKm\":33.3,\"month\":\"$month\",\"monthStartXp\":1000}" >"$T/root/shared/beamnet/players/1.json"
 echo "{\"id\":\"2\",\"name\":\"<b>Hacker</b>\",\"km\":2,\"seconds\":60,\"bonusXp\":5}" >"$T/root/shared/beamnet/players/2.json"
 echo "kaputt" >"$T/root/shared/beamnet/players/3.json"
+# Ab Plugin 1.9: Saison-XP als Zaehler (monthXp) statt Startwert.
+echo "{\"id\":\"4\",\"name\":\"Zaehler\",\"km\":40,\"seconds\":0,\"xp\":400,\"month\":\"$month\",\"monthXp\":321}" >"$T/root/shared/beamnet/players/4.json"
 mkdir -p "$T/root/shared/beamnet/races"
 echo '{"tracks":{"sprint":{"records":[{"id":"1","name":"Sebi","time":49.0667}]},"leer":{"records":[]}}}' >"$T/root/shared/beamnet/races/italy.json"
 out=$("$TOOL" web run 2>&1)
@@ -391,6 +393,7 @@ lacks "$page" "<b>Hacker</b>" "Statusseite: kein HTML aus Spielernamen"
 contains "$page" "<td class=n>1</td><td>Sebi</td><td class=n>33.3 km</td>" "Statusseite: Woche"
 contains "$page" "<td>Italy</td><td>sprint</td><td>Sebi</td><td class=n>0:49.1</td>" "Statusseite: Rekorde"
 contains "$page" "<h2>Saison [A-Za-zä]+ [0-9]{4}</h2>.*<td class=n>1</td><td>Sebi</td><td class=n>500</td>" "Statusseite: Saison"
+contains "$page" "<td class=n>2</td><td>Zaehler</td><td class=n>321</td>" "Statusseite: Saison-Zaehler (1.9)"
 contains "$page" "<th class=n>XP</th>" "Statusseite: Zahlenspalten rechtsbuendig"
 contains "$page" "</html>" "Statusseite: vollstaendig"
 echo "WEB_TITLE=Sebis Netz" >>"$T/beamnet.conf"
@@ -586,7 +589,18 @@ cp "$TOOL" "$T/inst/beamnet"
 out=$(BEAMNET_RAW="file://$T/leer" "$T/inst/beamnet" self-update 2>&1)
 contains "$out" "kein BeamNet-Werkzeug" "self-update: leere Datei abgelehnt"
 cmp -s "$T/inst/beamnet" "$TOOL" && pass || fail "self-update: Werkzeug unveraendert nach Fehler"
+# Ersetzen scheitert (z. B. Platte voll): Fehler melden, alte Version und keine Reste.
+printf '#!/bin/bash\nexit 1\n' >"$T/bin/install"; chmod +x "$T/bin/install"
 cp "$TOOL" "$T/inst/beamnet"
+out=$(BEAMNET_RAW="file://$HERE/.." "$T/inst/beamnet" self-update 2>&1); rc=$?
+contains "$out" "konnte nicht ersetzt werden" "self-update: Fehler beim Ersetzen gemeldet"
+lacks "$out" "Werkzeug aktualisiert" "self-update: kein falscher Erfolg"
+[[ $rc -ne 0 && ! -e $T/inst/beamnet.new ]] && pass || fail "self-update: Fehlercode und keine Reste"
+cmp -s "$T/inst/beamnet" "$TOOL" && pass || fail "self-update: alte Version bleibt"
+rm -f "$T/bin/install"
+# update laedt das Plugin immer neu – auch wenn neben dem Werkzeug eine alte Kopie liegt.
+mkdir -p "$T/inst/server/BeamNetCore"
+echo "-- BeamNetCore alt" >"$T/inst/server/BeamNetCore/main.lua"
 rm -f "$T"/root/*/Resources/Server/BeamNetCore/main.lua
 out=$(BEAMNET_RAW="file://$HERE/.." "$T/inst/beamnet" update -y 2>&1)
 contains "$out" "Werkzeug aktualisiert: $T/inst/beamnet" "update: Werkzeug"

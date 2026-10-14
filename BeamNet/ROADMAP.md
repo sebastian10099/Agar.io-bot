@@ -1,5 +1,16 @@
 # BeamNet – Roadmap
 
+Erledigt (Plugin 1.9, Werkzeug 1.10) – 8 Funde einer zweiten Code-Prüfung behoben, jeweils mit Test:
+- [x] Update im laufenden Betrieb: Sitzungen der alten Version werden um neue Felder ergänzt (vorher: Fehler in jedem
+      Takt); jeder Spieler wird im Takt einzeln abgesichert, Fehler landen gedrosselt im Log.
+- [x] Erfolge und Tagesaufgabe werden erst beim Speichern gutgeschrieben – und nur, wenn die Datei sie noch nicht kennt
+      (vorher: doppelte XP bei schnellem Serverwechsel).
+- [x] Saison-XP als echter Zähler statt Startwert; nachträglich vergebene Erfolge zählen nicht für die Saison;
+      Datensätze von 1.8 werden automatisch umgestellt; verpasstes Saisonarchiv wird stündlich nachgeholt.
+- [x] Maps zählen erst ab 100 m Fahrt (vorher reichte kurzes Vorbeischauen für Erfolge und die Tagesaufgabe).
+- [x] Werkzeug: `self-update` meldet kein „aktualisiert“ mehr, wenn das Ersetzen scheitert; `update` lädt das Plugin
+      immer frisch von GitHub; Zahlen in `config.json` werden geprüft (ganze XP-Werte, sinnvolle Untergrenzen).
+
 Erledigt (Plugin 1.8, Werkzeug 1.9):
 - [x] Saisons: Monats-XP, `/saison`, Sieger und Archiv beim Monatswechsel, Statusseite.
 

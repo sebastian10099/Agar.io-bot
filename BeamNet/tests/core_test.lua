@@ -757,7 +757,7 @@ _G[events.onPlayerDisconnect](9); players[9] = nil
 do
     -- Alter Hase: viele Erfolge auf einmal -> eine zusammenfassende Meldung.
     writeJson(SHARED .. "/players/4242.json", { id = "4242", name = "Veteran", km = 1500, seconds = 40000, topSpeedKmh = 310,
-        maps = { italy = true, utah = true } })
+        maps = { italy = true, utah = true, derby = true } })
     players[10] = { name = "Veteran", ids = { beammp = "4242" }, vehicles = {} }
     join(10)
     tick(1)
@@ -772,7 +772,17 @@ do
     check(chatContains("Als Nächstes: Erstes Rennen 0/1", 10), "/erfolge zeigt Fortschritt")
     BN.savePlayer(v)
     local saved = readJson(SHARED .. "/players/4242.json")
-    check(saved.achievements and saved.achievements.km1000 and saved.maps.gridmap_v2 and saved.maps.italy, "Erfolge und Maps gespeichert")
+    check(saved.achievements and saved.achievements.km1000 and saved.maps.italy, "Erfolge gespeichert")
+    check(saved.maps.gridmap_v2 == nil, "Map zaehlt nicht ohne zu fahren")
+    -- Nachtraeglich vergebene Erfolge geben XP, zaehlen aber nicht fuer die Saison.
+    check(saved.bonusXp >= 500 and (saved.monthXp or 0) < 50, "Nachtraegliche Erfolge nicht in der Saison (" .. tostring(saved.monthXp) .. ")")
+    players[10].vehicles[0] = { pos = { 0, 0, 0 }, tim = 0 }
+    tick(1)
+    for _ = 1, 5 do move(10, 0, 30); tick(1) end                  -- 150 m
+    BN.savePlayer(v)
+    saved = readJson(SHARED .. "/players/4242.json")
+    check(saved.maps.gridmap_v2 == true, "Map zaehlt nach dem Fahren")
+    players[10].vehicles = {}
     -- Neu verbinden: keine doppelte Meldung.
     _G[events.onPlayerDisconnect](10)
     local before = countChat("Veteran hat")
@@ -867,10 +877,11 @@ do
     check(chatContains("Du: Platz %d+ mit %d+ XP in dieser Saison", 13), "/saison eigener Platz")
     BN.savePlayer(BN.players[13])
     local rec = readJson(SHARED .. "/players/1313.json")
-    check(rec.month == "2025-10" and rec.monthStartXp ~= nil, "Saisonbeginn gespeichert")
+    check(rec.month == "2025-10" and rec.monthXp >= 50 and rec.monthStartXp == nil, "Saison-XP als Zaehler gespeichert")
+    near(rec.monthXp, mx, 1, "Gespeicherte Saison-XP = angezeigte")
     -- Vorhandene Spieler ohne Saisondaten starten bei ihrem jetzigen Stand (kein Riesenvorsprung).
     local vet = readJson(SHARED .. "/players/4242.json")
-    check(vet.month == "2025-10" and vet.monthStartXp ~= nil, "Alte Datensaetze bekommen einen Saisonstart")
+    check(vet.month == "2025-10" and vet.monthXp ~= nil and vet.monthXp < 100, "Alte Datensaetze starten mit wenig Saison-XP")
     local rank = BN.seasonRanking("2025-10")
     local found = false
     for _, e in ipairs(rank) do if e.id == "1313" and e.xp >= 50 then found = true end end
@@ -898,6 +909,107 @@ do
     say(13, "/season")
     check(chatContains("Season November 2025 %(%d+ days left%):", 13) and chatContains("Last season %(October 2025%)", 13), "/season auf Englisch")
     _G[events.onPlayerDisconnect](13); players[13] = nil
+end
+
+-- --- Funde der zweiten Code-Pruefung ------------------------------------------------------------------------------
+do
+    -- (1) Update im laufenden Betrieb: Sitzungen einer alten Version (ohne neue Felder) laufen nach BN.init() weiter.
+    writeJson(SHARED .. "/players/3030.json", { id = "3030", name = "Altversion", km = 5, seconds = 60, week = "alt" })
+    players[30] = { name = "Altversion", ids = { beammp = "3030" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } } }
+    BN.players[30] = { pid = 30, name = "Altversion", id = "3030", guest = false, vehicles = {},
+                       pendingKm = 0.5, pendingSeconds = 10, pendingTop = 0,
+                       unlocked = { km10 = clock - 5 }, challengeDoneDay = BN.dayNumber(),
+                       record = { id = "3030", name = "Altversion", km = 5, seconds = 60, weekKm = 0, week = "alt" } }
+    BN.init()
+    local s30 = BN.players[30]
+    check(s30 and s30.pendingRaces == 0 and s30.sessionKm == 0 and type(s30.unlocked.km10) == "table",
+        "Alte Sitzung wird um neue Felder ergaenzt")
+    check(s30.challengeReward and s30.challengeReward.day == BN.dayNumber() and s30.challengeDoneDay == nil,
+        "Alte Tagesaufgabe wird uebernommen")
+    BN.errorLog = {}
+    tick(1)
+    for _ = 1, 5 do move(30, 0, 40); tick(1) end
+    check(next(BN.errorLog) == nil, "Takt laeuft nach dem Update ohne Fehler")
+    check(BN.savePlayer(s30), "Alte Sitzung speichert nach dem Update")
+    local r30 = readJson(SHARED .. "/players/3030.json")
+    check(r30.km > 5.6 and r30.achievements.km10 and r30.lastChallengeDay == BN.dayNumber(), "Alte Sitzung: Werte gespeichert")
+
+    -- Ein fehlerhafter Spieler legt den Takt fuer die anderen nicht lahm.
+    players[31] = { name = "Defekt", ids = { beammp = "3131" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } } }
+    join(31)
+    BN.players[31].vehicles = setmetatable({}, { __index = function() error("kaputt") end })
+    local kmBefore = BN.totals(s30).km
+    for _ = 1, 3 do move(30, 0, 40); tick(1) end
+    check(BN.totals(s30).km > kmBefore + 0.1, "Andere Spieler zaehlen trotz Fehler weiter")
+    check(BN.errorLog["Takt Spieler 31"] ~= nil, "Fehler wird (gedrosselt) protokolliert")
+    _G[events.onPlayerDisconnect](31); players[31] = nil
+
+    -- (2) Schneller Serverwechsel: Belohnungen, die ein anderer Server schon gutgeschrieben hat, gibt es nicht doppelt.
+    writeJson(SHARED .. "/players/3232.json", { id = "3232", name = "Wechsler", km = 9.95, seconds = 0 })
+    players[32] = { name = "Wechsler", ids = { beammp = "3232" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } } }
+    join(32)
+    tick(1)
+    for _ = 1, 4 do move(32, 0, 50); tick(1) end
+    local s32 = BN.players[32]
+    check(s32.unlocked.km10 and not s32.unlocked.km10.retro, "Erfolg waehrend der Fahrt (nicht nachtraeglich)")
+    s32.challengeReward = { day = BN.dayNumber(), xp = 40 }
+    local other = readJson(SHARED .. "/players/3232.json")    -- der andere Server hat schon gespeichert
+    other.achievements = { km10 = clock }
+    other.lastChallengeDay = BN.dayNumber()
+    other.bonusXp = 60
+    writeJson(SHARED .. "/players/3232.json", other)
+    BN.savePlayer(s32)
+    local r32 = readJson(SHARED .. "/players/3232.json")
+    eq(r32.bonusXp, 60, "Erfolg und Tagesaufgabe nicht doppelt gutgeschrieben")
+    eq(BN.totals(s32).bonusXp, 60, "Anzeige ohne doppelte Belohnung")
+    -- Ohne Vorgaenger: genau einmal.
+    s32.unlocked.speed200 = { at = clock, xp = 30 }
+    BN.savePlayer(s32)
+    BN.savePlayer(s32)
+    eq(readJson(SHARED .. "/players/3232.json").bonusXp, 90, "Neuer Erfolg genau einmal gutgeschrieben")
+    _G[events.onPlayerDisconnect](32); players[32] = nil
+
+    -- (3) Saison-XP ist ein Zaehler: XP von frueher zaehlen nicht, Datensaetze von 1.8 werden umgestellt.
+    local month = BN.monthKey()
+    writeJson(SHARED .. "/players/3333.json", { id = "3333", name = "Zaehler", km = 500, seconds = 0, month = month, monthXp = 100 })
+    writeJson(SHARED .. "/players/3434.json", { id = "3434", name = "Umsteiger", km = 500, seconds = 0, bonusXp = 0,
+        xp = 5000, month = month, monthStartXp = 4930 })
+    BN.seasonCache = {}
+    local found = {}
+    for _, e in ipairs(BN.seasonRanking(month)) do found[e.id] = e.xp end
+    eq(found["3333"], 100, "Saisonwertung nutzt den Zaehler")
+    eq(found["3434"], 70, "Saisonwertung versteht Datensaetze von 1.8")
+    local legacy = BN.normalizeRecord({ km = 500, seconds = 0, bonusXp = 0, month = month, monthStartXp = BN.xpFor(500, 0) - 70 })
+    BN.applyMonth(legacy)
+    check(legacy.monthXp == 70 and legacy.monthStartXp == nil, "Startwert wird beim Laden in den Zaehler umgerechnet")
+    local old = BN.normalizeRecord({ km = 500, seconds = 0, bonusXp = 0, month = "2000-01", monthXp = 33 })
+    BN.applyMonth(old)
+    check(old.lastMonth == "2000-01" and old.lastMonthXp == 33 and old.monthXp == 0 and old.month == month, "Monatswechsel rollt den Zaehler")
+
+    -- (7) Saisonende verpasst (kein Server lief): das Archiv der Vorsaison wird still nachgeholt.
+    local prev = BN.previousMonthKey()
+    eq(prev, "2025-10", "Vorsaison")
+    os.remove(SHARED .. "/seasons/" .. prev .. ".json")
+    local announced = countChat("Saison Oktober 2025 beendet")
+    BN.lastSeasonCheck = nil
+    tick(1)
+    local archive = readJson(SHARED .. "/seasons/" .. prev .. ".json")
+    check(archive and archive.top and archive.top[1], "Fehlendes Saisonarchiv nachgeholt")
+    eq(countChat("Saison Oktober 2025 beendet"), announced, "Nachholen ohne erneute Ansage")
+    eq(BN.ensureSeasonArchive(), false, "Vorhandenes Archiv bleibt unangetastet")
+
+    -- Kleinigkeit: Zahlen in config.json werden geprueft (ganze Zahlen fuer XP im Chat, sinnvolle Untergrenzen).
+    writeJson(SHARED .. "/config.json", { challengeXp = 40.7, levelBase = 0, raceFinishXp = -5, xpPerKm = 12.5 })
+    BN.loadOverrides()
+    eq(C.challengeXp, 40, "challengeXp ganzzahlig")
+    eq(C.levelBase, 1, "levelBase mindestens 1")
+    eq(C.raceFinishXp, 0, "Keine negativen XP")
+    eq(C.xpPerKm, 12.5, "Kommazahlen bleiben, wo sie erlaubt sind")
+    check(pcall(string.format, "%d", C.challengeXp), "challengeXp laesst sich mit %d ausgeben")
+    os.remove(SHARED .. "/config.json")
+    C.challengeXp, C.levelBase, C.raceFinishXp, C.xpPerKm = 40, 25, 15, 20
+
+    _G[events.onPlayerDisconnect](30); players[30] = nil
 end
 
 -- Herunterfahren speichert alle.
