@@ -475,7 +475,7 @@ echo "{\"id\":\"1\",\"name\":\"Sebi\",\"km\":120.4,\"seconds\":7200,\"xp\":1500,
 echo "{\"id\":\"2\",\"name\":\"<b>Hacker</b>\",\"km\":2,\"seconds\":60,\"bonusXp\":5}" >"$T/root/shared/beamnet/players/2.json"
 echo "kaputt" >"$T/root/shared/beamnet/players/3.json"
 # Ab Plugin 1.9: Saison-XP als Zaehler (monthXp) statt Startwert.
-echo "{\"id\":\"4\",\"name\":\"Zaehler\",\"km\":40,\"seconds\":0,\"xp\":400,\"month\":\"$month\",\"monthXp\":321}" >"$T/root/shared/beamnet/players/4.json"
+echo "{\"id\":\"4\",\"name\":\"Zaehler\",\"km\":40,\"seconds\":0,\"xp\":400,\"month\":\"$month\",\"monthXp\":321,\"mapKm\":{\"italy\":30.5,\"utah\":9.5}}" >"$T/root/shared/beamnet/players/4.json"
 mkdir -p "$T/root/shared/beamnet/races"
 echo '{"tracks":{"sprint":{"records":[{"id":"1","name":"Sebi","time":49.0667}]},"leer":{"records":[]}}}' >"$T/root/shared/beamnet/races/italy.json"
 out=$("$TOOL" web run 2>&1)
@@ -495,6 +495,9 @@ contains "$page" "<td class=n>2</td><td><a href=\"p/4.html\">Zaehler</a></td><td
 contains "$page" "<th class=n>XP</th>" "Statusseite: Zahlenspalten rechtsbuendig"
 prof=$(cat "$T/web/p/1.html")
 contains "$prof" "<h1>Sebi</h1>" "Profilseite: Name"
+contains "$page" "<h2>Beliebteste Maps</h2>.*<td>Italy</td><td class=n>30.5 km</td><td class=n>1</td>" "Statusseite: Beliebteste Maps"
+contains "$(cat "$T/web/p/4.html")" "Lieblingsmap<b>Italy</b>" "Profilseite: Lieblingsmap"
+contains "$(cat "$T/web/p/4.html")" "<span>Italy · 30.5 km</span><span>Utah, USA · 9.5 km</span>" "Profilseite: km je Map"
 contains "$prof" "Rang<b>1 von 3</b>" "Profilseite: Rang"
 contains "$prof" "Kilometer<b>120 km</b>" "Profilseite: Kilometer"
 contains "$prof" "<td>Italy</td><td>sprint</td><td class=n>0:49.1</td><td class=n>1</td>" "Profilseite: Bestzeiten"

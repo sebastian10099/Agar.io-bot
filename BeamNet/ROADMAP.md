@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Plugin 1.11, Werkzeug 1.15):
+- [x] Kilometer je Map: das Plugin zählt sie pro Fahrer mit; Statusseite „Beliebteste Maps“, Profil mit Lieblingsmap
+      und km je Map. Neue Datensätze laufen jetzt immer durch dieselbe Ergänzung wie geladene (kein Fehlen neuer Felder).
+
 Erledigt (Werkzeug 1.14):
 - [x] Tägliche Map-Rotation je Server (`beamnet rotation`): Wechsel ab `ROTATE_HOUR`, nur wenn der Server leer ist,
       einmal am Tag, Meldung nach Discord.
@@ -98,5 +102,4 @@ Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamne
 - [ ] Auf dem echten Server prüfen: `beamnet doctor`, `beamnet fix`, BeamNetCore installieren, alte Plugins vergleichen.
 
 Ideen:
-- [ ] Rangliste der Server: welcher Server/welche Map wird am meisten gefahren (km je Map auf der Statusseite).
 - [ ] Geister-Rennen: bei `/rennen` die Bestzeit als Zwischenzeit-Vergleich an Kontrollpunkten.

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.14"
+VERSION="1.15"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1473,6 +1473,18 @@ season_all = sorted([(month_xp(r), str(r.get("name", "?")), r) for r in players 
                     key=lambda x: (-x[0], x[1]))
 season = season_all[:10]
 season_rows = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{xp}</td></tr>" for i, (xp, n, r) in enumerate(season, 1)]
+def map_km(r):
+    mk = r.get("mapKm")
+    return {str(m): num(v) for m, v in mk.items() if num(v) > 0} if isinstance(mk, dict) else {}
+
+
+popular = {}
+for r in players:
+    for m, v in map_km(r).items():
+        tot, drivers = popular.get(m, (0.0, 0))
+        popular[m] = (tot + v, drivers + 1)
+popular_rows = [f"<tr><td>{E(map_name(m))}</td><td class=n>{km(v)}</td><td class=n>{d}</td></tr>"
+                for m, (v, d) in sorted(popular.items(), key=lambda x: (-x[1][0], x[0]))[:10]]
 records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name', '?')))}</td><td class=n>{race_time(b.get('time'))}</td></tr>"
            for m, n, b in races]
 
@@ -1522,6 +1534,7 @@ page = f"""<!doctype html>
 <section><h2>Diese Woche</h2>{table(["#", "Name", "Kilometer#"], weekly, "Diese Woche ist noch niemand gefahren.")}</section>
 <section><h2>Saison {E(season_title)}</h2>{table(["#", "Name", "XP#"], season_rows, "In dieser Saison noch keine Punkte.")}</section>
 <section><h2>Streckenrekorde</h2>{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>
+<section><h2>Beliebteste Maps</h2>{table(["Map", "Kilometer#", "Fahrer#"], popular_rows, "Noch keine Kilometer je Map.")}</section>
 </div>
 <footer>Chat-Befehle im Spiel: /hilfe · /stats · /top · /liga · /saison · /aufgabe · /erfolge · /server · /rennen · /rekorde · /lang en</footer>
 </main></body></html>
@@ -1574,7 +1587,10 @@ for rank, r in enumerate(ranked, 1):
     ach = r.get("achievements") if isinstance(r.get("achievements"), dict) else {}
     maps = r.get("maps") if isinstance(r.get("maps"), dict) else {}
     tags_a = "".join(f"<span>{E(ACH.get(a, a))}</span>" for a in ACH if a in ach) or "<p class=empty>Noch keine Erfolge.</p>"
-    tags_m = "".join(f"<span>{E(map_name(m))}</span>" for m in sorted(maps)) or "<p class=empty>Noch keine Map.</p>"
+    mk = map_km(r)
+    tags_m = "".join(f"<span>{E(map_name(m))}" + (f" · {km(mk[m])}" if m in mk else "") + "</span>"
+                     for m in sorted(set(maps) | set(mk), key=lambda m: (-mk.get(m, 0), m))) or "<p class=empty>Noch keine Map.</p>"
+    fav = max(mk.items(), key=lambda x: x[1])[0] if mk else None
     sr = season_rank.get(id(r))
     times = [f"<tr><td>{E(map_name(m))}</td><td>{E(str(t))}</td><td class=n>{race_time(tm)}</td><td class=n>{pos}</td></tr>"
              for m, t, tm, pos in best.get(rid, [])]
@@ -1584,6 +1600,7 @@ for rank, r in enumerate(ranked, 1):
         stat("Kilometer", km(num(r.get("km")))), stat("Fahrzeit", hours(r.get("seconds"))),
         stat("Spitze", f"{int(num(r.get('topSpeedKmh')))} km/h"), stat("Rennen", int(num(r.get("racesFinished")))),
         stat(f"Saison {E(season_title)}", f"{month_xp(r)} XP" + (f" · Platz {sr}" if sr else "")),
+        stat("Lieblingsmap", E(map_name(fav)) if fav else "–"),
     ])
     profile = f"""<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1595,7 +1612,7 @@ for rank, r in enumerate(ranked, 1):
 <section><div class=stats>{body}</div></section>
 <section><h2>Erfolge ({len([a for a in ACH if a in ach])} von {len(ACH)})</h2><div class=tags>{tags_a}</div></section>
 <div class=grid>
-<section><h2>Maps ({len(maps)})</h2><div class=tags>{tags_m}</div></section>
+<section><h2>Maps ({len(set(maps) | set(mk))})</h2><div class=tags>{tags_m}</div></section>
 <section><h2>Bestzeiten</h2>{table(["Map", "Strecke", "Zeit#", "Platz#"], times, "Noch keine Rennen.")}</section>
 </div>
 <footer>Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))}</footer>

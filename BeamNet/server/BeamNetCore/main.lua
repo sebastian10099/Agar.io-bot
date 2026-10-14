@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.10"
+BN.VERSION = "1.11"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -688,7 +688,7 @@ end
 local function emptyRecord(id, name)
     return { id = id, name = name, km = 0, seconds = 0, weekKm = 0, week = weekKey(BN.now()), topSpeedKmh = 0,
              bonusXp = 0, racesFinished = 0, recordsSet = 0, maps = {}, achievements = {},
-             dayKm = 0, daySeconds = 0, dayRaces = 0, dayTop = 0, dayMaps = {}, lastMonthXp = 0, lastWeekKm = 0,
+             dayKm = 0, daySeconds = 0, dayRaces = 0, dayTop = 0, dayMaps = {}, mapKm = {}, lastMonthXp = 0, lastWeekKm = 0,
              firstSeen = BN.now(), lastSeen = BN.now(), lastServer = "" }
 end
 
@@ -701,9 +701,10 @@ local function normalizeRecord(rec, id, name)
                          "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm" }) do
         rec[k] = tonumber(rec[k]) or 0
     end
-    for _, k in ipairs({ "maps", "achievements", "dayMaps" }) do
+    for _, k in ipairs({ "maps", "achievements", "dayMaps", "mapKm" }) do
         if type(rec[k]) ~= "table" then rec[k] = {} end
     end
+    for m, v in pairs(rec.mapKm) do rec.mapKm[m] = tonumber(v) or nil end
     rec.day = tonumber(rec.day)
     rec.lastChallengeDay = tonumber(rec.lastChallengeDay)
     -- Bis 1.8 gab es nur dayDone (bezogen auf rec.day).
@@ -719,7 +720,7 @@ BN.normalizeRecord = normalizeRecord
 local function loadRecord(id, name)
     local data = readFile(playersDir() .. "/" .. id .. ".json")
     local rec = data and json.decode(data)
-    if type(rec) ~= "table" then return emptyRecord(id, name) end
+    if type(rec) ~= "table" then rec = emptyRecord(id, name) end
     return normalizeRecord(rec, id, name)
 end
 
@@ -874,6 +875,9 @@ function BN.savePlayer(s)
     end
     rec.km = rec.km + s.pendingKm
     rec.weekKm = rec.weekKm + s.pendingKm
+    -- Kilometer je Map (fuer "Beliebteste Maps" auf der Statusseite).
+    local here = BN.server.map
+    if here and here ~= "?" and s.pendingKm > 0 then rec.mapKm[here] = (rec.mapKm[here] or 0) + s.pendingKm end
     rec.seconds = rec.seconds + s.pendingSeconds
     rec.topSpeedKmh = math.max(rec.topSpeedKmh, s.pendingTop)
     rec.bonusXp = rec.bonusXp + s.pendingBonus
