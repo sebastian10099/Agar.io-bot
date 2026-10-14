@@ -278,6 +278,27 @@ final class FuzzTests: XCTestCase {
         XCTAssertNoThrow(try SafeJSON.decode(BotSettings.self, from: Data("{}".utf8)))
     }
 
+    /// Ungueltiges UTF-8 in einem Schluessel liess Apples JSONDecoder ebenfalls abstuerzen (JSONSerialization nahm es hin).
+    func testInvalidUTF8InKeyIsRejectedNotCrashing() {
+        let cases: [[UInt8]] = [
+            [0x7b, 0x22, 0x73, 0x74, 0xff, 0x74, 0x65, 0x22, 0x3a, 0x31, 0x7d],            // {"st\xFFte":1}
+            [0x7b, 0x22, 0x73, 0x74, 0x80, 0x22, 0x3a, 0x31, 0x7d],                        // einzelnes Folgebyte
+            [0x7b, 0x22, 0xc0, 0xaf, 0x22, 0x3a, 0x31, 0x7d],                              // ueberlange Folge
+            [0x7b, 0x22, 0xed, 0xa0, 0x80, 0x22, 0x3a, 0x31, 0x7d],                        // Ersatzzeichen-Bereich
+            [0x7b, 0x22, 0xe2, 0x82, 0x22, 0x3a, 0x31, 0x7d],                              // abgeschnittene Folge
+            [0x7b, 0x22, 0x61, 0x00, 0x22, 0x3a, 0x31, 0x7d],                              // NUL-Byte
+        ]
+        for bytes in cases {
+            XCTAssertFalse(SafeJSON.isWellFormed(Data(bytes)))
+            XCTAssertThrowsError(try SafeJSON.decode(StoredBot.self, from: Data(bytes)))
+            XCTAssertThrowsError(try SafeJSON.decode(BotSettings.self, from: Data(bytes)))
+            XCTAssertNil(ProfileFile.decode(Data(bytes)))
+        }
+        // Echte Umlaute und Emojis bleiben erlaubt, ebenso Zeilenumbrueche und Tabs zwischen den Werten.
+        XCTAssertTrue(SafeJSON.isWellFormed(Data("{\n\t\"name\": \"Größer 🚀\"\r\n}".utf8)))
+        XCTAssertNoThrow(try SafeJSON.decode([String: String].self, from: Data(#"{"a":"Grüße \u00e4"}"#.utf8)))
+    }
+
     func testHugeNumbersDoNotCrash() throws {
         let huge = #"{"code":1e300,"msg":"x","data":{"bids":[["1","1"]],"asks":[["2","1"]],"lastUpdateId":1e300}}"#
         XCTAssertThrowsError(try BingXParser.parseDepth(Data(huge.utf8)))

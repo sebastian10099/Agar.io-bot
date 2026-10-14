@@ -124,21 +124,22 @@ public enum ProfileFile {
     /// Liest eine Profildatei. Akzeptiert auch ein nacktes Profil oder nackte Einstellungen (z. B. aus einer Sicherung).
     public static func decode(_ data: Data, fallbackName: String = "Importiert", now: Double = Date().timeIntervalSince1970) -> SettingsProfile? {
         let decoder = JSONDecoder()
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        if root["profile"] != nil, let envelope = try? decoder.decode(Envelope.self, from: data) {
+        guard SafeJSON.isWellFormed(data),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if root["profile"] != nil, let envelope = try? SafeJSON.decode(Envelope.self, from: data, decoder: decoder) {
             return envelope.profile
         }
-        if root["settings"] is [String: Any], root["name"] != nil, let profile = try? decoder.decode(SettingsProfile.self, from: data) {
+        if root["settings"] is [String: Any], root["name"] != nil, let profile = try? SafeJSON.decode(SettingsProfile.self, from: data, decoder: decoder) {
             return profile
         }
         // Gesamte simulation.json oder nackte Einstellungen.
         if let settings = root["settings"] as? [String: Any],
            let raw = try? JSONSerialization.data(withJSONObject: settings),
-           let s = try? decoder.decode(BotSettings.self, from: raw) {
+           let s = try? SafeJSON.decode(BotSettings.self, from: raw, decoder: decoder) {
             return SettingsProfile(name: fallbackName, settings: s, createdAt: now)
         }
         let known = Set(["minNetProfitBps", "stopLossFraction", "maxTradeUSDT", "gridDropBps", "feeBps"])
-        if !known.isDisjoint(with: root.keys), let s = try? decoder.decode(BotSettings.self, from: data) {
+        if !known.isDisjoint(with: root.keys), let s = try? SafeJSON.decode(BotSettings.self, from: data, decoder: decoder) {
             return SettingsProfile(name: fallbackName, settings: s, createdAt: now)
         }
         return nil

@@ -75,15 +75,35 @@ public struct AppPaths: Sendable {
     }
 }
 
-/// Sicheres Dekodieren: Apples `JSONDecoder` stuerzt bei manchen kaputten Eingaben ab, statt einen Fehler zu werfen
-/// (gefunden mit den Fuzz-Tests: ein Steuerzeichen in einem Schluessel genuegte). Darum wird der Text vorher mit
-/// `JSONSerialization` geprueft, das solche Eingaben sauber ablehnt.
+/// Sicheres Dekodieren: Apples `JSONDecoder` stuerzt bei kaputten Schluesseln ab, statt einen Fehler zu werfen
+/// (gefunden mit den Fuzz-Tests: ein Steuerzeichen oder ein ungueltiges UTF-8-Byte in einem Schluessel genuegte).
+/// Darum wird der Text vorher selbst geprueft: nur gueltiges UTF-8, keine rohen Steuerzeichen (die in JSON nie
+/// erlaubt sind) und ein Aufbau, den `JSONSerialization` akzeptiert.
 public enum SafeJSON {
     public struct Invalid: Error {}
 
     public static func decode<T: Decodable>(_ type: T.Type, from data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> T {
-        guard (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil else { throw Invalid() }
+        guard isWellFormed(data) else { throw Invalid() }
         return try decoder.decode(type, from: data)
+    }
+
+    public static func isWellFormed(_ data: Data) -> Bool {
+        guard hasCleanBytes(data) else { return false }
+        return (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil
+    }
+
+    /// Gueltiges UTF-8 (ohne ueberlange Folgen und Ersatzzeichen-Bereiche) und ausser Tab/Zeilenumbruch keine Bytes unter 0x20.
+    static func hasCleanBytes(_ data: Data) -> Bool {
+        for byte in data where byte < 0x20 && byte != 0x09 && byte != 0x0A && byte != 0x0D { return false }
+        var bytes = data.makeIterator()
+        var codec = UTF8()
+        while true {
+            switch codec.decode(&bytes) {
+            case .scalarValue: continue
+            case .emptyInput: return true
+            case .error: return false
+            }
+        }
     }
 }
 
