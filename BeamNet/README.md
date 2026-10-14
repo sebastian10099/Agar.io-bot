@@ -158,13 +158,15 @@ Englische Befehlsnamen funktionieren ebenfalls: `/help`, `/league`, `/race [new|
 | Befehl | Wirkung |
 |---|---|
 | `/kick <Name> [Grund]` | Wirft den Spieler vom Server |
-| `/ban <Name> [30m\|2h\|7d] [Grund]` | Sperrt auf **allen** BeamNet-Servern – sofort, auch wenn er gerade woanders fährt; ohne Dauer dauerhaft. Gäste werden über die IP gesperrt. Funktioniert auch für Spieler, die offline sind |
+| `/ban <Name> [30m\|2h\|7d] [Grund]` | Sperrt auf **allen** BeamNet-Servern – sofort, auch wenn er gerade woanders fährt; ohne Dauer dauerhaft. Gesperrt werden BeamMP-Konto und (wenn online) IP-Adresse, damit niemand als Gast zurückkommt. Funktioniert auch für Spieler, die offline sind |
 | `/unban <Name>` · `/bans` | Bann aufheben · aktive Banns zeigen |
 | `/warn <Name> <Text>` | Verwarnung nur an diesen Spieler |
-| `/mute <Name> [Minuten]` | Im Chat stummschalten (Standard 10 min) |
+| `/mute <Name> [Minuten]` | Im Chat stummschalten (Standard 10 min) – gilt auf allen Servern und auch nach Neu-Verbinden |
 | `/ansage <Text>` | Nachricht auf allen Servern gleichzeitig, z. B. „Neustart in 5 Minuten“ |
 
-- Teilnamen genügen (`/ban max`), solange sie eindeutig sind – sonst passiert nichts und es kommt ein Hinweis.
+- Teilnamen genügen (`/ban max`), solange sie eindeutig sind – sonst passiert nichts und es kommt ein Hinweis. Ein
+  genauer Name hat immer Vorrang (auch der eines Spielers, der gerade offline ist).
+- Befehls-Bremse: höchstens 6 BeamNet-Befehle in 10 Sekunden je Spieler (Admins ausgenommen).
 - Admins können nicht gesperrt werden und haben keinen Spamschutz.
 - **Spamschutz** für alle anderen: mehr als 5 Nachrichten in 5 Sekunden → 30 Sekunden stumm (einstellbar:
   `spamMessages`, `spamWindowSec`, `spamMuteSec` in `config.json`). Befehle funktionieren weiter.

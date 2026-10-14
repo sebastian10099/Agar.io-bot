@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.5"
+VERSION="1.6"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -112,32 +112,34 @@ unit_active() { [[ $(systemctl is-active "$(unit "$1")" 2>/dev/null) == active ]
 unit_enabled() { [[ $(systemctl is-enabled "$(unit "$1")" 2>/dev/null) == enabled ]]; }
 main_pid() { systemctl show -p MainPID --value "$(unit "$1")" 2>/dev/null || echo 0; }
 
-# Alle BeamMP-Server-Prozesse: "pid benutzer arbeitsordner" je Zeile.
+# Alle BeamMP-Server-Prozesse: "pid benutzer arbeitsordner dienst" je Zeile (dienst aus der cgroup, sonst "-").
 procs() {
     if [[ -n ${BEAMNET_FAKE_PROCS:-} ]]; then
         cat "$BEAMNET_FAKE_PROCS"
         return
     fi
-    local pid user cwd
+    local pid user cwd svc
     while read -r pid user; do
         cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null) || cwd="?"
-        echo "$pid $user $cwd"
+        svc=$(grep -o '[^/]*\.service' "/proc/$pid/cgroup" 2>/dev/null | tail -n 1)
+        echo "$pid $user $cwd ${svc:--}"
     done < <(ps -eo pid=,user=,comm= 2>/dev/null | awk '$3 ~ /^BeamMP-Server/ {print $1, $2}')
 }
 
-# Prozesse eines Servers, die NICHT von systemd gestartet wurden (z. B. per nohup als root).
+# Prozesse eines Servers, die NICHT von seinem systemd-Dienst stammen (z. B. per nohup als root gestartet).
+# Entscheidend ist die cgroup: auch ein Kindprozess eines Start-Skripts gehoert zum Dienst.
 strays() {
-    local nr=$1 dir="$ROOT/$1" mainpid pid user cwd
+    local nr=$1 dir="$ROOT/$1" mainpid pid user cwd svc
     mainpid=$(main_pid "$nr")
-    while read -r pid user cwd; do
+    while read -r pid user cwd svc; do
         [[ -z ${pid:-} ]] && continue
-        [[ $cwd == "$dir" && $pid != "$mainpid" ]] && echo "$pid $user"
+        if [[ $cwd == "$dir" && $pid != "$mainpid" && ${svc:--} != "$(unit "$nr")" ]]; then echo "$pid $user"; fi
     done < <(procs)
 }
 
 proc_user() {
-    local nr=$1 dir="$ROOT/$1" pid user cwd
-    while read -r pid user cwd; do
+    local nr=$1 dir="$ROOT/$1" pid user cwd svc
+    while read -r pid user cwd svc; do
         [[ $cwd == "$dir" ]] && { echo "$user"; return; }
     done < <(procs)
 }
@@ -499,6 +501,7 @@ cmd_set_map() {
     ok "Server $nr: Map = $map (Sicherung der alten Konfiguration daneben)"
     echo "BeamMP liest die Map nur beim Start."
     if confirm "Server $nr jetzt neu starten?"; then
+        clear_maintenance "$nr"
         systemctl restart "$(unit "$nr")" && verify_running "$nr"
     fi
 }
@@ -516,11 +519,15 @@ cmd_backup() {
     done
     [[ -d $SHARED ]] && items+=("${SHARED#"$ROOT"/}")
     [[ ${#items[@]} -gt 0 ]] || die "Nichts zu sichern."
+    # Waehrend der Sicherung schreiben die Server weiter; GNU tar meldet das mit Code 1 – das Archiv ist trotzdem gut.
+    local rc=0
     if [[ ${#units[@]} -gt 0 ]]; then
-        tar -czf "$file" -C "$ROOT" "${items[@]}" -C /etc/systemd/system "${units[@]}" || die "Sicherung fehlgeschlagen"
+        tar --warning=no-file-changed --ignore-failed-read -czf "$file" -C "$ROOT" "${items[@]}" \
+            -C /etc/systemd/system "${units[@]}" || rc=$?
     else
-        tar -czf "$file" -C "$ROOT" "${items[@]}" || die "Sicherung fehlgeschlagen"
+        tar --warning=no-file-changed --ignore-failed-read -czf "$file" -C "$ROOT" "${items[@]}" || rc=$?
     fi
+    (( rc <= 1 )) || die "Sicherung fehlgeschlagen (tar Code $rc)"
     chmod 600 "$file"
     ok "Gesichert: $file ($(du -h "$file" | cut -f1))"
     echo "Enthält die AuthKeys – nicht weitergeben."
@@ -587,6 +594,13 @@ cmd_players() {
     done
 }
 
+# Gemeinsamer Datenordner mit Rechten fuer den Dienst-Benutzer (sonst kann das Plugin nichts speichern).
+ensure_shared() {
+    mkdir -p "$SHARED/players" "$SHARED/servers" "$SHARED/races"
+    chown -R "$SERVICE_USER:$SERVICE_USER" "$SHARED"
+    chmod 775 "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races"
+}
+
 # Holt das Plugin aus dem Ordner neben diesem Skript oder von GitHub.
 core_source() {
     local local_file="$SCRIPT_DIR/server/BeamNetCore/main.lua" tmp
@@ -606,9 +620,7 @@ cmd_install_core() {
     grep -q 'BeamNetCore' "$src" || die "$src ist kein BeamNetCore-Plugin"
     list=$(servers)
     confirm "BeamNetCore auf allen Servern ($(tr '\n' ' ' <<<"$list"))installieren?" || { echo "Abgebrochen."; return 1; }
-    mkdir -p "$SHARED/players" "$SHARED/servers" "$SHARED/races"
-    chown -R "$SERVICE_USER:$SERVICE_USER" "$SHARED"
-    chmod 775 "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races"
+    ensure_shared
     for nr in $list; do
         dest="$ROOT/$nr/Resources/Server/BeamNetCore"
         mkdir -p "$dest"
@@ -715,7 +727,7 @@ notify() {
         return 1
     fi
     curl -fsS -m 10 -H "Content-Type: application/json" -d "{\"content\":\"$(json_escape "$1")\"}" "$hook" >/dev/null \
-        || echo "Discord-Meldung fehlgeschlagen" >&2
+        || { echo "Discord-Meldung fehlgeschlagen" >&2; return 1; }
 }
 
 # Wurde der Server in den letzten 15 Minuten vom Agenten gestoppt oder beendet?
@@ -752,6 +764,7 @@ watch_run() {
         if [[ $state == up ]]; then
             [[ $last == down ]] && msgs+=("🟢 $name ist wieder online.")
             rm -f "$STATE_DIR/limit-$nr"
+            clear_maintenance "$nr"   # laeuft wieder (egal wie gestartet) – Wartung vorbei
         elif [[ -f $STATE_DIR/maintenance-$nr ]] || ! unit_enabled "$nr"; then
             :   # bewusst gestoppt oder ohne Autostart: kein Ausfall
         else
@@ -898,8 +911,7 @@ cmd_admin() {
         *) die "Aufruf: beamnet admin list | add <Name …> | remove <Name …>" ;;
     esac
     [[ $action == list || $# -gt 0 ]] || die "Aufruf: beamnet admin $action <BeamMP-Name oder -ID …>"
-    [[ $action == list ]] || need_root admin
-    mkdir -p "$SHARED"
+    [[ $action == list ]] || { need_root admin; ensure_shared; }
     python3 -I - "$SHARED/config.json" "$action" "$@" <<'PY' || exit 1
 import json, os, re, sys
 path, action, names = sys.argv[1], sys.argv[2], sys.argv[3:]
@@ -960,6 +972,12 @@ ask() {   # ask <Frage> <Vorgabe>: Antwort auf stdout (bei -y oder ohne Eingabe 
     printf '%s' "${answer:-$2}"
 }
 
+# Fuehrt einen Schritt des Assistenten in einer Unterschale aus: ein Fehler (exit/die) beendet nur diesen Schritt.
+step() {
+    ( "$@" ) || warn "Dieser Schritt hat nicht geklappt – es geht mit dem nächsten weiter."
+    return 0
+}
+
 cmd_setup() {
     need_root setup
     local saved_yes=$YES names webhook port old found=""
@@ -970,13 +988,13 @@ cmd_setup() {
     cmd_doctor
 
     title "Schritt 2/9: Sicherung"
-    if confirm "Konfigurationen, Plugins und Dienste sichern?"; then cmd_backup; fi
+    if confirm "Konfigurationen, Plugins und Dienste sichern?"; then step cmd_backup; fi
 
     title "Schritt 3/9: OpenClaw"
     if id "$AGENT_USER" >/dev/null 2>&1 && [[ -n $(pgrep -u "$AGENT_USER" -f openclaw 2>/dev/null) ]]; then
         echo "Der OpenClaw-Agent läuft. Er hat im Juli Server immer wieder gestoppt."
         if confirm "OpenClaw anhalten (einfrieren, jederzeit fortsetzbar mit: beamnet openclaw resume)?"; then
-            YES=1; cmd_openclaw pause; YES=$saved_yes
+            YES=1; step cmd_openclaw pause; YES=$saved_yes
         fi
     else
         ok "OpenClaw läuft nicht – nichts zu tun."
@@ -984,28 +1002,29 @@ cmd_setup() {
 
     title "Schritt 4/9: Reparieren und starten"
     if confirm "Wilde Prozesse beenden, Rechte setzen, Autostart an, alle Server starten (beamnet fix)?"; then
-        YES=1; cmd_fix; YES=$saved_yes
+        YES=1; step cmd_fix; YES=$saved_yes
     fi
 
     title "Schritt 5/9: Plugin BeamNetCore"
     if confirm "BeamNetCore (km, XP, Liga, Rennen, Moderation, /server) auf allen Servern installieren?"; then
-        YES=1; cmd_install_core; YES=$saved_yes
+        YES=1; step cmd_install_core; YES=$saved_yes
         for old in XPSystem LigaSystem Rankings; do
             [[ -n $(find "$ROOT"/*/Resources/Server -maxdepth 1 -name "$old" 2>/dev/null | head -n1) ]] && found+="$old "
         done
         if [[ -n $found ]] && confirm "Alte Plugins mit gleichen Aufgaben abschalten (${found% })? Sie werden nur verschoben."; then
-            for old in $found; do YES=1; cmd_plugin_toggle disable "$old"; YES=$saved_yes; done
+            for old in $found; do YES=1; step cmd_plugin_toggle disable "$old"; YES=$saved_yes; done
         fi
     fi
 
     title "Schritt 6/9: Admins"
     names=$(ask "BeamMP-Namen der Admins, durch Leerzeichen getrennt (Enter = überspringen):" "")
+    names=${names//,/ }
     # shellcheck disable=SC2086
-    [[ -n $names ]] && cmd_admin add $names
+    [[ -n ${names// /} ]] && step cmd_admin add $names
 
     title "Schritt 7/9: Wächter (meldet Ausfälle, optional Discord und Neustart)"
     if confirm "Wächter einrichten?"; then
-        watch_install
+        step watch_install
         webhook=$(ask "Discord-Webhook-URL (Enter = keiner):" "")
         if [[ -n $webhook ]]; then
             if [[ $webhook =~ ^https://(discord|discordapp)\.com/api/webhooks/[A-Za-z0-9/_-]+$ ]]; then
@@ -1022,7 +1041,7 @@ cmd_setup() {
     if confirm "Statusseite als Webseite bereitstellen?"; then
         port=$(ask "Port (Enter = 8080):" "8080")
         if [[ $port =~ ^[0-9]+$ ]] && (( port >= 1024 && port <= 65535 )); then
-            web_install "$port"
+            step web_install "$port"
         else
             warn "Ungültiger Port '$port' – Statusseite übersprungen (später: beamnet web install <port>)."
         fi
@@ -1032,7 +1051,7 @@ cmd_setup() {
     echo "Plugins lädt BeamMP im laufenden Betrieb neu. Ein Neustart hilft nur, wenn beamnet doctor danach meldet,"
     echo "dass sich BeamNetCore nicht meldet."
     if confirm "Trotzdem alle Server jetzt neu starten? Spieler fliegen kurz raus."; then
-        YES=1; cmd_restart all; YES=$saved_yes
+        YES=1; step cmd_restart all; YES=$saved_yes
     fi
 
     title "Fertig"
@@ -1081,8 +1100,13 @@ path, query = sys.argv[1], sys.argv[2].lower()
 try:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError
 except FileNotFoundError:
     print("Keine Banns.")
+    sys.exit(1)
+except Exception:
+    print("bans.json ist fehlerhaft – bitte prüfen (Sicherungen: beamnet backup).")
     sys.exit(1)
 bans = [b for b in data.get("bans", []) if isinstance(b, dict)]
 kept = [b for b in bans if str(b.get("name", "")).lower() != query and str(b.get("id", "")) != query]

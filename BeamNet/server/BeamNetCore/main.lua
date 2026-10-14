@@ -17,7 +17,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.4"
+BN.VERSION = "1.5"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -51,6 +51,9 @@ local defaults = {
     spamMessages = 5,
     spamWindowSec = 5,
     spamMuteSec = 30,
+    -- Befehls-Bremse je Spieler (Admins ausgenommen).
+    commandLimit = 6,
+    commandWindowSec = 10,
     -- Wie oft Banns und Ansagen der anderen Server gelesen werden (s).
     syncEverySec = 3,
     -- Zeitrennen: Radius von Start- und Zielbereich (m), Abtastung waehrend eines Laufs (ms), Hoechstdauer (min).
@@ -273,12 +276,21 @@ local function readFile(path)
 end
 
 -- Schreibt erst in eine Hilfsdatei und benennt sie dann um: ein Absturz hinterlaesst nie eine halbe Datei.
+-- Bei einem Fehler (z. B. Platte voll) bleibt die alte Datei unveraendert. Der Name der Hilfsdatei enthaelt den Port,
+-- damit sich die 12 Server nie in dieselbe Hilfsdatei schreiben (math.random ist je Prozess gleich geseedet).
+local tmpCounter = 0
 local function writeFileAtomic(path, data)
-    local tmp = path .. ".tmp" .. tostring(math.random(100000, 999999))
+    tmpCounter = tmpCounter + 1
+    local tmp = string.format("%s.tmp-%s-%d-%d", path, tostring(BN.server and BN.server.port or 0), os.time(), tmpCounter)
     local f, err = io.open(tmp, "wb")
     if not f then return false, err end
-    f:write(data)
-    f:close()
+    local wrote, writeErr = f:write(data)
+    local flushed, flushErr = f:flush()
+    local closed, closeErr = f:close()
+    if not (wrote and flushed and closed) then
+        os.remove(tmp)
+        return false, writeErr or flushErr or closeErr or "Schreibfehler"
+    end
     local ok, renameErr = os.rename(tmp, path)
     if not ok then
         os.remove(tmp)
@@ -314,6 +326,7 @@ local function playersDir() return C.sharedDir .. "/players" end
 local function serversDir() return C.sharedDir .. "/servers" end
 local function racesDir() return C.sharedDir .. "/races" end
 local function bansFile() return C.sharedDir .. "/bans.json" end
+local function mutesFile() return C.sharedDir .. "/mutes.json" end
 local function announcementsFile() return C.sharedDir .. "/announcements.json" end
 local function modlogFile() return C.sharedDir .. "/modlog.jsonl" end
 
@@ -544,6 +557,8 @@ local EN = {
     ["%s ist %d min stumm."] = "%s is muted for %d min.",
     ["Aufruf: /ansage <Text> – erscheint auf allen BeamNet-Servern."] = "Usage: /announce <text> – shown on all BeamNet servers.",
     ["Interner Fehler – bitte einem Admin melden."] = "Internal error – please tell an admin.",
+    ["Bitte etwas langsamer mit den Befehlen."] = "Please slow down with the commands.",
+    ["Bann konnte nicht gespeichert werden (%s) – bitte beamnet doctor prüfen."] = "Could not save the ban (%s) – please check beamnet doctor.",
     ["Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server. English: /lang en"] =
         "Welcome to %s (%s)! Level %d · %s league · %s driven. /help for commands, /server for all servers. Deutsch: /lang de",
     ["Sprache: Deutsch. English: /lang en"] = "Language: English. Deutsch: /lang de",
@@ -631,6 +646,8 @@ function BN.addPlayer(pid)
                       pendingKm = 0, pendingSeconds = 0, pendingTop = 0, pendingBonus = 0 }
     session.record = id and loadRecord(id, name) or emptyRecord(nil, name)
     if session.record.lang == "en" or session.record.lang == "de" then session.lang = session.record.lang end
+    local mute = BN.findMute(id, ids.ip)
+    if mute then session.mutedUntil = mute["until"] end
     applyWeek(session.record)
     local xp = BN.xpFor(session.record.km, session.record.seconds) + session.record.bonusXp
     session.level = BN.levelFor(xp)
@@ -783,7 +800,11 @@ function BN.refreshBoard(force)
 end
 
 -- Kilometer einer bestimmten Woche (aktuelle oder vergangene), absteigend.
+BN.weekCache = BN.weekCache or {}
+
 function BN.weekRanking(week)
+    local cached = BN.weekCache[week]
+    if cached and BN.now() - cached.at < C.leaderboardEverySec then return cached.list end
     local byId = {}
     for _, file in ipairs(listJsonFiles(playersDir())) do
         local rec = json.decode(readFile(file) or "")
@@ -807,6 +828,7 @@ function BN.weekRanking(week)
         if a.km ~= b.km then return a.km > b.km end
         return tostring(a.name) < tostring(b.name)
     end)
+    BN.weekCache[week] = { at = BN.now(), list = list }
     return list
 end
 
@@ -896,6 +918,12 @@ local function crossTime(p0, p1, t0, t1, c, r)
     local f = (r - d0) / (d1 - d0)
     if f < 0 then f = 0 elseif f > 1 then f = 1 end
     return t0 + (t1 - t0) * f
+end
+
+-- So weit muss man sich nach dem Start vom Ziel entfernt haben, bevor das Ziel zaehlt (verhindert, dass Hin-und-her-
+-- Wackeln an der Linie eines Rundkurses als Runde gilt).
+function BN.leaveDistance()
+    return math.max(3 * C.raceRadiusM, 30)
 end
 
 function BN.fmtRaceTime(seconds)
@@ -1026,7 +1054,7 @@ function BN.raceUpdate(s, vid, prev, cur, jump)
         if dist(cur, r.start) > radius then
             r.startT = crossTime(prev, cur, t0, t1, r.start, radius)
             r.state = "running"
-            r.leftFinish = dist(cur, r.finish) > radius
+            r.leftFinish = dist(cur, r.finish) > BN.leaveDistance()
             say(s.pid, "Zeit läuft! Ziel ist %.0f m entfernt.", dist(cur, r.finish))
         end
         return
@@ -1038,7 +1066,7 @@ function BN.raceUpdate(s, vid, prev, cur, jump)
     end
     local d = dist(cur, r.finish)
     if not r.leftFinish then
-        if d > radius then r.leftFinish = true end
+        if d > BN.leaveDistance() then r.leftFinish = true end
         return
     end
     if d <= radius then
@@ -1091,10 +1119,41 @@ local function saveBans(data)
     return writeFileAtomic(bansFile(), json.encode(data))
 end
 
--- Aktiver Bann fuer BeamMP-ID oder (bei Gaesten) IP-Adresse.
-function BN.findBan(id, ip)
+-- Stummschaltungen gelten auf allen Servern und ueberstehen Neu-Verbinden (mutes.json).
+function BN.loadMutes()
+    local data = json.decode(readFile(mutesFile()) or "")
+    if type(data) ~= "table" or type(data.mutes) ~= "table" then return { mutes = {} } end
+    return data
+end
+
+function BN.saveMute(s, untilTs)
+    local data = BN.loadMutes()
+    local now, kept = BN.now(), {}
+    for _, m in ipairs(data.mutes) do
+        local same = (s.id and m.id == s.id) or (not s.id and s.ip and m.ip == s.ip)
+        if type(m) == "table" and not same and tonumber(m["until"]) and m["until"] > now then kept[#kept + 1] = m end
+    end
+    kept[#kept + 1] = { id = s.id, ip = (not s.id) and s.ip or nil, name = s.name, ["until"] = untilTs }
+    data.mutes = kept
+    ensureDir(C.sharedDir)
+    return writeFileAtomic(mutesFile(), json.encode(data))
+end
+
+function BN.findMute(id, ip, mutes)
     local now = BN.now()
-    for _, ban in ipairs(BN.loadBans().bans) do
+    for _, m in ipairs((mutes or BN.loadMutes()).mutes) do
+        if type(m) == "table" and tonumber(m["until"]) and m["until"] > now
+            and ((id and m.id == id) or (not id and ip and m.ip == ip)) then
+            return m
+        end
+    end
+    return nil
+end
+
+-- Aktiver Bann fuer BeamMP-ID oder IP-Adresse.
+function BN.findBan(id, ip, data)
+    local now = BN.now()
+    for _, ban in ipairs((data or BN.loadBans()).bans) do
         local active = not ban["until"] or tonumber(ban["until"]) > now
         if active and ((id and ban.id == id) or (ip and ban.ip and ban.ip == ip)) then return ban end
     end
@@ -1131,12 +1190,16 @@ function BN.sync(force)
         BN.lastConfigLoad = now
         BN.loadOverrides()
     end
+    local bans, mutes = BN.loadBans(), BN.loadMutes()
     for pid, s in pairs(BN.players) do
-        local ban = BN.findBan(s.id, s.ip)
+        local ban = BN.findBan(s.id, s.ip, bans)
         if ban then
             BN.savePlayer(s)
             drop(pid, banText(ban, BN.langOf(pid)))
             BN.players[pid] = nil
+        else
+            local mute = BN.findMute(s.id, s.ip, mutes)
+            if mute and (not s.mutedUntil or s.mutedUntil < mute["until"]) then s.mutedUntil = mute["until"] end
         end
     end
     local data = json.decode(readFile(announcementsFile()) or "")
@@ -1221,15 +1284,26 @@ local function findTarget(query)
     end
     local online = {}
     for _, s in pairs(BN.players) do online[#online + 1] = s end
-    local target, why = pick(online, function(s) return s.name end,
-        function(s) return { online = s, id = s.id, ip = s.ip, name = s.name } end)
-    if target or why then return target, why end
+    local function onlineTarget(s)
+        return { online = s, id = s.id, ip = s.ip, name = s.name }
+    end
     local records = {}
     for _, file in ipairs(listJsonFiles(playersDir())) do
         local rec = json.decode(readFile(file) or "")
         if type(rec) == "table" and rec.id then records[#records + 1] = rec end
     end
-    target, why = pick(records, function(r) return tostring(r.name) end, function(r) return { id = r.id, name = r.name } end)
+    local function savedTarget(r)
+        -- Ist der gespeicherte Spieler gerade online, die Sitzung verwenden (fuer Kick und IP).
+        for _, s in ipairs(online) do if s.id and s.id == r.id then return onlineTarget(s) end end
+        return { id = r.id, name = r.name }
+    end
+    -- 1. genauer Name, online oder gespeichert (vor jedem Teilnamen)
+    for _, s in ipairs(online) do if s.name:lower() == lower then return onlineTarget(s) end end
+    for _, r in ipairs(records) do if tostring(r.name):lower() == lower then return savedTarget(r) end end
+    -- 2. eindeutiger Teilname, erst online, dann gespeichert
+    local target, why = pick(online, function(s) return s.name end, onlineTarget)
+    if target or why then return target, why end
+    target, why = pick(records, function(r) return tostring(r.name) end, savedTarget)
     if target or why then return target, why end
     if safeId(query) and query:match("^%d+$") then return { id = query, name = query } end
     return nil
@@ -1540,11 +1614,15 @@ function commands.ban(pid, arg)
     local duration = BN.parseDuration(words[2])
     local reason = table.concat(words, " ", duration and 3 or 2)
     local data = BN.loadBans()
-    local ban = { id = target.id, ip = (not target.id) and target.ip or nil, name = target.name, reason = reason,
-                  by = admin.name, at = BN.now() }
+    local ban = { id = target.id, ip = target.ip, name = target.name, reason = reason, by = admin.name, at = BN.now() }
     if duration then ban["until"] = BN.now() + duration end
     data.bans[#data.bans + 1] = ban
-    saveBans(data)
+    local saved, saveErr = saveBans(data)
+    if not saved then
+        say(pid, "Bann konnte nicht gespeichert werden (%s) – bitte beamnet doctor prüfen.", tostring(saveErr))
+        print("[BeamNetCore] Fehler beim Speichern von bans.json: " .. tostring(saveErr))
+        return
+    end
     modlog({ action = "ban", by = admin.name, target = target.name, targetId = target.id, reason = reason, ["until"] = ban["until"] })
     if target.online then
         BN.savePlayer(target.online)
@@ -1608,8 +1686,10 @@ function commands.mute(pid, arg)
     local words = splitArgs(arg)
     local target = findTarget(words[1])
     if not target or not target.online then say(pid, "Aufruf: /mute <Name> [Minuten]") return end
-    local minutes = tonumber(words[2]) or 10
+    local minutes = math.floor(tonumber(words[2]) or 10)
+    if minutes < 1 or minutes > 10080 then say(pid, "Aufruf: /mute <Name> [Minuten]") return end
     target.online.mutedUntil = BN.now() + minutes * 60
+    BN.saveMute(target.online, target.online.mutedUntil)
     say(target.online.pid, "Du wurdest für %d min stummgeschaltet.", minutes)
     say(pid, "%s ist %d min stumm.", target.name, minutes)
     modlog({ action = "mute", by = admin.name, target = target.name, targetId = target.id, minutes = minutes })
@@ -1658,6 +1738,23 @@ function BN.handleChat(pid, message)
     if not cmd then return false end
     local handler = commands[cmd:lower()]
     if not handler then return false end      -- Befehle anderer Plugins nicht abfangen
+    -- Befehls-Bremse: hoechstens commandLimit Befehle in commandWindowSec Sekunden (Admins ausgenommen).
+    local s = BN.players[pid]
+    if s and not BN.isAdmin(s) then
+        local now = BN.now()
+        local kept = {}
+        for _, t in ipairs(s.commandTimes or {}) do if now - t < C.commandWindowSec then kept[#kept + 1] = t end end
+        if #kept >= C.commandLimit then
+            if not s.commandNoticeAt or now - s.commandNoticeAt >= 5 then
+                s.commandNoticeAt = now
+                say(pid, "Bitte etwas langsamer mit den Befehlen.")
+            end
+            s.commandTimes = kept
+            return true
+        end
+        kept[#kept + 1] = now
+        s.commandTimes = kept
+    end
     local ok, err = pcall(handler, pid, arg)
     if not ok then
         print("[BeamNetCore] Fehler in /" .. cmd .. ": " .. tostring(err))
@@ -1748,10 +1845,20 @@ function BN_onPlayerDisconnect(pid)
     BN.writeStatus()
 end
 
-function BN_onChatMessage(pid, _, message)
+function BN.onChat(pid, message)
     if BN.handleChat(pid, message) then return 1 end
     local s = BN.players[pid]
-    if s and type(message) == "string" and not message:match("^%s*/") and BN.spamCheck(s) then return 1 end
+    -- Alles andere (auch "/..." anderer Plugins) unterliegt Spamschutz und Stummschaltung.
+    if s and type(message) == "string" and BN.spamCheck(s) then return 1 end
+end
+
+function BN_onChatMessage(pid, _, message)
+    local ok, result = pcall(BN.onChat, pid, message)
+    if not ok then
+        print("[BeamNetCore] Fehler im Chat: " .. tostring(result))
+        return nil
+    end
+    return result
 end
 
 -- Gesperrte Spieler gar nicht erst hereinlassen (Rueckgabe eines Textes = Ablehnung mit diesem Grund).

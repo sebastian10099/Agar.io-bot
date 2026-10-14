@@ -107,6 +107,7 @@ local BN = BeamNetCore
 local C = BN.config
 
 check(events.onChatMessage == "BN_onChatMessage", "onChatMessage registriert")
+C.commandLimit = 100000            -- Befehls-Bremse fuer die allgemeinen Tests aus (eigener Test weiter unten)
 check(events.BN_Tick == "BN_Tick" and timers.BN_Tick == 1000, "Takt registriert")
 eq(BN.server.name, "BeamNet | Server 1", "Servername ohne Farbcodes")
 eq(BN.server.port, 30814, "Port trotz Kommentar")
@@ -653,6 +654,102 @@ for de, en in pairs(BN.EN) do
     if holes(de) ~= holes(en) then mismatch[#mismatch + 1] = de end
 end
 check(#mismatch == 0, "Platzhalter stimmen ueberein: " .. table.concat(mismatch, " | "))
+
+-- --- Funde aus der Code-Pruefung --------------------------------------------------------------------------------
+-- (1) Platte voll: Schreibfehler -> alte Datei bleibt, savePlayer meldet false.
+do
+    local s5 = BN.players[5]
+    s5.pendingKm = s5.pendingKm + 1
+    local before = readJson(SHARED .. "/players/3003.json")
+    local realOpen = io.open
+    io.open = function(path, mode)
+        if mode == "wb" then
+            return { write = function() return nil, "No space left on device" end,
+                     flush = function() return nil, "No space left on device" end,
+                     close = function() return true end }
+        end
+        return realOpen(path, mode)
+    end
+    local ok = BN.savePlayer(s5)
+    io.open = realOpen
+    check(ok == false, "Schreibfehler wird gemeldet")
+    local after = readJson(SHARED .. "/players/3003.json")
+    check(after ~= nil and after.km == before.km, "Bei Schreibfehler bleibt die alte Datei erhalten")
+    check(BN.players[5].pendingKm >= 1, "Unge­speicherte km gehen nicht verloren")
+    check(BN.savePlayer(s5), "Danach normal gespeichert")
+end
+-- (11) Hilfsdateien tragen den Port und bleiben nicht liegen.
+do
+    local leftovers = 0
+    for _, name in ipairs(FS.ListFiles(SHARED .. "/players")) do if name:find("%.tmp") then leftovers = leftovers + 1 end end
+    eq(leftovers, 0, "Keine liegengebliebenen Hilfsdateien")
+end
+-- (2) Rundkurs: Wackeln an der Linie zaehlt nicht.
+at(1, 5000, 20000, 5000)
+say(1, "/rennen neu wackel")
+say(1, "/rennen ziel wackel")
+players[5].vehicles[0] = players[5].vehicles[0] or { pos = { 0, 0, 0 }, tim = 0 }
+say(5, "/rennen wackel")
+local wt = 30000
+at(5, 5000, wt, 4990); at(5, 5000, wt + 1, 5000)          -- in den Startbereich
+at(5, 5000, wt + 2, 5012.1)                                 -- knapp raus: Start
+check(BN.players[5].race.state == "running", "Rundkurs gestartet (Wackeltest)")
+for i = 1, 12 do at(5, 5000, wt + 2 + i, (i % 2 == 1) and 5011.9 or 5012.1) end
+check(not chatContains("Ziel! wackel", 5) and not chatContains("Finish! wackel", 5), "Wackeln an der Linie ist keine Runde")
+at(5, 5000, wt + 20, 5050); at(5, 5000, wt + 25, 5005)      -- echte Runde (50 m weg und zurueck)
+check(chatContains("Ziel! wackel", 5) or chatContains("Finish! wackel", 5), "Echte Runde zaehlt")
+say(5, "/rennen stop")
+say(1, "/rennen loeschen wackel")
+-- (3) Genauer Name (gespeichert) schlaegt Teilname (online).
+do
+    writeJson(SHARED .. "/players/8008.json", { id = "8008", name = "Maxi", km = 1, seconds = 1 })
+    players[8] = { name = "Maximilian", ids = { beammp = "8009", ip = "8.8.8.8" }, vehicles = {} }
+    join(8)
+    local t = BN.findTarget("maxi")
+    check(t and t.id == "8008" and not t.online, "Genauer gespeicherter Name vor Teilname online")
+    local t2 = BN.findTarget("maximilian")
+    check(t2 and t2.online and t2.id == "8009", "Genauer Name online")
+end
+-- (4) Bann sperrt auch die IP: kein Zurueckkommen als Gast.
+say(1, "/ban maximilian 1h Test")
+bans = readJson(SHARED .. "/bans.json").bans
+check(bans[#bans].id == "8009" and bans[#bans].ip == "8.8.8.8", "Bann speichert ID und IP")
+check(type(_G[events.onPlayerAuth]("Gast77", "GUEST", true, { ip = "8.8.8.8" })) == "string", "Gebannter kommt nicht als Gast zurueck")
+writeJson(SHARED .. "/bans.json", { bans = {} })
+-- (5) Stummschaltung: auch "/..." anderer Plugins, netzweit, ueber Neu-Verbinden hinweg.
+players[9] = { name = "Laut", ids = { beammp = "9009", ip = "9.0.0.9" }, vehicles = {} }
+join(9)
+say(1, "/mute laut 5")
+eq(say(9, "/ hallo alle"), 1, "Stumm: auch '/ ...' blockiert")
+eq(say(9, "/g hallo global"), 1, "Stumm: Befehle anderer Plugins blockiert")
+eq(say(9, "/km"), 1, "Stumm: eigene Befehle gehen (werden beantwortet)")
+check(chatContains("Du bist %d+%.%d km gefahren", 9), "Eigene Befehle beantwortet")
+_G[events.onPlayerDisconnect](9)
+players[9] = { name = "Laut", ids = { beammp = "9009", ip = "9.0.0.9" }, vehicles = {} }
+join(9)
+eq(say(9, "wieder da"), 1, "Stummschaltung uebersteht Neu-Verbinden")
+-- (9) /mute mit Kommazahl stuerzt nicht ab.
+local okMute = pcall(say, 1, "/mute laut 0.33")
+check(okMute, "/mute 0.33 ohne Absturz")
+check(chatContains("Aufruf: /mute", 1), "/mute 0.33 wird abgelehnt (unter 1 min)")
+local okChat, res = pcall(say, 9, "noch was")
+check(okChat and res == 1, "Chat-Handler bleibt stabil")
+-- (15) Befehls-Bremse.
+C.commandLimit = 6
+local blocked = 0
+for i = 1, 10 do
+    local before = #chatLog
+    say(8, "/km")
+    if chatContains("Bitte etwas langsamer", 8) then blocked = blocked + 1 end
+end
+check(chatContains("Bitte etwas langsamer mit den Befehlen", 8), "Befehls-Bremse greift")
+clock = clock + 11
+local n0 = countChat("Du bist", 8)
+say(8, "/km")
+eq(countChat("Du bist", 8), n0 + 1, "Nach der Pause wieder Befehle")
+C.commandLimit = 100000
+_G[events.onPlayerDisconnect](8); players[8] = nil
+_G[events.onPlayerDisconnect](9); players[9] = nil
 
 -- Herunterfahren speichert alle.
 tick(1)

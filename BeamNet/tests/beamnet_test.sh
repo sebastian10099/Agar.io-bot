@@ -276,6 +276,8 @@ export BEAMNET_CONF="$T/beamnet.conf" BEAMNET_STATE="$T/watch" BEAMNET_SYSTEMD_D
 cat >"$T/bin/curl" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >>"$FAKE/curl.log"
+[[ -f $FAKE/curl.fail ]] && exit 22
+exit 0
 EOF
 chmod +x "$T/bin/curl"
 for nr in 1 2 3 4 5 6; do touch "$T/state/beammp-$nr.service.active" "$T/state/beammp-$nr.service.enabled"; done
@@ -490,6 +492,77 @@ contains "$(cat "$T/beamnet.conf")" "^DISCORD_WEBHOOK=https://discord.com/api/we
 contains "$out" "Ungültiger Port 'keinport' – Statusseite übersprungen" "setup: ungueltiger Port bricht nicht ab"
 contains "$out" "Zum Teilen mit mir" "setup laeuft nach ungueltigem Port bis zum Ende"
 "$TOOL" plugin-enable XPSystem -y >/dev/null 2>&1
+
+# --- Funde aus der Code-Pruefung ---------------------------------------------------------------------------------
+# (12) Ein Server-Prozess als Kind eines Start-Skripts gehoert zum Dienst (cgroup), auch wenn er nicht MainPID ist.
+echo "3003 beammp $T/root/3 beammp-3.service" >>"$T/procs"
+out=$("$TOOL" doctor 2>&1)
+lacks "$out" "Server 3 .*außerhalb von systemd" "doctor: Kindprozess des Dienstes ist kein wilder Prozess"
+contains "$out" "Server 5 .*außerhalb von systemd \\(Prozess 999991 als root\\)" "doctor: echter wilder Prozess bleibt erkannt"
+sed -i '/^3003 /d' "$T/procs"
+
+# (6) Wartung endet, sobald der Server wieder laeuft – egal wie er gestartet wurde.
+"$TOOL" watch install >/dev/null 2>&1
+sed -i 's/^AUTO_RESTART=.*/AUTO_RESTART=0/' "$T/beamnet.conf"
+"$TOOL" stop 2 -y >/dev/null 2>&1
+"$TOOL" watch >/dev/null 2>&1
+touch "$T/state/beammp-2.service.active"           # direkt per systemctl gestartet
+"$TOOL" watch >/dev/null 2>&1
+[[ ! -f $T/watch/maintenance-2 ]] && pass || fail "watch: Wartungsmarker entfernt, sobald der Server laeuft"
+rm -f "$T/state/beammp-2.service.active"           # Absturz
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🔴 Server 2 .* ist ausgefallen" "watch: Absturz nach Wartung wird gemeldet"
+touch "$T/state/beammp-2.service.active"
+"$TOOL" watch >/dev/null 2>&1
+
+# (7) watch test meldet einen fehlgeschlagenen Versand.
+sed -i 's|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/abc|' "$T/beamnet.conf"
+touch "$T/curl.fail"
+out=$("$TOOL" watch test 2>&1); rc=$?
+lacks "$out" "Testnachricht gesendet" "watch test: kein falsches Erfolgsmeldung"
+contains "$out" "Discord-Meldung fehlgeschlagen" "watch test: Fehler gemeldet"
+[[ $rc -ne 0 ]] && pass || fail "watch test: Fehlercode"
+rm -f "$T/curl.fail"
+out=$("$TOOL" watch test 2>&1)
+contains "$out" "Testnachricht gesendet" "watch test: Erfolg"
+
+# (10) unban mit leerer/kaputter bans.json: verstaendliche Meldung statt Python-Fehler.
+: >"$T/root/shared/beamnet/bans.json"
+out=$("$TOOL" unban max 2>&1)
+contains "$out" "bans.json ist fehlerhaft" "unban: kaputte Datei"
+lacks "$out" "Traceback" "unban: kein Python-Fehler"
+rm -f "$T/root/shared/beamnet/bans.json"
+
+# (13) admin legt den gemeinsamen Ordner mit Rechten fuer den Dienst-Benutzer an.
+rm -rf "$T/root/shared/beamnet"
+: >"$T/actions"
+"$TOOL" admin add Sebi >/dev/null 2>&1
+contains "$(cat "$T/actions")" "chown -R $ME:$ME $T/root/shared/beamnet" "admin: Ordner bekommt den Dienst-Benutzer"
+[[ -d $T/root/shared/beamnet/players ]] && pass || fail "admin: Unterordner angelegt"
+
+# (14) Sicherung im laufenden Betrieb: tar-Code 1 (Datei geaendert) ist kein Fehler.
+cat >"$T/bin/tar" <<'EOF'
+#!/usr/bin/env bash
+/usr/bin/tar "$@"; [[ -f $FAKE/tar.warn ]] && exit 1; exit 0
+EOF
+chmod +x "$T/bin/tar"
+touch "$T/tar.warn"
+out=$("$TOOL" backup 2>&1)
+contains "$out" "Gesichert:" "backup: tar-Warnung ist kein Fehler"
+rm -f "$T/tar.warn" "$T/bin/tar"
+
+# (8) Assistent: Komma-getrennte Namen und ein fehlschlagender Schritt beenden ihn nicht.
+cat >"$T/bin/tar" <<'EOF'
+#!/usr/bin/env bash
+exit 2
+EOF
+chmod +x "$T/bin/tar"
+out=$(printf 'j\n\n\nMax, Moritz\n\n\n\n' | "$TOOL" setup 2>&1)
+contains "$out" "Sicherung fehlgeschlagen" "setup: Fehler in einem Schritt wird gezeigt"
+contains "$out" "Dieser Schritt hat nicht geklappt – es geht mit dem nächsten weiter" "setup: geht nach Fehler weiter"
+contains "$("$TOOL" admin list)" "Max, Moritz" "setup: Komma-getrennte Admins"
+contains "$out" "Zum Teilen mit mir" "setup: läuft bis zum Ende"
+rm -f "$T/bin/tar"
 
 # Nicht als root: Aenderungen verweigert.
 out=$(FAKE_UID=1000 "$TOOL" restart all 2>&1)

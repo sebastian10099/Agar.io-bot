@@ -1,5 +1,16 @@
 # BeamNet – Roadmap
 
+Erledigt (Plugin 1.5, Werkzeug 1.6) – 15 Funde einer unabhängigen Code-Prüfung behoben, jeweils mit Test:
+- [x] Volle Platte: Dateien werden nur ersetzt, wenn das Schreiben vollständig geklappt hat (vorher: leere Spieler-
+      oder Bann-Dateien möglich); Hilfsdateien je Server eindeutig.
+- [x] Rundkurs: Wackeln an der Linie zählt nicht mehr als Runde (man muss sich mindestens 36 m entfernen).
+- [x] `/ban Name`: genauer Name (auch offline) vor Teilname; Bann umfasst auch die IP (kein Zurückkommen als Gast).
+- [x] Stummschaltung gilt auch für „/…“-Nachrichten, netzweit und nach Neu-Verbinden; `/mute 0.33` stürzt nicht mehr
+      ab; Chat-Verarbeitung abgesichert; Befehls-Bremse; Wochenrangliste zwischengespeichert.
+- [x] Werkzeug: Wartungsmarker endet, sobald der Server läuft; `watch test` meldet Fehler; Assistent läuft nach einem
+      Fehler weiter und akzeptiert Kommas; `unban` mit kaputter Datei; „außerhalb von systemd“ über die cgroup;
+      gemeinsamer Ordner immer mit Rechten für `beammp`; Sicherung im laufenden Betrieb.
+
 Erledigt (Plugin 1.4):
 - [x] Deutsch und Englisch je Spieler (`/lang`), Rundmeldungen in der Sprache jedes Empfängers, englische Befehlsnamen;
       Test prüft, dass jede Übersetzung dieselben Platzhalter hat.
