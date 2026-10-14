@@ -618,7 +618,8 @@ cmd_install_core() {
         ok "Server $nr: BeamNetCore installiert"
     done
     echo "Gemeinsame Daten: $SHARED"
-    echo "Aktiv nach einem Neustart der Server: beamnet restart all"
+    echo "BeamMP lädt das Plugin innerhalb weniger Sekunden selbst neu – ein Neustart ist nicht nötig."
+    echo "Prüfen: beamnet doctor (BeamNetCore aktiv?)"
 }
 
 cmd_openclaw() {
@@ -1027,8 +1028,10 @@ cmd_setup() {
         fi
     fi
 
-    title "Schritt 9/9: Neustart"
-    if confirm "Alle Server jetzt neu starten, damit alles aktiv wird? Spieler fliegen kurz raus."; then
+    title "Schritt 9/9: Neustart (meist nicht nötig)"
+    echo "Plugins lädt BeamMP im laufenden Betrieb neu. Ein Neustart hilft nur, wenn beamnet doctor danach meldet,"
+    echo "dass sich BeamNetCore nicht meldet."
+    if confirm "Trotzdem alle Server jetzt neu starten? Spieler fliegen kurz raus."; then
         YES=1; cmd_restart all; YES=$saved_yes
     fi
 

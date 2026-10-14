@@ -109,14 +109,17 @@ Woche und die Streckenrekorde; hell oder dunkel je nach Gerät, auch fürs Handy
 
 ## Plugin BeamNetCore
 
-Installieren und aktivieren:
+Installieren:
 
 ```bash
 beamnet install-core
-beamnet restart all
 ```
 
-Läuft es, die alten Plugins mit gleichen Aufgaben abschalten (damit Befehle nicht doppelt antworten):
+Ein Neustart ist nicht nötig: BeamMP lädt geänderte Plugins im laufenden Betrieb neu (im Integrationstest mit dem echten
+Server geprüft). `beamnet doctor` zeigt danach je Server „BeamNetCore aktiv“.
+
+Läuft es, die alten Plugins mit gleichen Aufgaben abschalten (damit Befehle nicht doppelt antworten). Abgeschaltete
+Plugins entlädt BeamMP erst beim nächsten Neustart des Servers:
 
 ```bash
 beamnet plugin-disable XPSystem
@@ -226,7 +229,8 @@ shellcheck BeamNet/beamnet.sh
 
 Die Tests laufen bei jeder Änderung automatisch auf GitHub (Workflow „BeamNet“). Dazu gehört ein Integrationstest mit
 dem **echten BeamMP-Server** (offizielle Linux-Version, derzeit 3.9.3): Das Plugin wird geladen, der Takt muss laufen,
-alle benötigten BeamMP-Funktionen müssen vorhanden sein, und es darf keine Fehlermeldung geben
+alle benötigten BeamMP-Funktionen müssen vorhanden sein, Neuladen im laufenden Betrieb muss klappen, und es darf keine
+Fehlermeldung geben
 (`BeamNet/tests/beammp_integration.sh`). Was ohne echte Spieler nicht prüfbar ist: Positionen, Chat und Anmelden –
 das deckt der Test mit nachgebauter Schnittstelle ab.
 

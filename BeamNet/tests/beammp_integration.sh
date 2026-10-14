@@ -86,7 +86,7 @@ if [[ -f $WORK/shared/servers/30814.json ]]; then
         check "BeamMP-Funktion vorhanden: $f" "grep -q '\"$f\":true' '$WORK/shared/servers/30814.json'"
     done
 fi
-loads=$(grep -c "\[BeamNetCore\] [0-9.]* geladen" <<<"$all")
+loads=$(grep -c "\[BeamNetCore\] [0-9.]* geladen" "$log")
 if (( loads >= 2 )); then
     echo "INFO Neu laden im laufenden Betrieb: ja ($loads-mal geladen)"
 else
