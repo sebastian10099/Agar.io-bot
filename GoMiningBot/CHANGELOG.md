@@ -34,7 +34,8 @@ Die Abschnitte hier werden als Release-Notizen und in der App unter „Was ist n
 - Dauertest der Engine: 48.000 Marktmomente mit Zufallskurs, Sprüngen und dünnen Orderbüchern, mit und ohne Limit-Kauf.
   Nach jedem Schritt wird geprüft: Bargeld nie negativ, Bestand gleich Summe der Lose, Vermögen endlich, begrenzte Listen.
 - Langzeittest der App in der CI: 30 Minuten mit Live-Daten und Schattenkonten, misst Speicher und CPU (startet von Hand
-  oder mit `[soak]` in der Commit-Nachricht).
+  oder mit `[soak]` in der Commit-Nachricht). Ergebnis für 4.4: Speicher 36,5 → 40,9 MB und danach stabil, CPU im Schnitt
+  6,7 %, Selbstdiagnose durchgehend „Alles in Ordnung“, keine Fehler.
 
 **Schneller und mehr Verlauf**
 - Der Kerzenverlauf liegt jetzt in einem kompakten Binärformat statt JSON (rund 6 MB für 90 Tage, lädt in

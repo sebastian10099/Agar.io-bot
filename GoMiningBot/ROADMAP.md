@@ -28,6 +28,8 @@ Grundsätze, die für jede Version gelten:
 - [ ] Limit-Verkäufe am Ask für Gewinnziele (Maker auch beim Ausstieg), Teilausführungen.
 - [ ] Mindest-Kaufabstand und Trendfilter über mehrere Wochen neu bewerten (siehe „Beobachten“).
 - [ ] Ziel abhängig von der Volatilität staffeln; Stop-Loss mit Abstand zum letzten Tief statt fester Prozentzahl prüfen.
+- [ ] Leerlauf-CPU senken (Langzeittest 4.4: 6,7 %): Diagramm und Listen nur neu zeichnen, wenn das Fenster sichtbar ist
+      und sich etwas geändert hat; Ziel unter 3 %.
 
 ## Beobachten (aus dem Strategievergleich vom 12.10.2026)
 - [ ] Mindest-Kaufabstand 80 bp über mehrere Wochen und auch in steigenden Phasen prüfen (Schattenkonto „ohne
