@@ -26,9 +26,10 @@ Die Abschnitte hier werden als Release-Notizen und in der App unter „Was ist n
   Livestream, Konto, Updates, Marktprotokoll, Profile, Sicherungen, Kerzenspeicher). Dabei wurden vier Stellen gefunden,
   an denen die App hätte abstürzen können, und behoben: riesige Zahlen (Fehlercodes, Trade-IDs, Folgenummern),
   unsinnige Zeitstempel bei Kerzen, absurde Datumsangaben in beschädigten Dateien – und ein Fehler in Apples
-  JSON-Leser, der bei einem Steuerzeichen in einer beschädigten `simulation.json` abstürzt, statt einen Fehler zu melden
-  (die App wäre dann bei jedem Start abgestürzt). Alle Dateien werden jetzt vorher mit einem robusten Leser geprüft;
-  eine kaputte Datei wird wie bisher beiseitegelegt und die letzte Sicherung geladen.
+  JSON-Leser, der bei einem Steuerzeichen oder einem ungültigen Zeichen (kaputtes UTF-8) in einer beschädigten
+  `simulation.json` abstürzt, statt einen Fehler zu melden (die App wäre dann bei jedem Start abgestürzt). Alle Dateien
+  – auch importierte Profile und der Schlüsselbund-Eintrag – werden jetzt vorher Byte für Byte geprüft; eine kaputte
+  Datei wird wie bisher beiseitegelegt und die letzte Sicherung geladen.
 - Kerzen und Trades mit Zeitstempeln außerhalb von 2000 bis 2100 werden verworfen.
 - Dauertest der Engine: 48.000 Marktmomente mit Zufallskurs, Sprüngen und dünnen Orderbüchern, mit und ohne Limit-Kauf.
   Nach jedem Schritt wird geprüft: Bargeld nie negativ, Bestand gleich Summe der Lose, Vermögen endlich, begrenzte Listen.
