@@ -802,7 +802,7 @@ at(5, 5000, wt + 2, 5012.1)                                 -- knapp raus: Start
 check(BN.players[5].race.state == "running", "Rundkurs gestartet (Wackeltest)")
 for i = 1, 12 do at(5, 5000, wt + 2 + i, (i % 2 == 1) and 5011.9 or 5012.1) end
 check(not chatContains("Ziel! wackel", 5) and not chatContains("Finish! wackel", 5), "Wackeln an der Linie ist keine Runde")
-at(5, 5000, wt + 20, 5050); at(5, 5000, wt + 25, 5005)      -- echte Runde (50 m weg und zurueck)
+at(5, 5000, wt + 20, 5250); at(5, 5000, wt + 25, 5005)      -- echte Runde (250 m weg und zurueck)
 check(chatContains("Ziel! wackel", 5) or chatContains("Finish! wackel", 5), "Echte Runde zaehlt")
 say(5, "/rennen stop")
 say(1, "/rennen loeschen wackel")
@@ -1269,6 +1269,115 @@ do
     for pid = 50, 53 do leave(pid) end
     tick(61)
     check(BN.vote == nil, "Abstimmung nach dem Abmelden beendet")
+end
+
+-- --- Schummelschutz: Rundkurs-Abkuerzung, mehrere Fahrzeuge, Fahrzeit im Stand -------------------------------------
+do
+    local savedAdmins = C.admins
+    C.admins = { "bauer" }
+    local function enter(pid, name, vehicles)
+        players[pid] = { name = name, ids = { beammp = tostring(6000 + pid) }, vehicles = vehicles or {} }
+        join(pid)
+    end
+    local function myRecords(name)
+        local t = BN.loadTracks().tracks[name]
+        return t and t.records or {}
+    end
+    enter(60, "Bauer")
+    enter(61, "Schummler")
+
+    -- Mindeststrecke: Rundkurs ohne Laenge 0.8 * 400 m, A nach B mindestens 0.8 * Luftlinie, jeweils ohne die Radien.
+    check(type(BN.raceMinDist) == "function", "Mindeststrecke vorhanden")
+    if type(BN.raceMinDist) == "function" then
+        local a, b = { x = 0, y = 0, z = 0 }, { x = 1000, y = 0, z = 0 }
+        near(BN.raceMinDist(a, a, nil), 0.8 * 400 - 24, 1e-9, "Rundkurs ohne Laenge: raceMinLapM")
+        near(BN.raceMinDist(a, a, 600), 0.8 * 600 - 24, 1e-9, "Rundkurs mit Laenge")
+        near(BN.raceMinDist(a, b, nil), 0.8 * 1000 - 24, 1e-9, "A nach B: Luftlinie")
+        near(BN.raceMinDist(a, b, 2000), 0.8 * 2000 - 24, 1e-9, "A nach B: gefahrene Laenge")
+    end
+
+    -- Rundkurs ohne Fahrt angelegt: keine Laenge bekannt.
+    at(60, 8000, 100)
+    say(60, "/rennen neu kreis")
+    say(60, "/rennen ziel kreis")
+    check(chatContains("Streckenlänge unbekannt – der erste gültige Lauf legt sie fest%.", 60), "Rundkurs ohne Laenge gemeldet")
+    eq(BN.loadTracks().tracks.kreis.lengthM, nil, "Ohne Fahrt keine Streckenlaenge")
+    -- 40 m raus und zurueck ist keine Runde (vorher: Streckenrekord, XP, Erfolge).
+    say(61, "/rennen kreis")
+    at(61, 7950, 100); at(61, 7995, 101)                -- in den Startbereich
+    at(61, 8020, 102)                                     -- raus: Start
+    check(BN.players[61].race.state == "running", "Schummel-Runde gestartet")
+    at(61, 8040, 103); at(61, 8005, 104)                  -- 40 m weg und zurueck
+    check(not chatContains("Ziel! kreis", 61), "Abgekuerzte Runde kommt nicht ins Ziel")
+    check(chatContains("Strecke abgekürzt – Lauf ungültig", 61), "Abgekuerzte Runde ungueltig")
+    eq(#myRecords("kreis"), 0, "Abgekuerzte Runde ohne Rekord")
+    eq(BN.players[61].pendingRaces, 0, "Abgekuerzte Runde zaehlt nicht als Rennen")
+    eq(BN.players[61].pendingBonus, 0, "Abgekuerzte Runde ohne Bonus-XP")
+    -- Echte Runde (260 m raus und zurueck) zaehlt und legt die Laenge fest.
+    at(61, 8000, 105)
+    local t = drive(61, 8000, 8260, 20, 105)
+    t = drive(61, 8260, 8000, -20, t)
+    check(chatContains("Ziel! kreis", 61), "Echte Runde im Ziel")
+    eq(#myRecords("kreis"), 1, "Echte Runde mit Rekord")
+    near(BN.loadTracks().tracks.kreis.lengthM, 532, 1, "Erster gueltiger Lauf legt die Laenge fest")
+    -- Jetzt gilt die Laenge: 180 m raus und zurueck ist laenger als 0.8 * 400 m, aber zu kurz fuer diese Runde.
+    at(61, 8000, t + 1)
+    t = drive(61, 8000, 8180, 20, t + 1)
+    t = drive(61, 8180, 8000, -20, t)
+    eq(countChat("Strecke abgekürzt – Lauf ungültig", 61), 2, "Kuerzere Runde als die bekannte Laenge ungueltig")
+    eq(countChat("Ziel! kreis", 61), 1, "Kuerzere Runde kommt nicht ins Ziel")
+    say(61, "/lang en")
+    at(61, 8000, t + 1); at(61, 8020, t + 2); at(61, 8040, t + 3); at(61, 8005, t + 4)
+    check(chatContains("Track cut short – run invalid", 61), "Abgekuerzt auf Englisch")
+    say(61, "/lang de")
+    say(61, "/rennen stop")
+    say(60, "/rennen loeschen kreis")
+
+    -- Rundkurs, den der Admin abgefahren hat: seine Fahrstrecke ist die Laenge.
+    at(60, 30000, 200)
+    say(60, "/rennen neu oval")
+    t = drive(60, 30000, 30300, 25, 200)
+    t = drive(60, 30300, 30000, -25, t)
+    say(60, "/rennen ziel oval")
+    eq(BN.loadTracks().tracks.oval.lengthM, 600, "Gefahrene Laenge des Admins gespeichert")
+    check(chatContains("Streckenlänge 600 m %(von dir gefahren%)", 60), "Gefahrene Laenge gemeldet")
+    say(61, "/rennen oval")
+    at(61, 30000, 1000)
+    t = drive(61, 30000, 30210, 30, 1000)                -- 210 m raus und zurueck: ueber 0.8 * 400 m, unter 0.8 * 600 m
+    t = drive(61, 30210, 30000, -30, t)
+    eq(countChat("Strecke abgekürzt – Lauf ungültig", 61), 3, "Runde kuerzer als die Admin-Fahrt ungueltig")
+    at(61, 30000, t + 1)
+    t = drive(61, 30000, 30300, 30, t + 1)
+    t = drive(61, 30300, 30000, -30, t)
+    check(chatContains("Ziel! oval", 61), "Volle Runde zaehlt")
+    eq(BN.loadTracks().tracks.oval.lengthM, 600, "Laenge des Admins bleibt")
+    say(61, "/rennen stop")
+    say(60, "/rennen loeschen oval")
+
+    -- Lkw mit Anhaenger: zwei Fahrzeuge fahren dieselbe Strecke, gezaehlt wird sie einmal.
+    enter(62, "Brummi", { [0] = { pos = { 0, 0, 0 }, tim = 0 }, [1] = { pos = { -10, 0, 0 }, tim = 0 } })
+    tick(1)
+    for _ = 1, 50 do move(62, 0, 20); move(62, 1, 20); tick(1) end    -- 50 s mit 20 m/s = 1 km
+    near(BN.totals(BN.players[62]).km, 1.0, 1e-9, "Zwei Fahrzeuge: 1 km zaehlt einmal")
+    near(BN.players[62].sessionKm, 1.0, 1e-9, "Zwei Fahrzeuge: Sitzungs-km einmal")
+    -- Nur der Anhaenger bewegt sich weiter: die groesste Strecke zaehlt.
+    move(62, 0, 5); move(62, 1, 30); tick(1)
+    near(BN.totals(BN.players[62]).km, 1.03, 1e-9, "Groesste Strecke je Takt zaehlt")
+
+    -- Fahrzeit nur in Bewegung: Parken (mit oder ohne Fahrzeug) bringt keine Zeit.
+    enter(63, "Parker", { [0] = { pos = { 0, 0, 0 }, tim = 0 } })
+    enter(64, "Zuschauer")
+    tick(120)
+    eq(BN.totals(BN.players[63]).seconds, 0, "Geparkt: keine Fahrzeit")
+    eq(BN.totals(BN.players[64]).seconds, 0, "Ohne Fahrzeug: keine Fahrzeit")
+    for _ = 1, 10 do move(63, 0, 20); tick(1) end
+    eq(BN.totals(BN.players[63]).seconds, 10, "Fahrzeit beim Fahren")
+    tick(60)
+    eq(BN.totals(BN.players[63]).seconds, 39, "Nach dem Anhalten zaehlen nur noch knapp 30 s")
+    near(BN.totals(BN.players[63]).km, 0.2, 1e-9, "Parker: km stimmen")
+
+    for pid = 60, 64 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    C.admins = savedAdmins
 end
 
 -- Herunterfahren speichert alle.
