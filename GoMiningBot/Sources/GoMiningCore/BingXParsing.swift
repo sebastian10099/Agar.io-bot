@@ -61,6 +61,27 @@ public enum BingXParser {
     /// Millisekunden werden zu Sekunden.
     static func seconds(_ raw: Double) -> Double { raw > 1e11 ? raw / 1000 : raw }
 
+    /// Zeitstempel in Sekunden, nur wenn er plausibel ist (2000 bis 2100). Unsinnige Werte koennten sonst spaeter
+    /// Rechnungen mit Ganzzahlen sprengen.
+    static func plausibleTime(_ raw: Double?) -> Double? {
+        guard let raw, raw.isFinite else { return nil }
+        let s = seconds(raw)
+        return (946_684_800...4_102_444_800).contains(s) ? s : nil
+    }
+
+    /// Ganzzahl nur, wenn sie sicher in Int64 passt (eine direkte Umwandlung wuerde sonst abstuerzen).
+    static func int64(_ value: Double?) -> Int64? {
+        guard let value, value.isFinite, abs(value) < 9.0e18 else { return nil }
+        return Int64(value)
+    }
+
+    /// Fehlercode einer Antwort (nil = kein Fehler). Unlesbare oder riesige Codes gelten als Fehler -1.
+    static func errorCode(_ root: [String: Any]) -> Int? {
+        guard let code = number(root["code"]) else { return nil }
+        guard let c = int64(code) else { return -1 }
+        return c == 0 ? nil : Int(clamping: c)
+    }
+
     public static func object(_ data: Data) throws -> [String: Any] {
         guard let json = try? JSONSerialization.jsonObject(with: data),
               let root = json as? [String: Any] else { throw BingXError.invalidResponse }
@@ -69,8 +90,8 @@ public enum BingXParser {
 
     /// Prueft `code` und liefert `data`.
     public static func dataField(_ root: [String: Any]) throws -> Any? {
-        if let code = number(root["code"]), Int(code) != 0 {
-            throw BingXError.api(code: Int(code), message: (root["msg"] as? String) ?? "unbekannt")
+        if let code = errorCode(root) {
+            throw BingXError.api(code: code, message: (root["msg"] as? String) ?? "unbekannt")
         }
         return root["data"]
     }
@@ -88,7 +109,7 @@ public enum BingXParser {
         }
         if let status = entry["status"] {
             let active: Bool
-            if let n = number(status) { active = Int(n) == 1 }
+            if let n = number(status) { active = n == 1 }
             else if let s = status as? String { active = ["online", "trading", "active"].contains(s.lowercased()) }
             else { active = true }
             if !active { throw BingXError.inactive(symbol) }
@@ -115,19 +136,19 @@ public enum BingXParser {
         for row in rows {
             if let list = row as? [Any] {
                 let nums = list.map { number($0) }
-                guard nums.count >= 6, let t = nums[0] else { continue }
+                guard nums.count >= 6, let t = plausibleTime(nums[0]) else { continue }
                 var values = [t]
                 var ok = true
                 for k in 1...5 { if let v = nums[k] { values.append(v) } else { ok = false } }
                 if ok { arrays.append(values) }
             } else if let dict = row as? [String: Any] {
-                let t = number(dict["time"] ?? dict["openTime"] ?? dict["t"] ?? dict["T"])
+                let t = plausibleTime(number(dict["time"] ?? dict["openTime"] ?? dict["t"] ?? dict["T"]))
                 guard let time = t,
                       let o = number(dict["open"] ?? dict["o"]), let h = number(dict["high"] ?? dict["h"]),
                       let l = number(dict["low"] ?? dict["l"]), let c = number(dict["close"] ?? dict["c"]) else { continue }
                 let v = number(dict["volume"] ?? dict["v"]) ?? 0
                 if o > 0, h > 0, l > 0, c > 0 {
-                    candles.append(PriceCandle(openedAt: seconds(time), open: o, high: h, low: l, close: c, volume: v))
+                    candles.append(PriceCandle(openedAt: time, open: o, high: h, low: l, close: c, volume: max(0, v)))
                 }
             }
         }
@@ -145,7 +166,7 @@ public enum BingXParser {
             for r in arrays {
                 let (o, h, l, c) = useAlternative ? (r[1], r[3], r[4], r[2]) : (r[1], r[2], r[3], r[4])
                 guard o > 0, h > 0, l > 0, c > 0 else { continue }
-                candles.append(PriceCandle(openedAt: seconds(r[0]), open: o, high: h, low: l, close: c, volume: r[5]))
+                candles.append(PriceCandle(openedAt: r[0], open: o, high: h, low: l, close: c, volume: max(0, r[5])))
             }
         }
         let sorted = Indicators.normalize(candles)
@@ -174,7 +195,7 @@ public enum BingXParser {
     static func book(from dict: [String: Any]) -> (bids: [PriceLevel], asks: [PriceLevel], sequence: Int64?) {
         let bids = levels(dict["bids"] ?? dict["b"]).sorted { $0.price > $1.price }
         let asks = levels(dict["asks"] ?? dict["a"]).sorted { $0.price < $1.price }
-        let seq = number(dict["lastUpdateId"] ?? dict["u"] ?? dict["ts"]).map { Int64($0) }
+        let seq = int64(number(dict["lastUpdateId"] ?? dict["u"] ?? dict["ts"]))
         return (bids, asks, seq)
     }
 
@@ -191,11 +212,15 @@ public enum BingXParser {
     static func trade(from dict: [String: Any]) -> PublicTrade? {
         guard let price = number(dict["price"] ?? dict["p"]), let qty = number(dict["qty"] ?? dict["quantity"] ?? dict["q"]),
               price > 0, qty > 0 else { return nil }
-        let time = number(dict["time"] ?? dict["T"] ?? dict["E"] ?? dict["ts"]) ?? Date().timeIntervalSince1970
-        let id = number(dict["id"] ?? dict["tradeId"] ?? dict["t"]).map { Int64($0) } ?? Int64(time * 1000)
+        let rawTime = number(dict["time"] ?? dict["T"] ?? dict["E"] ?? dict["ts"])
+        let time: Double
+        if rawTime == nil { time = Date().timeIntervalSince1970 }
+        else if let t = plausibleTime(rawTime) { time = t }
+        else { return nil }
+        let id = int64(number(dict["id"] ?? dict["tradeId"] ?? dict["t"])) ?? int64(time * 1000) ?? 0
         // buyerMaker == true: der Kaeufer war der passive Teil, also hat ein Verkaeufer zugeschlagen.
         let buyerMaker = bool(dict["buyerMaker"] ?? dict["m"] ?? dict["isBuyerMaker"]) ?? false
-        return PublicTrade(id: id, at: seconds(time), price: price, quantity: qty, buyerInitiated: !buyerMaker)
+        return PublicTrade(id: id, at: time, price: price, quantity: qty, buyerInitiated: !buyerMaker)
     }
 
     public static func parseTrades(_ data: Data) throws -> [PublicTrade] {
@@ -216,8 +241,8 @@ public enum BingXParser {
             return .ping
         }
         guard let root = try? object(data) else { return .unknown }
-        if let code = number(root["code"]), Int(code) != 0 {
-            return .error((root["msg"] as? String) ?? "Fehlercode \(Int(code))")
+        if let code = errorCode(root) {
+            return .error((root["msg"] as? String) ?? "Fehlercode \(code)")
         }
         guard let type = root["dataType"] as? String else {
             return root["id"] != nil ? .ack : .unknown

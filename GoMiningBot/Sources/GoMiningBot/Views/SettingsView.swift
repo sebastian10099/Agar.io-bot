@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 import ServiceManagement
 import GoMiningCore
 
@@ -20,6 +22,9 @@ struct SettingsView: View {
     @State private var preset = ShadowPreset.balanced
     @State private var confirmPreset = false
     @State private var confirmDelete: SettingsProfile?
+    @State private var backupList: [BackupInfo] = []
+    @State private var restoreURL: URL?
+    @State private var restoreSummary: StoredBotSummary?
 
     private var s: BotSettings { bot.stored.settings }
 
@@ -402,7 +407,58 @@ struct SettingsView: View {
             Button("Simulation zurücksetzen …", role: .destructive) { showReset = true }
             Text("1.000 USDT virtuell in GOMINING anlegen: nach dem Zurücksetzen „Mit Startkauf“ wählen.")
                 .font(.caption).foregroundStyle(.secondary)
+            DisclosureGroup("Sicherungen wiederherstellen (\(backupList.count))") {
+                if backupList.isEmpty {
+                    Text("Noch keine Sicherungen. Die App sichert das Papierkonto alle 30 Minuten (12 bleiben erhalten) und vor jedem Zurücksetzen.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                ForEach(backupList.prefix(20)) { b in
+                    HStack {
+                        Text(b.modified.formatted(date: .abbreviated, time: .shortened)).monospacedDigit()
+                        Text(b.kind).foregroundStyle(.secondary)
+                        Spacer()
+                        Text(Fmt.bytes(b.bytes)).font(.caption).foregroundStyle(.secondary)
+                        Button("Wiederherstellen …") { prepareRestore(b.url) }.controlSize(.small)
+                    }
+                    .font(.callout)
+                }
+                Button("Aus Datei wiederherstellen …") { pickRestoreFile() }
+                Text("Vor jeder Wiederherstellung wird der aktuelle Stand selbst gesichert; nichts geht verloren.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .onAppear { backupList = controller.backups() }
         }
+        .confirmationDialog("Sicherung wiederherstellen?", isPresented: Binding(get: { restoreURL != nil }, set: { if !$0 { restoreURL = nil } }),
+                            titleVisibility: .visible) {
+            Button("Wiederherstellen", role: .destructive) {
+                if let url = restoreURL { controller.restoreBackup(from: url) }
+                restoreURL = nil
+                backupList = controller.backups()
+            }
+            Button("Abbrechen", role: .cancel) { restoreURL = nil }
+        } message: {
+            if let s = restoreSummary {
+                Text("\(restoreURL?.lastPathComponent ?? ""): \(s.trades) Trades (\(s.sells) Verkäufe), realisiert \(Fmt.signedUSDT(s.realizedPnL)) USDT, Bargeld \(Fmt.usdt(s.cash)) USDT, Bestand \(Fmt.quantity(s.tokens)) GOMINING\(s.lastTradeAt.map { ", letzter Trade " + Fmt.dateTime($0) } ?? ""). Der aktuelle Stand wird vorher gesichert.")
+            } else {
+                Text("Der aktuelle Stand wird vorher gesichert.")
+            }
+        }
+    }
+
+    private func prepareRestore(_ url: URL) {
+        guard let stored = StateStore.readBackup(url) else {
+            controller.status.notice = "„\(url.lastPathComponent)“ ist keine lesbare Sicherung."
+            return
+        }
+        restoreSummary = StoredBotSummary(stored)
+        restoreURL = url
+    }
+
+    private func pickRestoreFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url { prepareRestore(url) }
     }
 
     private func setLaunchAtLogin(_ on: Bool) {

@@ -115,8 +115,9 @@ public enum Indicators {
         for (i, c) in candles.enumerated() {
             if i > 0 {
                 let prev = result[result.count - 1]
-                let missing = Int(((c.openedAt - prev.openedAt) / interval).rounded()) - 1
-                if missing > 0, missing <= maxGap {
+                let gap = ((c.openedAt - prev.openedAt) / interval).rounded() - 1
+                let missing = gap.isFinite && gap > 0 && gap <= Double(maxGap) ? Int(gap) : 0
+                if missing > 0 {
                     for k in 1...missing {
                         result.append(PriceCandle(openedAt: prev.openedAt + interval * Double(k), open: prev.close,
                                                   high: prev.close, low: prev.close, close: prev.close, volume: 0))
@@ -132,8 +133,9 @@ public enum Indicators {
     /// Minuten ohne Trade sind in Wahrheit "kein Kurs, keine Bewegung" - die Boerse liefert dafuer oft keine Kerze.
     public static func extendFlat(_ candles: [PriceCandle], upTo lastClosedOpen: Double, interval: Double = 60, maxGap: Int = 240) -> [PriceCandle] {
         guard let last = candles.last, lastClosedOpen > last.openedAt else { return candles }
-        let missing = Int(((lastClosedOpen - last.openedAt) / interval).rounded(.down))
-        guard missing > 0, missing <= maxGap else { return candles }
+        let gap = ((lastClosedOpen - last.openedAt) / interval).rounded(.down)
+        guard gap.isFinite, gap > 0, gap <= Double(maxGap) else { return candles }
+        let missing = Int(gap)
         var result = candles
         result.reserveCapacity(candles.count + missing)
         for k in 1...missing {

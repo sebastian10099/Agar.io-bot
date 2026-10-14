@@ -80,10 +80,18 @@ final class StatusStore: ObservableObject {
     /// Text fuer "Was ist neu" nach einem Update (nil = nicht anzeigen).
     @Published var whatsNew: String?
 
+    /// Selbstdiagnose (wird alle paar Sekunden neu bewertet).
+    @Published var health = HealthReport(level: .ok, issues: [])
+    /// Zeitpunkte der letzten Fehler (fuer "viele Fehler in 10 Minuten").
+    var errorTimes: [Double] = []
+
     func note(_ context: String, _ error: Error) {
-        let line = "\(Fmt.time(Date().timeIntervalSince1970)) \(context): \(error.localizedDescription)"
+        let now = Date().timeIntervalSince1970
+        let line = "\(Fmt.time(now)) \(context): \(error.localizedDescription)"
         errors.insert(line, at: 0)
         if errors.count > 12 { errors.removeLast(errors.count - 12) }
+        errorTimes.append(now)
+        errorTimes.removeAll { now - $0 > 600 }
     }
 }
 

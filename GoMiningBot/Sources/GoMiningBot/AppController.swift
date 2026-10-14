@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import Network
 import GoMiningCore
 
 private struct LiveBook {
@@ -67,6 +68,10 @@ final class AppController: ObservableObject {
     private var lastDecisionKey = ""
     private var shadowsDirty = false
     private var lastShadowSave = 0.0
+    private let startedAt = Date().timeIntervalSince1970
+    private var networkMonitor: NWPathMonitor?
+    private var networkAvailable = true
+    private var lastHealthLevel = HealthLevel.ok
 
     init() {
         // Vor dem ersten Lesen von Einstellungen und Datenordner (alte Bundle-ID/alter Ordner -> eigene).
@@ -92,9 +97,7 @@ final class AppController: ObservableObject {
             equity = saved
             bot.equityHistory = saved.points
         }
-        if let cache = JSONFile.read(CandleCache.self, from: paths.candleCacheFile) {
-            history = cache.candles
-        }
+        history = CandleStore.load(paths: paths)
         if let book = JSONFile.read(ShadowBook.self, from: paths.shadowFile) {
             shadows.book = book
         }
@@ -116,6 +119,7 @@ final class AppController: ObservableObject {
                                                          reason: "\(Self.appName) beobachtet den Markt")
         Notifier.shared.requestAuthorizationIfNeeded()
         observeSystem()
+        startNetworkMonitor()
         loadCredentials()
         status.dataFolderBytes = journal.diskUsageBytes()
         prepareWhatsNew()
@@ -282,6 +286,51 @@ final class AppController: ObservableObject {
         terminationSource = source
     }
 
+    // MARK: - Selbstdiagnose und Netzwerk
+
+    /// Meldet Netzwerkwechsel sofort; kommt das Netz zurueck, wird neu verbunden.
+    private func startNetworkMonitor() {
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let up = path.status == .satisfied
+            Task { @MainActor [weak self] in self?.networkChanged(up) }
+        }
+        monitor.start(queue: DispatchQueue(label: "gomining.network", qos: .utility))
+        networkMonitor = monitor
+    }
+
+    private func networkChanged(_ up: Bool) {
+        let wasUp = networkAvailable
+        networkAvailable = up
+        updateHealth()
+        if up, !wasUp { reconnectNow() }
+    }
+
+    /// Neu verbinden: Livestream neu aufbauen und alles per REST frisch holen.
+    func reconnectNow() {
+        status.connection = "Verbinde neu …"
+        stream.reconnect()
+        Task {
+            await refreshCandles()
+            await refreshBookAndTrades()
+            updateHealth()
+        }
+    }
+
+    func updateHealth() {
+        let now = nowTs()
+        let input = HealthInput(now: now, startedAt: startedAt, lastStreamAt: lastStreamAt, lastBookAt: book.at,
+                                candlesFetchedAt: candlesFetchedAt, lastTradeAt: trades.last?.at ?? 0,
+                                networkAvailable: networkAvailable,
+                                recentErrors: status.errorTimes.filter { now - $0 <= 600 }.count, clockOffset: clockOffset)
+        let report = HealthMonitor.evaluate(input)
+        if report.level != status.health.level || report.issues != status.health.issues { status.health = report }
+        if report.level == .offline, lastHealthLevel != .offline, prefs.notifyLimits {
+            Notifier.shared.post(title: "\(Self.appName) ist offline", body: report.summary, sound: prefs.soundEnabled)
+        }
+        lastHealthLevel = report.level
+    }
+
     private func handleWake() {
         status.connection = "Nach dem Ruhezustand: Marktdaten werden erneuert …"
         stream.reconnect()
@@ -293,12 +342,13 @@ final class AppController: ObservableObject {
 
     /// Beim Beenden: alles sicher auf die Platte.
     func shutdown() {
+        networkMonitor?.cancel()
         stream.stop()
         tasks.forEach { $0.cancel() }
         saveTask?.cancel()
         try? stateStore.save(bot.stored)
         try? JSONFile.write(equity, to: paths.equityFile)
-        try? JSONFile.write(CandleCache(candles: history), to: paths.candleCacheFile)
+        try? CandleStore.save(history, paths: paths)
         try? JSONFile.write(shadows.book, to: paths.shadowFile)
         journal.flushAndWait()
         if let activity { ProcessInfo.processInfo.endActivity(activity) }
@@ -479,6 +529,7 @@ final class AppController: ObservableObject {
     private func housekeeping() {
         let now = nowTs()
         sampleEquity(now: now)
+        updateHealth()
         if shadowsDirty, now - lastShadowSave >= 60 { saveShadows() }
         checkDailySummary(now: now)
         if now - lastJournalFlush >= 10 {
@@ -490,11 +541,10 @@ final class AppController: ObservableObject {
             lastCachePersist = now
             let snapshot = history
             let eq = equity
-            let cachePath = paths.candleCacheFile
-            let eqPath = paths.equityFile
+            let paths = paths
             DispatchQueue.global(qos: .utility).async {
-                try? JSONFile.write(CandleCache(candles: snapshot), to: cachePath)
-                try? JSONFile.write(eq, to: eqPath)
+                try? CandleStore.save(snapshot, paths: paths)
+                try? JSONFile.write(eq, to: paths.equityFile)
             }
             bot.recomputeStats()
             status.dataFolderBytes = journal.diskUsageBytes()
@@ -930,6 +980,27 @@ final class AppController: ObservableObject {
         try? JSONFile.write(equity, to: paths.equityFile)
         saveNow()
         scheduleEvaluate()
+    }
+
+    // MARK: - Sicherungen
+
+    func backups() -> [BackupInfo] { stateStore.listBackups() }
+
+    /// Stellt ein Papierkonto aus einer Sicherung wieder her. Der aktuelle Stand wird vorher selbst gesichert.
+    func restoreBackup(from url: URL) {
+        guard var restored = StateStore.readBackup(url) else {
+            status.notice = "„\(url.lastPathComponent)“ ist keine lesbare Sicherung."
+            return
+        }
+        let safety = stateStore.backupNow(bot.stored, tag: "vor-wiederherstellung")
+        restored.version = StoredBot.currentVersion
+        bot.stored = restored
+        bot.decisions = []
+        lastDecisionKey = ""
+        bot.recomputeStats()
+        saveNow()
+        scheduleEvaluate()
+        status.notice = "Sicherung „\(url.lastPathComponent)“ wiederhergestellt. Der vorherige Stand liegt als „\(safety?.lastPathComponent ?? "Sicherung")“ im Ordner backups."
     }
 
     /// Legt den Startkauf nachtraeglich an (nur sinnvoll im frisch zurueckgesetzten Konto).
@@ -1431,6 +1502,7 @@ final class AppController: ObservableObject {
         lines.append("\(Self.appName) \(Self.version) · Bundle \(Bundle.main.bundleIdentifier ?? "?") · macOS \(ProcessInfo.processInfo.operatingSystemVersionString)")
         lines.append("Verbindung: \(status.connection)")
         lines.append("Livestream: \(status.stream) · letzte Daten vor \(lastStreamAt > 0 ? String(Int(nowTs() - lastStreamAt)) : "—") s")
+        lines.append("Selbstdiagnose: \(status.health.summary)" + status.health.issues.map { "\n  - \($0.title): \($0.detail)" }.joined())
         lines.append("Konto: \(status.account)")
         lines.append("Handelsregeln: minQty \(rules.minQuantity), minNotional \(rules.minNotional), step \(rules.stepSize), verifiziert \(rules.verified), Kauf \(rules.buyEnabled), Verkauf \(rules.sellEnabled)")
         if let s = market.snapshot {

@@ -53,7 +53,10 @@ public struct AppPaths: Sendable {
 
     public var stateFile: URL { root.appendingPathComponent("simulation.json") }
     public var equityFile: URL { root.appendingPathComponent("equity-history.json") }
+    /// Alter Kerzenspeicher (JSON, bis 4.3); wird beim ersten Speichern durch `candleStoreFile` ersetzt.
     public var candleCacheFile: URL { root.appendingPathComponent("candle-cache.json") }
+    /// Kompakter Kerzenspeicher (binaer, seit 4.4).
+    public var candleStoreFile: URL { root.appendingPathComponent("candle-cache.bin") }
     /// Schattenkonten (seit 4.2).
     public var shadowFile: URL { root.appendingPathComponent("shadow-accounts.json") }
     /// Gespeicherte Einstellungs-Profile (seit 4.3).
@@ -148,6 +151,23 @@ public final class StateStore: @unchecked Sendable {
         }
     }
 
+    /// Sicherungen im Ordner `backups`, neueste zuerst.
+    public func listBackups() -> [BackupInfo] {
+        queue.sync {
+            backupFiles().map { url in
+                let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                return BackupInfo(url: url, modified: values?.contentModificationDate ?? .distantPast,
+                                  bytes: Int64(values?.fileSize ?? 0))
+            }
+        }
+    }
+
+    /// Liest eine Sicherung (automatische Sicherung, Export oder `simulation.json`).
+    public static func readBackup(_ url: URL) -> StoredBot? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(StoredBot.self, from: data)
+    }
+
     // MARK: Intern (nur auf der Queue)
 
     private func loadLocked() -> LoadOutcome {
@@ -237,10 +257,72 @@ public struct CandleCache: Codable, Sendable {
         }
     }
 
+    /// So lange bleiben Kerzen im lokalen Verlauf (seit 4.4: 90 Tage).
+    public static let retentionDays = 90.0
+
     /// Fuegt neue Kerzen hinzu (neuere ersetzen gleiche Zeitstempel) und verwirft sehr alte.
-    public static func merged(_ existing: [PriceCandle], _ new: [PriceCandle], now: Double, maxAgeDays: Double = 45) -> [PriceCandle] {
+    public static func merged(_ existing: [PriceCandle], _ new: [PriceCandle], now: Double, maxAgeDays: Double = retentionDays) -> [PriceCandle] {
         let cutoff = now - maxAgeDays * 86_400
         return Indicators.normalize(existing + new).filter { $0.openedAt >= cutoff }
+    }
+}
+
+// MARK: - Kompakter Kerzenspeicher
+
+/// Binaeres Format: "GMC1", Anzahl (UInt32), dann je Kerze sechs Float64 (Zeit, O, H, L, C, Volumen), little-endian.
+/// 90 Tage (rund 130.000 Kerzen) sind etwa 6 MB und laden in Millisekunden – JSON brauchte dafuer spuerbar Zeit beim Start.
+public enum CandleStore {
+    static let magic: [UInt8] = Array("GMC1".utf8)
+
+    public static func encode(_ candles: [PriceCandle]) -> Data {
+        var data = Data(capacity: 8 + candles.count * 48)
+        data.append(contentsOf: magic)
+        var count = UInt32(truncatingIfNeeded: candles.count).littleEndian
+        withUnsafeBytes(of: &count) { data.append(contentsOf: $0) }
+        for c in candles {
+            for v in [c.openedAt, c.open, c.high, c.low, c.close, c.volume] {
+                var bits = v.bitPattern.littleEndian
+                withUnsafeBytes(of: &bits) { data.append(contentsOf: $0) }
+            }
+        }
+        return data
+    }
+
+    /// nil bei fremdem oder abgeschnittenem Inhalt. Unplausible Kerzen werden uebersprungen.
+    public static func decode(_ data: Data) -> [PriceCandle]? {
+        guard data.count >= 8, Array(data.prefix(4)) == magic else { return nil }
+        let bytes = [UInt8](data)
+        func u64(_ offset: Int) -> UInt64 {
+            var v: UInt64 = 0
+            for k in 0..<8 { v |= UInt64(bytes[offset + k]) << (8 * UInt64(k)) }
+            return v
+        }
+        let count = Int(UInt32(bytes[4]) | UInt32(bytes[5]) << 8 | UInt32(bytes[6]) << 16 | UInt32(bytes[7]) << 24)
+        guard count >= 0, data.count == 8 + count * 48 else { return nil }
+        var out: [PriceCandle] = []
+        out.reserveCapacity(count)
+        for i in 0..<count {
+            let base = 8 + i * 48
+            var v = [Double](repeating: 0, count: 6)
+            for k in 0..<6 { v[k] = Double(bitPattern: u64(base + k * 8)) }
+            guard v.allSatisfy(\.isFinite), v[0] > 0, v[4] > 0 else { continue }
+            out.append(PriceCandle(openedAt: v[0], open: v[1], high: v[2], low: v[3], close: v[4], volume: max(0, v[5])))
+        }
+        return out
+    }
+
+    /// Laedt den Verlauf: binaer, sonst die alte JSON-Datei.
+    public static func load(paths: AppPaths) -> [PriceCandle] {
+        if let data = try? Data(contentsOf: paths.candleStoreFile), let candles = decode(data) { return candles }
+        return JSONFile.read(CandleCache.self, from: paths.candleCacheFile)?.candles ?? []
+    }
+
+    /// Speichert binaer (atomar) und entfernt danach die alte JSON-Datei.
+    public static func save(_ candles: [PriceCandle], paths: AppPaths) throws {
+        try encode(candles).write(to: paths.candleStoreFile, options: .atomic)
+        if FileManager.default.fileExists(atPath: paths.candleCacheFile.path) {
+            try? FileManager.default.removeItem(at: paths.candleCacheFile)
+        }
     }
 }
 
@@ -410,5 +492,48 @@ public enum CSVExport {
                 .joined(separator: ";"))
         }
         return lines.joined(separator: "\n") + "\n"
+    }
+}
+
+// MARK: - Sicherungen
+
+public struct BackupInfo: Sendable, Hashable, Identifiable {
+    public var url: URL
+    public var modified: Date
+    public var bytes: Int64
+
+    public var id: URL { url }
+
+    /// Art der Sicherung aus dem Dateinamen.
+    public var kind: String {
+        let name = url.deletingPathExtension().lastPathComponent
+        let rest = name.dropFirst("simulation-".count)
+        if rest.first?.isNumber == true { return "automatisch" }
+        if rest.hasPrefix("vor-reset") { return "vor dem Zurücksetzen" }
+        if rest.hasPrefix("vor-update") { return "vor einem Update" }
+        if rest.hasPrefix("vor-wiederherstellung") { return "vor einer Wiederherstellung" }
+        return "manuell"
+    }
+}
+
+/// Kurzbeschreibung eines gespeicherten Papierkontos (fuer die Vorschau vor dem Wiederherstellen).
+public struct StoredBotSummary: Sendable, Equatable {
+    public var trades: Int
+    public var sells: Int
+    public var realizedPnL: Double
+    public var cash: Double
+    public var tokens: Double
+    public var lastTradeAt: Double?
+    public var startingUSDT: Double
+
+    public init(_ stored: StoredBot) {
+        let trades = stored.events.filter(\.isTrade)
+        self.trades = trades.count
+        sells = trades.filter(\.isSell).count
+        realizedPnL = stored.state.realizedPnLUSDT
+        cash = stored.state.cashUSDT
+        tokens = stored.state.tokens
+        lastTradeAt = trades.last?.at
+        startingUSDT = stored.settings.startingUSDT
     }
 }

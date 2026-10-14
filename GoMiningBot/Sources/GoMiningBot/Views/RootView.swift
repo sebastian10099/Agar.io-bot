@@ -43,10 +43,12 @@ struct RootView: View {
     @EnvironmentObject var status: StatusStore
 
     @State private var tab = AppTab.overview
+    @State private var showHealth = false
 
     var body: some View {
         VStack(spacing: 0) {
             if let update = status.availableUpdate, !status.updateBannerHidden { updateBanner(update) }
+            if status.health.isOffline { offlineBanner }
             if let notice = status.notice { noticeBanner(notice) }
             content
             Divider()
@@ -117,6 +119,80 @@ struct RootView: View {
         .background(Color.green.opacity(0.1))
     }
 
+    private var offlineBanner: some View {
+        let issue = status.health.issues.first { $0.level == .offline }
+        return HStack(spacing: 8) {
+            Image(systemName: "wifi.exclamationmark").foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Offline – \(issue?.title ?? "keine Marktdaten")").font(.callout.weight(.semibold))
+                Text("Ohne frische Marktdaten handelt der Bot nicht; Papierkonto und Einstellungen bleiben erhalten. \(issue?.fix ?? "")")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Jetzt neu verbinden") { controller.reconnectNow() }.controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.red.opacity(0.12))
+    }
+
+    private var healthColor: Color {
+        switch status.health.level {
+        case .ok, .info: return .green
+        case .warning: return .orange
+        case .offline: return .red
+        }
+    }
+
+    private var healthButton: some View {
+        Button { showHealth.toggle() } label: {
+            HStack(spacing: 5) {
+                Circle().fill(healthColor).frame(width: 8, height: 8)
+                Text(status.health.summary).lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+        .help("Selbstdiagnose – klicken für Details")
+        .popover(isPresented: $showHealth, arrowEdge: .top) { healthPopover }
+    }
+
+    private var healthPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Selbstdiagnose", systemImage: "stethoscope").font(.headline)
+            if status.health.issues.isEmpty {
+                Text("Livestream, Orderbuch, Kerzen und Netzwerk sind in Ordnung.").font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(status.health.issues) { issue in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Circle().fill(color(for: issue.level)).frame(width: 7, height: 7)
+                        Text(issue.title).font(.callout.weight(.semibold))
+                    }
+                    Text(issue.detail).font(.caption).fixedSize(horizontal: false, vertical: true)
+                    if !issue.fix.isEmpty {
+                        Text(issue.fix).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            HStack {
+                Button("Jetzt neu verbinden") { controller.reconnectNow() }
+                Button("Diagnose kopieren") { controller.copyDiagnostics() }
+            }
+            .controlSize(.small)
+        }
+        .padding(14)
+        .frame(width: 380)
+    }
+
+    private func color(for level: HealthLevel) -> Color {
+        switch level {
+        case .ok: return .green
+        case .info: return .blue
+        case .warning: return .orange
+        case .offline: return .red
+        }
+    }
+
     private func noticeBanner(_ text: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "info.circle.fill").foregroundStyle(.blue)
@@ -131,6 +207,7 @@ struct RootView: View {
 
     private var statusBar: some View {
         HStack(spacing: 14) {
+            healthButton
             Label(status.connection, systemImage: "network").lineLimit(1)
             Label(status.stream, systemImage: "dot.radiowaves.left.and.right").lineLimit(1)
             Label(status.journal, systemImage: "externaldrive").lineLimit(1)

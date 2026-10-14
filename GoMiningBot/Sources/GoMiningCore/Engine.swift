@@ -49,7 +49,11 @@ public enum BotEngine {
 
     // MARK: - Zeit (rein arithmetisch, ohne DateFormatter: schnell genug fuer Backtests)
 
-    public static func dayIndex(_ t: Double) -> Int { Int((t / 86_400).rounded(.down)) }
+    /// Tag seit 1970 (UTC). Unsinnige Zeiten (z. B. aus beschaedigten Dateien) werden begrenzt statt abzustuerzen.
+    public static func dayIndex(_ t: Double) -> Int {
+        guard t.isFinite else { return 0 }
+        return Int(min(3_000_000, max(-3_000_000, (t / 86_400).rounded(.down))))
+    }
 
     public static func utcDay(_ t: Double) -> String { civilDay(dayIndex(t)) }
 
@@ -71,7 +75,7 @@ public enum BotEngine {
     public static func dayIndex(fromDay day: String) -> Int? {
         let parts = day.split(separator: "-")
         guard parts.count == 3, var y = Int(parts[0]), let m = Int(parts[1]), let d = Int(parts[2]),
-              (1...12).contains(m), (1...31).contains(d) else { return nil }
+              (1...9_999).contains(y), (1...12).contains(m), (1...31).contains(d) else { return nil }
         if m <= 2 { y -= 1 }
         let era = (y >= 0 ? y : y - 399) / 400
         let yoe = y - era * 400
