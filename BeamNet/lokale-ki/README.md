@@ -1,5 +1,8 @@
 # Lokale KI: Dein Rechner programmiert, Claude prüft
 
+> **Am einfachsten: die [BeamNet-Werkstatt](../werkstatt/README.md)** – ein fertiges Programm (Windows `.exe` / Mac) zum
+> Doppelklicken, das die Aufgaben selbstständig und dauerhaft abarbeitet. Die Skripte hier sind die Variante mit Aider.
+
 Ziel: Die eigentliche Programmierarbeit macht ein **Code-Modell auf deinem Mac** (kostet keine Tokens). Claude
 schreibt nur die Aufgaben und prüft danach das Ergebnis – übernehmen oder verwerfen.
 

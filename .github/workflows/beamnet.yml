@@ -35,6 +35,8 @@ jobs:
         run: bash BeamNet/tests/beamnet_test.sh
 
       - name: Plugin-Tests (Lua 5.3 wie BeamMP, 5.4, LuaJIT)
+        env:
+          BEAMNET_ALL_RUNTIMES: '1'
         run: python3 BeamNet/tests/run_lua_tests.py
 
   beammp:

@@ -13,7 +13,13 @@ TEST = os.path.join(HERE, os.environ.get("BEAMNET_TEST_FILE", "core_test.lua"))
 
 
 def run(runtime_name: str) -> int:
-    module = importlib.import_module("lupa." + runtime_name)
+    try:
+        module = importlib.import_module("lupa." + runtime_name)
+    except ImportError:
+        if runtime_name == "lua53" or os.environ.get("BEAMNET_ALL_RUNTIMES"):
+            raise
+        print(f"(übersprungen: {runtime_name} gibt es in dieser lupa-Version nicht)")
+        return 0
     with tempfile.TemporaryDirectory() as tmp:
         shared = os.path.join(tmp, "shared", "beamnet")
         os.environ["BEAMNET_SHARED"] = shared
