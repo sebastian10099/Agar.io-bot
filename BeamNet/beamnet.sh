@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.7"
+VERSION="1.8"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -248,6 +248,14 @@ cmd_doctor() {
             ss -tln 2>/dev/null | grep -q ":$port " || warn "$name: Dienst läuft, aber Port $port ist nicht offen (startet noch oder hängt)"
         fi
     done
+    if (( ${#CORE_VERSIONS[@]} > 0 )); then
+        local versions
+        versions=$(printf '%s\n' "${CORE_VERSIONS[@]}" | cut -d: -f1 | sort -u | tr '\n' ' ')
+        if [[ $(wc -w <<<"$versions") -gt 1 ]]; then
+            warn "Unterschiedliche BeamNetCore-Versionen auf den Servern: ${versions% }"
+            hint "beamnet update   (bringt alle Server auf den neuesten Stand)"
+        fi
+    fi
     dup=$(tr ' ' '\n' <<<"$seen_maps" | grep -v '^$' | sort | uniq -d | tr '\n' ' ')
     [[ -n $dup ]] && warn "Mehrere Server mit derselben Map: $dup" && hint "beamnet maps   ·   beamnet set-map <nr> <map>"
 
@@ -265,20 +273,23 @@ cmd_doctor() {
 }
 
 # Laeuft BeamNetCore auf diesem Server? (nur wenn installiert und der Server laeuft)
+CORE_VERSIONS=()
 check_core() {
-    local nr=$1 port=$2 name=$3 updated now err
+    local nr=$1 port=$2 name=$3 updated now err ver
     [[ -f $ROOT/$nr/Resources/Server/BeamNetCore/main.lua ]] || return 0
     unit_active "$nr" || return 0
     updated=$(grep -o '"updated"[[:space:]]*:[[:space:]]*[0-9]*' "$SHARED/servers/$port.json" 2>/dev/null | grep -o '[0-9]*$')
+    ver=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[0-9.]*"' "$SHARED/servers/$port.json" 2>/dev/null | grep -o '[0-9.]*"$' | tr -d '"')
     now=$(date +%s)
     if [[ -n $updated && $((now - updated)) -le 90 ]]; then
-        ok "$name: BeamNetCore aktiv"
+        ok "$name: BeamNetCore ${ver:+$ver }aktiv"
+        [[ -n $ver ]] && CORE_VERSIONS+=("$ver:$nr")
     elif [[ -n $updated ]]; then
         warn "$name: BeamNetCore meldet sich seit $(( (now - updated) / 60 )) min nicht mehr"
         hint "beamnet logs $nr   (steht dort ein Fehler von BeamNetCore?)"
     else
         warn "$name: BeamNetCore ist installiert, hat sich aber noch nie gemeldet"
-        hint "Erst nach einem Neustart aktiv: beamnet restart $nr"
+        hint "BeamMP lädt Plugins normalerweise selbst; sonst hilft: beamnet restart $nr"
     fi
     err=$(tail -n 400 "$ROOT/$nr/Server.log" 2>/dev/null | grep -F "[BeamNetCore] Fehler" | tail -n 1)
     [[ -n $err ]] && warn "$name: Fehlermeldung von BeamNetCore: ${err:0:160}"
@@ -1391,8 +1402,20 @@ cmd_self_update() {
     tmp=$(mktemp)
     curl -fsSL "$RAW_BASE/beamnet.sh" -o "$tmp" || { rm -f "$tmp"; die "Download fehlgeschlagen"; }
     bash -n "$tmp" || { rm -f "$tmp"; die "Heruntergeladene Datei ist fehlerhaft"; }
-    install -m 755 "$tmp" "$target" && rm -f "$tmp"
-    ok "Aktualisiert: $target (jetzt Version $(grep -m1 '^VERSION=' "$target" | cut -d'"' -f2))"
+    grep -q '^VERSION=' "$tmp" || { rm -f "$tmp"; die "Heruntergeladene Datei ist kein BeamNet-Werkzeug"; }
+    # Neue Datei statt Ueberschreiben: das laufende Skript liest so ungestoert weiter.
+    install -m 755 "$tmp" "$target.new" && mv -f "$target.new" "$target" && rm -f "$tmp"
+    ok "Werkzeug aktualisiert: $target (jetzt Version $(grep -m1 '^VERSION=' "$target" | cut -d'"' -f2))"
+}
+
+# Werkzeug und Plugin in einem Schritt auf den neuesten Stand bringen.
+cmd_update() {
+    need_root update
+    local target
+    target=$(readlink -f "${BASH_SOURCE[0]}")
+    cmd_self_update
+    echo "Aktualisiere jetzt das Plugin auf allen Servern …"
+    if [[ $YES -eq 1 ]]; then exec "$target" install-core -y; else exec "$target" install-core; fi
 }
 
 cmd_help() {
@@ -1419,7 +1442,8 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet openclaw status|pause|resume   OpenClaw-Agent ansehen, anhalten (einfrieren), fortsetzen
   beamnet watch install|status|test|uninstall   Wächter: meldet Ausfälle (auch an Discord), optional Neustart
   beamnet web install [port]     Statusseite (Server, Bestenliste, Rekorde) als Webseite, Standard-Port 8080
-  beamnet self-update            Neueste Version dieses Werkzeugs laden
+  beamnet update                 Werkzeug und Plugin auf allen Servern auf den neuesten Stand bringen
+  beamnet self-update            Nur das Werkzeug aktualisieren
 
   Option -y: ohne Rückfrage ausführen.
 EOF
@@ -1458,7 +1482,8 @@ main() {
         admin|admins) cmd_admin "$@" ;;
         unban) cmd_unban "$@" ;;
         modlog) cmd_modlog "$@" ;;
-        self-update|update) cmd_self_update ;;
+        self-update) cmd_self_update ;;
+        update|aktualisieren) cmd_update ;;
         version|--version) echo "BeamNet $VERSION" ;;
         hilfe|help|-h|--help) cmd_help ;;
         *) cmd_help; exit 1 ;;

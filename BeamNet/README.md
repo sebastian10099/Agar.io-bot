@@ -23,6 +23,9 @@ Discord → Statusseite → Neustart. Mit Enter wird ein Schritt übersprungen.
 
 Lieber einzeln? `beamnet status` und `beamnet doctor` ändern nichts; `beamnet backup` und `beamnet fix` reparieren.
 
+**Später auf den neuesten Stand:** `beamnet update` – lädt das neueste Werkzeug und aktualisiert das Plugin auf allen
+Servern (ohne Neustart, BeamMP lädt es selbst neu). `beamnet doctor` zeigt die Plugin-Version je Server.
+
 **Zum Teilen:** `beamnet report` erstellt einen Bericht mit Status, Diagnose, Plugins und auffälligen Protokollzeilen –
 IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den Chat kopieren.
 
@@ -49,7 +52,8 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet web install [port]` / `web uninstall` | Statusseite als Webseite (siehe unten), Standard-Port 8080 |
 | `beamnet bans` / `unban <Name>` / `modlog [n]` | Banns ansehen und aufheben, Moderationsprotokoll lesen |
 | `beamnet admin list / add <Name …> / remove <Name …>` | Admins für Rennen und Moderation – wirksam innerhalb einer Minute, ohne Neustart |
-| `beamnet self-update` | Neueste Version des Werkzeugs laden |
+| `beamnet update` | Werkzeug **und** Plugin auf allen Servern aktualisieren |
+| `beamnet self-update` | Nur das Werkzeug aktualisieren |
 
 Mit `-y` laufen Befehle ohne Rückfrage.
 

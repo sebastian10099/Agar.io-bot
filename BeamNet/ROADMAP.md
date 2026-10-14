@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Werkzeug 1.8):
+- [x] `beamnet update` (Werkzeug + Plugin in einem Schritt, sicher gegen leere Downloads); `doctor` zeigt die
+      Plugin-Version je Server und warnt bei unterschiedlichen Versionen.
+
 Erledigt (Plugin 1.7):
 - [x] Tagesaufgaben: täglich eine netzwerkweit gleiche Aufgabe mit Bonus-XP, `/aufgabe`, Hinweis bei der Begrüßung.
 

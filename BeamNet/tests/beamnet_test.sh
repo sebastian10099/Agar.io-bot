@@ -564,6 +564,37 @@ contains "$("$TOOL" admin list)" "Max, Moritz" "setup: Komma-getrennte Admins"
 contains "$out" "Zum Teilen mit mir" "setup: läuft bis zum Ende"
 rm -f "$T/bin/tar"
 
+# --- Versionen und Update -----------------------------------------------------------------------------------------
+now=$(date +%s)
+"$TOOL" install-core -y >/dev/null 2>&1
+for nr in 1 2 3; do
+    port=$((30813 + nr)); ver="1.7"; [[ $nr == 3 ]] && ver="1.6"
+    echo "{\"port\":$port,\"players\":0,\"max\":8,\"updated\":$now,\"version\":\"$ver\",\"api\":{\"positions\":true}}" \
+        >"$T/root/shared/beamnet/servers/$port.json"
+done
+out=$("$TOOL" doctor 2>&1)
+contains "$out" "Server 1 .*BeamNetCore 1\\.7 aktiv" "doctor: Plugin-Version"
+contains "$out" "Unterschiedliche BeamNetCore-Versionen auf den Servern: 1\\.6 1\\.7" "doctor: unterschiedliche Versionen"
+# Update aus einer Kopie des Werkzeugs, Quelle per file:// (kein Netz noetig, echtes curl).
+mv "$T/bin/curl" "$T/curl.stub"
+# Eine leere Datei (z. B. abgebrochener Download) darf das Werkzeug nie ersetzen.
+mkdir -p "$T/inst" "$T/leer"
+: >"$T/leer/beamnet.sh"
+cp "$TOOL" "$T/inst/beamnet"
+out=$(BEAMNET_RAW="file://$T/leer" "$T/inst/beamnet" self-update 2>&1)
+contains "$out" "kein BeamNet-Werkzeug" "self-update: leere Datei abgelehnt"
+cmp -s "$T/inst/beamnet" "$TOOL" && pass || fail "self-update: Werkzeug unveraendert nach Fehler"
+cp "$TOOL" "$T/inst/beamnet"
+rm -f "$T"/root/*/Resources/Server/BeamNetCore/main.lua
+out=$(BEAMNET_RAW="file://$HERE/.." "$T/inst/beamnet" update -y 2>&1)
+contains "$out" "Werkzeug aktualisiert: $T/inst/beamnet" "update: Werkzeug"
+contains "$out" "Server 6: BeamNetCore installiert" "update: Plugin auf allen Servern"
+[[ -x $T/inst/beamnet && ! -e $T/inst/beamnet.new ]] && pass || fail "update: Werkzeug ersetzt, keine Reste"
+cmp -s "$T/root/1/Resources/Server/BeamNetCore/main.lua" "$HERE/../server/BeamNetCore/main.lua" && pass || fail "update: Plugin ist die neue Version"
+out=$(BEAMNET_RAW="file:///gibt/es/nicht" "$T/inst/beamnet" update -y 2>&1)
+contains "$out" "Download fehlgeschlagen" "update: Fehler beim Laden"
+mv "$T/curl.stub" "$T/bin/curl"
+
 # Nicht als root: Aenderungen verweigert.
 out=$(FAKE_UID=1000 "$TOOL" restart all 2>&1)
 contains "$out" "Bitte als root" "restart verlangt root"
