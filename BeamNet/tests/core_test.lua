@@ -335,6 +335,124 @@ players[5] = { name = "Kaputt", ids = { beammp = "3003" }, vehicles = {} }
 local okJoin = pcall(_G[events.onPlayerJoin], 5)
 check(okJoin and BN.players[5] and BN.players[5].record.km == 0, "Kaputte Spielerdatei wird ersetzt")
 
+-- --- Zeitrennen ----------------------------------------------------------------------------------------------------
+C.admins = { "sebi" }                               -- Gross/Klein egal
+local function at(pid, x, tim, y)
+    return BN.track(pid, 0, { x, y or 0, 0 }, tim)
+end
+-- Faehrt in Schritten (m) von x0 nach x1, eine Messung je Sekunde Spielzeit; gibt die letzte Spielzeit zurueck.
+local function drive(pid, x0, x1, step, tim)
+    local x = x0
+    while (step > 0 and x < x1) or (step < 0 and x > x1) do
+        x = x + step
+        if (step > 0 and x > x1) or (step < 0 and x < x1) then x = x1 end
+        tim = tim + math.abs(x - (x - step)) / math.abs(step)
+        at(pid, x, tim)
+    end
+    return tim
+end
+local function say(pid, text) return _G[events.onChatMessage](pid, "?", text) end
+
+eq(BN.fmtRaceTime(65.26), "1:05.3", "Zeitformat Minuten")
+eq(BN.fmtRaceTime(9.04), "0:09.0", "Zeitformat Sekunden")
+check(BN.isAdmin(BN.players[1]) and not BN.isAdmin(BN.players[5]), "Admin-Erkennung")
+check(not BN.isAdmin(BN.players[4]), "Gaeste sind nie Admin")
+
+say(5, "/rennen neu sprint")
+check(chatContains("nur Admins", 5), "Nicht-Admin darf keine Strecke anlegen")
+at(1, 0, 5000)
+say(1, "/rennen neu ../x")
+check(chatContains("Streckenname: 1–24 Zeichen", 1), "Streckenname wird geprueft")
+say(1, "/rennen neu Sprint")
+check(chatContains("Start von sprint gesetzt", 1), "Start gesetzt (Name klein)")
+check(readJson(SHARED .. "/races/gridmap_v2.json").tracks.sprint.start.x == 0, "Strecke gespeichert")
+say(5, "/rennen sprint")
+check(chatContains("hat noch kein Ziel", 5), "Ohne Ziel kein Start")
+drive(1, 0, 1000, 50, 5000)
+say(1, "/rennen ziel sprint")
+check(chatContains("Ziel von sprint gesetzt %(1000 m Luftlinie%)", 1), "Ziel gesetzt")
+
+-- Lauf von Kaputt: Start bei x=0 (Radius 12), Ziel bei x=1000.
+players[5].vehicles[0] = { pos = { -30, 0, 0 }, tim = 0 }
+say(5, "/rennen sprint")
+check(chatContains("Rennen sprint: Fahr zum Start", 5), "Rennen vorbereitet")
+at(5, -30, 100); at(5, -15, 101)
+eq(BN.players[5].race.state, "armed", "Vor dem Start")
+at(5, 10, 102)
+check(chatContains("Am Start von sprint", 5), "Am Start erkannt")
+at(5, 20, 103)                                        -- verlaesst den Start bei 102.2
+check(chatContains("Zeit läuft! Ziel ist 980 m entfernt", 5), "Start erkannt")
+local tim = drive(5, 20, 980, 20, 103)                -- bei 980: Spielzeit 151
+at(5, 995, tim + 0.5)                                 -- Ziel bei 151.2667 ueberquert -> 49.0667 s
+check(chatContains("Ziel! sprint: 0:49%.1", 5), "Zielzeit interpoliert")
+check(chatContains("Neuer Streckenrekord auf sprint: Kaputt mit 0:49%.1!"), "Rekord verkuendet")
+eq(BN.players[5].race.state, "armed", "Nach dem Ziel wieder bereit")
+local records = readJson(SHARED .. "/races/gridmap_v2.json").tracks.sprint.records
+check(records and #records == 1 and math.abs(records[1].time - 49.0667) < 0.01, "Rekord gespeichert")
+
+-- Schnellerer Lauf von Sebi (40 m/s) -> neuer Rekord, Kaputt auf Platz 2.
+say(1, "/rennen sprint")
+tim = drive(1, 1000, 10, -50, 6000)
+tim = drive(1, 10, 980, 40, tim)
+at(1, 1000, tim + 1)
+check(chatContains("Neuer Streckenrekord auf sprint: Sebi mit 0:2"), "Schnellerer Rekord")
+say(1, "/rennen stop")
+check(chatContains("Rennmodus beendet", 1), "Rennen beenden")
+eq(BN.players[1].race, nil, "Kein Rennen mehr")
+say(5, "/rekorde sprint")
+check(chatContains("1%. Sebi – 0:2", 5) and chatContains("2%. Kaputt – 0:49%.1", 5), "Rekordliste")
+say(5, "/rennen")
+check(chatContains("Strecken auf gridmap_v2: sprint %(Rekord 0:2%d%.%d · Sebi%)", 5), "Streckenliste")
+
+-- Langsamerer Lauf: kein neuer Eintrag.
+tim = drive(5, 995, 0, -50, 300)
+at(5, 20, tim + 1)
+tim = drive(5, 20, 990, 10, tim + 1)
+check(chatContains("Ziel! sprint: 1:", 5), "Langsamer Lauf gemessen")
+records = readJson(SHARED .. "/races/gridmap_v2.json").tracks.sprint.records
+eq(#records, 2, "Langsamer Lauf ersetzt die Bestzeit nicht")
+check(math.abs(records[2].time - 49.0667) < 0.01, "Bestzeit bleibt")
+
+-- Zuruecksetzen und Teleport machen den Lauf ungueltig.
+tim = drive(5, 990, 0, -50, 500)
+at(5, 30, tim + 1)
+_G[events.onVehicleReset](5, 0)
+check(chatContains("Fahrzeug zurückgesetzt – Lauf ungültig", 5), "Reset ungueltig")
+at(5, 0, tim + 2); at(5, 30, tim + 3)
+at(5, 990, tim + 4)                                   -- 960 m in 1 s
+check(chatContains("Sprung %(Teleport%) – Lauf ungültig", 5), "Teleport ungueltig")
+records = readJson(SHARED .. "/races/gridmap_v2.json").tracks.sprint.records
+eq(#records, 2, "Ungueltige Laeufe zaehlen nicht")
+
+-- Gast: Zeit ja, Rekord nein.
+players[4].vehicles[0] = { pos = { 0, 0, 0 }, tim = 0 }
+say(4, "/rennen sprint")
+at(4, 0, 10); at(4, 20, 11)
+tim = drive(4, 20, 990, 50, 11)
+at(4, 1000, tim + 0.2)
+check(chatContains("Ziel! sprint:", 4), "Gast faehrt auf Zeit")
+eq(#readJson(SHARED .. "/races/gridmap_v2.json").tracks.sprint.records, 2, "Gast nicht in der Rekordliste")
+
+-- Rundkurs: Start = Ziel.
+at(1, 500, 7000, 500)
+say(1, "/rennen neu runde")
+say(1, "/rennen ziel runde")
+check(chatContains("Rundkurs %(Start = Ziel%)", 1), "Rundkurs erkannt")
+say(5, "/rennen runde")
+at(5, 400, 900, 500); at(5, 495, 901, 500)          -- in den Startbereich
+at(5, 520, 902, 500)                                  -- raus: Start
+check(BN.players[5].race.state == "running", "Rundkurs gestartet")
+tim = 902
+for i = 1, 30 do tim = tim + 1; at(5, 520 + i * 10, tim, 500) end
+for i = 29, 0, -1 do tim = tim + 1; at(5, 510 + i * 10, tim, 500) end
+check(chatContains("Ziel! runde:", 5), "Rundkurs beendet")
+say(5, "/rekorde")
+check(chatContains("runde: Kaputt", 5) and chatContains("sprint: Sebi", 5), "Alle Rekorde der Map")
+say(1, "/rennen loeschen runde")
+check(BN.loadTracks().tracks.runde == nil, "Strecke geloescht")
+say(5, "/rennen gibtsnicht")
+check(chatContains("gibt es auf dieser Map nicht", 5), "Unbekannte Strecke")
+
 -- Herunterfahren speichert alle.
 tick(1)
 _G[events.onShutdown]()

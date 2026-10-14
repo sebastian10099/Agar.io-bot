@@ -3,8 +3,8 @@
 Zwei Teile, beide getestet:
 
 1. **`beamnet`** – ein Befehl für die Server-Konsole: zeigt den Zustand aller Server, findet Probleme und repariert sie.
-2. **`BeamNetCore`** – ein Server-Plugin: Kilometer, Fahrzeit, XP und Level, Ligen, Bestenliste und eine Liste aller
-   Server im Chat – gemeinsam für alle Server.
+2. **`BeamNetCore`** – ein Server-Plugin: Kilometer, Fahrzeit, XP und Level, Ligen, Bestenliste, **Zeitrennen mit
+   Rekordliste** und eine Liste aller Server im Chat – gemeinsam für alle Server.
 
 ## Schnellstart (Web-Konsole des Servers, als root)
 
@@ -96,8 +96,27 @@ beamnet restart all
 | `/liga` | Alle Ligen und wie weit es bis zur nächsten ist |
 | `/server` | Alle BeamNet-Server mit Map und Spielerzahl (wechseln geht im BeamMP-Launcher) |
 | `/km` | Eigene Kilometer |
+| `/rennen` | Strecken dieser Map mit Rekord |
+| `/rennen <Name>` | Auf Zeit fahren: zum Start fahren, die Zeit läuft ab dem Verlassen des Startbereichs |
+| `/rennen stop` | Rennmodus beenden |
+| `/rekorde [Name]` | Top 5 einer Strecke bzw. die Rekorde aller Strecken der Map |
 
 Befehle anderer Plugins werden nicht abgefangen.
+
+### Zeitrennen
+
+Admins legen Strecken direkt im Spiel an – keine Koordinaten nötig:
+
+1. Mit dem Auto an den Start stellen: `/rennen neu bergsprint`
+2. Zum Ziel fahren: `/rennen ziel bergsprint` (Start = Ziel ergibt einen Rundkurs)
+3. Fertig – alle können `/rennen bergsprint` fahren. Entfernen: `/rennen loeschen bergsprint`
+
+Admins stehen in `config.json` (BeamMP-Namen oder -IDs, Gäste nie): `{"admins": ["Sebi"]}`.
+
+Gemessen wird mit der Spieluhr des Fahrzeugs, der Moment des Überfahrens von Start und Ziel wird zwischen zwei
+Messpunkten eingerechnet (etwa eine Zehntelsekunde genau, Messung viermal pro Sekunde während eines Laufs).
+Zurücksetzen, Teleport oder mehr als 30 Minuten machen einen Lauf ungültig. Neuer Streckenrekord → Meldung an alle.
+Gäste bekommen ihre Zeit, kommen aber nicht in die Rekordliste. Strecken gelten je Map (`races/<Map>.json`).
 
 ### So wird gezählt
 
@@ -116,10 +135,12 @@ Alles liegt in `/srv/beammp/shared/beamnet/`:
   ergänzt, daher geht bei einem schnellen Serverwechsel nichts verloren. Dateien werden atomar geschrieben (erst
   Hilfsdatei, dann umbenennen) – ein Absturz hinterlässt keine halbe Datei.
 - `servers/<Port>.json` – jeder Server meldet alle 15 s Name, Map und Spieler (daraus entstehen `/server` und `beamnet status`).
+- `races/<Map>.json` – Strecken und Rekorde je Map.
 - `config.json` (optional) – Einstellungen ohne Code-Änderung, z. B.:
 
 ```json
 {
+  "admins": ["Sebi"],
   "publicHost": "deine-ip-oder-domain",
   "xpPerKm": 12,
   "xpPerMinute": 1,

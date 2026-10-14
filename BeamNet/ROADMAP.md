@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Version 1.1):
+- [x] Zeitrennen: Strecken im Spiel anlegen (`/rennen neu`, `/rennen ziel`), Zeitmessung mit Spieluhr und
+      Interpolation, Rundkurse, Rekordliste je Strecke, ungültig bei Reset/Teleport.
+
 Erledigt (Version 1.0):
 - [x] `beamnet`: Status, Diagnose (inkl. OpenClaw, cron, SSH-Schlüssel), Reparatur, Maps, Sicherung, Protokolle,
       Plugins ab-/einschalten, OpenClaw anhalten/fortsetzen, Selbst-Update – getestet in einer nachgebauten Umgebung.
@@ -16,7 +20,6 @@ Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamne
 
 Ideen:
 - [ ] Wochenliga mit Auf- und Abstieg (Saisons), Wochensieger in der Bestenliste.
-- [ ] Zeitrennen: Start/Ziel-Punkte je Map, Zeiten werden serverseitig gemessen, `/rennen` und Rekordliste.
 - [ ] Abstimmung im Chat: `/vote map <name>` wechselt die Map, wenn die Mehrheit zustimmt.
 - [ ] Map-Rotation für einen Server (jeden Tag eine andere Map).
 - [ ] Englische Texte je nach Spieler.

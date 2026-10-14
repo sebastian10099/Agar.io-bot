@@ -9,11 +9,12 @@
 -- Anpassen ohne Code-Aenderung: <gemeinsamer Ordner>/config.json, z. B. {"publicHost": "1.2.3.4", "xpPerKm": 12}
 --
 -- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche]  /liga  /server  /km
+--               /rennen [Name|stop]  /rekorde [Name]   – Admins: /rennen neu|ziel|loeschen <Name>
 
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.0"
+BN.VERSION = "1.1"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -41,6 +42,12 @@ local defaults = {
     -- Oeffentliche Adresse fuer /server (leer = nur Name und Port anzeigen).
     publicHost = "",
     announceLevelUps = true,
+    -- Zeitrennen: Radius von Start- und Zielbereich (m), Abtastung waehrend eines Laufs (ms), Hoechstdauer (min).
+    raceRadiusM = 12,
+    raceTickMs = 250,
+    raceMaxMinutes = 30,
+    -- Wer Strecken anlegen darf: BeamMP-Namen oder -IDs (Gaeste nie).
+    admins = {},
 }
 
 BN.config = BN.config or {}
@@ -290,6 +297,7 @@ end
 
 local function playersDir() return C.sharedDir .. "/players" end
 local function serversDir() return C.sharedDir .. "/servers" end
+local function racesDir() return C.sharedDir .. "/races" end
 
 -- Dateiname aus der BeamMP-ID (nur Ziffern und Buchstaben – nie Pfade aus Spielereingaben).
 local function safeId(id)
@@ -525,6 +533,7 @@ function BN.track(pid, vid, pos, tim, vel)
     local now = BN.now()
     local v = s.vehicles[vid]
     local counted = 0
+    local jump = false
     if v then
         local dt
         if tim and v.tim and tim > v.tim then dt = tim - v.tim else dt = math.max(1, now - v.at) end
@@ -533,8 +542,11 @@ function BN.track(pid, vid, pos, tim, vel)
         if d >= C.minStepM and dt > 0 and d / dt <= C.maxSpeedMps then
             counted = d
             s.pendingKm = s.pendingKm + d / 1000
+        elseif dt > 0 and d / dt > C.maxSpeedMps then
+            jump = true
         end
     end
+    if s.race then BN.raceUpdate(s, vid, v, { x = x, y = y, z = z, tim = tim, at = now }, jump) end
     local speed
     if type(vel) == "table" then
         local vx, vy, vz = tonumber(vel[1] or vel.x) or 0, tonumber(vel[2] or vel.y) or 0, tonumber(vel[3] or vel.z) or 0
@@ -547,7 +559,12 @@ end
 
 function BN.forgetVehicle(pid, vid)
     local s = BN.players[pid]
-    if s then s.vehicles[vid] = nil end
+    if not s then return end
+    s.vehicles[vid] = nil
+    local r = s.race
+    if r and r.vid == vid and r.state ~= "armed" then
+        BN.raceInvalid(s, "Fahrzeug zurückgesetzt")
+    end
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------
@@ -619,6 +636,189 @@ function BN.serverList()
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------
+-- Zeitrennen
+--
+-- Ein Admin legt eine Strecke an, indem er am Start "/rennen neu <Name>" und am Ziel "/rennen ziel <Name>" schreibt.
+-- Spieler starten mit "/rennen <Name>": Die Zeit laeuft ab dem Verlassen des Startbereichs und endet beim Erreichen
+-- des Zielbereichs. Gemessen wird mit der Spieluhr des Fahrzeugs; der Zeitpunkt des Ueberfahrens wird zwischen zwei
+-- Messpunkten eingerechnet (Genauigkeit etwa eine Zehntelsekunde). Start = Ziel ergibt einen Rundkurs.
+-- Strecken und Rekorde: <gemeinsamer Ordner>/races/<Map>.json
+
+local function point(t)
+    return { x = tonumber(t.x) or 0, y = tonumber(t.y) or 0, z = tonumber(t.z) or 0 }
+end
+
+local function dist(a, b)
+    local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z
+    return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+-- Zeitpunkt, an dem die Strecke p0 -> p1 die Grenze (Radius r um c) ueberquert (lineare Naeherung ueber den Abstand).
+local function crossTime(p0, p1, t0, t1, c, r)
+    local d0, d1 = dist(p0, c), dist(p1, c)
+    if d1 == d0 then return t1 end
+    local f = (r - d0) / (d1 - d0)
+    if f < 0 then f = 0 elseif f > 1 then f = 1 end
+    return t0 + (t1 - t0) * f
+end
+
+function BN.fmtRaceTime(seconds)
+    seconds = math.max(0, seconds or 0)
+    local m = math.floor(seconds / 60)
+    return string.format("%d:%04.1f", m, seconds - m * 60)
+end
+
+local function racesFile()
+    local map = tostring(BN.server.map or "unbekannt"):gsub("[^%w_-]", "_")
+    return racesDir() .. "/" .. map .. ".json"
+end
+
+function BN.loadTracks()
+    local data = json.decode(readFile(racesFile()) or "")
+    if type(data) ~= "table" or type(data.tracks) ~= "table" then return { tracks = {} } end
+    return data
+end
+
+local function saveTracks(data)
+    ensureDir(C.sharedDir)
+    ensureDir(racesDir())
+    return writeFileAtomic(racesFile(), json.encode(data))
+end
+
+local function trackName(name)
+    name = tostring(name or ""):lower()
+    if name == "" or #name > 24 or not name:match("^[%w_-]+$") then return nil end
+    return name
+end
+
+function BN.isAdmin(s)
+    if not s or s.guest then return false end
+    for _, a in ipairs(C.admins or {}) do
+        a = tostring(a)
+        if a == s.id or a:lower() == s.name:lower() then return true end
+    end
+    return false
+end
+
+-- Letzte bekannte Position des Spielers (Fahrzeug mit der juengsten Messung).
+local function currentPosition(s)
+    local best
+    for vid, v in pairs(s.vehicles) do
+        if not best or v.at > best.at then best = { x = v.x, y = v.y, z = v.z, at = v.at, vid = vid } end
+    end
+    return best
+end
+
+function BN.raceInvalid(s, why)
+    local r = s.race
+    if not r then return end
+    chat(s.pid, string.format("%s – Lauf ungültig. Neuer Versuch: zurück zum Start von %s.", why, r.name))
+    r.state, r.vid, r.startT, r.leftFinish = "armed", nil, nil, false
+end
+
+local function finishRace(s, time)
+    local r = s.race
+    chat(s.pid, string.format("Ziel! %s: %s", r.name, BN.fmtRaceTime(time)))
+    if not s.guest then
+        local data = BN.loadTracks()
+        local track = data.tracks[r.name]
+        if track then
+            track.records = type(track.records) == "table" and track.records or {}
+            local previousBest = track.records[1] and tonumber(track.records[1].time)
+            local mine
+            for _, rec in ipairs(track.records) do
+                if rec.id == s.id then mine = rec end
+            end
+            local improved = false
+            if not mine then
+                mine = { id = s.id, name = s.name, time = time, at = BN.now() }
+                track.records[#track.records + 1] = mine
+                improved = true
+            elseif time < (tonumber(mine.time) or math.huge) then
+                mine.time, mine.at, mine.name = time, BN.now(), s.name
+                improved = true
+            end
+            table.sort(track.records, function(a, b) return (tonumber(a.time) or math.huge) < (tonumber(b.time) or math.huge) end)
+            while #track.records > 50 do table.remove(track.records) end
+            if improved then
+                saveTracks(data)
+                local rank
+                for i, rec in ipairs(track.records) do if rec.id == s.id then rank = i end end
+                if rank == 1 and (not previousBest or time < previousBest) then
+                    chat(-1, string.format("Neuer Streckenrekord auf %s: %s mit %s!", r.name, s.name, BN.fmtRaceTime(time)))
+                else
+                    chat(s.pid, string.format("Persönliche Bestzeit! Platz %d von %d.", rank or 0, #track.records))
+                end
+            end
+        end
+    end
+    r.state, r.vid, r.startT, r.leftFinish = "armed", nil, nil, false
+    chat(s.pid, "Für einen neuen Versuch zurück zum Start – beenden mit /rennen stop.")
+end
+
+-- Wird bei jeder neuen Position eines Spielers mit laufendem Rennen aufgerufen.
+function BN.raceUpdate(s, vid, prev, cur, jump)
+    local r = s.race
+    if r.vid and r.vid ~= vid then return end
+    local radius = C.raceRadiusM
+    if r.state == "armed" then
+        if dist(cur, r.start) <= radius then
+            r.state, r.vid = "ready", vid
+            r.useTim = cur.tim ~= nil
+            chat(s.pid, string.format("Am Start von %s. Los geht's, sobald du den Startbereich verlässt!", r.name))
+        end
+        return
+    end
+    if not prev then return end
+    if jump then
+        BN.raceInvalid(s, "Sprung (Teleport)")
+        return
+    end
+    local t0, t1
+    if r.useTim then t0, t1 = prev.tim, cur.tim else t0, t1 = prev.at, cur.at end
+    if not (t0 and t1) or t1 < t0 then return end
+    if r.state == "ready" then
+        if dist(cur, r.start) > radius then
+            r.startT = crossTime(prev, cur, t0, t1, r.start, radius)
+            r.state = "running"
+            r.leftFinish = dist(cur, r.finish) > radius
+            chat(s.pid, string.format("Zeit läuft! Ziel ist %.0f m entfernt.", dist(cur, r.finish)))
+        end
+        return
+    end
+    -- running
+    if t1 - r.startT > C.raceMaxMinutes * 60 then
+        BN.raceInvalid(s, "Zeitlimit überschritten")
+        return
+    end
+    local d = dist(cur, r.finish)
+    if not r.leftFinish then
+        if d > radius then r.leftFinish = true end
+        return
+    end
+    if d <= radius then
+        finishRace(s, crossTime(prev, cur, t0, t1, r.finish, radius) - r.startT)
+    end
+end
+
+-- Schnelle Abtastung nur fuer Spieler mit laufendem Rennen.
+function BN.raceTick()
+    if not (MP and MP.GetPositionRaw) then return end
+    for pid, s in pairs(BN.players) do
+        local vehicles = s.race and MP.GetPlayerVehicles and MP.GetPlayerVehicles(pid) or nil
+        if type(vehicles) == "table" then
+            for vid in pairs(vehicles) do
+                if not s.race then break end
+                if not s.race.vid or s.race.vid == vid then
+                    local ok, raw = pcall(MP.GetPositionRaw, pid, vid)
+                    if ok and type(raw) == "table" and raw.pos then BN.track(pid, vid, raw.pos, tonumber(raw.tim), raw.vel) end
+                end
+            end
+        end
+    end
+end
+
+-- ---------------------------------------------------------------------------------------------------------------------
 -- Chat-Befehle
 
 local commands = {}
@@ -635,7 +835,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    chat(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche] · /liga · /server · /km")
+    chat(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche] · /liga · /server · /km · /rennen · /rekorde")
 end
 commands.help = commands.hilfe
 
@@ -721,6 +921,141 @@ function commands.server(pid)
     end
 end
 commands.servers = commands.server
+
+local function listTracks(pid, s)
+    local data = BN.loadTracks()
+    local names = {}
+    for name in pairs(data.tracks) do names[#names + 1] = name end
+    table.sort(names)
+    if #names == 0 then
+        chat(pid, "Auf " .. tostring(BN.server.map) .. " gibt es noch keine Strecken.")
+    else
+        local parts = {}
+        for _, name in ipairs(names) do
+            local t = data.tracks[name]
+            local best = type(t.records) == "table" and t.records[1]
+            if not t.finish then
+                parts[#parts + 1] = name .. " (ohne Ziel)"
+            elseif best then
+                parts[#parts + 1] = string.format("%s (Rekord %s · %s)", name, BN.fmtRaceTime(tonumber(best.time)), tostring(best.name))
+            else
+                parts[#parts + 1] = name .. " (noch keine Zeit)"
+            end
+        end
+        chat(pid, "Strecken auf " .. tostring(BN.server.map) .. ": " .. table.concat(parts, ", "))
+        chat(pid, "Starten: /rennen <Name> · beenden: /rennen stop · Rekorde: /rekorde <Name>")
+    end
+    if BN.isAdmin(s) then
+        chat(pid, "Admin: am Start /rennen neu <Name>, am Ziel /rennen ziel <Name>, entfernen /rennen loeschen <Name>")
+    end
+end
+
+function commands.rennen(pid, arg)
+    local s = session(pid)
+    local words = {}
+    for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
+    local sub = (words[1] or ""):lower()
+    if sub == "" then
+        listTracks(pid, s)
+        return
+    end
+    if sub == "stop" or sub == "ende" then
+        if s.race then
+            chat(pid, "Rennmodus beendet.")
+            s.race = nil
+        else
+            chat(pid, "Du bist in keinem Rennen.")
+        end
+        return
+    end
+    if sub == "neu" or sub == "ziel" or sub == "loeschen" or sub == "löschen" then
+        if not BN.isAdmin(s) then
+            chat(pid, "Strecken anlegen dürfen nur Admins (Eintrag \"admins\" in config.json).")
+            return
+        end
+        local name = trackName(words[2])
+        if not name then
+            chat(pid, "Streckenname: 1–24 Zeichen, nur Buchstaben, Ziffern, _ und -")
+            return
+        end
+        local data = BN.loadTracks()
+        local track = data.tracks[name]
+        if sub == "loeschen" or sub == "löschen" then
+            if not track then chat(pid, "Strecke " .. name .. " gibt es nicht.") return end
+            data.tracks[name] = nil
+            saveTracks(data)
+            chat(pid, "Strecke " .. name .. " gelöscht.")
+            return
+        end
+        local pos = currentPosition(s)
+        if not pos then
+            chat(pid, "Keine Position bekannt – setz dich in ein Fahrzeug und warte eine Sekunde.")
+            return
+        end
+        if sub == "neu" then
+            if track then chat(pid, "Strecke " .. name .. " gibt es schon.") return end
+            data.tracks[name] = { start = point(pos), by = s.name, created = BN.now(), records = {} }
+            saveTracks(data)
+            chat(pid, "Start von " .. name .. " gesetzt. Jetzt zum Ziel fahren und /rennen ziel " .. name .. " schreiben.")
+        else
+            if not track then chat(pid, "Strecke " .. name .. " gibt es nicht – zuerst /rennen neu " .. name) return end
+            track.finish = point(pos)
+            track.records = {}           -- neues Ziel: alte Zeiten passen nicht mehr
+            saveTracks(data)
+            local d = dist(point(pos), point(track.start))
+            if d <= C.raceRadiusM then
+                chat(pid, "Ziel von " .. name .. " gesetzt – Rundkurs (Start = Ziel). Starten: /rennen " .. name)
+            else
+                chat(pid, string.format("Ziel von %s gesetzt (%.0f m Luftlinie). Starten: /rennen %s", name, d, name))
+            end
+        end
+        return
+    end
+    -- Lauf vorbereiten
+    local name = trackName(sub)
+    local track = name and BN.loadTracks().tracks[name]
+    if not track then
+        chat(pid, "Strecke \"" .. tostring(words[1]) .. "\" gibt es auf dieser Map nicht. Liste: /rennen")
+        return
+    end
+    if not track.finish then
+        chat(pid, "Strecke " .. name .. " hat noch kein Ziel.")
+        return
+    end
+    s.race = { name = name, start = point(track.start), finish = point(track.finish), state = "armed" }
+    local pos = currentPosition(s)
+    if pos then
+        chat(pid, string.format("Rennen %s: Fahr zum Start (%.0f m entfernt).", name, dist(point(pos), s.race.start)))
+    else
+        chat(pid, "Rennen " .. name .. ": Fahr zum Start.")
+    end
+end
+
+function commands.rekorde(pid, arg)
+    local data = BN.loadTracks()
+    local name = trackName(arg)
+    if name then
+        local track = data.tracks[name]
+        if not track then chat(pid, "Strecke " .. name .. " gibt es nicht.") return end
+        local records = type(track.records) == "table" and track.records or {}
+        if #records == 0 then chat(pid, "Auf " .. name .. " gibt es noch keine Zeiten.") return end
+        chat(pid, "Rekorde " .. name .. ":")
+        for i = 1, math.min(5, #records) do
+            chat(pid, string.format("%d. %s – %s", i, tostring(records[i].name), BN.fmtRaceTime(tonumber(records[i].time))))
+        end
+        return
+    end
+    local names = {}
+    for n, t in pairs(data.tracks) do
+        if type(t.records) == "table" and t.records[1] then names[#names + 1] = n end
+    end
+    table.sort(names)
+    if #names == 0 then chat(pid, "Noch keine Rekorde auf dieser Map.") return end
+    for _, n in ipairs(names) do
+        local best = data.tracks[n].records[1]
+        chat(pid, string.format("%s: %s – %s", n, tostring(best.name), BN.fmtRaceTime(tonumber(best.time))))
+    end
+end
 
 BN.commands = commands
 
@@ -833,6 +1168,11 @@ function BN_Tick()
     if not ok then print("[BeamNetCore] Fehler im Takt: " .. tostring(err)) end
 end
 
+function BN_RaceTick()
+    local ok, err = pcall(BN.raceTick)
+    if not ok then print("[BeamNetCore] Fehler im Renntakt: " .. tostring(err)) end
+end
+
 if MP and MP.RegisterEvent then
     MP.RegisterEvent("onInit", "BN_onInit")
     MP.RegisterEvent("onPlayerJoin", "BN_onPlayerJoin")
@@ -844,6 +1184,9 @@ if MP and MP.RegisterEvent then
     MP.RegisterEvent("BN_Tick", "BN_Tick")
     if MP.CancelEventTimer then pcall(MP.CancelEventTimer, "BN_Tick") end
     MP.CreateEventTimer("BN_Tick", C.tickMs)
+    MP.RegisterEvent("BN_RaceTick", "BN_RaceTick")
+    if MP.CancelEventTimer then pcall(MP.CancelEventTimer, "BN_RaceTick") end
+    MP.CreateEventTimer("BN_RaceTick", C.raceTickMs)
     -- Beim Neuladen des Plugins (Spieler schon online) sofort initialisieren; onInit kommt dann nicht erneut.
     BN.init()
 end

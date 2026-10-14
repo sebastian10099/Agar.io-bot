@@ -561,9 +561,9 @@ cmd_install_core() {
     grep -q 'BeamNetCore' "$src" || die "$src ist kein BeamNetCore-Plugin"
     list=$(servers)
     confirm "BeamNetCore auf allen Servern ($(tr '\n' ' ' <<<"$list"))installieren?" || { echo "Abgebrochen."; return 1; }
-    mkdir -p "$SHARED/players" "$SHARED/servers"
+    mkdir -p "$SHARED/players" "$SHARED/servers" "$SHARED/races"
     chown -R "$SERVICE_USER:$SERVICE_USER" "$SHARED"
-    chmod 775 "$SHARED" "$SHARED/players" "$SHARED/servers"
+    chmod 775 "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races"
     for nr in $list; do
         dest="$ROOT/$nr/Resources/Server/BeamNetCore"
         mkdir -p "$dest"
@@ -638,7 +638,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet plugin-enable <name>   … und wieder einschalten
   beamnet players                Spieler je Server (mit Plugin BeamNetCore)
   beamnet backup                 Sichert Konfigurationen, Plugins und Dienste nach $BACKUP_DIR
-  beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, /server) auf allen Servern
+  beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, /server) auf allen Servern
   beamnet openclaw status|pause|resume   OpenClaw-Agent ansehen, anhalten (einfrieren), fortsetzen
   beamnet self-update            Neueste Version dieses Werkzeugs laden
 
