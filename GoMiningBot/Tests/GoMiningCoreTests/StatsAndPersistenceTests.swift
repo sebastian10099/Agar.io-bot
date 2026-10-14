@@ -161,12 +161,14 @@ final class PersistenceTests: XCTestCase {
 
     func testCandleCacheMergeDropsOldAndDuplicates() {
         let now = 1_760_000_000.0
-        let old = PriceCandle(openedAt: now - 60 * 86_400, close: 1, volume: 1)
+        // Aelter als die Aufbewahrungsdauer (seit 4.4: 90 Tage) – faellt weg.
+        let old = PriceCandle(openedAt: now - (CandleCache.retentionDays + 10) * 86_400, close: 1, volume: 1)
+        let kept = PriceCandle(openedAt: now - 60 * 86_400, close: 1, volume: 1)
         let a = PriceCandle(openedAt: now - 120, open: 1, high: 1.1, low: 0.9, close: 1.05, volume: 1)
         let aNew = PriceCandle(openedAt: now - 120, open: 1, high: 1.2, low: 0.9, close: 1.1, volume: 2)
-        let merged = CandleCache.merged([old, a], [aNew], now: now)
-        XCTAssertEqual(merged.count, 1)
-        XCTAssertEqual(merged[0].close, 1.1)
+        let merged = CandleCache.merged([old, kept, a], [aNew], now: now)
+        XCTAssertEqual(merged.map(\.openedAt), [kept.openedAt, a.openedAt])
+        XCTAssertEqual(merged.last?.close, 1.1)
         // Zeilenformat ueberlebt Speichern und Laden.
         let cache = CandleCache(candles: merged)
         let data = try! JSONEncoder().encode(cache)
