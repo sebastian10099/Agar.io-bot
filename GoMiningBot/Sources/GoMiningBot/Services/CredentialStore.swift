@@ -44,7 +44,7 @@ enum CredentialStore {
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess else { throw CredentialError.keychain(status) }
-        guard let data = item as? Data, let credentials = try? JSONDecoder().decode(BingXCredentials.self, from: data),
+        guard let data = item as? Data, let credentials = try? SafeJSON.decode(BingXCredentials.self, from: data),
               !credentials.apiKey.isEmpty, !credentials.secretKey.isEmpty else { throw CredentialError.unreadable }
         return credentials
     }

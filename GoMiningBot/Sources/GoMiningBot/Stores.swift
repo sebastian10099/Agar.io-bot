@@ -143,7 +143,7 @@ final class Preferences: ObservableObject {
         lastSummaryDay = UserDefaults.standard.string(forKey: "lastSummaryDay") ?? ""
         lastSeenVersion = UserDefaults.standard.string(forKey: "lastSeenVersion") ?? ""
         if let data = UserDefaults.standard.data(forKey: "priceAlerts"),
-           let list = try? JSONDecoder().decode([PriceAlert].self, from: data) {
+           let list = try? SafeJSON.decode([PriceAlert].self, from: data) {
             alerts = list
         } else {
             alerts = []

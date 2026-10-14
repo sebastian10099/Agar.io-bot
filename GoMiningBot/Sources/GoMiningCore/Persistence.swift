@@ -75,10 +75,22 @@ public struct AppPaths: Sendable {
     }
 }
 
+/// Sicheres Dekodieren: Apples `JSONDecoder` stuerzt bei manchen kaputten Eingaben ab, statt einen Fehler zu werfen
+/// (gefunden mit den Fuzz-Tests: ein Steuerzeichen in einem Schluessel genuegte). Darum wird der Text vorher mit
+/// `JSONSerialization` geprueft, das solche Eingaben sauber ablehnt.
+public enum SafeJSON {
+    public struct Invalid: Error {}
+
+    public static func decode<T: Decodable>(_ type: T.Type, from data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> T {
+        guard (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil else { throw Invalid() }
+        return try decoder.decode(type, from: data)
+    }
+}
+
 public enum JSONFile {
     public static func read<T: Decodable>(_ type: T.Type, from url: URL) -> T? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(T.self, from: data)
+        return try? SafeJSON.decode(T.self, from: data)
     }
 
     public static func write<T: Encodable>(_ value: T, to url: URL) throws {
@@ -165,7 +177,7 @@ public final class StateStore: @unchecked Sendable {
     /// Liest eine Sicherung (automatische Sicherung, Export oder `simulation.json`).
     public static func readBackup(_ url: URL) -> StoredBot? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(StoredBot.self, from: data)
+        return try? SafeJSON.decode(StoredBot.self, from: data)
     }
 
     // MARK: Intern (nur auf der Queue)
@@ -178,7 +190,7 @@ public final class StateStore: @unchecked Sendable {
         var decodeProblem = "Datei nicht lesbar"
         if let data = try? Data(contentsOf: paths.stateFile) {
             do {
-                let stored = try JSONDecoder().decode(StoredBot.self, from: data)
+                let stored = try SafeJSON.decode(StoredBot.self, from: data)
                 var note: String?
                 if (stored.version ?? 0) < StoredBot.currentVersion {
                     // Vor dem Ueberschreiben mit dem neuen Format eine Kopie der alten Datei sichern.
@@ -196,7 +208,7 @@ public final class StateStore: @unchecked Sendable {
         let corrupt = paths.root.appendingPathComponent("simulation.beschaedigt-\(fileStamp()).json")
         try? fm.moveItem(at: paths.stateFile, to: corrupt)
         for url in backupFiles() {
-            if let data = try? Data(contentsOf: url), let stored = try? JSONDecoder().decode(StoredBot.self, from: data) {
+            if let data = try? Data(contentsOf: url), let stored = try? SafeJSON.decode(StoredBot.self, from: data) {
                 return LoadOutcome(stored: stored, note: "simulation.json war nicht lesbar (\(decodeProblem)); die Sicherung \(url.lastPathComponent) wurde wiederhergestellt. Die Originaldatei liegt als \(corrupt.lastPathComponent) im Datenordner.")
             }
         }

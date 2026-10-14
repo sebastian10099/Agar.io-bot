@@ -258,16 +258,24 @@ final class FuzzTests: XCTestCase {
                     if let candle { checkCandles([candle]) }
                 }
                 _ = ProfileFile.decode(data)
-                _ = try? decoder.decode(StoredBot.self, from: data)
-                _ = try? decoder.decode(ShadowBook.self, from: data)
-                _ = try? decoder.decode(ProfileBook.self, from: data)
-                _ = try? decoder.decode(BotSettings.self, from: data).clamped()
+                _ = try? SafeJSON.decode(StoredBot.self, from: data, decoder: decoder)
+                _ = try? SafeJSON.decode(ShadowBook.self, from: data, decoder: decoder)
+                _ = try? SafeJSON.decode(ProfileBook.self, from: data, decoder: decoder)
+                _ = try? SafeJSON.decode(BotSettings.self, from: data, decoder: decoder).clamped()
                 _ = Gzip.decode(data)
                 _ = AppVersion(String(decoding: data.prefix(40), as: UTF8.self))
                 if let candles = CandleStore.decode(data) { checkCandles(candles) }
             }
         }
         XCTAssertGreaterThan(accepted, 0, "einige Mutationen sollten noch gültige Kerzen ergeben")
+    }
+
+    /// Apples JSONDecoder stuerzt bei einem Steuerzeichen in einem Schluessel ab; SafeJSON lehnt solche Daten vorher ab.
+    func testControlCharacterInKeyIsRejectedNotCrashing() {
+        let broken = Data([0x7b, 0x22, 0x73, 0x74, 0x61, 0x1d, 0x74, 0x65, 0x22, 0x3a, 0x31, 0x7d])     // {"sta\u{1D}te":1}
+        XCTAssertThrowsError(try SafeJSON.decode(StoredBot.self, from: broken))
+        XCTAssertThrowsError(try SafeJSON.decode(BotSettings.self, from: broken))
+        XCTAssertNoThrow(try SafeJSON.decode(BotSettings.self, from: Data("{}".utf8)))
     }
 
     func testHugeNumbersDoNotCrash() throws {
