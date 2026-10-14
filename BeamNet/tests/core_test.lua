@@ -568,6 +568,16 @@ eq(say(1, "admin x"), nil, "Admins ohne Spamschutz")
 say(1, "/mute kaputt 2")
 eq(say(5, "hallo"), 1, "Manuell stummgeschaltet")
 
+-- Neue Admins wirken ohne Neustart (config.json wird jede Minute neu gelesen).
+check(not BN.isAdmin(BN.players[5]), "Kaputt ist noch kein Admin")
+writeJson(SHARED .. "/config.json", { admins = { "Sebi", "Kaputt" } })
+tick(61)
+check(BN.isAdmin(BN.players[5]), "Neuer Admin nach spaetestens einer Minute")
+writeJson(SHARED .. "/config.json", { admins = { "Sebi" } })
+tick(61)
+check(not BN.isAdmin(BN.players[5]), "Admin entfernt nach spaetestens einer Minute")
+C.admins = { "sebi" }
+
 local logLines = 0
 for line in io.lines(SHARED .. "/modlog.jsonl") do
     logLines = logLines + 1

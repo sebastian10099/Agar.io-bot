@@ -1,5 +1,10 @@
 # BeamNet – Roadmap
 
+Erledigt (Werkzeug 1.5):
+- [x] Einrichtungs-Assistent `beamnet setup`; `beamnet admin add/remove/list` (wirksam ohne Neustart).
+- [x] Fehler behoben: `start/stop/restart all` brach ab, wenn im Server-Ordner ein Nicht-Server-Ordner (z. B. `shared`)
+      als letzter lag – von einem neuen Test gefunden.
+
 Erledigt (Plugin 1.3, Werkzeug 1.4):
 - [x] Moderation: `/kick`, `/ban` (auf allen Servern, mit Dauer, Gäste per IP, auch offline), `/unban`, `/bans`,
       `/warn`, `/mute`, `/ansage` an alle Server, Spamschutz, Moderationsprotokoll; `beamnet bans/unban/modlog`.

@@ -9,19 +9,19 @@ Zwei Teile, beide getestet:
 
 ## Schnellstart (Web-Konsole des Servers, als root)
 
+Zwei Befehle – der zweite ist ein Assistent, der vor jedem Schritt fragt:
+
 ```bash
-# 1. Werkzeug installieren
 curl -fsSL https://raw.githubusercontent.com/sebastian10099/Agar.io-bot/claude/friendly-goldberg-31l8fp/BeamNet/beamnet.sh \
   -o /usr/local/bin/beamnet && chmod +x /usr/local/bin/beamnet
-
-# 2. Nachsehen, was los ist (ändert nichts)
-beamnet status
-beamnet doctor
-
-# 3. Sichern, dann reparieren (fragt vor jedem Schritt)
-beamnet backup
-beamnet fix
+beamnet setup
 ```
+
+`beamnet setup` führt durch: Diagnose → Sicherung → OpenClaw anhalten (falls er stört) → Server reparieren und starten
+→ Plugin BeamNetCore installieren (alte Plugins mit gleichen Aufgaben abschalten) → Admins eintragen → Wächter mit
+Discord → Statusseite → Neustart. Mit Enter wird ein Schritt übersprungen.
+
+Lieber einzeln? `beamnet status` und `beamnet doctor` ändern nichts; `beamnet backup` und `beamnet fix` reparieren.
 
 **Zum Teilen:** `beamnet report` erstellt einen Bericht mit Status, Diagnose, Plugins und auffälligen Protokollzeilen –
 IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den Chat kopieren.
@@ -30,6 +30,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 
 | Befehl | Was er macht |
 |---|---|
+| `beamnet setup` | Geführte Einrichtung aller Teile (fragt vor jedem Schritt) |
 | `beamnet status` | Übersicht: läuft?, Autostart, wer den Prozess gestartet hat, Port, Spieler, Map, Name |
 | `beamnet doctor` | Diagnose mit Erklärung und Lösung je Problem (siehe unten) |
 | `beamnet report` | Bericht zum Teilen: Status + Diagnose + Plugins + Fehlerzeilen der Protokolle, ohne IPs und AuthKeys |
@@ -47,6 +48,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet watch install / status / test / uninstall` | Wächter einrichten (siehe unten) |
 | `beamnet web install [port]` / `web uninstall` | Statusseite als Webseite (siehe unten), Standard-Port 8080 |
 | `beamnet bans` / `unban <Name>` / `modlog [n]` | Banns ansehen und aufheben, Moderationsprotokoll lesen |
+| `beamnet admin list / add <Name …> / remove <Name …>` | Admins für Rennen und Moderation – wirksam innerhalb einer Minute, ohne Neustart |
 | `beamnet self-update` | Neueste Version des Werkzeugs laden |
 
 Mit `-y` laufen Befehle ohne Rückfrage.
@@ -165,7 +167,7 @@ Admins legen Strecken direkt im Spiel an – keine Koordinaten nötig:
 2. Zum Ziel fahren: `/rennen ziel bergsprint` (Start = Ziel ergibt einen Rundkurs)
 3. Fertig – alle können `/rennen bergsprint` fahren. Entfernen: `/rennen loeschen bergsprint`
 
-Admins stehen in `config.json` (BeamMP-Namen oder -IDs, Gäste nie): `{"admins": ["Sebi"]}`.
+Admins (BeamMP-Namen oder -IDs, Gäste nie) einträgst du mit `beamnet admin add Sebi` – wirksam innerhalb einer Minute.
 
 Gemessen wird mit der Spieluhr des Fahrzeugs, der Moment des Überfahrens von Start und Ziel wird zwischen zwei
 Messpunkten eingerechnet (etwa eine Zehntelsekunde genau, Messung viermal pro Sekunde während eines Laufs).

@@ -430,6 +430,67 @@ out=$("$TOOL" modlog 2>&1)
 contains "$out" "Port 30814 · Sebi: ban Max Beleidigung \\(bis " "modlog: Bann"
 contains "$out" "Port 30815 · Sebi: kick Tom$" "modlog: Kick"
 
+# --- Admins --------------------------------------------------------------------------------------------------------
+out=$("$TOOL" admin list 2>&1)
+contains "$out" "Admins: keine" "admin list leer"
+echo '{"xpPerKm": 12}' >"$T/root/shared/beamnet/config.json"
+out=$("$TOOL" admin add Sebi Max 2>&1)
+contains "$out" "Admins: Sebi, Max" "admin add"
+contains "$out" "Wirksam innerhalb einer Minute" "admin add: Hinweis"
+out=$("$TOOL" admin add sebi 2>&1)
+contains "$out" "Admins: Sebi, Max$" "admin add: keine Doppelten"
+out=$("$TOOL" admin remove max 2>&1)
+contains "$out" "Admins: Sebi$" "admin remove"
+contains "$(cat "$T/root/shared/beamnet/config.json")" '"xpPerKm": 12' "admin: andere Einstellungen bleiben"
+out=$("$TOOL" admin add 'x"; rm -rf /' 2>&1)
+contains "$out" "Ungültiger Name" "admin: unsichere Namen abgelehnt"
+echo "{kaputt" >"$T/root/shared/beamnet/config.json"
+out=$("$TOOL" admin add Tom 2>&1)
+contains "$out" "config.json ist fehlerhaft" "admin: kaputte config.json wird nicht ueberschrieben"
+contains "$(cat "$T/root/shared/beamnet/config.json")" "^\\{kaputt$" "admin: kaputte Datei unveraendert"
+rm -f "$T/root/shared/beamnet/config.json"
+
+# Regression: "all" muss auch funktionieren, wenn der letzte Ordner kein Server ist (hier: shared, plugins).
+: >"$T/actions"
+out=$("$TOOL" restart all -y 2>&1)
+for nr in 1 2 3 4 5 6; do contains "$(cat "$T/actions")" "^restart beammp-$nr.service$" "restart all erreicht Server $nr"; done
+: >"$T/actions"
+"$TOOL" start >/dev/null 2>&1
+contains "$(cat "$T/actions")" "^start beammp-6.service$" "start ohne Nummer erreicht alle Server"
+
+# --- Einrichtungs-Assistent ---------------------------------------------------------------------------------------
+rm -f "$T/agent.pids" "$T/agent.user"               # kein OpenClaw (nie echte Prozesse anhalten)
+rm -rf "$T/systemd" "$T/watch" "$T/beamnet.conf" "$T/web"
+# Alles verneinen: nichts darf passieren.
+: >"$T/actions"
+out=$(printf '\n\n\n\n\n\n\n\n\n\n' | "$TOOL" setup 2>&1)
+contains "$out" "Schritt 1/9: Diagnose" "setup: Diagnose"
+contains "$out" "Schritt 9/9: Neustart" "setup: alle Schritte"
+lacks "$(cat "$T/actions")" "^(start|restart|stop|enable) " "setup ohne Zustimmung aendert nichts"
+[[ ! -f $T/systemd/beamnet-watch.timer ]] && pass || fail "setup ohne Zustimmung: kein Waechter"
+# Alles bejahen (mit Admins, Webhook, Port).
+rm -rf "$T/root/1/Resources/Server/BeamNetCore"
+answers='j\nj\nj\nj\nSebi Max\nj\nhttps://discord.com/api/webhooks/123/abc_DEF-9\nj\nj\n8090\nj\n'
+: >"$T/actions"
+out=$(printf "$answers" | "$TOOL" setup 2>&1)
+contains "$out" "Gesichert: $T/backups/" "setup: Sicherung"
+[[ -f $T/root/1/Resources/Server/BeamNetCore/main.lua ]] && pass || fail "setup: Plugin installiert"
+contains "$out" "Plugin XPSystem auf 6 Server\\(n\\) abgeschaltet" "setup: alte Plugins abgeschaltet"
+contains "$("$TOOL" admin list)" "Admins: Sebi, Max" "setup: Admins"
+contains "$(cat "$T/beamnet.conf")" "^DISCORD_WEBHOOK=https://discord.com/api/webhooks/123/abc_DEF-9$" "setup: Webhook"
+contains "$(cat "$T/beamnet.conf")" "^AUTO_RESTART=1$" "setup: automatischer Neustart"
+[[ $(grep -c '^DISCORD_WEBHOOK=' "$T/beamnet.conf") == 1 ]] && pass || fail "setup: Webhook nur einmal in der Datei"
+contains "$(cat "$T/systemd/beamnet-web.service")" "http.server 8090" "setup: Statusseite auf Port 8090"
+contains "$(cat "$T/actions")" "restart beammp-6.service" "setup: Neustart"
+contains "$out" "Zum Teilen mit mir: beamnet report" "setup: Abschluss"
+# Ungueltiger Webhook wird nicht gespeichert.
+out=$(printf '\n\n\n\nj\nhttp://evil.example/x\n\nj\nkeinport\n\n' | "$TOOL" setup 2>&1)
+contains "$out" "keine Discord-Webhook-URL" "setup: falscher Webhook abgelehnt"
+contains "$(cat "$T/beamnet.conf")" "^DISCORD_WEBHOOK=https://discord.com/api/webhooks/123/abc_DEF-9$" "setup: alter Webhook bleibt"
+contains "$out" "Ungültiger Port 'keinport' – Statusseite übersprungen" "setup: ungueltiger Port bricht nicht ab"
+contains "$out" "Zum Teilen mit mir" "setup laeuft nach ungueltigem Port bis zum Ende"
+"$TOOL" plugin-enable XPSystem -y >/dev/null 2>&1
+
 # Nicht als root: Aenderungen verweigert.
 out=$(FAKE_UID=1000 "$TOOL" restart all 2>&1)
 contains "$out" "Bitte als root" "restart verlangt root"

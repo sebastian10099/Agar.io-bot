@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.4"
+VERSION="1.5"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -78,7 +78,8 @@ servers() {
     local dir name
     for dir in "$ROOT"/*/; do
         name=$(basename "$dir")
-        [[ $name =~ ^[0-9]+$ && -f $dir/ServerConfig.toml ]] && echo "$name"
+        # "if" statt "&&": sonst liefert die Liste wegen pipefail einen Fehler, wenn der letzte Ordner kein Server ist.
+        if [[ $name =~ ^[0-9]+$ && -f $dir/ServerConfig.toml ]]; then echo "$name"; fi
     done | sort -n
 }
 
@@ -885,6 +886,159 @@ cmd_watch() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Admins (config.json von BeamNetCore; das Plugin liest sie jede Minute neu)
+
+cmd_admin() {
+    local action=${1:-list}
+    [[ $# -gt 0 ]] && shift
+    command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
+    case $action in
+        list|add|remove) ;;
+        *) die "Aufruf: beamnet admin list | add <Name …> | remove <Name …>" ;;
+    esac
+    [[ $action == list || $# -gt 0 ]] || die "Aufruf: beamnet admin $action <BeamMP-Name oder -ID …>"
+    [[ $action == list ]] || need_root admin
+    mkdir -p "$SHARED"
+    python3 -I - "$SHARED/config.json" "$action" "$@" <<'PY' || exit 1
+import json, os, re, sys
+path, action, names = sys.argv[1], sys.argv[2], sys.argv[3:]
+try:
+    with open(path, encoding="utf-8") as f:
+        cfg = json.load(f)
+    if not isinstance(cfg, dict):
+        raise ValueError
+except FileNotFoundError:
+    cfg = {}
+except Exception:
+    print("config.json ist fehlerhaft – bitte zuerst reparieren oder löschen.")
+    sys.exit(1)
+admins = [str(a) for a in cfg.get("admins", []) if isinstance(a, (str, int))]
+if action == "list":
+    print("Admins: " + (", ".join(admins) if admins else "keine (beamnet admin add <Name>)"))
+    sys.exit(0)
+for name in names:
+    if not re.fullmatch(r"[\w .-]{1,32}", name):
+        print(f'Ungültiger Name: "{name}"')
+        sys.exit(1)
+    known = [a for a in admins if a.lower() == name.lower()]
+    if action == "add" and not known:
+        admins.append(name)
+    if action == "remove":
+        admins = [a for a in admins if a.lower() != name.lower()]
+cfg["admins"] = admins
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+os.replace(tmp, path)
+print("Admins: " + (", ".join(admins) if admins else "keine"))
+print("Wirksam innerhalb einer Minute auf allen Servern.")
+PY
+    chown "$SERVICE_USER:$SERVICE_USER" "$SHARED/config.json" 2>/dev/null
+    return 0
+}
+
+# Setzt KEY=Wert in /etc/beamnet.conf (legt die Datei bei Bedarf an).
+conf_set() {
+    local key=$1 value=$2 tmp
+    if [[ ! -f $CONF ]]; then : >"$CONF"; chmod 600 "$CONF"; fi
+    tmp=$(mktemp)
+    awk -v k="$key" -v v="$value" '
+        $0 ~ "^[[:space:]]*" k "=" { if (!done) print k "=" v; done = 1; next }
+        { print }
+        END { if (!done) print k "=" v }' "$CONF" >"$tmp" && cat "$tmp" >"$CONF"
+    rm -f "$tmp"
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Einrichtungs-Assistent
+
+ask() {   # ask <Frage> <Vorgabe>: Antwort auf stdout (bei -y oder ohne Eingabe die Vorgabe)
+    local answer=""
+    if [[ $YES -eq 1 ]]; then printf '%s' "$2"; return; fi
+    read -r -p "$1 " answer || answer=""
+    printf '%s' "${answer:-$2}"
+}
+
+cmd_setup() {
+    need_root setup
+    local saved_yes=$YES names webhook port old found=""
+    title "BeamNet-Einrichtung · Werkzeug $VERSION"
+    echo "Ich gehe Schritt für Schritt durch und frage vor jedem Schritt (Enter = überspringen)."
+
+    title "Schritt 1/9: Diagnose (ändert nichts)"
+    cmd_doctor
+
+    title "Schritt 2/9: Sicherung"
+    if confirm "Konfigurationen, Plugins und Dienste sichern?"; then cmd_backup; fi
+
+    title "Schritt 3/9: OpenClaw"
+    if id "$AGENT_USER" >/dev/null 2>&1 && [[ -n $(pgrep -u "$AGENT_USER" -f openclaw 2>/dev/null) ]]; then
+        echo "Der OpenClaw-Agent läuft. Er hat im Juli Server immer wieder gestoppt."
+        if confirm "OpenClaw anhalten (einfrieren, jederzeit fortsetzbar mit: beamnet openclaw resume)?"; then
+            YES=1; cmd_openclaw pause; YES=$saved_yes
+        fi
+    else
+        ok "OpenClaw läuft nicht – nichts zu tun."
+    fi
+
+    title "Schritt 4/9: Reparieren und starten"
+    if confirm "Wilde Prozesse beenden, Rechte setzen, Autostart an, alle Server starten (beamnet fix)?"; then
+        YES=1; cmd_fix; YES=$saved_yes
+    fi
+
+    title "Schritt 5/9: Plugin BeamNetCore"
+    if confirm "BeamNetCore (km, XP, Liga, Rennen, Moderation, /server) auf allen Servern installieren?"; then
+        YES=1; cmd_install_core; YES=$saved_yes
+        for old in XPSystem LigaSystem Rankings; do
+            [[ -n $(find "$ROOT"/*/Resources/Server -maxdepth 1 -name "$old" 2>/dev/null | head -n1) ]] && found+="$old "
+        done
+        if [[ -n $found ]] && confirm "Alte Plugins mit gleichen Aufgaben abschalten (${found% })? Sie werden nur verschoben."; then
+            for old in $found; do YES=1; cmd_plugin_toggle disable "$old"; YES=$saved_yes; done
+        fi
+    fi
+
+    title "Schritt 6/9: Admins"
+    names=$(ask "BeamMP-Namen der Admins, durch Leerzeichen getrennt (Enter = überspringen):" "")
+    # shellcheck disable=SC2086
+    [[ -n $names ]] && cmd_admin add $names
+
+    title "Schritt 7/9: Wächter (meldet Ausfälle, optional Discord und Neustart)"
+    if confirm "Wächter einrichten?"; then
+        watch_install
+        webhook=$(ask "Discord-Webhook-URL (Enter = keiner):" "")
+        if [[ -n $webhook ]]; then
+            if [[ $webhook =~ ^https://(discord|discordapp)\.com/api/webhooks/[A-Za-z0-9/_-]+$ ]]; then
+                conf_set DISCORD_WEBHOOK "$webhook"
+                ok "Discord-Webhook gespeichert (Test: beamnet watch test)"
+            else
+                warn "Das ist keine Discord-Webhook-URL – nicht gespeichert."
+            fi
+        fi
+        if confirm "Ausgefallene Server automatisch neu starten (höchstens 3x pro Stunde)?"; then conf_set AUTO_RESTART 1; fi
+    fi
+
+    title "Schritt 8/9: Statusseite"
+    if confirm "Statusseite als Webseite bereitstellen?"; then
+        port=$(ask "Port (Enter = 8080):" "8080")
+        if [[ $port =~ ^[0-9]+$ ]] && (( port >= 1024 && port <= 65535 )); then
+            web_install "$port"
+        else
+            warn "Ungültiger Port '$port' – Statusseite übersprungen (später: beamnet web install <port>)."
+        fi
+    fi
+
+    title "Schritt 9/9: Neustart"
+    if confirm "Alle Server jetzt neu starten, damit alles aktiv wird? Spieler fliegen kurz raus."; then
+        YES=1; cmd_restart all; YES=$saved_yes
+    fi
+
+    title "Fertig"
+    cmd_status
+    echo
+    echo "Zum Teilen mit mir: beamnet report   ·   Hilfe: beamnet hilfe"
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
 # Moderation (Daten von BeamNetCore)
 
 cmd_bans() {
@@ -1212,6 +1366,7 @@ cmd_help() {
     cat <<EOF
 ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
 
+  beamnet setup                  Geführte Einrichtung: Diagnose, Sicherung, Reparatur, Plugin, Admins, Wächter, Statusseite
   beamnet status                 Übersicht: läuft?, Autostart, Prozess, Port, Spieler, Map
   beamnet doctor                 Diagnose mit Erklärung und Lösung je Problem
   beamnet report                 Bericht zum Teilen (Status, Diagnose, Plugins, Fehlerzeilen; ohne IPs und AuthKeys)
@@ -1227,6 +1382,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet backup                 Sichert Konfigurationen, Plugins und Dienste nach $BACKUP_DIR
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, Moderation) auf allen Servern
   beamnet bans · unban <Name> · modlog [n]   Banns ansehen/aufheben, Moderationsprotokoll
+  beamnet admin list · add <Name …> · remove <Name …>   Admins für Rennen und Moderation
   beamnet openclaw status|pause|resume   OpenClaw-Agent ansehen, anhalten (einfrieren), fortsetzen
   beamnet watch install|status|test|uninstall   Wächter: meldet Ausfälle (auch an Discord), optional Neustart
   beamnet web install [port]     Statusseite (Server, Bestenliste, Rekorde) als Webseite, Standard-Port 8080
@@ -1265,6 +1421,8 @@ main() {
         watch|waechter) cmd_watch "$@" ;;
         web|statusseite) cmd_web "$@" ;;
         bans) cmd_bans ;;
+        setup|einrichten) cmd_setup ;;
+        admin|admins) cmd_admin "$@" ;;
         unban) cmd_unban "$@" ;;
         modlog) cmd_modlog "$@" ;;
         self-update|update) cmd_self_update ;;

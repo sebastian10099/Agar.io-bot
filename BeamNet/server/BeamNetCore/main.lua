@@ -397,14 +397,16 @@ function BN.readServerConfig(path)
     return info
 end
 
-local function loadOverrides()
+function BN.loadOverrides()
     local data = readFile(C.sharedDir .. "/config.json")
     if not data then return end
     local cfg = json.decode(data)
     if type(cfg) ~= "table" then
-        print("[BeamNetCore] config.json ist fehlerhaft und wird ignoriert")
+        if not BN.configBroken then print("[BeamNetCore] config.json ist fehlerhaft und wird ignoriert") end
+        BN.configBroken = true
         return
     end
+    BN.configBroken = false
     for k, v in pairs(cfg) do
         if k == "leagues" then
             if BN.validLeagues(v) then C.leagues = v else print("[BeamNetCore] config.json: leagues ungueltig, Standard bleibt") end
@@ -971,6 +973,11 @@ function BN.sync(force)
     local now = BN.now()
     if not force and now - BN.lastSync < C.syncEverySec then return end
     BN.lastSync = now
+    -- Einstellungen (z. B. neue Admins) ohne Neustart uebernehmen.
+    if now - (BN.lastConfigLoad or -math.huge) >= 60 then
+        BN.lastConfigLoad = now
+        BN.loadOverrides()
+    end
     for pid, s in pairs(BN.players) do
         local ban = BN.findBan(s.id, s.ip)
         if ban then
@@ -1511,7 +1518,8 @@ end
 
 function BN.init()
     BN.initialized = true
-    loadOverrides()
+    BN.loadOverrides()
+    BN.lastConfigLoad = BN.now()
     BN.markAnnouncementsSeen()
     BN.server = BN.readServerConfig(C.serverConfig)
     ensureDir(C.sharedDir)
