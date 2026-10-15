@@ -348,11 +348,18 @@ cfg = io.open(SHARED .. "/config.json", "w"); cfg:write('{"xpPerKm": "viel", "le
 local okInit = pcall(BN.init)
 check(okInit, "Kaputte config.json bricht nichts")
 
--- Kaputte Spielerdatei: Spieler startet sauber, nichts stuerzt ab.
+-- Kaputte Spielerdatei: Spieler startet sauber, nichts stuerzt ab; die alte Datei wird einmal beiseitegelegt.
 local bad = io.open(SHARED .. "/players/3003.json", "w"); bad:write("{kaputt"); bad:close()
 players[5] = { name = "Kaputt", ids = { beammp = "3003" }, vehicles = {} }
 local okJoin = pcall(_G[events.onPlayerJoin], 5)
 check(okJoin and BN.players[5] and BN.players[5].record.km == 0, "Kaputte Spielerdatei wird ersetzt")
+do
+    local f = io.open(SHARED .. "/players/3003.json.kaputt-" .. clock, "rb")
+    local kept = f and f:read("*a")
+    if f then f:close() end
+    eq(kept, "{kaputt", "Kaputte Spielerdatei als Sicherung beiseitegelegt")
+    check(io.open(SHARED .. "/players/3003.json", "rb") == nil, "Kaputte Datei nicht mehr unter dem alten Namen")
+end
 
 -- --- Zeitrennen ----------------------------------------------------------------------------------------------------
 C.admins = { "sebi" }                               -- Gross/Klein egal
@@ -1276,6 +1283,144 @@ eq(BN.weekKey(1609632000), "2020-W53", "KW: So 3.1.2021 gehoert zu 2020")
 eq(BN.weekKey(1609718400), "2021-W01", "KW: Mo 4.1.2021")
 eq(BN.weekKey(1735516800), "2025-W01", "KW: Mo 30.12.2024 gehoert zu 2025")
 eq(BN.weekKey(1792022400), "2026-W42", "KW: 15.10.2026")
+
+-- --- Robustheit ---------------------------------------------------------------------------------------------------
+do
+    local function enter(pid, id, name)
+        players[pid] = { name = name, ids = { beammp = id }, vehicles = {} }
+        join(pid)
+        return BN.players[pid]
+    end
+    local function leave(pid) _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+
+    -- Spielerdatei voruebergehend nicht lesbar (z. B. zu viele offene Dateien): nichts schreiben, Zuwaechse behalten.
+    local file = SHARED .. "/players/9101.json"
+    writeJson(file, { id = "9101", name = "Robust", km = 100, seconds = 0, lang = "en" })
+    local s = enter(60, "9101", "Robust")
+    eq(s.record.km, 100, "Spielerdatei geladen")
+    s.pendingKm = 2
+    local realOpen = io.open
+    io.open = function(path, mode)
+        if path == file and (mode == nil or mode:find("r")) then return nil, path .. ": Too many open files", 24 end
+        return realOpen(path, mode)
+    end
+    local ok, saved = pcall(BN.savePlayer, s)
+    io.open = realOpen
+    check(ok and saved == false, "Nicht lesbare Spielerdatei: Speichern meldet Fehler")
+    eq(readJson(file).km, 100, "Nicht lesbare Spielerdatei wird nicht ueberschrieben")
+    eq(s.pendingKm, 2, "Zuwaechse bleiben bei nicht lesbarer Datei erhalten")
+    check(BN.errorLog["Spielerdatei 9101"] ~= nil, "Lesefehler protokolliert")
+    check(BN.savePlayer(s), "Wieder lesbar: Speichern klappt")
+    eq(readJson(file).km, 102, "Zuwaechse nachgetragen")
+
+    -- Sprache: ein anderer Server hat sie inzwischen umgestellt -> dieser Server schreibt die alte nicht zurueck.
+    local rec = readJson(file); rec.lang = "de"; writeJson(file, rec)
+    s.pendingKm = 1
+    BN.savePlayer(s)
+    eq(readJson(file).lang, "de", "Sprache vom anderen Server bleibt")
+    say(60, "/lang en")
+    BN.savePlayer(s)
+    eq(readJson(file).lang, "en", "Eigene Sprachwahl gespeichert")
+    rec = readJson(file); rec.lang = "de"; writeJson(file, rec)
+    s.pendingKm = 1
+    BN.savePlayer(s)
+    eq(readJson(file).lang, "de", "Sprachwahl nur einmal geschrieben")
+
+    -- Abstimmung: Sitzung verschwindet ohne Abmeldung -> Stimme verworfen, die neue pid erbt sie nicht.
+    local maps = { "gridmap_v2", "italy", "utah" }
+    local function heartbeat() writeJson(SHARED .. "/watch.json", { at = clock, mapVote = true, maps = maps }) end
+    clock = clock + 11 * 60
+    heartbeat()
+    enter(61, "9102", "Robust2")
+    enter(62, "9103", "Robust3")
+    say(60, "/vote map italy")
+    say(61, "/vote ja")
+    check(BN.vote and BN.vote.yes[61], "Stimme von 61 gezaehlt")
+    players[61] = nil
+    tick(1)
+    check(BN.players[61] == nil, "Sitzung ohne Abmeldung entfernt")
+    check(BN.vote ~= nil, "Abstimmung laeuft weiter")
+    enter(61, "9104", "Neuling2")
+    check(BN.vote and BN.vote.yes[61] == nil, "Verschwundene Sitzung: neue pid erbt keine Stimme")
+    tick(61)
+    check(BN.vote == nil, "Abstimmung beendet")
+
+    -- Offener Map-Wechsel sperrt neue Abstimmungen genau so lange, wie mapChangeCheck auf ihn wartet.
+    clock = clock + 11 * 60
+    heartbeat()
+    local blocked = countChat("Die Map wird gleich gewechselt", 60)
+    BN.mapChangePending = { map = "utah", at = clock - 190 }
+    say(60, "/vote map italy")
+    eq(countChat("Die Map wird gleich gewechselt", 60), blocked, "Abgelaufener Map-Wechsel sperrt nicht mehr")
+    check(BN.vote and BN.vote.map == "italy", "Abstimmung nach Ablauf der Frist moeglich")
+    eq(BN.MAP_CHANGE_TIMEOUT, 180, "Eine Frist fuer den Map-Wechsel")
+    BN.mapChangePending = nil
+    tick(61)
+    check(BN.vote == nil, "Abstimmung beendet")
+
+    -- Zwischenzeiten: Marke knapp hinter der Ziellinie wird nicht mehr gemeldet; Abstand der Marken wird gespeichert.
+    C.admins = { "sebi", "9103" }
+    say(60, "/lang de")
+    at(62, 3000, 9100)
+    say(62, "/rennen neu ziellinie")
+    at(62, 5000, 9101)
+    say(62, "/rennen ziel ziellinie")
+    check(chatContains("Ziel von ziellinie gesetzt", 62), "Strecke ziellinie angelegt")
+    C.raceSplitM = 495
+    local tracksFile = SHARED .. "/races/gridmap_v2.json"
+    local data = BN.loadTracks()
+    data.tracks.ziellinie.records = { { id = "9101", name = "Robust", time = 200, at = clock, splits = { 20, 40, 60, 80 }, splitM = 495 } }
+    writeJson(tracksFile, data)
+    local function myRecord()
+        for _, r in ipairs(BN.loadTracks().tracks.ziellinie.records or {}) do
+            if r.id == "9101" then return r end
+        end
+    end
+    -- Marken bei 3507, 4002, 4497 und 4992 (Start bei 3012 verlassen); Ziellinie bei 4988.
+    local function run(t0, speed)
+        say(60, "/rennen ziellinie")
+        at(60, 3000, t0); at(60, 3010, t0 + 1); at(60, 3020, t0 + 2)
+        local t = drive(60, 3020, 4980, speed, t0 + 2)
+        at(60, 5000, t + 1)
+        return t + 1
+    end
+    local before = #chatLog
+    local tim = run(500, 20)
+    local finishLine, split4, split3 = nil, nil, nil
+    for i = before + 1, #chatLog do
+        local c = chatLog[i]
+        if c.pid == 60 then
+            if c.msg:find("^Ziel! ziellinie") then finishLine = i end
+            if c.msg:find("^Zwischenzeit 4") then split4 = i end
+            if c.msg:find("^Zwischenzeit 3") then split3 = i end
+        end
+    end
+    check(finishLine ~= nil, "Lauf auf ziellinie im Ziel")
+    check(split3 ~= nil, "Zwischenzeit 3 vor dem Ziel gemeldet")
+    eq(split4, nil, "Keine Zwischenzeit hinter der Ziellinie")
+    local mine = myRecord()
+    eq(mine and #mine.splits, 3, "Nur Marken vor dem Ziel gespeichert")
+    -- Anderer Abstand: die gespeicherten Zwischenzeiten passen nicht mehr und werden nicht verglichen;
+    -- die neue Bestzeit speichert ihren Abstand mit.
+    C.raceSplitM = 250
+    before = #chatLog
+    run(tim + 100, 25)
+    local splits = 0
+    for i = before + 1, #chatLog do
+        local c = chatLog[i]
+        if c.pid == 60 and c.msg:find("^Zwischenzeit") then splits = splits + 1 end
+    end
+    eq(splits, 0, "Zwischenzeiten mit anderem Abstand werden nicht verglichen")
+    mine = myRecord()
+    check(mine and mine.time < 90, "Schnellerer Lauf ist Bestzeit")
+    eq(mine and mine.splitM, 250, "Abstand der Marken mit der Bestzeit gespeichert")
+    eq(mine and #mine.splits, 7, "Zwischenzeiten im neuen Abstand")
+    C.raceSplitM = 500
+    say(60, "/rennen stop")
+    say(62, "/rennen loeschen ziellinie")
+    C.admins = { "sebi" }
+    for pid = 60, 62 do leave(pid) end
+end
 
 -- Herunterfahren speichert alle.
 tick(1)
