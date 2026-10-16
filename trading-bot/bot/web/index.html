@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New-Token Bot</title>
+<style>
+  :root { --bg:#0e1117; --panel:#161b24; --line:#262d3a; --fg:#e6e9ef; --dim:#8b95a7;
+          --green:#3ddc84; --red:#ff5c6c; --amber:#ffb454; --blue:#6ea8fe; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:14px/1.45 -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:16px; align-items:center; padding:14px 20px;
+           border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; }
+  header h1 { font-size:16px; margin:0 12px 0 0; }
+  .pill { padding:3px 10px; border-radius:999px; font-size:12px; border:1px solid var(--line); }
+  .pill.paper { color:var(--blue); border-color:var(--blue); }
+  .pill.paused { color:var(--amber); border-color:var(--amber); }
+  .kpi { display:flex; flex-direction:column; min-width:96px; }
+  .kpi span { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .kpi b { font-size:16px; font-variant-numeric:tabular-nums; }
+  button { background:transparent; color:var(--fg); border:1px solid var(--line); border-radius:8px;
+           padding:7px 12px; cursor:pointer; margin-left:auto; }
+  button:hover { border-color:var(--fg); }
+  main { padding:16px 20px 40px; display:grid; gap:16px; grid-template-columns:1fr; }
+  @media (min-width:1100px) { main { grid-template-columns:1fr 1fr; } .wide { grid-column:1 / -1; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  h2 { font-size:13px; margin:0 0 10px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:500; font-size:12px; }
+  td.num, th.num { text-align:right; }
+  .pos { color:var(--green); } .neg { color:var(--red); }
+  .d-buy { color:var(--green); } .d-watch { color:var(--amber); } .d-skip { color:var(--dim); }
+  .reasons { color:var(--dim); font-size:12px; }
+  .empty { color:var(--dim); padding:8px 0; }
+  .log { font:12px/1.5 ui-monospace, Menlo, monospace; max-height:280px; overflow:auto; white-space:pre-wrap; }
+  .log .error { color:var(--red); } .log .trade { color:var(--blue); }
+  a { color:var(--blue); text-decoration:none; }
+  .note { color:var(--dim); font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>New-Token Bot</h1>
+  <span id="mode" class="pill paper">paper</span>
+  <span id="paused" class="pill paused" hidden>pausiert</span>
+  <div class="kpi"><span>Bankroll</span><b id="bankroll">–</b></div>
+  <div class="kpi"><span>Cash</span><b id="cash">–</b></div>
+  <div class="kpi"><span>Offen (unrealisiert)</span><b id="unrealized">–</b></div>
+  <div class="kpi"><span>Heute</span><b id="daily">–</b></div>
+  <div class="kpi"><span>Trades · Treffer</span><b id="trades">–</b></div>
+  <div class="kpi"><span>Letzter Poll</span><b id="lastpoll">–</b></div>
+  <button id="toggle">Pause</button>
+</header>
+<main>
+  <section class="wide">
+    <h2>Offene Positionen</h2>
+    <div id="open"></div>
+  </section>
+  <section>
+    <h2>Edge-Report – was ist aus den Kandidaten geworden?</h2>
+    <div id="edge"></div>
+    <p class="note">Vergleich der Vorwärtsrenditen nach Entscheidung. Hat <b>buy</b> keinen klaren Vorsprung vor <b>skip</b>/<b>watch</b>, hat die Strategie keine Kante – egal wie die Trades aussehen.</p>
+  </section>
+  <section>
+    <h2>Geschlossene Positionen</h2>
+    <div id="closed"></div>
+  </section>
+  <section class="wide">
+    <h2>Zuletzt bewertete Tokens</h2>
+    <div id="cands"></div>
+  </section>
+  <section class="wide">
+    <h2>Protokoll</h2>
+    <div id="log" class="log"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const usd = (v) => (v == null ? '–' : (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('de-DE', {maximumFractionDigits: 2}));
+const pct = (v) => (v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(1) + '%');
+const cls = (v) => (v == null ? '' : v >= 0 ? 'pos' : 'neg');
+const ago = (t, now) => (t ? Math.round(now - t) + 's' : '–');
+const px = (v) => (v == null ? '–' : v >= 1 ? v.toFixed(4) : v.toPrecision(4));
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function table(rows, cols, empty) {
+  if (!rows.length) return `<div class="empty">${empty}</div>`;
+  const head = cols.map((c) => `<th class="${c.num ? 'num' : ''}">${c.h}</th>`).join('');
+  const body = rows.map((r) => '<tr>' + cols.map((c) => `<td class="${c.num ? 'num ' : ''}${c.cls ? c.cls(r) : ''}">${c.f(r)}</td>`).join('') + '</tr>').join('');
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function render(s) {
+  $('mode').textContent = s.mode;
+  $('paused').hidden = !s.paused;
+  $('toggle').textContent = s.paused ? 'Fortsetzen' : 'Pause';
+  $('bankroll').textContent = usd(s.bankroll);
+  $('bankroll').className = cls(s.bankroll - s.initial);
+  $('cash').textContent = usd(s.cash);
+  $('unrealized').textContent = usd(s.unrealized);
+  $('unrealized').className = cls(s.unrealized);
+  $('daily').textContent = usd(s.daily_pnl) + (s.daily_limit_hit ? ' ⛔' : '');
+  $('daily').className = cls(s.daily_pnl);
+  $('trades').textContent = `${s.stats.closed} · ${s.stats.closed ? Math.round(100 * s.stats.wins / s.stats.closed) + '%' : '–'}`;
+  $('lastpoll').textContent = ago(s.last_poll, s.now) + (s.errors ? ` · ${s.errors} Fehler` : '');
+
+  $('open').innerHTML = table(s.open_positions, [
+    {h: 'Token', f: (r) => `<b>${esc(r.symbol)}</b> <span class="reasons">${esc(r.chain)}</span>`},
+    {h: 'Einstieg', f: (r) => px(r.entry_price), num: true},
+    {h: 'Kurs', f: (r) => px(r.price), num: true},
+    {h: 'Gain', f: (r) => pct(r.gain_pct), num: true, cls: (r) => cls(r.gain_pct)},
+    {h: 'Größe', f: (r) => usd(r.size_usd * r.remaining_frac), num: true},
+    {h: 'Unrealisiert', f: (r) => usd(r.unrealized), num: true, cls: (r) => cls(r.unrealized)},
+    {h: 'Realisiert', f: (r) => usd(r.realized_usd), num: true, cls: (r) => cls(r.realized_usd)},
+    {h: 'Alter', f: (r) => r.age_min + ' min', num: true},
+  ], 'Keine offene Position.');
+
+  $('edge').innerHTML = table(s.edge, [
+    {h: 'Entscheidung', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
+    {h: 'Horizont', f: (r) => r.horizon_min + ' min', num: true},
+    {h: 'n', f: (r) => r.n, num: true},
+    {h: 'Ø Rendite', f: (r) => pct(r.avg_change_pct), num: true, cls: (r) => cls(r.avg_change_pct)},
+    {h: 'Trefferquote', f: (r) => Math.round(100 * r.win_rate) + '%', num: true},
+  ], 'Noch keine Ergebnisse – die ersten kommen 5 Minuten nach dem ersten Kandidaten.');
+
+  $('closed').innerHTML = table(s.closed, [
+    {h: 'Token', f: (r) => `<b>${esc(r.symbol)}</b>`},
+    {h: 'Grund', f: (r) => esc(r.exit_reason)},
+    {h: 'Größe', f: (r) => usd(r.size_usd), num: true},
+    {h: 'P&L', f: (r) => usd(r.realized_usd), num: true, cls: (r) => cls(r.realized_usd)},
+    {h: 'Dauer', f: (r) => Math.round((r.closed_at - r.opened_at) / 60) + ' min', num: true},
+  ], 'Noch nichts geschlossen.');
+
+  $('cands').innerHTML = table(s.candidates, [
+    {h: 'Zeit', f: (r) => new Date(r.seen_at * 1000).toLocaleTimeString('de-DE')},
+    {h: 'Token', f: (r) => `<b>${esc(r.symbol)}</b> <a href="${esc(r.snapshot.url || '#')}" target="_blank">↗</a>`},
+    {h: 'Entscheidung', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
+    {h: 'Score', f: (r) => r.score ?? '–', num: true},
+    {h: 'Liq.', f: (r) => usd(r.snapshot.liquidity_usd), num: true},
+    {h: 'Vol 5m', f: (r) => usd(r.snapshot.volume_m5), num: true},
+    {h: 'Alter', f: (r) => r.snapshot.age_min == null ? '–' : Math.round(r.snapshot.age_min) + ' min', num: true},
+    {h: 'Gründe', f: (r) => `<span class="reasons">${esc(r.reasons.join(' · '))}</span>`},
+  ], 'Noch keine Kandidaten gesehen.');
+
+  $('log').innerHTML = s.events.map((e) => `<div class="${esc(e.level)}">${new Date(e.at * 1000).toLocaleTimeString('de-DE')}  ${esc(e.message)}</div>`).join('');
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/state');
+    render(await r.json());
+  } catch (e) {
+    $('lastpoll').textContent = 'keine Verbindung';
+  }
+}
+$('toggle').onclick = async () => {
+  const paused = $('toggle').textContent === 'Fortsetzen';
+  await fetch('/api/control', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                               body: JSON.stringify({action: paused ? 'resume' : 'pause'})});
+  refresh();
+};
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+{
+  "mode": "paper",
+  "chains": ["solana"],
+  "poll_seconds": 20,
+
+  "bankroll_usd": 1000,
+  "risk_per_trade_pct": 1.0,
+  "max_open_positions": 5,
+  "daily_loss_limit_pct": 5.0,
+
+  "filters": {
+    "min_age_minutes": 2,
+    "max_age_minutes": 120,
+    "min_liquidity_usd": 15000,
+    "max_liquidity_usd": 2000000,
+    "min_volume_m5_usd": 3000,
+    "min_buys_m5": 15,
+    "min_buy_sell_ratio_m5": 1.2,
+    "max_price_change_m5_pct": 150,
+    "min_price_change_m5_pct": 0,
+    "max_fdv_usd": 20000000,
+    "require_rugcheck": true,
+    "max_rugcheck_score": 2000,
+    "allow_rugcheck_unknown": false
+  },
+
+  "exits": {
+    "stop_loss_pct": -30,
+    "take_profit_ladder": [[50, 0.5], [100, 0.25]],
+    "trailing_stop_pct": 25,
+    "time_stop_minutes": 45
+  },
+
+  "scoring": {
+    "min_score": 60
+  },
+
+  "tracker": {
+    "horizons_minutes": [5, 15, 60]
+  },
+
+  "dashboard": {
+    "host": "127.0.0.1",
+    "port": 8765
+  }
+}

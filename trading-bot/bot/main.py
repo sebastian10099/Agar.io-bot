@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Entry point.
+
+  python3 -m bot.main            paper mode against the live market
+  python3 -m bot.main --demo     offline demo with simulated prices
+  python3 -m bot.main --once     one polling cycle, then exit (for checks)
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import signal
+import sys
+import threading
+import webbrowser
+from pathlib import Path
+from typing import Any
+
+from .engine import Engine
+from .server import make_server
+from .store import Store
+
+HERE = Path(__file__).parent
+
+
+def data_dir() -> Path:
+    override = os.environ.get("NEW_TOKEN_BOT_HOME")
+    if override:
+        return Path(override)
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "NewTokenBot"
+    return Path.home() / ".new-token-bot"
+
+
+def load_config(home: Path) -> dict[str, Any]:
+    cfg = json.loads((HERE / "config.json").read_text())
+    user = home / "config.json"
+    if user.is_file():
+        override = json.loads(user.read_text())
+        for key, value in override.items():
+            if isinstance(value, dict) and isinstance(cfg.get(key), dict):
+                cfg[key].update(value)
+            else:
+                cfg[key] = value
+    else:
+        home.mkdir(parents=True, exist_ok=True)
+        user.write_text(json.dumps({"_hint": "Werte hier ueberschreiben, Rest kommt aus bot/config.json"}, indent=2))
+    return cfg
+
+
+def build(cfg: dict[str, Any], home: Path, demo: bool) -> Engine:
+    store = Store(home / ("demo.sqlite" if demo else "bot.sqlite"))
+    if demo:
+        from .demo import FakeDex, FakeRug, fast_clock
+        dex = FakeDex()
+        return Engine(cfg, store, dex, FakeRug(), clock=fast_clock(dex))
+    from .sources.dexscreener import DexScreener
+    from .sources.rugcheck import RugCheck
+    return Engine(cfg, store, DexScreener(), RugCheck())
+
+
+def main(argv: list[str] = None) -> int:
+    ap = argparse.ArgumentParser(description="New-token trading bot (paper first)")
+    ap.add_argument("--demo", action="store_true", help="offline demo with simulated market")
+    ap.add_argument("--once", action="store_true", help="run one poll and exit")
+    ap.add_argument("--port", type=int, default=None)
+    ap.add_argument("--no-open", action="store_true", help="do not open the browser")
+    args = ap.parse_args(argv)
+
+    home = data_dir()
+    cfg = load_config(home)
+    if args.demo:
+        cfg["poll_seconds"] = 3
+
+    if cfg.get("mode") != "paper":
+        print("mode muss 'paper' sein. Echtgeld-Ausfuehrung ist nicht enthalten (siehe bot/live.py).")
+        return 2
+
+    engine = build(cfg, home, args.demo)
+
+    if args.once:
+        counts = engine.poll_once()
+        print(json.dumps(counts))
+        return 0
+
+    host = cfg["dashboard"]["host"]
+    port = args.port or int(cfg["dashboard"]["port"])
+    server = make_server(engine, host, port)
+    threading.Thread(target=server.serve_forever, daemon=True, name="dashboard").start()
+    thread = threading.Thread(target=engine.run, daemon=True, name="engine")
+    thread.start()
+
+    url = f"http://{host}:{port}/"
+    print(f"Dashboard: {url}   (Daten in {home})   Ctrl+C beendet.")
+    if not args.no_open:
+        webbrowser.open(url)
+
+    stop = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    while not stop.is_set() and thread.is_alive():
+        stop.wait(0.5)
+    engine.stop()
+    server.shutdown()
+    thread.join(timeout=5)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

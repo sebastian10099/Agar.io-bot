@@ -1,0 +1,73 @@
+[
+  {
+    "_demo": {"scenario": "runner", "listed_offset_min": -12},
+    "chainId": "solana", "dexId": "raydium", "url": "https://dexscreener.com/solana/pairRunner",
+    "pairAddress": "pairRunner11111111111111111111111111111111",
+    "baseToken": {"address": "mintRunner1111111111111111111111111111111", "name": "Runner", "symbol": "RUN"},
+    "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
+    "priceUsd": "0.00042", "txns": {"m5": {"buys": 48, "sells": 19}, "h1": {"buys": 210, "sells": 90}},
+    "volume": {"m5": 18000, "h1": 95000}, "priceChange": {"m5": 22, "h1": 140},
+    "liquidity": {"usd": 64000}, "fdv": 420000, "marketCap": 420000,
+    "info": {"socials": [{"type": "twitter", "url": "https://x.com/run"}]}, "boosts": {"active": 1}
+  },
+  {
+    "_demo": {"scenario": "dump", "listed_offset_min": -9},
+    "chainId": "solana", "dexId": "raydium", "url": "https://dexscreener.com/solana/pairDump",
+    "pairAddress": "pairDump111111111111111111111111111111111",
+    "baseToken": {"address": "mintDump11111111111111111111111111111111", "name": "Dumpster", "symbol": "DUMP"},
+    "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
+    "priceUsd": "0.0011", "txns": {"m5": {"buys": 31, "sells": 12}, "h1": {"buys": 80, "sells": 30}},
+    "volume": {"m5": 9000, "h1": 30000}, "priceChange": {"m5": 35, "h1": 60},
+    "liquidity": {"usd": 22000}, "fdv": 300000, "marketCap": 300000
+  },
+  {
+    "_demo": {"scenario": "flat", "listed_offset_min": -1},
+    "chainId": "solana", "dexId": "pumpswap", "url": "https://dexscreener.com/solana/pairNew",
+    "pairAddress": "pairTooNew111111111111111111111111111111",
+    "baseToken": {"address": "mintTooNew111111111111111111111111111111", "name": "Brand New", "symbol": "NEW"},
+    "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
+    "priceUsd": "0.00009", "txns": {"m5": {"buys": 40, "sells": 5}, "h1": {"buys": 40, "sells": 5}},
+    "volume": {"m5": 6000, "h1": 6000}, "priceChange": {"m5": 80, "h1": 80},
+    "liquidity": {"usd": 30000}, "fdv": 90000, "marketCap": 90000
+  },
+  {
+    "_demo": {"scenario": "flat", "listed_offset_min": -20},
+    "chainId": "solana", "dexId": "raydium", "url": "https://dexscreener.com/solana/pairThin",
+    "pairAddress": "pairThin111111111111111111111111111111111",
+    "baseToken": {"address": "mintThin11111111111111111111111111111111", "name": "Thin Liquidity", "symbol": "THIN"},
+    "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
+    "priceUsd": "0.0005", "txns": {"m5": {"buys": 20, "sells": 8}, "h1": {"buys": 50, "sells": 20}},
+    "volume": {"m5": 4000, "h1": 12000}, "priceChange": {"m5": 12, "h1": 30},
+    "liquidity": {"usd": 6000}, "fdv": 120000, "marketCap": 120000
+  },
+  {
+    "_demo": {"scenario": "flat", "listed_offset_min": -15},
+    "chainId": "solana", "dexId": "raydium", "url": "https://dexscreener.com/solana/pairPara",
+    "pairAddress": "pairParabolic1111111111111111111111111111",
+    "baseToken": {"address": "mintParabolic1111111111111111111111111111", "name": "Too Late", "symbol": "LATE"},
+    "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
+    "priceUsd": "0.02", "txns": {"m5": {"buys": 300, "sells": 90}, "h1": {"buys": 900, "sells": 300}},
+    "volume": {"m5": 250000, "h1": 600000}, "priceChange": {"m5": 420, "h1": 2000},
+    "liquidity": {"usd": 180000}, "fdv": 9000000, "marketCap": 9000000
+  },
+  {
+    "_demo": {"scenario": "rug", "listed_offset_min": -10},
+    "chainId": "solana", "dexId": "raydium", "url": "https://dexscreener.com/solana/pairRug",
+    "pairAddress": "pairRug1111111111111111111111111111111111",
+    "baseToken": {"address": "mintRug111111111111111111111111111111111", "name": "Honey Pot", "symbol": "HONEY"},
+    "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
+    "priceUsd": "0.003", "txns": {"m5": {"buys": 60, "sells": 2}, "h1": {"buys": 120, "sells": 3}},
+    "volume": {"m5": 20000, "h1": 40000}, "priceChange": {"m5": 50, "h1": 200},
+    "liquidity": {"usd": 45000}, "fdv": 500000, "marketCap": 500000
+  },
+  {
+    "_demo": {"scenario": "flat", "listed_offset_min": -25},
+    "chainId": "solana", "dexId": "raydium", "url": "https://dexscreener.com/solana/pairMeh",
+    "pairAddress": "pairMeh1111111111111111111111111111111111",
+    "baseToken": {"address": "mintMeh111111111111111111111111111111111", "name": "Mediocre", "symbol": "MEH"},
+    "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
+    "priceUsd": "0.0007", "txns": {"m5": {"buys": 16, "sells": 13}, "h1": {"buys": 60, "sells": 50}},
+    "volume": {"m5": 3200, "h1": 15000}, "priceChange": {"m5": 1, "h1": 5},
+    "liquidity": {"usd": 16000}, "fdv": 150000, "marketCap": 150000
+  }
+]

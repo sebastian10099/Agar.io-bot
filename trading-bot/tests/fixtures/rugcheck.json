@@ -1,0 +1,9 @@
+{
+  "mintRunner1111111111111111111111111111111": {"score": 1, "score_normalised": 120, "risks": []},
+  "mintDump11111111111111111111111111111111": {"score": 1, "score_normalised": 900, "risks": [{"name": "Low amount of LP Providers", "level": "warn"}]},
+  "mintTooNew111111111111111111111111111111": {"score": 1, "score_normalised": 300, "risks": []},
+  "mintThin11111111111111111111111111111111": {"score": 1, "score_normalised": 400, "risks": []},
+  "mintParabolic1111111111111111111111111111": {"score": 1, "score_normalised": 200, "risks": []},
+  "mintRug111111111111111111111111111111111": {"score": 1, "score_normalised": 9000, "risks": [{"name": "Freeze Authority still enabled", "level": "danger"}, {"name": "Top 10 holders high ownership", "level": "danger"}]},
+  "mintMeh111111111111111111111111111111111": {"score": 1, "score_normalised": 500, "risks": []}
+}
