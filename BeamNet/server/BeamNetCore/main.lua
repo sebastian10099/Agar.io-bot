@@ -5033,7 +5033,8 @@ function BN_onPlayerJoin(pid)
     end
     local ev = BN.activeEvent()
     if ev then say(pid, "XP-Event läuft: %s-fache XP bis %s Uhr.", fmtFactor(ev.factor), os.date("%H:%M", ev["until"])) end
-    if C.communityXp > 0 and not s.guest then
+    -- Wochenziel nur fuer die, die diese Woche noch nicht genug beigetragen haben (weniger Zeilen beim Betreten).
+    if C.communityXp > 0 and not s.guest and t.weekKm < C.communityMinKm then
         local km, goal = BN.communityProgress()
         if km < goal then say(pid, "Wochenziel für alle: %s von %s – fahr mit! (/ziel)", fmtKm(km), fmtKm(goal)) end
     end
