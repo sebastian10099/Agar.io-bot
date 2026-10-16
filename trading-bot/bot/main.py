@@ -70,12 +70,16 @@ def persist_to(home: Path):
 def build(cfg: dict[str, Any], home: Path, demo: bool) -> Engine:
     store = Store(home / ("demo.sqlite" if demo else "bot.sqlite"))
     if demo:
-        from .demo import FakeDex, FakeRug, fast_clock
+        from .demo import FakeDex, FakeRug, demo_feeds, fast_clock
         dex = FakeDex()
-        return Engine(cfg, store, dex, FakeRug(), clock=fast_clock(dex))
+        return Engine(cfg, store, dex, FakeRug(), clock=fast_clock(dex), feeds=demo_feeds(dex))
+    from .discovery import DexScreenerFeed
     from .sources.dexscreener import DexScreener
+    from .sources.geckoterminal import GeckoTerminal
     from .sources.rugcheck import RugCheck
-    return Engine(cfg, store, DexScreener(), RugCheck())
+    dex = DexScreener()
+    return Engine(cfg, store, dex, RugCheck(),
+                  feeds={"dexscreener": DexScreenerFeed(dex), "geckoterminal": GeckoTerminal()})
 
 
 def main(argv: list[str] = None) -> int:

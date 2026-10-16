@@ -16,6 +16,9 @@ SCHEMA: list[dict[str, Any]] = [
      "help": "Wie oft neue Tokens geholt und offene Positionen geprüft werden."},
     {"path": "chains", "type": "chains", "label": "Chains", "group": "Allgemein",
      "help": "Welche Netzwerke beobachtet werden. RugCheck gibt es nur für Solana."},
+    {"path": "discovery.sources", "type": "multi", "label": "Discovery-Quellen", "group": "Allgemein",
+     "options": [["dexscreener", "DexScreener"], ["geckoterminal", "GeckoTerminal"]],
+     "help": "Woher neue Tokens kommen. DexScreener liefert immer die Kennzahlen; GeckoTerminal sieht frische Pools oft einige Minuten früher. Status unten unter „Quellen“."},
 
     {"path": "risk_per_trade_pct", "type": "float", "min": 0.1, "max": 10, "step": 0.1,
      "label": "Risiko pro Trade", "unit": "%", "group": "Risiko",
@@ -178,6 +181,16 @@ def validate(patch: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
                 if not chains:
                     raise ValueError("mindestens eine Chain")
                 clean[path] = sorted(set(chains), key=chains.index)
+            elif kind == "multi":
+                allowed = [o[0] for o in entry["options"]]
+                items = raw if isinstance(raw, list) else str(raw).split(",")
+                picked = [str(c).strip().lower() for c in items if str(c).strip()]
+                bad = [c for c in picked if c not in allowed]
+                if bad:
+                    raise ValueError("unbekannt: " + ", ".join(bad) + ". Erlaubt: " + ", ".join(allowed))
+                if not picked:
+                    raise ValueError("mindestens eine Quelle")
+                clean[path] = [c for c in allowed if c in picked]
             elif kind == "ladder":
                 clean[path] = parse_ladder(raw)
             elif kind == "enum":

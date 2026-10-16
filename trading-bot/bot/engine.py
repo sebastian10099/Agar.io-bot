@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional
 
 from . import settings
 from .ai import ClaudeAdvisor
+from .discovery import DexScreenerFeed, Discovery
 from .paper import Paper
 from .store import Store
 from .strategy import evaluate
@@ -17,12 +18,14 @@ RESEE_SECONDS = 30 * 60  # do not re-evaluate the same token within half an hour
 
 class Engine:
     def __init__(self, cfg: dict[str, Any], store: Store, dex: Any, rug: Any,
-                 clock: Callable[[], float] = time.time, advisor: Any = None) -> None:
+                 clock: Callable[[], float] = time.time, advisor: Any = None,
+                 feeds: Optional[dict[str, Any]] = None) -> None:
         self.cfg = cfg
         self.store = store
         self.dex = dex
         self.rug = rug
         self.clock = clock
+        self.discovery = Discovery(cfg, feeds if feeds is not None else {"dexscreener": DexScreenerFeed(dex)}, log=store.log)
         self.advisor = advisor or ClaudeAdvisor(cfg, log=store.log)
         self.paper = Paper(store, cfg)
         self.tracker = Tracker(store, cfg, dex.price)
@@ -43,11 +46,18 @@ class Engine:
         now = self.clock()
         counts = {"seen": 0, "new": 0, "buy": 0, "watch": 0, "skip": 0, "exits": 0}
 
-        found = self.dex.recent_token_addresses(self.cfg["chains"])
-        for chain, addresses in found.items():
-            if not addresses:
+        found = self.discovery.recent(list(self.cfg["chains"]))
+        for chain, tokens in found.items():
+            if not tokens:
                 continue
-            for p in self.dex.pairs_for_tokens(chain, addresses):
+            pairs = self.dex.pairs_for_tokens(chain, list(tokens))
+            indexed = {p["token"] for p in pairs}
+            for token, info in tokens.items():
+                snap = info.get("snapshot")
+                if token not in indexed and snap and snap.get("pair"):
+                    pairs.append(dict(snap, via_feed=True))   # not on DexScreener yet: judge the feed's own numbers
+            for p in pairs:
+                p["source"] = (tokens.get(p["token"]) or {}).get("source")
                 counts["seen"] += 1
                 last = self.store.last_seen(chain, p["token"])
                 if last is not None and now - last < RESEE_SECONDS:
@@ -317,6 +327,7 @@ class Engine:
             "edge": self.store.edge_report(), "events": self.store.events(60),
             "edge_rules": self.store.edge_report("rule_decision"), "edge_ai": self.store.edge_report("ai_decision"),
             "ai": self.advisor.status(),
+            "sources": self.discovery.status(),
             "equity": self.store.equity_curve(),
             "config": settings.flat(self.cfg),
         }

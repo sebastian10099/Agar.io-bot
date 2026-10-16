@@ -45,6 +45,9 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   Vergleichen von Strategien), Standardwerte laden, Paper-Konto zurücksetzen
   (nur Positionen, oder alles inklusive Edge-Daten), wahlweise mit neuem
   Startkapital, und CSV-Export von Positionen, Fills und Kandidaten.
+  Die Karte **Quellen** zeigt für jede Discovery-Quelle, ob sie liefert, wie
+  viele Tokens sie im letzten Poll gemeldet hat und wie viele davon nur sie
+  gesehen hat – so siehst du, welche Quelle wirklich etwas bringt.
 - **Kandidaten** – alle bewerteten Tokens mit Score, Kennzahlen und den
   Gründen für die Entscheidung; filterbar nach buy/watch/skip und Suchtext,
   sortierbar per Klick auf die Spaltenköpfe. **Kaufen** eröffnet einen Token
@@ -97,11 +100,27 @@ Formular entstehen daraus automatisch.
 ## Wie der Bot entscheidet
 
 ```
-DexScreener (neue Tokens)  ->  Harte Filter  ->  Score 0-100  ->  buy / watch / skip
-                                   |                                   |
-                               RugCheck                          Tracker: was wurde
-                                                                 5/15/60 min später daraus?
+DexScreener-Profile + GeckoTerminal-Pools  ->  Harte Filter  ->  Score 0-100  ->  buy / watch / skip
+          (Discovery-Quellen)                      |                                   |
+                                               RugCheck                          Tracker: was wurde
+                                                                                 5/15/60 min später daraus?
 ```
+
+**Discovery** – woher neue Tokens kommen – ist steckbar (`discovery.sources`,
+auch über die Steuerseite). Eingebaut sind zwei kostenlose Feeds ohne Schlüssel:
+
+- **DexScreener** – „neueste Profile“ und „neueste Boosts“: Tokens, die gerade
+  beworben werden. Zuverlässig, aber erst, wenn jemand dafür bezahlt hat.
+- **GeckoTerminal** – „neue Pools“ pro Chain in Entstehungsreihenfolge. Sieht
+  einen Launch meist einige Minuten früher. Begrenzt auf eine Abfrage je Chain
+  alle 15 Sekunden (die Freigrenze sind 30 pro Minute), dazwischen wird die
+  letzte Antwort wiederverwendet.
+
+Die erste Quelle in der Reihenfolge, die einen Token nennt, gilt als seine
+Quelle (steht am Kandidaten). Die Kennzahlen holt immer DexScreener; ist ein
+Token dort noch nicht gelistet, wird er mit den Zahlen des Feeds bewertet und
+der Kandidat trägt „via Feed“. Fällt eine Quelle aus, steht das einmal im
+Protokoll und in der Quellen-Karte – die anderen laufen weiter.
 
 **Harte Filter** (ein Verstoß = `skip`, Grund wird gespeichert):
 
@@ -196,7 +215,7 @@ Eingebaut:
 5. Kontrollgruppe mitlaufen lassen (watch/skip), sonst ist jede Gewinnkurve Zufall.
 
 Als Nächstes sinnvoll, in dieser Reihenfolge:
-- **Echtzeit-Discovery** über einen Solana-RPC/Websocket (pump.fun, Raydium) statt der DexScreener-Profile — schneller, aber braucht einen RPC-Anbieter.
+- **Echtzeit-Discovery** über einen Solana-RPC/Websocket (pump.fun, Raydium) – noch schneller als GeckoTerminal, aber braucht einen RPC-Anbieter mit Websocket und ist ohne den nicht testbar. Die Feed-Schnittstelle in `bot/discovery.py` ist dafür gedacht: `discover(chains)` liefern, fertig.
 - **Holder-Analyse**: Top-10-Anteil und Dev-Wallet-Verhalten direkt aus der Chain.
 - **Live-Adapter** (`bot/live.py`): Jupiter-Quote + Swap, lokal signiert — erst, wenn der Edge-Report über Wochen positiv ist, und nur mit Geld, das weg sein darf.
 
@@ -216,18 +235,20 @@ bot/
   demo.py        Offline-Markt für Demo und Tests
   ai.py          Claude-Anbindung: zweiter Blick auf gefilterte Kandidaten
   live.py        Schnittstelle für Echtgeld — bewusst nicht implementiert
-  sources/       DexScreener, RugCheck
-tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai
+  discovery.py   Discovery-Quellen zusammenführen, Status je Quelle
+  sources/       DexScreener, GeckoTerminal, RugCheck
+tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources
 ```
 
 ## Tests
 
 ```bash
-python3 -m unittest -v tests.test_bot tests.test_control tests.test_ai
+python3 -m unittest -v tests.test_bot tests.test_control tests.test_ai tests.test_sources
 ```
 
 Strategie-Entscheidungen, alle Exit-Regeln, der Tracker, ein kompletter
-Zyklus gegen den Demo-Markt, die Parameter-Validierung, Live-Änderungen,
+Zyklus gegen den Demo-Markt, die Discovery-Quellen (GeckoTerminal-Normalisierung,
+Ratenbremse, Ausfall einer Quelle), die Parameter-Validierung, Live-Änderungen,
 manuelles Schließen, Resets und jede API-Route sind abgedeckt.
 
 **Browser-Prüfung der Steuerseite** – klickt gegen einen laufenden Demo-Server

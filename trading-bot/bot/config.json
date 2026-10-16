@@ -3,6 +3,12 @@
   "chains": [
     "solana"
   ],
+  "discovery": {
+    "sources": [
+      "dexscreener",
+      "geckoterminal"
+    ]
+  },
   "poll_seconds": 20,
   "bankroll_usd": 1000,
   "risk_per_trade_pct": 1.0,

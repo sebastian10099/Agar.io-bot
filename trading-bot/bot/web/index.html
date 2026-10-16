@@ -33,6 +33,10 @@
   .dot { width:9px; height:9px; border-radius:50%; background:var(--dim); display:inline-block; }
   .dot.ok { background:var(--green); box-shadow:0 0 0 3px color-mix(in srgb, var(--green) 25%, transparent); }
   .dot.warn { background:var(--amber); } .dot.bad { background:var(--red); }
+  .sources { list-style:none; margin:0 0 10px; padding:0; display:grid; gap:6px; }
+  .sources li { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .sources .dot { flex:none; position:relative; top:-1px; }
+  .dot.off { background:var(--line-strong); }
   .pill { padding:2px 9px; border-radius:999px; font-size:12px; border:1px solid var(--line); color:var(--dim); }
   .pill.paper { color:var(--blue); border-color:var(--blue); }
   .pill.paused { color:var(--amber); border-color:var(--amber); background:var(--amber-bg); }
@@ -278,6 +282,11 @@
       <p class="note">Nur auf macOS; sonst <code>ANTHROPIC_API_KEY</code> in der Umgebung setzen. Die KI sieht nur Kandidaten, die die harten Filter bestanden haben. Im Edge-Report (Übersicht) vergleichst du <b>Regeln</b> gegen <b>KI</b> auf denselben Tokens – erst wenn die KI dort über Wochen vorn liegt, lohnt „Entscheiden“.</p>
     </section>
     <section>
+      <h2>Quellen <span class="spacer"></span><span id="src-pill" class="pill"></span></h2>
+      <ul id="sources" class="sources" aria-label="Discovery-Quellen und ihr Status"></ul>
+      <p class="note">Jede Quelle meldet Token-Adressen, DexScreener liefert dann die Kennzahlen. „eigene“ zählt Tokens, die nur diese Quelle gemeldet hat. Ist ein Token bei DexScreener noch nicht gelistet, wird er mit den Zahlen der Quelle bewertet (Kandidaten zeigen dann <b>via Feed</b>).</p>
+    </section>
+    <section>
       <h2>Paper-Konto</h2>
       <div class="formbar" style="margin-top:0">
         <label for="bankroll" class="status">Startkapital beim Zurücksetzen</label>
@@ -465,6 +474,7 @@ function renderOverview(s) {
   $('closed').querySelectorAll('[data-detail]').forEach((b) => b.onclick = () => busy(b, () => showDetail(Number(b.dataset.detail))));
 }
 
+const srcShort = {dexscreener: 'DexScreener', geckoterminal: 'GeckoTerminal'};
 function renderCandidates(s) {
   const q = query.trim().toLowerCase();
   const rows = s.candidates.filter((r) => filters[r.decision] && (!q || (r.symbol || '').toLowerCase().includes(q) || r.reasons.join(' ').toLowerCase().includes(q)));
@@ -474,7 +484,7 @@ function renderCandidates(s) {
   $('n-cands').textContent = s.candidates.length ? `(${s.candidates.length})` : '';
   $('cands').innerHTML = table(rows, [
     {h: 'Zeit', sort: 'seen_at', f: (r) => hhmm(r.seen_at)},
-    {h: 'Token', sort: 'symbol', f: (r) => `<b>${esc(r.symbol)}</b> ${r.snapshot.url ? `<a href="${esc(r.snapshot.url)}" target="_blank" rel="noopener" aria-label="${esc(r.symbol)} auf DexScreener öffnen" title="auf DexScreener öffnen">↗</a>` : ''}`},
+    {h: 'Token', sort: 'symbol', f: (r) => `<b>${esc(r.symbol)}</b> ${r.snapshot.url ? `<a href="${esc(r.snapshot.url)}" target="_blank" rel="noopener" aria-label="${esc(r.symbol)} im Browser öffnen" title="Kursseite öffnen">↗</a>` : ''}${r.snapshot.source ? `<div class="reasons">${esc(srcShort[r.snapshot.source] || r.snapshot.source)}${r.snapshot.via_feed ? ' · via Feed' : ''}</div>` : ''}`},
     {h: 'Entscheidung', sort: 'decision', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
     {h: 'Score', sort: 'score', f: (r) => r.score || '–', num: true},
     {h: 'Liq.', sort: 'liq', f: (r) => usd(r.snapshot.liquidity_usd), num: true},
@@ -647,7 +657,7 @@ function renderHeader(s) {
   $('conn').setAttribute('aria-label', 'Verbindung: ' + ({ok: 'verbunden', warn: 'noch kein Poll', bad: 'keine Daten seit ' + dur(since)})[connState] + (s.errors ? `, ${s.errors} Fehler` : ''));
   $('conn').title = $('conn').getAttribute('aria-label');
   $('k-initial').textContent = usd(s.initial); $('k-uptime').textContent = dur(s.now - s.started_at);
-  renderAi(s);
+  renderAi(s); renderSources(s);
   if (document.activeElement !== $('bankroll') && !$('bankroll').value) $('bankroll').value = s.initial;
   $('k-polls').textContent = s.polls; $('k-errors').textContent = s.errors;
 }
@@ -659,13 +669,14 @@ function fieldHtml(f) {
   const id = 'f-' + f.path.replace(/\./g, '-');
   const described = f.help ? ` aria-describedby="${id}-help"` : '';
   if (f.type === 'bool') ctl = `<button type="button" role="switch" class="sw" id="${id}" data-path="${f.path}" aria-checked="false" aria-labelledby="${id}-label"${described}></button>`;
-  else if (f.type === 'chains') ctl = `<span class="chips" role="group" data-path="${f.path}" aria-labelledby="${id}-label">${schema.chains.map((c) => `<button type="button" class="chip" data-chain="${c}" aria-pressed="false">${c}</button>`).join('')}</span>`;
+  else if (f.type === 'chains' || f.type === 'multi') ctl = `<span class="chips" role="group" data-path="${f.path}" aria-labelledby="${id}-label"${described}>${chipOptions(f).map(([v, l]) => `<button type="button" class="chip" data-chain="${esc(v)}" aria-pressed="false">${esc(l)}</button>`).join('')}</span>`;
   else if (f.type === 'ladder') ctl = `<input type="text" class="wide" id="${id}" data-path="${f.path}" placeholder="50: 0.5, 100: 0.25"${described} aria-errormessage="${id}-err">`;
   else if (f.type === 'enum') ctl = `<select class="btn" id="${id}" data-path="${f.path}"${described}>${f.options.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select>`;
   else if (f.type === 'text') ctl = `<input type="text" class="wide" id="${id}" data-path="${f.path}" maxlength="${f.max_len || 200}"${described} aria-errormessage="${id}-err">`;
   else ctl = `<input type="number" id="${id}" data-path="${f.path}" min="${f.min}" max="${f.max}" step="${f.step}" inputmode="decimal"${described} aria-errormessage="${id}-err">${unit}`;
   return `<div class="field" data-field="${f.path}"><div><label id="${id}-label" for="${id}">${esc(f.label)}</label>${f.help ? `<small id="${id}-help">${esc(f.help)}</small>` : ''}</div><div class="ctl">${ctl}</div><div class="err" id="${id}-err" role="alert" hidden></div></div>`;
 }
+const chipOptions = (f) => f.type === 'chains' ? schema.chains.map((c) => [c, c]) : f.options;
 function buildForm() {
   // two balanced columns: the long Filter group gets its own, the short ones share the other
   const columns = [['Filter', 'Strategie'], ['Allgemein', 'Risiko', 'Exits', 'KI']];
@@ -676,7 +687,7 @@ function buildForm() {
   $('groups').querySelectorAll('.sw').forEach((b) => b.onclick = () => { setDraft(b.dataset.path, b.getAttribute('aria-checked') !== 'true'); });
   $('groups').querySelectorAll('.chips').forEach((box) => box.querySelectorAll('.chip').forEach((c) => c.onclick = () => {
     const cur = new Set(draft[box.dataset.path] || []); cur.has(c.dataset.chain) ? cur.delete(c.dataset.chain) : cur.add(c.dataset.chain);
-    setDraft(box.dataset.path, schema.chains.filter((x) => cur.has(x)));
+    setDraft(box.dataset.path, chipOptions(schema.fields.find((x) => x.path === box.dataset.path)).map(([v]) => v).filter((x) => cur.has(x)));
   }));
   $('groups').querySelectorAll('input').forEach((i) => i.oninput = () => setDraft(i.dataset.path, i.value));
   $('groups').querySelectorAll('select[data-path]').forEach((i) => i.onchange = () => setDraft(i.dataset.path, i.value));
@@ -697,7 +708,7 @@ function paintField(path) {
   const el = $('groups').querySelector(`[data-field="${path}"]`);
   const v = draft[path];
   if (f.type === 'bool') el.querySelector('.sw').setAttribute('aria-checked', String(!!v));
-  else if (f.type === 'chains') el.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String((v || []).includes(c.dataset.chain))));
+  else if (f.type === 'chains' || f.type === 'multi') el.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String((v || []).includes(c.dataset.chain))));
   else if (f.type === 'ladder') { const i = el.querySelector('input'); if (document.activeElement !== i) i.value = ladderText(v); }
   else if (f.type === 'enum') { el.querySelector('select').value = v ?? ''; }
   else { const i = el.querySelector('input'); if (document.activeElement !== i) i.value = v ?? ''; }
@@ -760,6 +771,18 @@ $('b-ai-key').onclick = () => busy($('b-ai-key'), async () => {
   const r = await api('/api/ai/key', {key}); if (!r.ok) throw new Error(r.error);
   $('ai-key').value = ''; toast('Schlüssel gespeichert'); refresh();
 });
+function renderSources(s) {
+  const rows = s.sources || [];
+  const on = rows.filter((r) => r.enabled);
+  const bad = on.filter((r) => r.ok === false);
+  $('src-pill').textContent = `${on.length} aktiv` + (bad.length ? ` · ${bad.length} gestört` : '');
+  $('src-pill').className = 'pill ' + (bad.length ? 'paused' : on.length ? 'paper' : '');
+  $('sources').innerHTML = rows.map((r) => {
+    const st = !r.enabled ? ['off', 'aus'] : !r.available ? ['bad', 'nicht verfügbar'] : r.ok === false ? ['bad', 'gestört'] : r.ok ? ['ok', 'liefert'] : ['warn', 'noch kein Poll'];
+    const detail = r.enabled && r.ok ? `${r.found} gemeldet · ${r.unique} eigene · ${r.calls} Abfragen` : r.enabled && r.error ? esc(r.error) : '';
+    return `<li><span class="dot ${st[0]}" role="img" aria-label="${st[1]}"></span><b>${esc(r.label)}</b> <span class="reasons">${st[1]}${detail ? ' · ' + detail : ''}</span></li>`;
+  }).join('');
+}
 function renderAi(s) {
   const a = s.ai || {}; const modeLabel = {off: 'aus', advise: 'beraten', decide: 'entscheiden'}[a.mode] || a.mode;
   $('ai-pill').textContent = modeLabel; $('ai-pill').className = 'pill ' + (a.mode === 'off' ? '' : a.available ? 'paper' : 'paused');
