@@ -1705,6 +1705,22 @@ ln -s "$victim/srv" "$T/root/2/Resources/Server"
 "$TOOL" install-core -y >/dev/null 2>&1
 [[ ! -e $victim/srv/BeamNetCore/main.lua ]] && pass || fail "Sicherheit: install-core folgt keinem Symlink in einem Zwischenordner"
 rm -f "$T/root/2/Resources/Server"; mv "$T/server2.keep" "$T/root/2/Resources/Server"
+# Wiederholungstaeter: 3 Vorfaelle in 7 Tagen werden gemeldet (einmal je Woche), alte zaehlen nicht.
+now=$(date +%s)
+{
+    echo "{\"action\":\"melden\",\"by\":\"A\",\"target\":\"Stoerer\",\"targetId\":\"7777\",\"at\":$((now - 3600))}"
+    echo "{\"action\":\"melden\",\"by\":\"B\",\"target\":\"Stoerer\",\"targetId\":\"7777\",\"at\":$((now - 7200))}"
+    echo "{\"action\":\"filter-mute\",\"target\":\"Stoerer\",\"targetId\":\"7777\",\"at\":$((now - 600))}"
+    echo "{\"action\":\"warn\",\"by\":\"Admin\",\"target\":\"Brav\",\"targetId\":\"8888\",\"at\":$((now - 600))}"
+    echo "{\"action\":\"kick\",\"by\":\"Admin\",\"target\":\"Brav\",\"targetId\":\"8888\",\"at\":$((now - 9 * 86400))}"
+    echo "{\"action\":\"melden\",\"target\":\"Brav\",\"targetId\":\"8888\",\"at\":$((now - 8 * 86400))}"
+} >>"$S/modlog.jsonl"
+rm -f "$T/watch/repeat-at" "$T/watch/repeat.json"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "⚠️ Wiederholt aufgefallen: Stoerer – 2× gemeldet · 1× stumm \\(Wortfilter\\) in 7 Tagen" "repeat: Wiederholungstäter gemeldet"
+lacks "$out" "aufgefallen: Brav" "repeat: alte Vorfälle zählen nicht"
+rm -f "$T/watch/repeat-at"
+lacks "$("$TOOL" watch 2>&1)" "aufgefallen: Stoerer" "repeat: nur einmal je Woche"
 # Rotation: doppelte Maps und "all" werden abgelehnt.
 contains "$("$TOOL" rotation 5 italy utah italy 2>&1)" "Jede Map nur einmal" "rotation: doppelte Maps abgelehnt"
 contains "$("$TOOL" rotation all italy utah 2>&1)" "eine Server-Nummer" "rotation: nur eine Server-Nummer"

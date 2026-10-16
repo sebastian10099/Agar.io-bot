@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.57"
+VERSION="1.58"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1856,6 +1856,76 @@ PY
 
 # Moderation an Discord/Telegram: neue Zeilen aus modlog.jsonl (Bann, Kick, Stummschaltung, Verwarnung). Position
 # im Zustand (Inode + Byte); beim ersten Lauf ab dem Ende (keine alte Geschichte). MODLOG_NOTIFY=0 schaltet ab.
+# Wiederholungstaeter: einmal je Stunde das Moderationsprotokoll der letzten 7 Tage zaehlen. Wer mindestens REPEAT_WARN
+# Mal (Standard 3) gemeldet, stummgeschaltet, verwarnt oder gekickt wurde, wird den Admins einmal je Woche genannt.
+watch_repeat() {
+    local -n offenders_out=$1
+    local warn line
+    warn=$(conf_get REPEAT_WARN)
+    [[ $warn =~ ^[0-9]{1,3}$ ]] || warn=3
+    (( 10#$warn > 0 )) || return 0
+    [[ -f $SHARED/modlog.jsonl && ! -L $SHARED/modlog.jsonl && ! -L $SHARED ]] || return 0
+    [[ -n $(find "$STATE_DIR/repeat-at" -mmin -60 2>/dev/null) ]] && return 0
+    : >"$STATE_DIR/repeat-at"
+    while IFS= read -r line; do
+        [[ -n $line ]] && offenders_out+=("$line")
+    done < <(python3 -I - "$SHARED/modlog.jsonl" "$STATE_DIR/repeat.json" "$((10#$warn))" <<'PY' 2>/dev/null
+import json, os, re, stat, sys, time
+path, state, need = sys.argv[1], sys.argv[2], int(sys.argv[3])
+now = time.time()
+try:
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+except OSError:
+    sys.exit(0)
+with os.fdopen(fd, "rb") as f:
+    st = os.fstat(f.fileno())
+    if not stat.S_ISREG(st.st_mode):
+        sys.exit(0)
+    f.seek(max(0, st.st_size - 2 * 1024 * 1024))          # die letzten 2 MB reichen fuer 7 Tage
+    data = f.read(2 * 1024 * 1024)
+LABEL = {"melden": "gemeldet", "mute": "stummgeschaltet", "spam-mute": "stumm (Spam)", "filter-mute": "stumm (Wortfilter)",
+         "warn": "verwarnt", "kick": "gekickt"}
+def c(v, n=32):
+    return re.sub(r"[\x00-\x1f\x7f]", " ", str(v)).strip()[:n] or "?"
+counts, names = {}, {}
+for raw in data.split(b"\n"):
+    try:
+        e = json.loads(raw.decode("utf-8", "replace"))
+    except Exception:
+        continue
+    if not isinstance(e, dict) or e.get("action") not in LABEL:
+        continue
+    at = e.get("at")
+    if not isinstance(at, (int, float)) or isinstance(at, bool) or not now - 7 * 86400 <= at <= now + 300:
+        continue
+    tid = e.get("targetId")
+    key = ("id:" + tid) if isinstance(tid, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", tid) else ("name:" + c(e.get("target")).lower())
+    if key == "name:?":
+        continue
+    counts.setdefault(key, {})
+    counts[key][e["action"]] = counts[key].get(e["action"], 0) + 1
+    names[key] = c(e.get("target"))
+try:
+    seen = json.load(open(state))
+    seen = seen if isinstance(seen, dict) else {}
+except Exception:
+    seen = {}
+seen = {k: v for k, v in seen.items() if isinstance(v, (int, float)) and now - v < 30 * 86400}
+for key in sorted(counts, key=lambda k: -sum(counts[k].values())):
+    total = sum(counts[key].values())
+    if total < need or now - seen.get(key, 0) < 7 * 86400:
+        continue
+    seen[key] = now
+    parts = " · ".join(f"{n}× {LABEL[a]}" for a, n in sorted(counts[key].items(), key=lambda x: -x[1]))
+    print(f"⚠️ Wiederholt aufgefallen: {names[key]} – {parts} in 7 Tagen (beamnet modlog)")
+with open(state + ".tmp", "w") as f:
+    json.dump(seen, f)
+os.replace(state + ".tmp", state)
+PY
+)
+    return 0
+}
+
 watch_modlog() {
     local -n modout=$1
     local line nr map=()
@@ -2104,6 +2174,7 @@ watch_run() {
     watch_votes msgs
     watch_reports msgs
     watch_modlog msgs
+    watch_repeat msgs
     for nr in $(servers); do
         unit_exists "$nr" || continue
         if unit_active "$nr"; then state=up; else state=down; fi
@@ -2765,6 +2836,8 @@ SLOTS_HOUR=6
 # Haengt ein Server (Dienst laeuft, aber seit HANG_MIN Minuten kein Lebenszeichen von BeamNetCore)? Antwortet er auch
 # auf seinem Port nicht mehr, startet ihn der Waechter mit AUTO_RESTART=1 neu; sonst nur Meldung. 0 = aus.
 HANG_MIN=3
+# Wiederholungstaeter: wer in 7 Tagen so oft gemeldet, stummgeschaltet, verwarnt oder gekickt wurde, wird gemeldet. 0 = aus.
+REPEAT_WARN=3
 EOF
         chmod 600 "$CONF"
     fi
