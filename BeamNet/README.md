@@ -28,6 +28,12 @@ Servern (ohne Neustart, BeamMP lädt es selbst neu; laufende Sitzungen werden da
 `beamnet doctor` zeigt die Plugin-Version je Server. Ist das Werkzeug älter als 1.8 (`beamnet version`), danach
 einmal `beamnet install-core` ausführen – alte Versionen aktualisieren nur sich selbst.
 
+**Sicher aktualisieren:** `beamnet update` bzw. `beamnet install-core` spielt eine neue Plugin-Version zuerst auf
+**einem** laufenden Server ein (dem mit den wenigsten Spielern). Meldet der sich innerhalb von 60 Sekunden mit der
+neuen Version, folgen die übrigen. Sonst kommt dort automatisch die alte Version zurück und das Update bricht ab –
+die anderen Server merken nichts davon. (Bei der ersten Installation ohne laufendes Plugin geht es gleich überall;
+`BEAMNET_CANARY=0` schaltet den Testserver ab.)
+
 **Zum Teilen:** `beamnet report` erstellt einen Bericht mit Status, Diagnose, Plugins und auffälligen Protokollzeilen –
 IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den Chat kopieren.
 

@@ -87,6 +87,7 @@ chmod +x "$T"/bin/*
 export FAKE="$T" PATH="$T/bin:$PATH"
 ME=$(/usr/bin/id -un)
 export BEAMNET_ROOT="$T/root" BEAMNET_USER="$ME" BEAMNET_SHARED="$T/root/shared/beamnet"
+export BEAMNET_CANARY=0          # Update zuerst auf einem Testserver: eigener Test weiter unten
 export BEAMNET_BACKUP_DIR="$T/backups" BEAMNET_AUTH_KEYS="$T/authorized_keys" BEAMNET_WAIT=0 BEAMNET_FAKE_PROCS="$T/procs"
 
 maps=(gridmap_v2 west_coast_usa italy east_coast_usa utah utah)
@@ -980,6 +981,35 @@ lines = open(sys.argv[1], encoding="utf-8").read().splitlines()[1:]
 sys.exit(0 if lines and all(len(l.split("\t")) == 13 for l in lines) else 1)
 PY
 rm -f "$P"/90[1-6].json "$T/fremd.json"
+
+# --- Update zuerst auf einem Testserver (install-core mit Testserver) ------------------------------------------------
+S="$T/root/shared/beamnet"
+newver=$(grep -o 'BN.VERSION = "[0-9.]*"' "$HERE/../server/BeamNetCore/main.lua" | head -n1 | cut -d'"' -f2)
+for nr in 1 2 3 4 5 6; do
+    mkdir -p "$T/root/$nr/Resources/Server/BeamNetCore"
+    echo "-- BeamNetCore alt $nr" >"$T/root/$nr/Resources/Server/BeamNetCore/main.lua"
+    touch "$T/state/beammp-$nr.service.active"
+done
+rm -f "$S"/servers/*.json
+hb() { echo "{\"port\":$((30813 + $1)),\"players\":$2,\"max\":8,\"updated\":$(date +%s),\"version\":\"$3\"}" >"$S/servers/$((30813 + $1)).json"; }
+hb 1 4 1.0; hb 2 0 1.0; hb 3 2 1.0
+out=$(BEAMNET_CANARY=1 BEAMNET_CANARY_WAIT=0 "$TOOL" -y install-core 2>&1); rc=$?
+contains "$out" "Teste BeamNetCore $newver zuerst auf Server 2" "canary: Server mit den wenigsten Spielern zuerst"
+[[ $rc -ne 0 ]] && pass || fail "canary: meldet sich nicht -> Abbruch mit Fehlercode"
+contains "$out" "Server 2 meldet sich nicht mit $newver – alte Version wiederhergestellt" "canary: alte Version zurueck"
+[[ $(cat "$T/root/2/Resources/Server/BeamNetCore/main.lua") == "-- BeamNetCore alt 2" ]] && pass || fail "canary: Testserver hat wieder die alte Datei"
+[[ $(cat "$T/root/1/Resources/Server/BeamNetCore/main.lua") == "-- BeamNetCore alt 1" && \
+   $(cat "$T/root/6/Resources/Server/BeamNetCore/main.lua") == "-- BeamNetCore alt 6" ]] && pass || fail "canary: uebrige Server unveraendert"
+hb 2 0 "$newver"
+out=$(BEAMNET_CANARY=1 BEAMNET_CANARY_WAIT=0 "$TOOL" -y install-core 2>&1); rc=$?
+[[ $rc -eq 0 ]] && pass || fail "canary: meldet sich mit neuer Version -> weiter"
+contains "$out" "Server 2 läuft mit BeamNetCore $newver – jetzt die übrigen Server" "canary: Erfolgsmeldung"
+same=1; for nr in 1 2 3 4 5 6; do cmp -s "$T/root/$nr/Resources/Server/BeamNetCore/main.lua" "$HERE/../server/BeamNetCore/main.lua" || same=0; done
+(( same )) && pass || fail "canary: danach auf allen Servern die neue Version"
+# Kein Server mit Lebenszeichen (z. B. erste Installation): gleich ueberall.
+rm -f "$S"/servers/*.json
+out=$(BEAMNET_CANARY=1 BEAMNET_CANARY_WAIT=0 "$TOOL" -y install-core 2>&1)
+lacks "$out" "Teste BeamNetCore" "canary: ohne Lebenszeichen kein Testserver"
 
 # --- Taegliche Datensicherung und Wiederherstellung --------------------------------------------------------------------
 S="$T/root/shared/beamnet"

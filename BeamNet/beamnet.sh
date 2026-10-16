@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.37"
+VERSION="1.38"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -387,8 +387,8 @@ load_heartbeats() {
     HB_LOADED=1
     [[ -d $SHARED/servers ]] || return 0
     command -v python3 >/dev/null || return 0
-    while read -r port pl mx up; do
-        [[ $port =~ ^[0-9]+$ ]] && HB_CACHE[$port]="$pl $mx $up"
+    while read -r port pl mx up ver; do
+        [[ $port =~ ^[0-9]+$ ]] && HB_CACHE[$port]="$pl $mx $up ${ver:--}"
     done < <(python3 -I - "$SHARED/servers" <<'PY' 2>/dev/null
 import json, os, re, stat, sys
 try:
@@ -416,7 +416,8 @@ for name in sorted(os.listdir(dfd))[:500]:
     pl, mx, up = whole(st.get("players"), 10000), whole(st.get("max"), 10000), whole(st.get("updated"), 10**10)
     if up is None:
         continue
-    print(int(m.group(1)), pl if pl is not None else 0, mx if mx is not None else "?", up)
+    ver = st.get("version") if isinstance(st.get("version"), str) and re.fullmatch(r"[0-9][0-9.]{0,9}", st.get("version")) else "-"
+    print(int(m.group(1)), pl if pl is not None else 0, mx if mx is not None else "?", up, ver)
 PY
 )
 }
@@ -427,7 +428,7 @@ players_of() {
     (( HB_LOADED )) || load_heartbeats
     entry=${HB_CACHE[$1]:-}
     [[ -n $entry ]] || { echo "?"; return; }
-    read -r pl mx up <<<"$entry"
+    read -r pl mx up _ <<<"$entry"
     now=$(date +%s)
     if (( now - up > 90 || up > now + 300 )); then echo "?"; return; fi
     echo "$pl/$mx"
@@ -1091,32 +1092,93 @@ core_source() {
     echo "$tmp"
 }
 
+# Plugin auf einen Server schreiben; die bisherige Version landet in $BACKUP_DIR/plugins/<nr>/ (LAST_PLUGIN_BACKUP).
+LAST_PLUGIN_BACKUP=""
+install_core_on() {
+    local nr=$1 src=$2 dest="$ROOT/$1/Resources/Server/BeamNetCore"
+    LAST_PLUGIN_BACKUP=""
+    if [[ -L $ROOT/$nr/Resources || -L $ROOT/$nr/Resources/Server || -L $dest ]]; then
+        bad "Server $nr: Plugin-Ordner ist ein Symlink – übersprungen (bitte prüfen)"
+        return 1
+    fi
+    mkdir -p "$dest"
+    if [[ -f $dest/main.lua ]]; then
+        mkdir -p "$BACKUP_DIR/plugins/$nr"
+        LAST_PLUGIN_BACKUP="$BACKUP_DIR/plugins/$nr/main.lua.$(date +%Y%m%d-%H%M%S)"
+        safe get "$dest/main.lua" >"$LAST_PLUGIN_BACKUP" 2>/dev/null || LAST_PLUGIN_BACKUP=""
+    fi
+    if safe put "$dest/main.lua" 644 "$SERVICE_USER" <"$src"; then
+        chown -h "$SERVICE_USER:$SERVICE_USER" "$dest"
+        ok "Server $nr: BeamNetCore installiert"
+    else
+        bad "Server $nr: BeamNetCore konnte nicht geschrieben werden"
+        return 1
+    fi
+}
+
+# Testserver fuer ein Update: laufend, mit aktuellem Lebenszeichen, moeglichst wenige Spieler.
+pick_canary() {
+    local nr pl best="" fewest=1000000
+    for nr in "$@"; do
+        unit_active "$nr" || continue
+        pl=$(players_of "$(cfg "$nr" Port)")
+        [[ $pl =~ ^([0-9]+)/ ]] || continue
+        if (( BASH_REMATCH[1] < fewest )); then best=$nr; fewest=${BASH_REMATCH[1]}; fi
+    done
+    echo "$best"
+}
+
+# Meldet sich Server <nr> innerhalb von <sekunden> mit Plugin-Version <version>?
+canary_reports() {
+    local nr=$1 want=$2 wait=$3 port entry ver up waited=0
+    port=$(cfg "$nr" Port)
+    while :; do
+        load_heartbeats
+        entry=${HB_CACHE[$port]:-}
+        if [[ -n $entry ]]; then
+            read -r _ _ up ver <<<"$entry"
+            [[ $ver == "$want" ]] && (( $(date +%s) - up <= 90 )) && return 0
+        fi
+        (( waited >= wait )) && return 1
+        sleep 3
+        waited=$(( waited + 3 ))
+    done
+}
+
 cmd_install_core() {
     need_root install-core
-    local src nr dest list
+    local src nr list newver canary="" wait
     src=$(core_source)
     grep -q 'BeamNetCore' "$src" || die "$src ist kein BeamNetCore-Plugin"
     list=$(servers)
     confirm "BeamNetCore auf allen Servern ($(tr '\n' ' ' <<<"$list"))installieren?" || { echo "Abgebrochen."; return 1; }
     ensure_shared
     mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
+    # Erst auf einem Testserver: meldet er sich nicht mit der neuen Version, alte Version zurueck und Abbruch –
+    # die uebrigen Server bleiben unberuehrt. (Ohne laufenden Server mit Lebenszeichen, z. B. bei der ersten
+    # Installation, oder mit BEAMNET_CANARY=0: gleich ueberall.)
+    newver=$(grep -o 'BN.VERSION = "[0-9.]*"' "$src" | head -n1 | cut -d'"' -f2)
+    # shellcheck disable=SC2086
+    [[ ${BEAMNET_CANARY:-1} != 0 && -n $newver ]] && canary=$(pick_canary $list)
+    if [[ -n $canary ]]; then
+        echo "Teste BeamNetCore $newver zuerst auf Server $canary …"
+        install_core_on "$canary" "$src" || die "Update abgebrochen – nichts weiter geändert."
+        wait=${BEAMNET_CANARY_WAIT:-60}
+        [[ $wait =~ ^[0-9]+$ ]] || wait=60
+        if ! canary_reports "$canary" "$newver" "$wait"; then
+            if [[ -n $LAST_PLUGIN_BACKUP && -s $LAST_PLUGIN_BACKUP ]]; then
+                safe put "$ROOT/$canary/Resources/Server/BeamNetCore/main.lua" 644 "$SERVICE_USER" <"$LAST_PLUGIN_BACKUP"
+                bad "Server $canary meldet sich nicht mit $newver – alte Version wiederhergestellt."
+            else
+                bad "Server $canary meldet sich nicht mit $newver (keine alte Version zum Zurückholen)."
+            fi
+            die "Update abgebrochen, die übrigen Server sind unverändert. Fehler ansehen: beamnet logs $canary"
+        fi
+        ok "Server $canary läuft mit BeamNetCore $newver – jetzt die übrigen Server."
+    fi
     for nr in $list; do
-        dest="$ROOT/$nr/Resources/Server/BeamNetCore"
-        if [[ -L $ROOT/$nr/Resources || -L $ROOT/$nr/Resources/Server || -L $dest ]]; then
-            bad "Server $nr: Plugin-Ordner ist ein Symlink – übersprungen (bitte prüfen)"
-            continue
-        fi
-        mkdir -p "$dest"
-        if [[ -f $dest/main.lua ]]; then
-            mkdir -p "$BACKUP_DIR/plugins/$nr"
-            safe get "$dest/main.lua" >"$BACKUP_DIR/plugins/$nr/main.lua.$(date +%Y%m%d-%H%M%S)" 2>/dev/null
-        fi
-        if safe put "$dest/main.lua" 644 "$SERVICE_USER" <"$src"; then
-            chown -h "$SERVICE_USER:$SERVICE_USER" "$dest"
-            ok "Server $nr: BeamNetCore installiert"
-        else
-            bad "Server $nr: BeamNetCore konnte nicht geschrieben werden"
-        fi
+        [[ $nr == "$canary" ]] && continue
+        install_core_on "$nr" "$src" || true
     done
     echo "Gemeinsame Daten: $SHARED"
     echo "BeamMP lädt das Plugin innerhalb weniger Sekunden selbst neu – ein Neustart ist nicht nötig."
@@ -1287,7 +1349,7 @@ heartbeat_age() {
     (( HB_LOADED )) || load_heartbeats
     entry=${HB_CACHE[$1]:-}
     [[ -n $entry ]] || return 0
-    read -r pl mx up <<<"$entry"
+    read -r pl mx up _ <<<"$entry"
     echo $(( $(date +%s) - up ))
 }
 

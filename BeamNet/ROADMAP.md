@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.37 / Plugin 1.20)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.38 / Plugin 1.20)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -72,9 +72,10 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 34. [x] Dritte Sicherheitsprüfung durch einen Prüf-Agenten: 8 Funde + 5 Fehler, alle behoben (Werkzeug 1.30–1.32).
 
 **E. Betrieb und Werkzeug**
-35. [ ] `beamnet update` mit Rückfall: Meldet das Plugin nach dem Update Fehler, kommt automatisch die alte Version
-        zurück.
-36. [ ] Vorab-Update auf einem Server: `beamnet update --test 1`, die übrigen erst nach 10 Minuten ohne Fehler.
+35. [x] Rückfall beim Update: Meldet sich der Testserver nicht mit der neuen Version, kommt dort automatisch die alte
+        zurück und das Update bricht ab (Werkzeug 1.38).
+36. [x] Update zuerst auf einem Server: dem laufenden mit den wenigsten Spielern. Die übrigen folgen erst, wenn er sich
+        mit der neuen Version meldet (bis 60 s) (Werkzeug 1.38).
 37. [ ] `metrics.txt` (Prometheus-Format) für Grafana: Spieler, km/h, Fehler und Neustarts je Server.
 38. [ ] Werkstatt: Die CI prüft `lokal/*`-Branches automatisch (Tests, shellcheck) vor meiner Durchsicht. 🤖
 39. [ ] README und Befehlshilfe auch auf Englisch (für internationale Admins). 🤖
