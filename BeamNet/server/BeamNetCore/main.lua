@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.28"
+BN.VERSION = "1.29"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -937,11 +937,19 @@ end
 BN.applyDay = applyDay
 
 -- Neue Woche: die Kilometer der alten Woche bleiben als lastWeek/lastWeekKm erhalten (fuer die Wochensieger).
+-- Wochenwechsel: Kilometer der alten Woche nach lastWeek und in den Verlauf weeks (hoechstens 12 Wochen, fuer das
+-- Diagramm auf der Profilseite; nur Wochen mit Kilometern).
 local function applyWeek(rec)
     local wk = weekKey(BN.now())
     if rec.week ~= wk then
+        local km = tonumber(rec.weekKm) or 0
+        if type(rec.week) == "string" and rec.week ~= "" and km > 0 then
+            if type(rec.weeks) ~= "table" then rec.weeks = {} end
+            rec.weeks[#rec.weeks + 1] = { week = rec.week, km = math.floor(km * 10 + 0.5) / 10 }
+            while #rec.weeks > 12 do table.remove(rec.weeks, 1) end
+        end
         rec.lastWeek = rec.week
-        rec.lastWeekKm = tonumber(rec.weekKm) or 0
+        rec.lastWeekKm = km
         rec.week = wk
         rec.weekKm = 0
     end

@@ -1950,6 +1950,30 @@ do
     os.remove(SHARED .. "/teams.json")
 end
 
+-- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
+do
+    players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }
+    _G[events.onPlayerJoin](79)
+    local s = BN.players[79]
+    local wk1 = BN.weekKey(clock)
+    s.pendingKm = 5.04
+    BN.savePlayer(s)
+    clock = clock + 7 * 86400
+    s.pendingKm = 1
+    BN.savePlayer(s)
+    local rec = readJson(SHARED .. "/players/7979.json")
+    check(type(rec.weeks) == "table" and #rec.weeks == 1 and rec.weeks[1].week == wk1 and rec.weeks[1].km == 5, "Wochenverlauf: alte Woche gespeichert (gerundet)")
+    eq(rec.weekKm, 1, "Wochenverlauf: neue Woche beginnt")
+    -- Leere Wochen kommen nicht in den Verlauf, hoechstens 12 Wochen.
+    clock = clock + 7 * 86400
+    s.pendingKm = 0.5; BN.savePlayer(s)
+    for i = 1, 13 do clock = clock + 7 * 86400; s.pendingKm = i; BN.savePlayer(s) end
+    rec = readJson(SHARED .. "/players/7979.json")
+    eq(#rec.weeks, 12, "Wochenverlauf: hoechstens 12 Wochen")
+    eq(rec.weeks[12].km, 12, "Wochenverlauf: neueste zuletzt")
+    _G[events.onPlayerDisconnect](79); players[79] = nil
+end
+
 -- --- XP-Event (/event) ------------------------------------------------------------------------------------------
 do
     local savedAdmins = C.admins

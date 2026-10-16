@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.47"
+VERSION="1.48"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2928,6 +2928,29 @@ for path in sorted(glob.glob(os.path.join(shared, "seasons", "*.json")), reverse
         if isinstance(e, dict) and e.get("id") is not None:
             TITLES.setdefault(str(e["id"]), []).append((m, place))
 PLACE_TEXT = {1: "🥇 Saisonsieger", 2: "🥈 Saison-Zweiter", 3: "🥉 Saison-Dritter"}
+
+
+def weeks_chart(r):
+    """Kilometer der letzten Wochen (Verlauf des Plugins plus laufende Woche) als kleines SVG-Balkendiagramm."""
+    rows = []
+    for e in (r.get("weeks") if isinstance(r.get("weeks"), list) else [])[-12:]:
+        if isinstance(e, dict) and isinstance(e.get("week"), str) and re.fullmatch(r"[0-9]{4}-W[0-9]{2}", e["week"]):
+            rows.append((e["week"], max(0.0, num(e.get("km")))))
+    if r.get("week") == week and num(r.get("weekKm")) > 0:
+        rows.append((week, num(r.get("weekKm"))))
+    rows = rows[-12:]
+    if len(rows) < 2 or max(v for _, v in rows) <= 0:
+        return ""
+    top = max(v for _, v in rows)
+    w, h, bw = 40 * len(rows), 110, 28
+    bars = []
+    for i, (wk, v) in enumerate(rows):
+        bh = max(1, round(v / top * (h - 24))) if v > 0 else 0
+        x = i * 40 + 6
+        bars.append(f'<rect x="{x}" y="{h - 16 - bh}" width="{bw}" height="{bh}"><title>KW {int(wk[6:])}: {km(v)}</title></rect>'
+                    f'<text x="{x + bw / 2}" y="{h - 3}" text-anchor="middle">{int(wk[6:])}</text>')
+    return (f'<section><h2>Kilometer je Woche</h2><svg class=chart viewBox="0 0 {w} {h}" role="img" aria-label="Kilometer je Woche">'
+            f'{"".join(bars)}</svg><p class=small>Kalenderwochen, die letzte ist die laufende Woche.</p></section>')
 servers = [s for s in (load(p) for p in glob.glob(os.path.join(shared, "servers", "*.json")))
            if isinstance(s, dict) and now - num(s.get("updated")) <= 90]
 servers.sort(key=lambda s: num(s.get("port")))
@@ -3120,7 +3143,7 @@ a {{ color:inherit; text-decoration:none; border-bottom:1px dotted var(--muted);
 .stats div {{ background:var(--bg); border-radius:8px; padding:10px 12px; }} .stats b {{ display:block; font-size:20px; }}
 .tags span {{ display:inline-block; background:var(--bg); border-radius:999px; padding:3px 10px; margin:0 6px 6px 0; font-size:13px; }}
 svg.chart {{ width:100%; height:auto; display:block; }} svg.chart rect {{ fill:var(--accent); }}
-svg.chart rect:hover {{ fill:var(--text); }} svg.chart .grid {{ stroke:var(--line); }}
+svg.chart rect:hover {{ fill:var(--text); }} svg.chart .grid {{ stroke:var(--line); }} svg.chart text {{ fill:var(--muted); font-size:11px; }}
 .days {{ position:relative; height:18px; font-size:12px; color:var(--muted); }} .days span {{ position:absolute; top:2px; padding-left:3px; }}
 .days i {{ font-style:normal; }} @media (max-width:560px) {{ .days i {{ display:none; }} }}
 </style>"""
@@ -3247,6 +3270,7 @@ for rank, r in enumerate(ranked, 1):
 <div class=sub>Level {lvl} · Liga {E(league_of(xp))}{(" · zuletzt auf " + E(str(r.get("lastServer")))) if r.get("lastServer") else ""}</div>
 {("<div class=tags>" + "".join(f"<span>{PLACE_TEXT[p]} {MONTHS[int(m[5:7]) - 1]} {m[:4]}</span>" for m, p in TITLES.get(rid, [])[:6]) + "</div>") if TITLES.get(rid) else ""}
 <section><div class=stats>{body}</div></section>
+{weeks_chart(r)}
 <section><h2>Erfolge ({len([a for a in ACH if a in ach])} von {len(ACH)})</h2><div class=tags>{tags_a}</div></section>
 <div class=grid>
 <section><h2>Maps ({len(set(maps) | set(mk))})</h2><div class=tags>{tags_m}</div></section>

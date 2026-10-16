@@ -560,6 +560,22 @@ lacks "$(cat "$T/web/index.html")" "9999 km/h" "Statusseite: unplausible Geschwi
 rm -f "$T/root/shared/beamnet/players/61.json" "$T/root/shared/beamnet/players/62.json"
 "$TOOL" web run >/dev/null 2>&1
 page=$(cat "$T/web/index.html")
+# Kilometer je Woche auf der Profilseite (Verlauf + laufende Woche; kaputte Eintraege ignoriert).
+cp "$T/root/shared/beamnet/players/1.json" "$T/p1.keep"
+python3 - "$T/root/shared/beamnet/players/1.json" "$(date -u +%G-W%V)" <<'PY'
+import json, sys
+p, wk = sys.argv[1], sys.argv[2]
+r = json.load(open(p))
+r["weeks"] = [{"week": "2026-W40", "km": 12.5}, {"week": "<b>", "km": 99}, {"week": "2026-W41", "km": 30}]
+r["week"], r["weekKm"] = wk, 7
+json.dump(r, open(p, "w"))
+PY
+"$TOOL" web run >/dev/null 2>&1
+prof=$(cat "$T/web/p/1.html")
+contains "$prof" "<h2>Kilometer je Woche</h2>" "Profilseite: Wochen-Diagramm"
+contains "$prof" "<title>KW 40: 12.5 km</title>" "Profilseite: Woche mit Tooltip"
+[[ $(grep -o "<rect " <<<"$prof" | wc -l) == 3 ]] && pass || fail "Profilseite: drei Wochen (kaputter Eintrag ignoriert)"
+mv "$T/p1.keep" "$T/root/shared/beamnet/players/1.json"
 # Saison-Titel auf der Profilseite (Platz 1-3 der archivierten Saisons, neueste zuerst; kaputte Archive ignoriert).
 mkdir -p "$T/root/shared/beamnet/seasons"
 echo '{"month":"2026-08","top":[{"id":"1","name":"Sebi","xp":900}]}' >"$T/root/shared/beamnet/seasons/2026-08.json"
