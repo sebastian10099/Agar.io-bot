@@ -2838,8 +2838,8 @@ do
     chatLog = {}
     _G[events.onPlayerJoin](117)
     check(chatContains("✨ Neu seit deinem letzten Besuch:", 117), "Neuheiten: fuer Spieler von frueher")
-    check(chatContains("^  Duell: /duell", 117) and chatContains("^  Verfolgungsjagd", 117) and chatContains("^  Wochenziel", 117), "Neuheiten: die drei neuesten")
-    check(not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
+    check(chatContains("^  Rennserien: /serie", 117) and chatContains("^  Duell: /duell", 117) and chatContains("^  Verfolgungsjagd", 117), "Neuheiten: die drei neuesten")
+    check(not chatContains("Wochenziel für alle: /ziel", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
     _G[events.onPlayerDisconnect](117)
     eq(readJson(SHARED .. "/players/11717.json").seenVersion, BN.VERSION, "Neuheiten: Version gemerkt")
     chatLog = {}
@@ -2850,7 +2850,7 @@ do
     local r = readJson(SHARED .. "/players/11717.json"); r.seenVersion = "1.43"; writeJson(SHARED .. "/players/11717.json", r)
     chatLog = {}
     _G[events.onPlayerJoin](117)
-    check(chatContains("^  Duell", 117) and not chatContains("Verfolgungsjagd", 117), "Neuheiten: nur was seitdem neu ist")
+    check(chatContains("^  Duell", 117) and chatContains("^  Rennserien", 117) and not chatContains("Verfolgungsjagd", 117), "Neuheiten: nur was seitdem neu ist")
     _G[events.onPlayerDisconnect](117); players[117] = nil
     -- Ganz neue Spieler bekommen die Begruessung statt Neuheiten.
     players[118] = { name = "Ganzneu", ids = { beammp = "11818" }, vehicles = {} }
