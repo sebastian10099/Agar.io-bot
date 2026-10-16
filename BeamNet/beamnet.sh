@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.70"
+VERSION="1.71"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -104,7 +104,10 @@ cfg() {
 map_short() {
     local m=$1
     m=${m#/levels/}
-    printf '%s' "${m%%/*}"
+    m=${m%%/*}
+    # Nur harmlose Zeichen: der Name kommt aus ServerConfig.toml (gehoert beammp) und landet u. a. als Schluessel in
+    # Rechenausdruecken (aeltere Bash werten ihn dort erneut aus).
+    printf '%s' "${m//[^A-Za-z0-9_.-]/}"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -2509,29 +2512,49 @@ cmd_event() {
 # Waechter das netzweite XP-Event (in den ersten 10 Minuten; nicht, wenn schon eines laeuft). Jeweils einmal am Tag.
 watch_autoevent() {
     local -n aout=$1
-    local spec days hh mm factor secs now start key endt nice
+    local spec days hh mm factor secs now start key endt nice off day
     spec=$(autoevent_spec) || return 0
     read -r days hh mm factor secs <<<"$spec"
     now=${BEAMNET_NOW:-$(date +%s)}
-    [[ ,$days, == *",$(date -d "@$now" +%u),"* ]] || return 0
-    key=$(date -d "@$now" +%F)
-    start=$(date -d "$key $hh:$mm" +%s 2>/dev/null) || return 0
-    endt=$(date -d "@$(( start + secs ))" +%H:%M)
     nice=${factor/./,}
     nice=${nice%,0}
-    if (( now >= start - 3600 && now < start )) && [[ ! -f $STATE_DIR/autoevent-warn-$key ]]; then
-        : >"$STATE_DIR/autoevent-warn-$key"
-        aout+=("🎉 Heute $hh:$mm–$endt Uhr: XP-Abend mit $nice-facher XP auf allen BeamNet-Servern – kommt vorbei!")
-        (YES=1 ANSAGE_BY="XP-Abend" cmd_ansage "🎉 Heute $hh:$mm–$endt Uhr: XP-Abend mit $nice-facher XP auf allen Servern!") >/dev/null 2>&1
-    fi
-    if (( now >= start && now < start + 600 )) && [[ ! -f $STATE_DIR/autoevent-start-$key ]]; then
-        : >"$STATE_DIR/autoevent-start-$key"
-        if event_running; then
-            aout+=("ℹ️ XP-Abend: es läuft schon ein XP-Event – kein zweites gestartet.")
-        elif event_write "$factor" "$(( start + secs - now ))" "XP-Abend"; then
-            aout+=("🚀 XP-Abend läuft: $nice-fache XP bis $endt Uhr auf allen Servern.")
+    # Heute und morgen pruefen: ein Abend kurz nach Mitternacht wird schon am Vorabend angekuendigt.
+    for off in 0 1; do
+        day=$(date -d "@$(( now + off * 86400 ))" +%F)
+        [[ ,$days, == *",$(date -d "$day 12:00" +%u),"* ]] || continue
+        key=$day
+        if ! start=$(date -d "$key $hh:$mm" +%s 2>/dev/null); then
+            # Gibt es die Uhrzeit an diesem Tag nicht (Zeitumstellung), einmal melden statt still ausfallen.
+            if (( off == 0 )) && [[ ! -f $STATE_DIR/autoevent-start-$key ]]; then
+                : >"$STATE_DIR/autoevent-start-$key"
+                aout+=("⚠️ XP-Abend: $hh:$mm Uhr gibt es heute nicht (Zeitumstellung) – heute kein automatischer XP-Abend.")
+            fi
+            continue
         fi
-    fi
+        endt=$(date -d "@$(( start + secs ))" +%H:%M)
+        if (( now >= start - 3600 && now < start )) && [[ ! -f $STATE_DIR/autoevent-warn-$key ]]; then
+            : >"$STATE_DIR/autoevent-warn-$key"
+            local when="Heute"
+            [[ $(date -d "@$now" +%F) == "$key" ]] || when="Gleich"
+            aout+=("🎉 $when $hh:$mm–$endt Uhr: XP-Abend mit $nice-facher XP auf allen BeamNet-Servern – kommt vorbei!")
+            (YES=1 ANSAGE_BY="XP-Abend" cmd_ansage "🎉 $when $hh:$mm–$endt Uhr: XP-Abend mit $nice-facher XP auf allen Servern!") >/dev/null 2>&1
+        fi
+        if (( now >= start && now < start + 600 )) && [[ ! -f $STATE_DIR/autoevent-start-$key ]]; then
+            if event_running; then
+                # Laeuft noch ein anderes Event: bis zum Ende des 10-Minuten-Fensters weiter versuchen.
+                if (( now >= start + 540 )); then
+                    : >"$STATE_DIR/autoevent-start-$key"
+                    aout+=("ℹ️ XP-Abend: es läuft schon ein XP-Event – kein zweites gestartet.")
+                fi
+            elif event_write "$factor" "$(( start + secs - now ))" "XP-Abend"; then
+                : >"$STATE_DIR/autoevent-start-$key"
+                aout+=("🚀 XP-Abend läuft: $nice-fache XP bis $endt Uhr auf allen Servern.")
+            elif [[ ! -f $STATE_DIR/autoevent-fail-$key ]]; then
+                : >"$STATE_DIR/autoevent-fail-$key"
+                aout+=("⚠️ XP-Abend konnte nicht gestartet werden (gemeinsamer Ordner? beamnet doctor) – nächster Versuch in einer Minute.")
+            fi
+        fi
+    done
     find "$STATE_DIR" -maxdepth 1 -name 'autoevent-*' -mtime +3 -delete 2>/dev/null
     return 0
 }
@@ -2738,12 +2761,15 @@ network_lines() {
     printf '%s' "$body"
     [[ -n $empty ]] && printf 'Leer: Server %s\n' "$empty"
     [[ -n $silent ]] && printf 'Ohne Lebenszeichen: Server %s\n' "$silent"
+    local mp mm
     for m in "${!map_pl[@]}"; do
-        if (( map_mx[$m] > 0 )); then
-            pct=$(( (map_pl[$m] * 100 + map_mx[$m] / 2) / map_mx[$m] ))
-            maprows+="$pct"$'\t'"$m ${map_pl[$m]}/${map_mx[$m]} ($pct %$( (( pct >= 80 )) && printf ' 🔥'))"$'\n'
+        mp=${map_pl[$m]}
+        mm=${map_mx[$m]}
+        if (( mm > 0 )); then
+            pct=$(( (mp * 100 + mm / 2) / mm ))
+            maprows+="$pct"$'\t'"$m $mp/$mm ($pct %$( (( pct >= 80 )) && printf ' 🔥'))"$'\n'
         else
-            maprows+="0"$'\t'"$m ${map_pl[$m]} Spieler"$'\n'
+            maprows+="0"$'\t'"$m $mp Spieler"$'\n'
         fi
     done
     if [[ -n $maprows ]]; then

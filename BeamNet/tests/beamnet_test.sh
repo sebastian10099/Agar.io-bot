@@ -1331,10 +1331,12 @@ python3 -c 'import json,sys,time; d=json.load(open(sys.argv[1])); assert d["fact
     && pass || fail "autoevent: event.json fuer das Plugin (Faktor, Ende)"
 out=$(BEAMNET_NOW=$(( start + 120 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
 lacks "$out" "🚀" "autoevent: Start nur einmal"
-# Laeuft schon ein Event (z. B. von einem Admin), wird kein zweites gestartet.
+# Laeuft schon ein Event (z. B. von einem Admin), wird bis zum Ende des Fensters gewartet, dann keins gestartet.
 rm -f "$T"/watch/autoevent-start-*
 "$TOOL" event start 3 1h >/dev/null 2>&1
 out=$(BEAMNET_NOW=$(( start + 60 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+lacks "$out" "XP-Abend" "autoevent: laufendes Event – erst weiter warten"
+out=$(BEAMNET_NOW=$(( start + 560 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
 contains "$out" "es läuft schon ein XP-Event" "autoevent: kein zweites Event"
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["factor"]==3' "$E" && pass || fail "autoevent: laufendes Event bleibt"
 # Von Hand: start/stop.
@@ -1343,6 +1345,19 @@ contains "$("$TOOL" event start 1,5 90m 2>&1)" "1,5-fache XP für 90 Minuten" "e
 contains "$("$TOOL" event 2>&1)" "XP-Event läuft gerade" "event: laufendes Event erkannt"
 "$TOOL" event stop >/dev/null 2>&1
 contains "$("$TOOL" event 2>&1)" "Gerade läuft kein XP-Event" "event stop: beendet"
+# Kurz nach Mitternacht: Ankuendigung schon am Vorabend.
+"$TOOL" event auto sa 00:30 2 2h >/dev/null 2>&1
+sat=$(date -d "$fri + 1 day" +%F)
+rm -f "$T"/watch/autoevent-*
+out=$(BEAMNET_NOW=$(( $(date -d "$sat 00:30" +%s) - 2400 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+contains "$out" "🎉 Gleich 00:30–02:30 Uhr: XP-Abend" "autoevent: Abend nach Mitternacht am Vorabend angekuendigt"
+# Ein Map-Name aus ServerConfig.toml wird bereinigt (nie Befehle in Rechenausdruecken).
+cp "$T/root/4/ServerConfig.toml" "$T/sc4.keep"
+sed -i 's|^Map = .*|Map = "/levels/a$(id)b[x]/info.json"|' "$T/root/4/ServerConfig.toml"
+out=$("$TOOL" status 2>&1)
+contains "$out" " aidbx " "map_short: Map-Name nur mit harmlosen Zeichen"
+lacks "$out" "uid=" "map_short: kein Befehl aus dem Map-Namen"
+cp "$T/sc4.keep" "$T/root/4/ServerConfig.toml"
 "$TOOL" event auto aus >/dev/null 2>&1
 contains "$("$TOOL" event 2>&1)" "Automatischer XP-Abend: aus" "event auto aus"
 rm -f "$E" "$A" "$T"/watch/autoevent-*
