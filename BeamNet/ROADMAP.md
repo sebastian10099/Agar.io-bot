@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.29 / Plugin 1.16)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.32 / Plugin 1.16)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -61,7 +61,7 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
         aus dem Moderationsprotokoll (Werkzeug 1.27). Offen: auffällige Rekorde.
 32. [ ] Wortfilter (einstellbare Liste), mit Verwarnung statt sofortigem Kick.
 33. [ ] Schutz gegen Join-/Rejoin-Spam (zu viele Beitritte pro Minute pro IP).
-34. [ ] Dritte Sicherheitsprüfung durch ein Agenten-Team (Telegram-Token, Online-Meldung, Statusseite).
+34. [x] Dritte Sicherheitsprüfung durch einen Prüf-Agenten: 8 Funde + 5 Fehler, alle behoben (Werkzeug 1.30–1.32).
 
 **E. Betrieb und Werkzeug**
 35. [ ] `beamnet update` mit Rückfall: Meldet das Plugin nach dem Update Fehler, kommt automatisch die alte Version
@@ -74,6 +74,16 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 
 Außerdem, sobald der Server-Zugang steht: `beamnet doctor` auf dem echten Server, Ausgabe prüfen, Reparaturen
 übernehmen.
+
+Erledigt (Werkzeug 1.30–1.32) – dritte Sicherheitsprüfung (Agent), alle Funde behoben:
+- [x] root liest JSON im beammp-Ordner nie über Symlinks oder FIFOs (Statusseite, Saison, admin, bans, unban,
+      Lebenszeichen, Index über Ordner-Deskriptor); Lebenszeichen mit `08` oder Zeit aus der Zukunft bringen den
+      Wächter nicht mehr zum Absturz; Zeitlimit für Wächter- und Statusseiten-Dienst.
+- [x] Datensicherung: keine harten Links (sonst Platte voll), Obergrenze 1 GB, keine Reste, nur Namen, die die
+      Wiederherstellung annimmt; Wiederherstellung startet die Server bei jedem Fehler wieder.
+- [x] Discord/Telegram: lange Meldungen werden geteilt (Discord-Grenze 2000 Zeichen), Spielertexte können in Discord
+      keine getarnten Links bauen (Markdown maskiert, keine Vorschau); `beamnet setup` zeigt Token nicht mehr in `ps`.
+- [x] Moderationsprotokoll: nach `restore` keine alte Geschichte noch einmal; eine Riesenzeile hält nicht auf.
 
 Erledigt (Werkzeug 1.28) – Sicherheit:
 - [x] Discord-Webhook-Adresse und Telegram-Token stehen nicht mehr auf der curl-Befehlszeile (die kann jeder Benutzer

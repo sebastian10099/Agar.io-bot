@@ -324,7 +324,7 @@ sed -i 's/^AUTO_RESTART=0/AUTO_RESTART=1/; s|^DISCORD_WEBHOOK=|DISCORD_WEBHOOK=h
 : >"$T/curl.log"
 out=$("$TOOL" watch 2>&1)
 contains "$out" "🟡 Server 3 \\(italy\\) automatisch neu gestartet" "watch: automatischer Neustart"
-contains "$(cat "$T/curl.log")" '\{"content":"🟡 Server 3 \(italy\) automatisch neu gestartet\.","allowed_mentions":\{"parse":\[\]\}\}' "watch: Discord-Nachricht als JSON (ohne @-Erwähnungen)"
+contains "$(cat "$T/curl.log")" '\{"content":"🟡 Server 3 \\\\\(italy\\\\\) automatisch neu gestartet\.","allowed_mentions":\{"parse":\[\]\},"flags":4\}' "watch: Discord-Nachricht als JSON (ohne @-Erwähnungen, Markdown maskiert, ohne Vorschau)"
 contains "$(cat "$T/curl.log")" "https://discord.com/api/webhooks/1/abc" "watch: an den Webhook"
 lacks "$(cat "$T/curl.argv")" "webhooks/1/abc" "watch: Webhook-Adresse nie auf der Befehlszeile (ps)"
 
@@ -986,6 +986,18 @@ contains "$list" "^races/italy.json$" "backup: Rekorde drin"
 contains "$list" "^bans.json$" "backup: Banns drin"
 lacks "$list" "^servers|^votes|502|evil|\\.tmp|players-index" "backup: ohne Lebenszeichen, Auftraege, Symlinks, Zwischendateien"
 lacks "$(tar -xzOf "$B/daten-$today.tgz")" "secret" "backup: Symlink-Ziel nicht mitgesichert"
+# Harte Links und Namen, die die Wiederherstellung ablehnt, kommen nicht in die Sicherung.
+rm -f "$B/daten-$today.tgz"
+head -c 200000 /dev/urandom >"$S/players/gross.json"
+for i in 1 2 3 4 5; do ln "$S/players/gross.json" "$S/players/link$i.json"; done
+echo '{}' >"$S/players/a\b.json"
+: >"$B/daten-alt.tgz.tmp"
+BEAMNET_HOUR=05 "$TOOL" watch >/dev/null 2>&1
+list=$(tar -tzf "$B/daten-$today.tgz" | sort)
+lacks "$list" "gross|link|a.b" "backup: harte Links und unbrauchbare Namen nicht gesichert"
+(( $(stat -c %s "$B/daten-$today.tgz") < 100000 )) && pass || fail "backup: harte Links blaehen die Sicherung nicht auf"
+[[ ! -e $B/daten-alt.tgz.tmp ]] && pass || fail "backup: Reste abgebrochener Sicherungen entfernt"
+rm -f "$S/players/gross.json" "$S"/players/link*.json "$S/players/a\b.json"
 before=$(stat -c %Y "$B/daten-$today.tgz"); sleep 1
 BEAMNET_HOUR=06 "$TOOL" watch >/dev/null 2>&1
 [[ $(stat -c %Y "$B/daten-$today.tgz") == "$before" ]] && pass || fail "backup: nur einmal am Tag"
@@ -1066,8 +1078,15 @@ for i in $(seq 1 12); do printf '{"action":"kick","by":"A","target":"K%s","at":%
 out=$("$TOOL" watch 2>&1)
 [[ $(grep -c "vom Server geworfen" <<<"$out") == 10 ]] && pass || fail "modlog: hoechstens 10 je Lauf"
 contains "$out" "… und 2 weitere \\(beamnet modlog\\)" "modlog: Rest zusammengefasst"
-echo '{"action":"kick","by":"Neu","target":"Datei","at":1,"server":1}' >"$M.neu"; mv "$M.neu" "$M"
-contains "$("$TOOL" watch 2>&1)" "Neu hat Datei vom Server geworfen" "modlog: neue Datei (anderer Inode) von vorn"
+{ echo '{"action":"kick","by":"Uralt","target":"Geschichte","at":1,"server":1}'
+  printf '{"action":"kick","by":"Neu","target":"Datei","at":%s,"server":1}\n' "$(date +%s)"; } >"$M.neu"; mv "$M.neu" "$M"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "Neu hat Datei vom Server geworfen" "modlog: neue Datei (anderer Inode) von vorn"
+lacks "$out" "Uralt" "modlog: neue Datei – alte Geschichte nicht noch einmal (z. B. nach restore)"
+python3 -c 'import sys; sys.stdout.write("x" * 300000)' >>"$M"
+"$TOOL" watch >/dev/null 2>&1; "$TOOL" watch >/dev/null 2>&1
+printf '\n{"action":"kick","by":"Danach","target":"Z","at":%s,"server":1}\n' "$(date +%s)" >>"$M"
+contains "$("$TOOL" watch 2>&1; "$TOOL" watch 2>&1)" "Danach hat Z vom Server geworfen" "modlog: Riesenzeile haelt nicht auf"
 sed -i 's/^MODLOG_NOTIFY=.*/MODLOG_NOTIFY=0/' "$T/beamnet.conf"
 printf '{"action":"kick","by":"Aus","target":"X","at":1,"server":1}\n' >>"$M"
 lacks "$("$TOOL" watch 2>&1)" "Aus hat" "modlog: MODLOG_NOTIFY=0 schaltet ab"
@@ -1090,6 +1109,27 @@ out=$("$TOOL" watch 2>&1)
 contains "$out" "🚩 Meldung auf BeamNet \\| Server 1: Petra meldet Rambo Racer – „rammt @everyone ständig“ \\([0-9]{2}:[0-9]{2} Uhr\\)" "reports: Meldung weitergegeben (ohne Zeilenumbruch)"
 contains "$(cat "$T/curl.log")" "Petra meldet" "reports: an Discord"
 contains "$(cat "$T/curl.log")" '"allowed_mentions":\{"parse":\[\]\}' "reports: ohne @-Erwaehnungen"
+printf '{"at":%s,"server":"S","by":"Phisher","target":"T","reason":"[Admin-Panel](https://evil.example) *klick*"}' "$now" >"$R/30814-$now-7.json"
+: >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+contains "$(cat "$T/curl.log")" '\\\\\[Admin-Panel\\\\\]\\\\\(https://evil.example\\\\\) \\\\\*klick' "reports: Discord-Markdown maskiert (kein getarnter Link)"
+# Viele lange Meldungen: in Stuecke unter 2000 Zeichen geteilt, nichts verloren.
+long=$(printf 'Grund%.0s' $(seq 1 40))
+for i in 1 2 3 4 5 6 7 8; do printf '{"at":%s,"server":"S","by":"B%s","target":"T","reason":"%s"}' "$now" "$i" "$long" >"$R/30814-$now-1$i.json"; done
+: >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+n=$(grep -c "discord.com/api/webhooks" "$T/curl.log")
+(( n >= 2 )) && pass || fail "reports: lange Meldung in mehrere Discord-Nachrichten geteilt (war $n)"
+python3 - "$T/curl.log" <<'PY' && pass || fail "reports: jede Discord-Nachricht unter 2000 Zeichen"
+import json, re, sys
+ok = True
+for line in open(sys.argv[1], encoding="utf-8"):
+    m = re.search(r"-d (\{.*\}) -K", line)
+    if m and "content" in m.group(1):
+        ok = ok and len(json.loads(m.group(1))["content"]) <= 2000
+sys.exit(0 if ok else 1)
+PY
+for i in 1 2 3 4 5 6 7 8; do grep -q "B$i meldet" "$T/curl.log" || fail "reports: Meldung B$i fehlt"; done; pass
 lacks "$out" "vorgestern|kaputt|secret" "reports: alte, kaputte und Symlink-Dateien nicht gemeldet"
 [[ -z $(ls -A "$R") ]] && pass || fail "reports: alle Dateien entfernt"
 [[ -f $T/geheim.json && $(cat "$T/geheim.json") == '{"at":1,"secret":"root"}' ]] && pass || fail "reports: Symlink-Ziel unberuehrt"

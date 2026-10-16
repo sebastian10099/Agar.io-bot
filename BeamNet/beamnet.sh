@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.31"
+VERSION="1.32"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -203,22 +203,40 @@ import io, os, stat, sys, tarfile, time
 SKIP_DIRS = {"servers", "votes", "reports"}
 FLAGS_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
+NAME_OK = __import__("re").compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+MAX_BYTES, MAX_FILES = 1024 * 1024 * 1024, 200000
+
 def skip_file(name):
-    return name.startswith(".") or name.endswith(".tmp") or name == "players-index.tsv" or ".kaputt-" in name
+    return name.endswith(".tmp") or name == "players-index.tsv" or ".kaputt-" in name
 
 def save(src, dest):
     tmp = dest + ".tmp"
-    count = 0
+    try:
+        _save(src, tmp, set())
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, dest)
+
+def _save(src, tmp, seen):
+    count, total = 0, 0
     with tarfile.open(tmp, "w:gz") as tar:
         def walk(dfd, rel, depth):
-            nonlocal count
+            nonlocal count, total
             for name in sorted(os.listdir(dfd)):
+                # Nur Namen, die die Wiederherstellung auch annimmt (sonst waere die ganze Sicherung unbrauchbar).
+                if not NAME_OK.fullmatch(name):
+                    continue
                 try:
                     st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
                 except OSError:
                     continue
                 if stat.S_ISDIR(st.st_mode):
-                    if depth >= 4 or (rel == "" and name in SKIP_DIRS) or name.startswith("."):
+                    if depth >= 4 or (rel == "" and name in SKIP_DIRS):
                         continue
                     sub = os.open(name, FLAGS_DIR, dir_fd=dfd)
                     try:
@@ -235,9 +253,16 @@ def save(src, dest):
                         continue
                     with os.fdopen(fd, "rb") as f:
                         fst = os.fstat(f.fileno())
-                        if not stat.S_ISREG(fst.st_mode) or fst.st_size > 64 * 1024 * 1024:
+                        # Harte Links nie (sonst: eine grosse Datei tausendfach, oder fremde Dateien von root).
+                        if not stat.S_ISREG(fst.st_mode) or fst.st_nlink != 1 or fst.st_size > 64 * 1024 * 1024:
                             continue
-                        data = f.read()
+                        if (fst.st_dev, fst.st_ino) in seen:
+                            continue
+                        seen.add((fst.st_dev, fst.st_ino))
+                        if count >= MAX_FILES or total + fst.st_size > MAX_BYTES:
+                            raise ValueError("Datenordner zu gross fuer die Sicherung (mehr als 1 GB oder 200000 Dateien)")
+                        data = f.read(fst.st_size + 1)
+                        total += len(data)
                     info = tarfile.TarInfo(rel + name)
                     info.size, info.mode, info.mtime = len(data), 0o644, int(fst.st_mtime)
                     tar.addfile(info, io.BytesIO(data))
@@ -247,8 +272,6 @@ def save(src, dest):
             walk(top, "", 0)
         finally:
             os.close(top)
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, dest)
     print(count)
 
 def safe_parts(name):
@@ -917,10 +940,19 @@ cmd_restore() {
     fi
     for nr in $(servers); do unit_active "$nr" && running+=("$nr"); done
     for nr in "${running[@]}"; do set_maintenance "$nr"; systemctl stop "$(unit "$nr")"; done
-    if [[ -d $SHARED ]]; then mv -T "$SHARED" "$old" || { rm -rf "$new"; die "Konnte den alten Stand nicht beiseitelegen."; }; fi
-    mv -T "$new" "$SHARED"
+    # Ab hier laufen die Server nicht: bei jedem Fehler den alten Stand behalten und sie wieder starten.
+    restart_running() { for nr in "${running[@]}"; do systemctl start "$(unit "$nr")"; clear_maintenance "$nr"; done; }
+    if [[ -d $SHARED ]] && ! mv -T "$SHARED" "$old"; then
+        rm -rf "$new"; restart_running
+        die "Konnte den alten Stand nicht beiseitelegen – nichts geändert, Server wieder gestartet."
+    fi
+    if ! mv -T "$new" "$SHARED"; then
+        [[ -d $old ]] && mv -T "$old" "$SHARED"
+        rm -rf "$new"; restart_running
+        die "Konnte den gesicherten Stand nicht einsetzen – alter Stand bleibt, Server wieder gestartet."
+    fi
     ensure_shared
-    for nr in "${running[@]}"; do systemctl start "$(unit "$nr")"; clear_maintenance "$nr"; done
+    restart_running
     ok "Stand vom $want wiederhergestellt ($f Dateien). Server wieder gestartet: ${running[*]:-keine}."
     [[ -d $old ]] && echo "Der bisherige Stand liegt in $old (löschen, wenn alles passt)."
     return 0
@@ -952,6 +984,7 @@ watch_backup() {
     fi
     keep=$(conf_get BACKUP_KEEP)
     [[ $keep =~ ^[0-9]{1,3}$ ]] && (( 10#$keep >= 1 )) || keep=14
+    rm -f "$BACKUP_DIR"/daten-*.tgz.tmp
     find "$BACKUP_DIR" -maxdepth 1 -name 'daten-*.tgz' -printf '%f\n' 2>/dev/null | sort -r | tail -n +$(( 10#$keep + 1 )) \
         | while read -r f; do rm -f "$BACKUP_DIR/$f"; done
     find "$STATE_DIR" -maxdepth 1 -name 'backup-failed-*' -mtime +3 -delete 2>/dev/null
@@ -1178,6 +1211,39 @@ notify_configured() {
     [[ -n $(conf_get DISCORD_WEBHOOK) || ( -n $(conf_get TELEGRAM_TOKEN) && -n $(conf_get TELEGRAM_CHAT) ) ]]
 }
 
+# Teilt Text zeilenweise in Stuecke von hoechstens $1 Zeichen und ruft fuer jedes "$2 <Stueck>" auf (Discord nimmt
+# hoechstens 2000 Zeichen, Telegram 4096 – sonst ginge die ganze Meldung verloren). Hoechstens 4 Stuecke je Lauf.
+send_chunks() {
+    local max=$1 sender=$2 text=$3 chunk="" line rc=0 n=0
+    while IFS= read -r line; do
+        line=${line:0:$max}
+        if [[ -n $chunk ]] && (( ${#chunk} + ${#line} + 1 > max )); then
+            if (( n >= 3 )); then chunk+=$'\n'"… (gekürzt – alles im Systemprotokoll: journalctl -u beamnet-watch)"; break; fi
+            "$sender" "$chunk" || rc=1
+            n=$(( n + 1 ))
+            chunk=""
+        fi
+        chunk+="${chunk:+$'\n'}$line"
+    done <<<"$text"
+    if [[ -n $chunk ]]; then "$sender" "$chunk" || rc=1; fi
+    return $rc
+}
+
+# Discord wertet Markdown aus: Spielertexte duerfen keine getarnten Links ([Text](https://…)) o. Ae. bauen.
+discord_escape() { sed -e 's/[][\\*_~`|>()#]/\\&/g' <<<"$1"; }
+
+send_discord() {
+    curl -fsS -m 10 -H "Content-Type: application/json" \
+        -d "{\"content\":\"$(json_escape "$(discord_escape "$1")")\",\"allowed_mentions\":{\"parse\":[]},\"flags\":4}" \
+        -K <(printf 'url = "%s"\n' "$NOTIFY_HOOK") >/dev/null
+}
+
+send_telegram() {
+    curl -fsS -m 10 -H "Content-Type: application/json" \
+        -d "{\"chat_id\":\"$NOTIFY_CHAT\",\"text\":\"$(json_escape "$1")\",\"disable_web_page_preview\":true}" \
+        -K <(printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$NOTIFY_TOKEN") >/dev/null
+}
+
 # Nachricht an Discord und/oder Telegram (nur die eingetragenen Wege). Telegram bekommt reinen Text (kein Markdown,
 # damit Spielernamen mit Sonderzeichen nichts kaputt machen).
 notify() {
@@ -1189,10 +1255,7 @@ notify() {
             rc=1
         else
             # Die Adresse (enthaelt das Geheimnis) ueber -K statt auf der Befehlszeile: die sieht jeder Benutzer mit ps.
-            curl -fsS -m 10 -H "Content-Type: application/json" \
-                -d "{\"content\":\"$(json_escape "$text")\",\"allowed_mentions\":{\"parse\":[]}}" \
-                -K <(printf 'url = "%s"\n' "$hook") >/dev/null \
-                || { echo "Discord-Meldung fehlgeschlagen" >&2; rc=1; }
+            NOTIFY_HOOK=$hook send_chunks 1900 send_discord "$text" || { echo "Discord-Meldung fehlgeschlagen" >&2; rc=1; }
         fi
     fi
     token=$(conf_get TELEGRAM_TOKEN)
@@ -1205,9 +1268,7 @@ notify() {
             echo "TELEGRAM_CHAT in $CONF muss eine Chat-ID (Zahl, bei Gruppen negativ) oder @Kanalname sein – nichts gesendet." >&2
             rc=1
         else
-            curl -fsS -m 10 -H "Content-Type: application/json" \
-                -d "{\"chat_id\":\"$chat\",\"text\":\"$(json_escape "${text:0:4000}")\",\"disable_web_page_preview\":true}" \
-                -K <(printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$token") >/dev/null \
+            NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$text" \
                 || { echo "Telegram-Meldung fehlgeschlagen" >&2; rc=1; }
         fi
     fi
@@ -1409,15 +1470,20 @@ with os.fdopen(fd, "rb") as f:
     st = os.fstat(f.fileno())
     if not stat.S_ISREG(st.st_mode):
         sys.exit(0)
+    recent_only = False
     try:
         ino, pos = (int(x) for x in open(state).read().split()[:2])
     except Exception:
         ino, pos = st.st_ino, st.st_size          # erster Lauf: ab dem Ende
     if ino != st.st_ino or pos > st.st_size:
-        pos = 0                                   # neue oder gekuerzte Datei
+        # Neue oder gekuerzte Datei (z. B. nach beamnet restore): von vorn lesen, aber nur Eintraege der letzten
+        # 10 Minuten melden – sonst kaeme die ganze alte Geschichte noch einmal.
+        pos, recent_only = 0, True
     f.seek(pos)
     chunk = f.read(256 * 1024)
 end = chunk.rfind(b"\n") + 1                    # nur vollstaendige Zeilen
+if end == 0 and len(chunk) == 256 * 1024:
+    end = len(chunk)                              # eine einzige Riesenzeile: ueberspringen statt ewig haengen
 with open(state + ".tmp", "w") as out:
     out.write(f"{st.st_ino} {pos + end}\n")
 os.replace(state + ".tmp", state)
@@ -1433,10 +1499,13 @@ def where(e):
 lines = []
 for raw in chunk[:end].splitlines():
     try:
-        e = json.loads(raw.decode("utf-8"))
+        e = json.loads(raw.decode("utf-8", "replace"))
     except Exception:
         continue
     if not isinstance(e, dict):
+        continue
+    at = e.get("at")
+    if recent_only and not (isinstance(at, (int, float)) and time.time() - at <= 600):
         continue
     a, by, who = e.get("action"), c(e.get("by", "System")), c(e.get("target"))
     reason = f" – {c(e['reason'], 150)}" if e.get("reason") else ""
@@ -1702,8 +1771,27 @@ def text(v):
     return re.sub(r"[\x00-\x1f\x7f]", "", str(v))[:64]
 
 out = [f"# beamnet-index 1 {int(time.time())}"]
-for path in sorted(glob.glob(os.path.join(shared, "players", "*.json"))):
-    r = load(path)
+try:
+    pdir = os.open(os.path.join(shared, "players"), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+except OSError:
+    sys.exit(1)
+
+def load_at(name):
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=pdir)
+    except OSError:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                return None
+            r = json.loads(f.read(4 * 1024 * 1024).decode("utf-8", "replace"))
+    except Exception:
+        return None
+    return r if isinstance(r, dict) else None
+
+for name in sorted(n for n in os.listdir(pdir) if n.endswith(".json")):
+    r = load_at(name)
     if not r or not isinstance(r.get("id"), str) or not ID_OK.fullmatch(r["id"]):
         continue
     month_xp = r.get("monthXp")
@@ -1801,7 +1889,7 @@ for path in glob.glob(folder + "/*.json"):
     km = r.get("weekKm") if r.get("week") == week else r.get("lastWeekKm") if r.get("lastWeek") == week else None
     km = number(km)
     if km and km > 0:
-        rows.append((km, str(r.get("name", "?"))))
+        rows.append((km, " ".join(str(r.get("name", "?")).split())[:40]))    # keine Zeilenumbrueche aus Namen
     first = number(r.get("firstSeen"))
     if first and start <= first < end:
         new += 1
@@ -2125,10 +2213,11 @@ conf_set() {
     local key=$1 value=$2 tmp
     if [[ ! -f $CONF ]]; then : >"$CONF"; chmod 600 "$CONF"; fi
     tmp=$(mktemp)
-    awk -v k="$key" -v v="$value" '
-        $0 ~ "^[[:space:]]*" k "=" { if (!done) print k "=" v; done = 1; next }
+    # Wert ueber die Umgebung statt -v: die Befehlszeile (mit Token/Webhook) kann jeder Benutzer mit ps lesen.
+    BEAMNET_CONF_VALUE=$value awk -v k="$key" '
+        $0 ~ "^[[:space:]]*" k "=" { if (!done) print k "=" ENVIRON["BEAMNET_CONF_VALUE"]; done = 1; next }
         { print }
-        END { if (!done) print k "=" v }' "$CONF" >"$tmp" && cat "$tmp" >"$CONF"
+        END { if (!done) print k "=" ENVIRON["BEAMNET_CONF_VALUE"] }' "$CONF" >"$tmp" && cat "$tmp" >"$CONF"
     rm -f "$tmp"
 }
 
