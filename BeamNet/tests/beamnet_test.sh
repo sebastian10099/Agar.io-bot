@@ -944,6 +944,36 @@ sys.exit(0 if lines and all(len(l.split("\t")) == 13 for l in lines) else 1)
 PY
 rm -f "$P"/90[1-6].json "$T/fremd.json"
 
+# --- Meldungen aus dem Spiel (watch_reports) --------------------------------------------------------------------------
+R="$T/root/shared/beamnet/reports"
+mkdir -p "$R"
+cp "$T/beamnet.conf" "$T/conf.reports"
+sed -i 's|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/abc|' "$T/beamnet.conf"
+now=$(date +%s)
+printf '{"at":%s,"port":30814,"server":"BeamNet | Server 1","by":"Petra","target":"Rambo\\nRacer","reason":"rammt @everyone ständig"}' "$now" >"$R/30814-$now-1.json"
+printf '{"at":%s,"server":"S","by":"Alt","target":"X","reason":"von vorgestern"}' "$(( now - 2 * 86400 ))" >"$R/30814-1-2.json"
+echo '{kaputt' >"$R/30814-$now-3.json"
+echo '{"at":1,"secret":"root"}' >"$T/geheim.json"; ln -s "$T/geheim.json" "$R/30814-$now-4.json"
+: >"$T/curl.log"
+out=$("$TOOL" watch 2>&1)
+# shellcheck disable=SC1111   # „…“ gehoeren zum erwarteten Text
+contains "$out" "🚩 Meldung auf BeamNet \\| Server 1: Petra meldet Rambo Racer – „rammt @everyone ständig“ \\([0-9]{2}:[0-9]{2} Uhr\\)" "reports: Meldung weitergegeben (ohne Zeilenumbruch)"
+contains "$(cat "$T/curl.log")" "Petra meldet" "reports: an Discord"
+contains "$(cat "$T/curl.log")" '"allowed_mentions":\{"parse":\[\]\}' "reports: ohne @-Erwaehnungen"
+lacks "$out" "vorgestern|kaputt|secret" "reports: alte, kaputte und Symlink-Dateien nicht gemeldet"
+[[ -z $(ls -A "$R") ]] && pass || fail "reports: alle Dateien entfernt"
+[[ -f $T/geheim.json && $(cat "$T/geheim.json") == '{"at":1,"secret":"root"}' ]] && pass || fail "reports: Symlink-Ziel unberuehrt"
+for i in $(seq 1 12); do printf '{"at":%s,"server":"S","by":"B%s","target":"T","reason":"r"}' "$now" "$i" >"$R/30814-$now-$(printf '%02d' "$i").json"; done
+out=$("$TOOL" watch 2>&1)
+[[ $(grep -c "🚩" <<<"$out") == 10 && $(ls "$R" | wc -l) == 2 ]] && pass || fail "reports: hoechstens 10 je Lauf, Rest bleibt"
+out=$("$TOOL" watch 2>&1)
+[[ $(grep -c "🚩" <<<"$out") == 2 && -z $(ls -A "$R") ]] && pass || fail "reports: Rest beim naechsten Lauf"
+rm -rf "$R"; ln -s "$T" "$R"
+lacks "$("$TOOL" watch 2>&1)" "🚩" "reports: Symlink-Ordner wird ignoriert"
+[[ -f $T/geheim.json ]] && pass || fail "reports: Symlink-Ordner – nichts geloescht"
+rm -f "$R" "$T/geheim.json"
+cp "$T/conf.reports" "$T/beamnet.conf"
+
 # --- Haengende Server (hang_check) -----------------------------------------------------------------------------------
 cp "$T/beamnet.conf" "$T/conf.hang"
 sed -i 's/^AUTO_RESTART=.*/AUTO_RESTART=1/; s|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=|' "$T/beamnet.conf"

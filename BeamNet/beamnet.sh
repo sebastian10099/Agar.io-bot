@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.24"
+VERSION="1.25"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -788,12 +788,12 @@ cmd_players() {
 # Gemeinsamer Datenordner mit Rechten fuer den Dienst-Benutzer (sonst kann das Plugin nichts speichern).
 ensure_shared() {
     local d
-    for d in "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races" "$SHARED/votes"; do
+    for d in "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races" "$SHARED/votes" "$SHARED/reports"; do
         [[ -L $d ]] && rm -f "$d"       # Symlinks hier nie folgen
         mkdir -p "$d"
     done
     chown -hR "$SERVICE_USER:$SERVICE_USER" "$SHARED"
-    safe chmoddir 775 "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races" "$SHARED/votes"
+    safe chmoddir 775 "$SHARED" "$SHARED/players" "$SHARED/servers" "$SHARED/races" "$SHARED/votes" "$SHARED/reports"
 }
 
 # Holt das Plugin aus dem Ordner neben diesem Skript oder von GitHub
@@ -1083,6 +1083,56 @@ watch_votes() {
     return 0
 }
 
+# Meldungen aus dem Spiel (/melden, BeamNetCore 1.16+): reports/*.json an Discord/Telegram weitergeben und loeschen.
+# Der Ordner gehoert beammp: nur ueber einen Ordner-Deskriptor ohne Symlinks lesen und loeschen; hoechstens 10 je Lauf
+# (der Rest beim naechsten Mal), aelter als ein Tag wird verworfen.
+watch_reports() {
+    local -n repout=$1
+    local line
+    [[ -d $SHARED/reports && ! -L $SHARED/reports && ! -L $SHARED ]] || return 0
+    command -v python3 >/dev/null || return 0
+    while IFS= read -r line; do
+        [[ -n $line ]] && repout+=("$line")
+    done < <(python3 -I - "$SHARED/reports" <<'PY' 2>/dev/null
+import json, os, re, stat, sys, time
+try:
+    dfd = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+except OSError:
+    sys.exit(0)
+
+def clean(v, n):
+    v = re.sub(r"[\x00-\x1f\x7f]", " ", str(v if v is not None else "?")).strip()
+    return (v[:n] + "…") if len(v) > n else v
+
+now, shown = time.time(), 0
+for name in sorted(os.listdir(dfd)):
+    if not name.endswith(".json") or shown >= 10:
+        continue
+    data = None
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
+        with os.fdopen(fd, "rb") as f:
+            if stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                data = json.loads(f.read(16384).decode("utf-8"))
+    except Exception:
+        data = None
+    try:
+        os.unlink(name, dir_fd=dfd)
+    except OSError:
+        pass
+    if not isinstance(data, dict):
+        continue
+    at = data.get("at")
+    if not isinstance(at, (int, float)) or now - at > 86400:
+        continue
+    shown += 1
+    print(f"🚩 Meldung auf {clean(data.get('server'), 60)}: {clean(data.get('by'), 40)} meldet "
+          f"{clean(data.get('target'), 40)} – „{clean(data.get('reason'), 200)}“ ({time.strftime('%H:%M', time.localtime(at))} Uhr)")
+PY
+)
+    return 0
+}
+
 # Taegliche Map-Rotation (ROTATE_<nr>="italy utah ..."): ab ROTATE_HOUR (Ortszeit, Standard 6) einmal am Tag zur
 # naechsten Map der Liste – nur wenn der Server leer ist (laut BeamNetCore), sonst beim naechsten Lauf erneut.
 watch_rotation() {
@@ -1212,6 +1262,7 @@ watch_run() {
     auto=$(conf_get AUTO_RESTART)
     watch_heartbeat
     watch_votes msgs
+    watch_reports msgs
     for nr in $(servers); do
         unit_exists "$nr" || continue
         if unit_active "$nr"; then state=up; else state=down; fi

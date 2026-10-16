@@ -1559,6 +1559,51 @@ do
     C.admins = savedAdmins
 end
 
+-- --- /melden (Meldung an die Admins) -----------------------------------------------------------------------------
+do
+    local savedAdmins = C.admins
+    C.admins = { "Wache" }
+    players[95] = { name = "Petra", ids = { beammp = "9501" }, vehicles = {} }
+    players[96] = { name = "Wache", ids = { beammp = "9601" }, vehicles = {} }
+    players[97] = { name = "Rambo Racer", ids = { beammp = "9701" }, vehicles = {} }
+    for pid = 95, 97 do _G[events.onPlayerJoin](pid) end
+    local dir = SHARED .. "/reports"
+    local function reportFiles()
+        local out = {}
+        for _, n in pairs(FS.ListFiles(dir) or {}) do if tostring(n):match("%.json$") then out[#out + 1] = dir .. "/" .. tostring(n):match("([^/]+)$") end end
+        table.sort(out)
+        return out
+    end
+    say(95, "/melden rambo")
+    check(chatContains("Aufruf: /melden <Name> <Grund>", 95), "/melden ohne Grund: Hilfe")
+    say(95, "/melden rambo rammt\tständig absichtlich")
+    check(chatContains("Danke – deine Meldung über Rambo Racer ist bei den Admins%.", 95), "/melden: Bestaetigung mit vollem Namen")
+    check(chatContains("Meldung von Petra über Rambo Racer: rammt ständig absichtlich", 96), "/melden: Admin auf diesem Server sofort informiert")
+    check(not chatContains("Meldung von Petra", 97), "/melden: Gemeldeter bekommt nichts mit")
+    local files = reportFiles()
+    eq(#files, 1, "/melden: eine Meldungsdatei fuer den Waechter")
+    local r = files[1] and readJson(files[1]) or {}
+    check(r.by == "Petra" and r.target == "Rambo Racer" and r.targetId == "9701" and r.port == 30814 and r.at == clock,
+        "/melden: Datei mit Melder, Gemeldetem, Server und Zeit")
+    eq(r.reason, "rammt ständig absichtlich", "/melden: Grund ohne Steuerzeichen")
+    say(95, "/melden rambo schon wieder")
+    check(chatContains("Bitte warte noch 120 s bis zur nächsten Meldung%.", 95), "/melden: hoechstens eine Meldung in 2 Minuten")
+    eq(#reportFiles(), 1, "/melden: waehrend der Sperre keine neue Datei")
+    clock = clock + 121
+    say(95, "/melden Unbekannt " .. ("ä"):rep(150))
+    files = reportFiles()
+    eq(#files, 2, "/melden: nach der Sperre wieder moeglich")
+    r = readJson(files[2]) or {}
+    check(r.target == "Unbekannt" and r.targetId == nil, "/melden: unbekannter Name wird so uebernommen")
+    eq(r.reason, ("ä"):rep(100) .. "…", "/melden: langer Grund gekuerzt, nie mitten im UTF-8-Zeichen")
+    eq(BN.clipText("abc", 10), "abc", "clipText: kurzer Text bleibt")
+    say(97, "/report Petra spams")
+    check(chatContains("Thanks", 97) or chatContains("Danke – deine Meldung über Petra", 97), "/report: englischer Befehl")
+    for _, f in ipairs(reportFiles()) do os.remove(f) end
+    for pid = 95, 97 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    C.admins = savedAdmins
+end
+
 -- --- Bestenlisten-Index (players-index.tsv vom Waechter) -------------------------------------------------------------
 do
     local indexPath = SHARED .. "/players-index.tsv"

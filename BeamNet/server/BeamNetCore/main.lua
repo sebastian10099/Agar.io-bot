@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.15"
+BN.VERSION = "1.16"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -520,8 +520,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /melden · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /report · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -564,6 +564,12 @@ local EN = {
     ["Du: %s mit %d XP – höchste Liga erreicht!"] = "You: %s with %d XP – top league reached!",
     ["Keine Serverliste verfügbar."] = "No server list available.",
     ["BeamNet-Server (wechseln im BeamMP-Launcher):"] = "BeamNet servers (switch in the BeamMP launcher):",
+    ["Aufruf: /melden <Name> <Grund> – geht an die Admins."] = "Usage: /report <name> <reason> – goes to the admins.",
+    ["Bitte warte noch %d s bis zur nächsten Meldung."] = "Please wait %d s before your next report.",
+    ["Meldung konnte nicht gespeichert werden – bitte einem Admin direkt schreiben."] =
+        "Report could not be saved – please message an admin directly.",
+    ["Meldung von %s über %s: %s"] = "Report from %s about %s: %s",
+    ["Danke – deine Meldung über %s ist bei den Admins."] = "Thanks – your report about %s has been sent to the admins.",
     ["Aufruf: /wo <Name> – zeigt, auf welchem Server jemand gerade fährt."] =
         "Usage: /where <name> – shows which server someone is driving on.",
     ["Niemand mit „%s“ gerade im Netzwerk."] = "Nobody matching \"%s\" is in the network right now.",
@@ -2031,7 +2037,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /melden · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
@@ -2463,6 +2469,57 @@ function commands.ansage(pid, arg)
     BN.announce(arg, admin.name)
     modlog({ action = "ansage", by = admin.name, reason = arg })
 end
+
+-- Text fuer Meldungen: ohne Steuerzeichen, hoechstens maxBytes Bytes, nie mitten in einem UTF-8-Zeichen getrennt.
+local function clipText(text, maxBytes)
+    text = tostring(text or ""):gsub("[%z\1-\31\127]", " ")
+    if #text <= maxBytes then return text end
+    local cut = maxBytes
+    while cut > 0 do
+        local b = text:byte(cut + 1) or 0
+        if b < 0x80 or b >= 0xC0 then break end       -- naechstes Byte beginnt ein Zeichen: hier trennen
+        cut = cut - 1
+    end
+    return text:sub(1, cut) .. "…"
+end
+BN.clipText = clipText
+
+-- /melden <Name> <Grund> (englisch /report): an die Admins – sofort im Chat an Admins auf diesem Server und ueber
+-- den Waechter (reports/*.json) an Discord/Telegram. Hoechstens eine Meldung je Spieler in BN.REPORT_COOLDOWN s.
+BN.REPORT_COOLDOWN = 120
+function commands.melden(pid, arg)
+    local s = session(pid)
+    local words = splitArgs(arg)
+    local reason = table.concat(words, " ", 2)
+    if not words[1] or reason == "" then
+        say(pid, "Aufruf: /melden <Name> <Grund> – geht an die Admins.")
+        return
+    end
+    local now = BN.now()
+    if s.lastReportAt and now - s.lastReportAt < BN.REPORT_COOLDOWN then
+        say(pid, "Bitte warte noch %d s bis zur nächsten Meldung.", BN.REPORT_COOLDOWN - (now - s.lastReportAt))
+        return
+    end
+    local target = findTarget(words[1])
+    local targetName = clipText(target and target.name or words[1], 40)
+    reason = clipText(reason, 200)
+    local report = { at = now, port = BN.server.port, server = BN.server.name, by = s.name, byId = s.id,
+                     target = targetName, targetId = target and target.id or nil, reason = reason }
+    ensureDir(C.sharedDir .. "/reports")
+    local ok = writeFileAtomic(string.format("%s/reports/%s-%d-%s.json", C.sharedDir, tostring(BN.server.port), now,
+        tostring(pid)), json.encode(report))
+    if not ok then
+        say(pid, "Meldung konnte nicht gespeichert werden – bitte einem Admin direkt schreiben.")
+        return
+    end
+    s.lastReportAt = now
+    for _, a in pairs(BN.players) do
+        if a.pid ~= pid and BN.isAdmin(a) then say(a.pid, "Meldung von %s über %s: %s", s.name, targetName, reason) end
+    end
+    modlog({ action = "melden", by = s.name, target = targetName, targetId = target and target.id or nil, reason = reason })
+    say(pid, "Danke – deine Meldung über %s ist bei den Admins.", targetName)
+end
+commands.report = commands.melden
 
 function commands.lang(pid, arg)
     local s = session(pid)
