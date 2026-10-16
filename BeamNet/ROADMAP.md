@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.66 / Plugin 1.55)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.67 / Plugin 1.56)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -36,6 +36,8 @@
       am Tag je Serie und nur für eine um mindestens 2 % bessere Bestzeit; jedes Fahrzeug zählt beim Alarm für sich
       (ein geparktes Zweitauto stört nicht). Offene Vorschläge aus 1.52/1.53 (noch in `places/<Map>.json`) werden
       nicht übernommen und müssen neu vorgeschlagen werden.
+- [x] Konvoi-Bonus `/konvoi`: zusammen fahren gibt Bonus-XP, `/konvoi` zeigt, wer in der Nähe ist; Konvoi-Kilometer
+      im Profil der Statusseite (Plugin 1.56, Werkzeug 1.67).
 - [ ] Erfolge für Aufträge und Verfolgungsjagden (nach der Werkstatt-Aufgabe 07, damit es keine Konflikte gibt).
 
 ## Die nächsten 40 Punkte (Stand Werkzeug 1.48 / Plugin 1.29)

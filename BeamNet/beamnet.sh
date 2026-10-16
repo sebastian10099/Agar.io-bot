@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.66"
+VERSION="1.67"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3919,6 +3919,7 @@ for rank, r in enumerate(ranked, 1):
         stat("Lieblingsmap", E(map_name(fav)) if fav else "–"),
         stat("Aufträge", int(num(r.get("jobsDone")))),
         stat("Tages-Serie", streak_text(r)),
+        stat("Im Konvoi", km(num(r.get("convoyKm")))),
     ])
     profile = f"""<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4015,6 +4016,7 @@ COMMANDS = [
     ("/ort vorschlag &lt;Typ&gt; &lt;Name&gt;", "Einen Ort für Aufträge vorschlagen (z. B. krankenhaus, schule) – die Admins entscheiden"),
     ("/ziel", "Wochenziel für alle: zusammen Kilometer sammeln – wer mitfährt, bekommt Bonus-XP"),
     ("/fangen", "Verfolgungsjagd: einer flüchtet, alle anderen jagen ihn – XP fürs Fangen und fürs Entkommen (/fangen mit)"),
+    ("/konvoi", "Zusammen fahren: wer nah bei anderen Spielern fährt, bekommt Bonus-XP – zeigt auch, wer in der Nähe ist"),
     ("/duell &lt;Name&gt; &lt;Strecke&gt;", "Fordere einen Spieler zum Zeitrennen heraus (annehmen: /duell ja) – der Sieger bekommt Bonus-XP"),
     ("/km", "Kilometer dieser Sitzung"), ("/rennen &lt;Strecke&gt;", "Zeitrennen starten (Strecken: /rennen)"),
     ("/serie [Name]", "Rennserie: mehrere Strecken nacheinander, die Zeiten werden addiert – eigene Bestenliste"),

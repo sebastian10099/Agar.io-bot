@@ -696,12 +696,14 @@ r["weeks"] = [{"week": "2026-W40", "km": 12.5}, {"week": "<b>", "km": 99}, {"wee
 r["week"], r["weekKm"] = wk, 7
 import time
 r["jobsDone"], r["streak"], r["streakDay"], r["bestStreak"] = 14, 3, int(time.time() // 86400), 9
+r["convoyKm"] = 42.25
 json.dump(r, open(p, "w"))
 PY
 "$TOOL" web run >/dev/null 2>&1
 prof=$(cat "$T/web/p/1.html")
 contains "$prof" "<div>Aufträge<b>14</b></div>" "Profilseite: Aufträge"
 contains "$prof" "<div>Tages-Serie<b>3 Tage \\(beste: 9\\)</b></div>" "Profilseite: Tages-Serie"
+contains "$prof" "<div>Im Konvoi<b>42[.,]2 km</b></div>" "Profilseite: Konvoi-Kilometer"
 contains "$prof" "<h2>Kilometer je Woche</h2>" "Profilseite: Wochen-Diagramm"
 contains "$prof" "<title>KW 40: 12.5 km</title>" "Profilseite: Woche mit Tooltip"
 [[ $(grep -o "<rect " <<<"$prof" | wc -l) == 3 ]] && pass || fail "Profilseite: drei Wochen (kaputter Eintrag ignoriert)"

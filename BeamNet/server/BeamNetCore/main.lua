@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.55"
+BN.VERSION = "1.56"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -131,6 +131,12 @@ local defaults = {
     alertEverySec = 1800,
     alertXp = 50,
     alertMinPlayers = 2,
+    -- Konvoi: wer mit einem anderen Spieler (Konto, andere IP) hoechstens convoyRadiusM entfernt faehrt, sammelt
+    -- Konvoi-Kilometer; je convoyKm km gemeinsam gibt es convoyXp, hoechstens convoyXpPerHour je Stunde (convoyXp 0 = aus).
+    convoyKm = 3,
+    convoyXp = 20,
+    convoyXpPerHour = 80,
+    convoyRadiusM = 150,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -522,9 +528,10 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        communityKm = true, communityXp = true, chaseJoinSec = true, chaseHeadStartSec = true,
                        chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true, chaseXpPerDay = true, chaseCooldownSec = true,
                        tipEverySec = true, tutorialXp = true, tutorialDoneXp = true, seriesXp = true,
-                       alertEverySec = true, alertXp = true, alertMinPlayers = true }
+                       alertEverySec = true, alertXp = true, alertMinPlayers = true, convoyXp = true,
+                       convoyXpPerHour = true, convoyRadiusM = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
-local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
+local MIN_VALUES = { convoyKm = 0.5, convoyRadiusM = 20, levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
                      filterStrikes = 1, filterMuteSec = 10, maxFriends = 1, friendCheckSec = 5,
                      streakMaxDays = 2, streakMinKm = 0.1, jobRadiusM = 5, jobMinDistM = 50,
@@ -612,8 +619,21 @@ local EN = {
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
     ["BeamNet-Befehle:"] = "BeamNet commands:",
-    ["Spielen: /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /aufgabe · /ziel · /vote"] =
-        "Play: /job · /race · /series · /duel <name> <track> · /chase · /daily · /goal · /vote",
+    ["Spielen: /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote"] =
+        "Play: /job · /race · /series · /duel <name> <track> · /chase · /convoy · /daily · /goal · /vote",
+    -- Konvoi
+    ["🚗🚗 Konvoi mit %s: %s zusammen gefahren – +%d XP"] = "🚗🚗 Convoy with %s: %s driven together – +%d XP",
+    ["Konvoi: Stundenlimit für Konvoi-XP erreicht – zusammen fahren macht trotzdem Spaß!"] =
+        "Convoy: hourly limit for convoy XP reached – driving together is still fun!",
+    ["Der Konvoi-Bonus ist auf diesem Server aus."] = "The convoy bonus is off on this server.",
+    ["Konvoi: fahr mit anderen Spielern (höchstens %d m Abstand) – je %s zusammen gibt es +%d XP (bis %d XP je Stunde)."] =
+        "Convoy: drive with other players (at most %d m apart) – every %s together gives +%d XP (up to %d XP per hour).",
+    ["Du: %s im Konvoi gefahren, nächster Bonus in %s."] = "You: %s driven in convoys, next bonus in %s.",
+    ["In der Nähe: %s"] = "Nearby: %s",
+    ["Gerade niemand in deiner Nähe – /server zeigt, wo was los ist."] = "Nobody near you right now – /server shows where players are.",
+    ["Tipp: /konvoi – fahrt zusammen! Wer nah beieinander fährt, bekommt Bonus-XP."] =
+        "Tip: /convoy – drive together! Driving close to each other gives bonus XP.",
+    ["Konvoi: zusammen fahren gibt Bonus-XP – /konvoi"] = "Convoy: driving together gives bonus XP – /convoy",
     -- Serien
     ["Serie %s abgebrochen – mehr als 30 Minuten. Neuer Versuch: /serie %s"] = "Series %s cancelled – more than 30 minutes. Try again: /series %s",
     ["Serie %s: Teil %d von %d geschafft (bisher %s). Weiter: %s"] = "Series %s: part %d of %d done (so far %s). Next: %s",
@@ -1139,7 +1159,8 @@ local function normalizeRecord(rec, id, name)
     rec.id = id or rec.id
     rec.name = name or rec.name
     for _, k in ipairs({ "km", "seconds", "weekKm", "topSpeedKmh", "bonusXp", "racesFinished", "recordsSet",
-                         "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm", "streak", "bestStreak", "jobsDone", "dayJobs", "weekJobs" }) do
+                         "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm", "streak", "bestStreak", "jobsDone", "dayJobs", "weekJobs",
+                         "convoyKm" }) do
         rec[k] = tonumber(rec[k]) or 0
     end
     for _, k in ipairs({ "maps", "achievements", "dayMaps", "mapKm" }) do
@@ -1353,11 +1374,12 @@ end
 
 local function flushMoved(s)
     if type(s.moved) ~= "table" then s.moved = {} return 0 end
-    local best = 0
-    for _, d in pairs(s.moved) do
-        if d > best then best = d end
+    local best, bestVid = 0, nil
+    for vid, d in pairs(s.moved) do
+        if d > best then best, bestVid = d, vid end
     end
     s.moved = {}
+    s.tickVid = bestVid
     if best > 0 then
         BN.eventGain(s, best / 1000 * C.xpPerKm)
         s.pendingKm = s.pendingKm + best / 1000
@@ -1436,6 +1458,7 @@ function BN.savePlayer(s)
     rec.racesFinished = rec.racesFinished + s.pendingRaces
     rec.recordsSet = rec.recordsSet + s.pendingRecords
     rec.jobsDone = rec.jobsDone + s.pendingJobs
+    rec.convoyKm = rec.convoyKm + (s.pendingConvoyKm or 0)
     rec.dayJobs = rec.dayJobs + s.pendingJobs
     rec.weekJobs = rec.weekJobs + s.pendingJobs
     -- Tages-Serie: der erste Tag zaehlt, Bonus-XP gibt es ab dem zweiten Tag in Folge.
@@ -1507,6 +1530,7 @@ function BN.savePlayer(s)
     s.pendingKm, s.pendingSeconds, s.pendingTop, s.pendingBonus, s.dirty = 0, 0, 0, 0, false
     s.pendingRaces, s.pendingRecords, s.unlocked, s.challengeReward = 0, 0, {}, nil
     s.pendingJobs = 0
+    s.pendingConvoyKm = 0
     s.langChanged = nil
     s.friendsChanged = nil
     s.resetTop = nil
@@ -2066,6 +2090,7 @@ BN.NEWS = {
     { "1.51", "Rennserien: /serie – mehrere Strecken nacheinander, die Zeiten zählen zusammen" },
     { "1.52", "Orte vorschlagen: /ort vorschlag krankenhaus <Name> – für neue Fahraufträge" },
     { "1.53", "Einsatz-Alarm: ab und zu ein Ziel für alle – wer zuerst da ist, bekommt Bonus-XP" },
+    { "1.56", "Konvoi: zusammen fahren gibt Bonus-XP – /konvoi" },
 }
 
 local function versionNum(v)
@@ -3040,7 +3065,7 @@ commands.einsteiger = commands.start
 function commands.hilfe(pid)
     -- In Gruppen: eine einzige lange Zeile wird im BeamNG-Chat schlecht lesbar oder abgeschnitten.
     say(pid, "BeamNet-Befehle:")
-    say(pid, "Spielen: /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /aufgabe · /ziel · /vote")
+    say(pid, "Spielen: /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote")
     say(pid, "Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|woche]")
     say(pid, "Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event")
     say(pid, "Sonst: /start · /regeln · /melden <Name> <Grund> · /lang en")
@@ -4800,6 +4825,7 @@ BN.TIPS = {
     "Tipp: /aufgabe – die Tagesaufgabe mit Bonus-XP.",
     "Tipp: /vote map <Name> – stimmt für eine andere Map ab.",
     "Tipp: /team gründen <Name> – fahrt zusammen Kilometer für euer Team.",
+    "Tipp: /konvoi – fahrt zusammen! Wer nah beieinander fährt, bekommt Bonus-XP.",
 }
 
 function BN.tipTick()
@@ -4881,6 +4907,97 @@ function BN.alertTick()
         return tr(lang, BN.ALERT_TEXT[place.type] or ALERT_DEFAULT, place.name) .. tr(lang, " – wer zuerst da ist, bekommt +%d XP (5 min)", C.alertXp)
     end)
 end
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- Konvoi: zusammen fahren lohnt sich. Zaehlt nur echte Bewegung (wie die Kilometer) des Fahrzeugs, das in diesem Takt
+-- am meisten gefahren ist, und nur neben einem anderen Konto mit anderer IP, das ebenfalls gerade faehrt.
+
+BN.convoyLimits = BN.convoyLimits or {}
+
+local function convoyPos(s)
+    local v = s.tickVid ~= nil and type(s.vehicles) == "table" and s.vehicles[s.tickVid]
+    if type(v) == "table" and tonumber(v.x) and tonumber(v.y) and tonumber(v.z) then return v end
+end
+
+function BN.convoyTick()
+    if C.convoyXp <= 0 then return end
+    local movers = {}
+    for _, s in pairs(BN.players) do
+        if not s.guest and (tonumber(s.tickMoved) or 0) > 0 then
+            -- Einzeln abgesichert: ein kaputter Datensatz trifft nur diesen Spieler, nicht den Konvoi aller.
+            local ok, pos = pcall(convoyPos, s)
+            if ok and pos then movers[#movers + 1] = { s = s, pos = pos } end
+        end
+    end
+    if #movers < 2 then return end
+    local now = BN.now()
+    for i, a in ipairs(movers) do
+        local mate
+        for j, b in ipairs(movers) do
+            if i ~= j and b.s.id ~= a.s.id and not (a.s.ip and a.s.ip == b.s.ip)
+                and dist(a.pos, b.pos) <= C.convoyRadiusM then
+                mate = b.s
+                break
+            end
+        end
+        if mate then
+            local s = a.s
+            s.convoyM = (s.convoyM or 0) + s.tickMoved
+            s.pendingConvoyKm = (s.pendingConvoyKm or 0) + s.tickMoved / 1000
+            if s.convoyM >= C.convoyKm * 1000 then
+                s.convoyM = s.convoyM - C.convoyKm * 1000
+                local lim = BN.convoyLimits[s.id]
+                if not lim or now - lim.hourStart >= 3600 then
+                    lim = { hourStart = now, xp = 0 }
+                    BN.convoyLimits[s.id] = lim
+                end
+                local xp = math.max(0, math.min(C.convoyXp, C.convoyXpPerHour - lim.xp))
+                lim.xp = lim.xp + xp
+                if xp > 0 then
+                    s.pendingBonus = s.pendingBonus + xp
+                    say(s.pid, "🚗🚗 Konvoi mit %s: %s zusammen gefahren – +%d XP", mate.name, fmtKm(C.convoyKm), xp)
+                elseif not lim.said then
+                    lim.said = true
+                    say(s.pid, "Konvoi: Stundenlimit für Konvoi-XP erreicht – zusammen fahren macht trotzdem Spaß!")
+                end
+            end
+        end
+    end
+    -- Aufraeumen, damit die Tabelle nicht waechst (Eintraege aelter als eine Stunde braucht niemand mehr).
+    BN.convoyCleanAt = BN.convoyCleanAt or now
+    if now - BN.convoyCleanAt >= 600 then
+        BN.convoyCleanAt = now
+        for k, v in pairs(BN.convoyLimits) do if now - v.hourStart >= 3600 then BN.convoyLimits[k] = nil end end
+    end
+end
+
+function commands.konvoi(pid)
+    local s = session(pid)
+    if C.convoyXp <= 0 then say(pid, "Der Konvoi-Bonus ist auf diesem Server aus.") return end
+    say(pid, "Konvoi: fahr mit anderen Spielern (höchstens %d m Abstand) – je %s zusammen gibt es +%d XP (bis %d XP je Stunde).",
+        C.convoyRadiusM, fmtKm(C.convoyKm), C.convoyXp, C.convoyXpPerHour)
+    if not s.guest then
+        local total = (tonumber(s.record.convoyKm) or 0) + (s.pendingConvoyKm or 0)
+        say(pid, "Du: %s im Konvoi gefahren, nächster Bonus in %s.", fmtKm(total),
+            fmtKm(math.max(0, C.convoyKm - (s.convoyM or 0) / 1000)))
+    end
+    -- Wer ist in der Naehe (bis 2 km)? Hilft, einander zu finden.
+    local pos, lang = currentPosition(s), BN.langOf(pid)
+    local near = {}
+    if pos then
+        for opid, o in pairs(BN.players) do
+            local op = opid ~= pid and currentPosition(o)
+            local d = op and dist(pos, op)
+            if d and d <= 2000 then near[#near + 1] = { name = o.name, d = d } end
+        end
+    end
+    table.sort(near, function(x, y) return x.d < y.d end)
+    if #near == 0 then say(pid, "Gerade niemand in deiner Nähe – /server zeigt, wo was los ist.") return end
+    local parts = {}
+    for i = 1, math.min(5, #near) do parts[i] = near[i].name .. " (" .. fmtDist(lang, near[i].d) .. ")" end
+    say(pid, "In der Nähe: %s", table.concat(parts, ", "))
+end
+commands.convoy = commands.konvoi
 
 -- ---------------------------------------------------------------------------------------------------------------------
 -- Wochenziel fuer alle: alle Fahrer zusammen communityKm km in der Kalenderwoche. Das Ziel der Woche steht in
@@ -5484,6 +5601,7 @@ local MOVING_WINDOW_SEC = 30
 
 local function tickPlayer(pid)
     local s = session(pid)
+    s.tickMoved, s.tickVid = 0, nil      -- bricht der Takt fuer diesen Spieler ab, zaehlt keine alte Strecke weiter
     local vehicles = MP.GetPlayerVehicles and MP.GetPlayerVehicles(pid) or nil
     if type(vehicles) == "table" then
         for vid in pairs(vehicles) do
@@ -5491,7 +5609,7 @@ local function tickPlayer(pid)
             if ok and type(raw) == "table" and raw.pos then BN.track(pid, vid, raw.pos, tonumber(raw.tim), raw.vel) end
         end
     end
-    flushMoved(s)
+    s.tickMoved = flushMoved(s)
     if s.lastMoveAt and BN.now() - s.lastMoveAt < MOVING_WINDOW_SEC then
         s.pendingSeconds = s.pendingSeconds + C.tickMs / 1000
         BN.eventGain(s, C.tickMs / 1000 / 60 * C.xpPerMinute)
@@ -5531,6 +5649,7 @@ function BN.tick()
     guarded("Tipps", BN.tipTick)
     guarded("Bestenliste", BN.rankTick)
     guarded("Einsatz", BN.alertTick)
+    guarded("Konvoi", BN.convoyTick)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)

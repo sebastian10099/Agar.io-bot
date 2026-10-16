@@ -110,6 +110,7 @@ check(events.onChatMessage == "BN_onChatMessage", "onChatMessage registriert")
 C.commandLimit = 100000            -- Befehls-Bremse fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.tutorialXp = 0                   -- Einsteiger-Pfad fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.alertEverySec = 0                -- Einsatz-Alarm fuer die allgemeinen Tests aus (eigener Test weiter unten)
+C.convoyXp = 0                     -- Konvoi-Bonus fuer die allgemeinen Tests aus (eigener Test weiter unten)
 check(events.BN_Tick == "BN_Tick" and timers.BN_Tick == 1000, "Takt registriert")
 eq(BN.server.name, "BeamNet | Server 1", "Servername ohne Farbcodes")
 eq(BN.server.port, 30814, "Port trotz Kommentar")
@@ -2728,6 +2729,63 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Konvoi ------------------------------------------------------------------------------------------------------
+do
+    C.convoyXp = 20
+    players[140] = { name = "KonvoiA", ids = { beammp = "14040", ip = "10.0.0.1" }, vehicles = { [1] = { pos = { 70000, 0, 0 }, tim = 0 } } }
+    players[141] = { name = "KonvoiB", ids = { beammp = "14141", ip = "10.0.0.2" }, vehicles = { [1] = { pos = { 70050, 0, 0 }, tim = 0 } } }
+    players[142] = { name = "Zweitkonto", ids = { beammp = "14242", ip = "10.0.0.1" }, vehicles = { [1] = { pos = { 90000, 0, 0 }, tim = 0 } } }
+    players[143] = { name = "Allein", ids = { beammp = "14343", ip = "10.0.0.3" }, vehicles = { [1] = { pos = { 110000, 0, 0 }, tim = 0 } } }
+    for pid = 140, 143 do _G[events.onPlayerJoin](pid) end
+    tick(1)
+    local b = {}
+    for pid = 140, 143 do b[pid] = BN.players[pid].pendingBonus end
+    chatLog = {}
+    -- A und B fahren nebeneinander 3 km (150 s mit 20 m/s); Allein faehrt genauso, aber weit weg.
+    for _ = 1, 151 do move(140, 1, 20); move(141, 1, 20); move(143, 1, 20); tick(1) end
+    check(chatContains("🚗🚗 Konvoi mit KonvoiB: 3%.0 km zusammen gefahren – %+20 XP", 140), "Konvoi: Bonus fuer A")
+    check(chatContains("🚗🚗 Konvoi mit KonvoiA", 141), "Konvoi: Bonus fuer B")
+    check(not chatContains("Konvoi mit", 143), "Konvoi: allein fahren zaehlt nicht")
+    -- Zweitkonto mit derselben IP neben A: zaehlt nicht.
+    players[142].vehicles[1].pos = { players[140].vehicles[1].pos[1] + 20, 0, 0 }
+    players[141].vehicles[1].pos = { 150000, 0, 0 }
+    tick(1)
+    chatLog = {}
+    BN.players[140].convoyM, BN.players[142].convoyM = 0, 0
+    for _ = 1, 151 do move(140, 1, 20); move(142, 1, 20); tick(1) end
+    check(not chatContains("Konvoi mit", 140) and not chatContains("Konvoi mit", 142), "Konvoi: nicht mit Zweitkonto (gleiche IP)")
+    -- Bricht der Takt fuer einen Spieler ab, zaehlt seine Strecke aus dem letzten Takt nicht weiter.
+    BN.players[142].tickMoved, BN.players[142].tickVid = 500, 1
+    BN.players[142].vehicles = "kaputt"
+    tick(1)
+    check(BN.players[142].tickMoved == 0, "Konvoi: alte Strecke nach Fehler im Takt verworfen")
+    BN.players[142].vehicles = {}
+    -- Stundenlimit: hoechstens convoyXpPerHour.
+    players[141].vehicles[1].pos = { players[140].vehicles[1].pos[1] + 30, 0, 0 }
+    tick(1)
+    chatLog = {}
+    for _ = 1, 151 * 5 do move(140, 1, 20); move(141, 1, 20); tick(1) end
+    check(chatContains("Stundenlimit für Konvoi%-XP erreicht", 140), "Konvoi: Stundenlimit")
+    local gainA = BN.players[140].pendingBonus - b[140]
+    check(gainA <= C.convoyXpPerHour + 1e-9, "Konvoi: hoechstens convoyXpPerHour (" .. tostring(gainA) .. ")")
+    -- /konvoi zeigt Stand und wer in der Naehe ist.
+    chatLog = {}
+    say(140, "/konvoi")
+    check(chatContains("im Konvoi gefahren, nächster Bonus in", 140) and chatContains("In der Nähe: KonvoiB %(30 m%)", 140), "Konvoi: /konvoi")
+    say(143, "/konvoi")
+    check(chatContains("Gerade niemand in deiner Nähe", 143), "Konvoi: niemand in der Naehe")
+    -- Gespeichert: Konvoi-Kilometer in der Spielerdatei.
+    BN.savePlayer(BN.players[140])
+    check((readJson(SHARED .. "/players/14040.json").convoyKm or 0) >= 15, "Konvoi: Kilometer gespeichert")
+    for pid = 140, 143 do
+        BN.players[pid].pendingBonus = 0
+        _G[events.onPlayerDisconnect](pid); players[pid] = nil
+    end
+    for _, id in ipairs({ "14040", "14141", "14242", "14343" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+    BN.convoyLimits = {}
+    C.convoyXp = 0
+end
+
 -- --- Einsatz-Alarm ------------------------------------------------------------------------------------------------
 do
     os.execute('rm -rf "' .. SHARED .. '/places"')
@@ -3064,8 +3122,8 @@ do
     chatLog = {}
     _G[events.onPlayerJoin](117)
     check(chatContains("✨ Neu seit deinem letzten Besuch:", 117), "Neuheiten: fuer Spieler von frueher")
-    check(chatContains("^  Einsatz%-Alarm", 117) and chatContains("^  Orte vorschlagen", 117) and chatContains("^  Rennserien: /serie", 117), "Neuheiten: die drei neuesten")
-    check(not chatContains("Duell: /duell", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
+    check(chatContains("^  Konvoi", 117) and chatContains("^  Einsatz%-Alarm", 117) and chatContains("^  Orte vorschlagen", 117), "Neuheiten: die drei neuesten")
+    check(not chatContains("Rennserien: /serie", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
     _G[events.onPlayerDisconnect](117)
     eq(readJson(SHARED .. "/players/11717.json").seenVersion, BN.VERSION, "Neuheiten: Version gemerkt")
     chatLog = {}
@@ -3076,7 +3134,7 @@ do
     local r = readJson(SHARED .. "/players/11717.json"); r.seenVersion = "1.43"; writeJson(SHARED .. "/players/11717.json", r)
     chatLog = {}
     _G[events.onPlayerJoin](117)
-    check(chatContains("^  Einsatz", 117) and chatContains("^  Rennserien", 117) and chatContains("^  Orte vorschlagen", 117) and not chatContains("Verfolgungsjagd", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
+    check(chatContains("^  Konvoi", 117) and chatContains("^  Einsatz", 117) and chatContains("^  Orte vorschlagen", 117) and not chatContains("Verfolgungsjagd", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
     _G[events.onPlayerDisconnect](117); players[117] = nil
     -- Ganz neue Spieler bekommen die Begruessung statt Neuheiten.
     players[118] = { name = "Ganzneu", ids = { beammp = "11818" }, vehicles = {} }
