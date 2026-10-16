@@ -5,6 +5,7 @@ import threading
 import time
 from typing import Any, Callable, Optional
 
+from . import settings
 from .paper import Paper
 from .store import Store
 from .strategy import evaluate
@@ -28,7 +29,11 @@ class Engine:
         self.last_prices: dict[str, float] = {}
         self.poll_count = 0
         self.errors = 0
+        self.started_at = clock()
+        self.persist: Optional[Callable[[dict[str, Any]], None]] = None
         self._stop = threading.Event()
+        self._wake = threading.Event()
+        self._lock = threading.Lock()
 
     # --- one cycle ------------------------------------------------------
     def poll_once(self) -> dict[str, int]:
@@ -97,11 +102,62 @@ class Engine:
             except Exception as error:  # noqa: BLE001 - keep the loop alive
                 self.errors += 1
                 self.store.log("error", f"{type(error).__name__}: {error}")
-            self._stop.wait(max(1.0, interval - (time.time() - started)))
+            interval = float(self.cfg["poll_seconds"])
+            self._wake.wait(max(1.0, interval - (time.time() - started)))
+            self._wake.clear()
         self.store.log("info", "engine stopped")
 
     def stop(self) -> None:
         self._stop.set()
+        self._wake.set()
+
+    # --- controls (called from the dashboard thread) --------------------
+    def poll_now(self) -> None:
+        self._wake.set()
+
+    def set_paused(self, paused: bool) -> None:
+        self.paused = bool(paused)
+        self.store.log("info", "dashboard: " + ("pausiert" if paused else "fortgesetzt"))
+
+    def apply_config(self, patch: dict[str, Any]) -> dict[str, Any]:
+        """Validate, apply live, persist. Returns {'ok', 'errors', 'config'}."""
+        clean, errors = settings.validate(patch)
+        if not errors:
+            cross = settings.apply(self.cfg, clean)
+            if cross:
+                errors.update(cross)
+        if errors:
+            return {"ok": False, "errors": errors, "config": settings.flat(self.cfg)}
+        if clean:
+            if self.persist:
+                try:
+                    self.persist(clean)
+                except OSError as error:
+                    self.store.log("error", f"config not saved: {error}")
+            self.store.log("info", "dashboard: " + ", ".join(f"{k}={v}" for k, v in clean.items()))
+            self._wake.set()
+        return {"ok": True, "errors": {}, "config": settings.flat(self.cfg)}
+
+    def close_position(self, pid: int) -> dict[str, Any]:
+        with self._lock:
+            pos = self.store.position(pid)
+            if pos is None or pos["status"] != "open":
+                return {"ok": False, "error": "Position ist nicht offen"}
+            price = self.dex.price(pos["chain"], pos["pair"]) or self.last_prices.get(pos["pair"])
+            if not price:
+                return {"ok": False, "error": "Kein Kurs verfügbar"}
+            self.paper.close_manually(pos, price, self.clock())
+            self.last_prices[pos["pair"]] = price
+            return {"ok": True, "position": self.store.position(pid)}
+
+    def reset(self, what: str) -> dict[str, Any]:
+        if what not in ("positions", "all"):
+            return {"ok": False, "error": "what muss 'positions' oder 'all' sein"}
+        with self._lock:
+            self.store.reset(what)
+            self.last_prices.clear()
+            self.store.log("info", "dashboard: reset " + what)
+        return {"ok": True}
 
     # --- state for the dashboard ---------------------------------------
     def state(self) -> dict[str, Any]:
@@ -119,6 +175,8 @@ class Engine:
             })
         return {
             "mode": self.cfg["mode"], "paused": self.paused, "now": now,
+            "started_at": self.started_at, "poll_seconds": self.cfg["poll_seconds"],
+            "chains": self.cfg["chains"],
             "last_poll": self.last_poll, "polls": self.poll_count, "errors": self.errors,
             "initial": self.paper.initial, "bankroll": round(self.paper.bankroll(), 2),
             "cash": round(self.paper.cash(), 2), "exposure": round(self.paper.exposure(), 2),
@@ -127,6 +185,5 @@ class Engine:
             "stats": self.store.stats(), "open_positions": open_positions,
             "closed": self.store.closed_positions(50), "candidates": self.store.candidates(80),
             "edge": self.store.edge_report(), "events": self.store.events(60),
-            "config": {k: self.cfg[k] for k in ("filters", "exits", "scoring", "risk_per_trade_pct",
-                                                "max_open_positions", "daily_loss_limit_pct")},
+            "config": settings.flat(self.cfg),
         }

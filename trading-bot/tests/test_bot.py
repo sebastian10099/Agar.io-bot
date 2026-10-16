@@ -185,7 +185,9 @@ class ServerTests(unittest.TestCase):
                 self.assertTrue(json.loads(c.getresponse().read())["paused"])
                 self.assertTrue(engine.paused)
             finally:
+                c.close()
                 server.shutdown()
+                server.server_close()
                 store.close()
 
 

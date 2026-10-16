@@ -19,9 +19,17 @@ class Paper:
         self.store = store
         self.cfg = cfg
         self.initial = float(cfg["bankroll_usd"])
-        pc = cfg.get("paper", {})
-        self.fee_pct = float(pc.get("fee_pct", 1.0))
-        self.slippage_pct = float(pc.get("slippage_pct", 2.0))
+
+    @property
+    def fee_pct(self) -> float:
+        return float(self.cfg.get("paper", {}).get("fee_pct", 1.0))
+
+    @property
+    def slippage_pct(self) -> float:
+        return float(self.cfg.get("paper", {}).get("slippage_pct", 2.0))
+
+    def close_manually(self, pos: dict[str, Any], price: float, now: Optional[float] = None) -> None:
+        self._sell(pos, pos["remaining_frac"], price, "manual", now or time.time())
 
     # --- accounting -----------------------------------------------------
     def bankroll(self) -> float:

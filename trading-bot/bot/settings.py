@@ -1,0 +1,210 @@
+"""Single source of truth for everything the control page may change.
+
+The schema drives both validation on the server and the form in the browser,
+so a new parameter is one entry here and nothing else."""
+from __future__ import annotations
+
+import copy
+from typing import Any, Optional
+
+CHAINS = ["solana", "ethereum", "base", "bsc"]
+
+# path, type, min, max, step, label, help, group
+SCHEMA: list[dict[str, Any]] = [
+    {"path": "poll_seconds", "type": "int", "min": 5, "max": 300, "step": 1,
+     "label": "Abfrage-Intervall", "unit": "s", "group": "Allgemein",
+     "help": "Wie oft neue Tokens geholt und offene Positionen geprüft werden."},
+    {"path": "chains", "type": "chains", "label": "Chains", "group": "Allgemein",
+     "help": "Welche Netzwerke beobachtet werden. RugCheck gibt es nur für Solana."},
+
+    {"path": "risk_per_trade_pct", "type": "float", "min": 0.1, "max": 10, "step": 0.1,
+     "label": "Risiko pro Trade", "unit": "%", "group": "Risiko",
+     "help": "Anteil der Bankroll, der bei einem Stop-Loss verloren geht. Positionsgröße = Risiko ÷ Stop-Abstand."},
+    {"path": "max_open_positions", "type": "int", "min": 1, "max": 50, "step": 1,
+     "label": "Max. offene Positionen", "group": "Risiko"},
+    {"path": "daily_loss_limit_pct", "type": "float", "min": 0.5, "max": 50, "step": 0.5,
+     "label": "Tages-Verlustlimit", "unit": "%", "group": "Risiko",
+     "help": "Ab diesem realisierten Tagesverlust werden keine neuen Positionen eröffnet."},
+    {"path": "paper.fee_pct", "type": "float", "min": 0, "max": 10, "step": 0.1,
+     "label": "Gebühr pro Fill", "unit": "%", "group": "Risiko",
+     "help": "Wird bei jedem Kauf und Verkauf abgezogen. Pessimistisch halten."},
+    {"path": "paper.slippage_pct", "type": "float", "min": 0, "max": 20, "step": 0.1,
+     "label": "Slippage pro Fill", "unit": "%", "group": "Risiko"},
+
+    {"path": "filters.min_age_minutes", "type": "float", "min": 0, "max": 1440, "step": 0.5,
+     "label": "Mindestalter", "unit": "min", "group": "Filter"},
+    {"path": "filters.max_age_minutes", "type": "float", "min": 1, "max": 10080, "step": 1,
+     "label": "Höchstalter", "unit": "min", "group": "Filter"},
+    {"path": "filters.min_liquidity_usd", "type": "float", "min": 0, "max": 1e9, "step": 1000,
+     "label": "Min. Liquidität", "unit": "$", "group": "Filter"},
+    {"path": "filters.max_liquidity_usd", "type": "float", "min": 1000, "max": 1e10, "step": 10000,
+     "label": "Max. Liquidität", "unit": "$", "group": "Filter"},
+    {"path": "filters.min_volume_m5_usd", "type": "float", "min": 0, "max": 1e9, "step": 500,
+     "label": "Min. Volumen 5 min", "unit": "$", "group": "Filter"},
+    {"path": "filters.min_buys_m5", "type": "int", "min": 0, "max": 100000, "step": 1,
+     "label": "Min. Käufe 5 min", "group": "Filter"},
+    {"path": "filters.min_buy_sell_ratio_m5", "type": "float", "min": 0, "max": 100, "step": 0.1,
+     "label": "Min. Käufe/Verkäufe", "group": "Filter"},
+    {"path": "filters.min_price_change_m5_pct", "type": "float", "min": -100, "max": 10000, "step": 1,
+     "label": "Min. Kursänderung 5 min", "unit": "%", "group": "Filter"},
+    {"path": "filters.max_price_change_m5_pct", "type": "float", "min": -100, "max": 100000, "step": 5,
+     "label": "Max. Kursänderung 5 min", "unit": "%", "group": "Filter",
+     "help": "Darüber gilt der Token als parabolisch – zu spät."},
+    {"path": "filters.max_fdv_usd", "type": "float", "min": 0, "max": 1e12, "step": 100000,
+     "label": "Max. FDV", "unit": "$", "group": "Filter"},
+    {"path": "filters.require_rugcheck", "type": "bool",
+     "label": "RugCheck verlangen", "group": "Filter",
+     "help": "Solana-Tokens ohne RugCheck-Ergebnis werden nicht gekauft."},
+    {"path": "filters.allow_rugcheck_unknown", "type": "bool",
+     "label": "RugCheck-Ausfall tolerieren", "group": "Filter",
+     "help": "Wenn an: Ist RugCheck nicht erreichbar, zählt das nicht als Ablehnung."},
+    {"path": "filters.max_rugcheck_score", "type": "float", "min": 0, "max": 100000, "step": 100,
+     "label": "Max. RugCheck-Score", "group": "Filter"},
+
+    {"path": "scoring.min_score", "type": "float", "min": 0, "max": 100, "step": 1,
+     "label": "Min. Score für Kauf", "group": "Strategie",
+     "help": "0–100. Darunter wird nur beobachtet (watch)."},
+
+    {"path": "exits.stop_loss_pct", "type": "float", "min": -95, "max": -1, "step": 1,
+     "label": "Stop-Loss", "unit": "%", "group": "Exits"},
+    {"path": "exits.take_profit_ladder", "type": "ladder",
+     "label": "Gewinnleiter", "group": "Exits",
+     "help": "Stufen als „Gewinn%: Anteil“, z. B. 50: 0.5, 100: 0.25 – bei +50 % die Hälfte verkaufen, bei +100 % ein weiteres Viertel."},
+    {"path": "exits.trailing_stop_pct", "type": "float", "min": 1, "max": 95, "step": 1,
+     "label": "Trailing-Stop", "unit": "%", "group": "Exits",
+     "help": "Abstand vom Hoch. Wird erst scharf, wenn das Hoch so weit im Plus lag."},
+    {"path": "exits.time_stop_minutes", "type": "float", "min": 1, "max": 10080, "step": 1,
+     "label": "Zeit-Stop", "unit": "min", "group": "Exits"},
+]
+
+GROUPS = ["Allgemein", "Risiko", "Filter", "Strategie", "Exits"]
+
+
+def get_path(cfg: dict[str, Any], path: str) -> Any:
+    node: Any = cfg
+    for key in path.split("."):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key)
+    return node
+
+
+def set_path(cfg: dict[str, Any], path: str, value: Any) -> None:
+    keys = path.split(".")
+    node = cfg
+    for key in keys[:-1]:
+        node = node.setdefault(key, {})
+    node[keys[-1]] = value
+
+
+def parse_ladder(value: Any) -> list[list[float]]:
+    """Accepts [[50, 0.5], ...] or the text form '50: 0.5, 100: 0.25'."""
+    if isinstance(value, str):
+        pairs = []
+        for chunk in value.replace(";", ",").split(","):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            if ":" not in chunk:
+                raise ValueError(f"Stufe „{chunk}“ braucht die Form Gewinn%: Anteil")
+            a, b = chunk.split(":", 1)
+            pairs.append([float(a), float(b)])
+        value = pairs
+    if not isinstance(value, list):
+        raise ValueError("Gewinnleiter muss eine Liste sein")
+    out: list[list[float]] = []
+    for item in value:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise ValueError("Jede Stufe ist ein Paar aus Gewinn% und Anteil")
+        pct, frac = float(item[0]), float(item[1])
+        if pct <= 0:
+            raise ValueError("Gewinn% jeder Stufe muss größer als 0 sein")
+        if not 0 < frac <= 1:
+            raise ValueError("Anteil jeder Stufe muss zwischen 0 und 1 liegen")
+        out.append([pct, frac])
+    out.sort(key=lambda p: p[0])
+    if sum(f for _, f in out) > 1.0 + 1e-9:
+        raise ValueError("Die Anteile der Gewinnleiter dürfen zusammen 1 nicht übersteigen")
+    return out
+
+
+def validate(patch: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
+    """Coerce and range-check a flat {path: value} patch. Returns (clean, errors)."""
+    by_path = {e["path"]: e for e in SCHEMA}
+    clean: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    for path, raw in patch.items():
+        entry = by_path.get(path)
+        if entry is None:
+            errors[path] = "unbekannter Parameter"
+            continue
+        kind = entry["type"]
+        try:
+            if kind in ("int", "float"):
+                if isinstance(raw, str):
+                    raw = raw.replace(",", ".").strip()
+                value = float(raw)
+                if value != value:  # NaN
+                    raise ValueError("keine Zahl")
+                if kind == "int":
+                    if abs(value - round(value)) > 1e-9:
+                        raise ValueError("muss eine ganze Zahl sein")
+                    value = int(round(value))
+                if value < entry["min"] or value > entry["max"]:
+                    raise ValueError(f"muss zwischen {entry['min']:g} und {entry['max']:g} liegen")
+                clean[path] = value
+            elif kind == "bool":
+                if isinstance(raw, str):
+                    raw = raw.lower() in ("1", "true", "on", "yes", "ja")
+                clean[path] = bool(raw)
+            elif kind == "chains":
+                items = raw if isinstance(raw, list) else str(raw).split(",")
+                chains = [str(c).strip().lower() for c in items if str(c).strip()]
+                bad = [c for c in chains if c not in CHAINS]
+                if bad:
+                    raise ValueError("unbekannt: " + ", ".join(bad) + ". Erlaubt: " + ", ".join(CHAINS))
+                if not chains:
+                    raise ValueError("mindestens eine Chain")
+                clean[path] = sorted(set(chains), key=chains.index)
+            elif kind == "ladder":
+                clean[path] = parse_ladder(raw)
+            else:
+                errors[path] = "unbekannter Typ"
+        except (TypeError, ValueError) as error:
+            errors[path] = str(error) or "ungültig"
+    return clean, errors
+
+
+def cross_check(cfg: dict[str, Any]) -> dict[str, str]:
+    """Rules that span two fields, checked on the merged result."""
+    errors: dict[str, str] = {}
+    f = cfg["filters"]
+    if f["min_age_minutes"] >= f["max_age_minutes"]:
+        errors["filters.max_age_minutes"] = "muss größer als das Mindestalter sein"
+    if f["min_liquidity_usd"] >= f["max_liquidity_usd"]:
+        errors["filters.max_liquidity_usd"] = "muss größer als die Mindestliquidität sein"
+    if f["min_price_change_m5_pct"] >= f["max_price_change_m5_pct"]:
+        errors["filters.max_price_change_m5_pct"] = "muss größer als das Minimum sein"
+    return errors
+
+
+def apply(cfg: dict[str, Any], clean: dict[str, Any]) -> Optional[dict[str, str]]:
+    """Merge a validated patch into cfg in place (so every holder of the dict
+    sees it). Returns cross-check errors and leaves cfg untouched if any."""
+    trial = copy.deepcopy(cfg)
+    for path, value in clean.items():
+        set_path(trial, path, value)
+    errors = cross_check(trial)
+    if errors:
+        return errors
+    for path, value in clean.items():
+        set_path(cfg, path, value)
+    return None
+
+
+def flat(cfg: dict[str, Any]) -> dict[str, Any]:
+    return {e["path"]: get_path(cfg, e["path"]) for e in SCHEMA}
+
+
+def schema_for_client() -> dict[str, Any]:
+    return {"groups": GROUPS, "fields": SCHEMA, "chains": CHAINS}

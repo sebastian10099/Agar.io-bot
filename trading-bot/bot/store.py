@@ -200,6 +200,23 @@ class Store:
         return self._rows("SELECT * FROM positions WHERE status='closed' "
                           "ORDER BY closed_at DESC LIMIT ?", (limit,))
 
+    def position(self, pid: int) -> Optional[dict[str, Any]]:
+        row = self._one("SELECT * FROM positions WHERE id=?", (pid,))
+        if row:
+            row["ladder_done"] = json.loads(row["ladder_done"] or "[]")
+        return row
+
+    def reset(self, what: str) -> None:
+        """'positions' wipes the paper book, 'all' also wipes candidates and outcomes
+        (the edge data). Events are always kept so the reset itself is on record."""
+        with self._lock:
+            self._conn.execute("DELETE FROM trades")
+            self._conn.execute("DELETE FROM positions")
+            if what == "all":
+                self._conn.execute("DELETE FROM outcomes")
+                self._conn.execute("DELETE FROM candidates")
+            self._conn.commit()
+
     def has_open_for(self, chain: str, token: str) -> bool:
         return self._one("SELECT 1 FROM positions WHERE status='open' AND chain=? AND token=?",
                          (chain, token)) is not None

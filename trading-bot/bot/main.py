@@ -39,6 +39,8 @@ def load_config(home: Path) -> dict[str, Any]:
     if user.is_file():
         override = json.loads(user.read_text())
         for key, value in override.items():
+            if key.startswith("_"):
+                continue
             if isinstance(value, dict) and isinstance(cfg.get(key), dict):
                 cfg[key].update(value)
             else:
@@ -47,6 +49,22 @@ def load_config(home: Path) -> dict[str, Any]:
         home.mkdir(parents=True, exist_ok=True)
         user.write_text(json.dumps({"_hint": "Werte hier ueberschreiben, Rest kommt aus bot/config.json"}, indent=2))
     return cfg
+
+
+def persist_to(home: Path):
+    """Write validated changes into the user's config.json, nested like the
+    bundled file, so the next start picks them up."""
+    from .settings import set_path
+
+    def save(clean: dict[str, Any]) -> None:
+        user = home / "config.json"
+        current = json.loads(user.read_text()) if user.is_file() else {}
+        current.pop("_hint", None)
+        for path, value in clean.items():
+            set_path(current, path, value)
+        user.write_text(json.dumps(current, indent=2, ensure_ascii=False) + "\n")
+
+    return save
 
 
 def build(cfg: dict[str, Any], home: Path, demo: bool) -> Engine:
@@ -78,6 +96,7 @@ def main(argv: list[str] = None) -> int:
         return 2
 
     engine = build(cfg, home, args.demo)
+    engine.persist = persist_to(home)
 
     if args.once:
         counts = engine.poll_once()

@@ -3,88 +3,262 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>New-Token Bot</title>
+<meta name="color-scheme" content="light dark">
+<title>New-Token Bot · Steuerung</title>
 <style>
-  :root { --bg:#0e1117; --panel:#161b24; --line:#262d3a; --fg:#e6e9ef; --dim:#8b95a7;
-          --green:#3ddc84; --red:#ff5c6c; --amber:#ffb454; --blue:#6ea8fe; }
+  :root {
+    --bg:#f5f6f8; --panel:#ffffff; --line:#e3e6eb; --fg:#15181d; --dim:#6b7280; --muted:#f0f2f5;
+    --green:#15803d; --red:#dc2626; --amber:#b45309; --blue:#2563eb; --focus:#93c5fd;
+    --green-bg:#ecfdf3; --red-bg:#fef2f2; --amber-bg:#fffbeb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0e1117; --panel:#161b24; --line:#262d3a; --fg:#e6e9ef; --dim:#8b95a7; --muted:#1d2330;
+      --green:#3ddc84; --red:#ff5c6c; --amber:#ffb454; --blue:#6ea8fe; --focus:#3b82f6;
+      --green-bg:#11261a; --red-bg:#2a1518; --amber-bg:#2a2112;
+    }
+  }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg);
-         font:14px/1.45 -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif; }
-  header { display:flex; flex-wrap:wrap; gap:16px; align-items:center; padding:14px 20px;
-           border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; }
-  header h1 { font-size:16px; margin:0 12px 0 0; }
-  .pill { padding:3px 10px; border-radius:999px; font-size:12px; border:1px solid var(--line); }
-  .pill.paper { color:var(--blue); border-color:var(--blue); }
-  .pill.paused { color:var(--amber); border-color:var(--amber); }
-  .kpi { display:flex; flex-direction:column; min-width:96px; }
-  .kpi span { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
-  .kpi b { font-size:16px; font-variant-numeric:tabular-nums; }
-  button { background:transparent; color:var(--fg); border:1px solid var(--line); border-radius:8px;
-           padding:7px 12px; cursor:pointer; margin-left:auto; }
-  button:hover { border-color:var(--fg); }
-  main { padding:16px 20px 40px; display:grid; gap:16px; grid-template-columns:1fr; }
-  @media (min-width:1100px) { main { grid-template-columns:1fr 1fr; } .wide { grid-column:1 / -1; } }
-  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
-  h2 { font-size:13px; margin:0 0 10px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
-  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
-  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
-  th { color:var(--dim); font-weight:500; font-size:12px; }
-  td.num, th.num { text-align:right; }
-  .pos { color:var(--green); } .neg { color:var(--red); }
-  .d-buy { color:var(--green); } .d-watch { color:var(--amber); } .d-skip { color:var(--dim); }
-  .reasons { color:var(--dim); font-size:12px; }
-  .empty { color:var(--dim); padding:8px 0; }
-  .log { font:12px/1.5 ui-monospace, Menlo, monospace; max-height:280px; overflow:auto; white-space:pre-wrap; }
-  .log .error { color:var(--red); } .log .trade { color:var(--blue); }
+  html, body { margin:0; background:var(--bg); color:var(--fg);
+    font:14px/1.45 -apple-system, "SF Pro Text", "Helvetica Neue", Segoe UI, sans-serif; }
+  button, input, select, textarea { font:inherit; color:inherit; }
   a { color:var(--blue); text-decoration:none; }
-  .note { color:var(--dim); font-size:12px; margin-top:8px; }
+  [hidden] { display:none !important; }
+
+  header { position:sticky; top:0; z-index:5; background:var(--panel); border-bottom:1px solid var(--line); }
+  .bar { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; padding:12px 20px; }
+  .bar h1 { font-size:15px; margin:0; display:flex; align-items:center; gap:10px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--dim); display:inline-block; }
+  .dot.ok { background:var(--green); box-shadow:0 0 0 3px color-mix(in srgb, var(--green) 25%, transparent); }
+  .dot.warn { background:var(--amber); } .dot.bad { background:var(--red); }
+  .pill { padding:2px 9px; border-radius:999px; font-size:12px; border:1px solid var(--line); color:var(--dim); }
+  .pill.paper { color:var(--blue); border-color:var(--blue); }
+  .pill.paused { color:var(--amber); border-color:var(--amber); background:var(--amber-bg); }
+  .kpis { display:flex; flex-wrap:wrap; gap:6px 22px; }
+  .kpi { display:flex; flex-direction:column; min-width:88px; }
+  .kpi span { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  .kpi b { font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .actions { margin-left:auto; display:flex; gap:8px; }
+  .btn { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 12px;
+         cursor:pointer; transition:border-color .12s, background .12s; white-space:nowrap; }
+  .btn:hover:not(:disabled) { border-color:var(--fg); }
+  .btn:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .btn.primary { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .btn.primary:hover:not(:disabled) { filter:brightness(1.08); }
+  .btn.danger { color:var(--red); border-color:color-mix(in srgb, var(--red) 40%, var(--line)); }
+  .btn.sm { padding:4px 9px; font-size:12px; border-radius:6px; }
+
+  nav { display:flex; gap:2px; padding:0 20px; border-top:1px solid var(--line); overflow-x:auto; }
+  nav button { background:none; border:0; border-bottom:2px solid transparent; padding:10px 12px;
+               color:var(--dim); cursor:pointer; }
+  nav button[aria-selected="true"] { color:var(--fg); border-bottom-color:var(--blue); }
+  nav button .n { font-size:11px; color:var(--dim); margin-left:4px; }
+
+  main { padding:16px 20px 48px; max-width:1400px; margin:0 auto; }
+  .grid { display:grid; gap:16px; grid-template-columns:1fr; }
+  @media (min-width:1080px) { .grid.two { grid-template-columns:1fr 1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  section > h2 { font-size:12px; margin:0 0 10px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em;
+                 display:flex; align-items:center; gap:10px; }
+  section > h2 .spacer { flex:1; }
+  .note { color:var(--dim); font-size:12px; margin:8px 0 0; }
+  .empty { color:var(--dim); padding:10px 0; }
+
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:500; font-size:12px; position:sticky; top:0; background:var(--panel); }
+  tr:last-child td { border-bottom:0; }
+  td.num, th.num { text-align:right; }
+  .scroll { max-height:420px; overflow:auto; }
+  .pos { color:var(--green); } .neg { color:var(--red); }
+  .d-buy { color:var(--green); font-weight:600; } .d-watch { color:var(--amber); } .d-skip { color:var(--dim); }
+  .reasons { color:var(--dim); font-size:12px; }
+  .bar-pnl { height:4px; background:var(--muted); border-radius:2px; overflow:hidden; margin-top:4px; }
+  .bar-pnl i { display:block; height:100%; }
+
+  .log { font:12px/1.55 ui-monospace, Menlo, monospace; max-height:60vh; overflow:auto; white-space:pre-wrap; }
+  .log div { padding:1px 0; } .log .error { color:var(--red); } .log .trade { color:var(--blue); }
+  .log .t { color:var(--dim); margin-right:8px; }
+
+  /* control form */
+  .groups { display:grid; gap:16px; grid-template-columns:1fr; }
+  @media (min-width:1080px) { .groups { grid-template-columns:1fr 1fr; } }
+  fieldset { border:1px solid var(--line); border-radius:10px; padding:10px 14px 6px; margin:0; min-width:0; }
+  legend { padding:0 6px; color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+  .field { display:grid; grid-template-columns:minmax(0,1fr) 180px; gap:4px 12px; align-items:center;
+           padding:7px 0; border-bottom:1px solid var(--line); }
+  .field:last-child { border-bottom:0; }
+  .field label { display:block; }
+  .field small { display:block; color:var(--dim); font-size:12px; }
+  .field .ctl { display:flex; align-items:center; gap:6px; justify-content:flex-end; }
+  .field input[type=number], .field input[type=text] { width:100%; max-width:150px; background:var(--muted);
+      border:1px solid var(--line); border-radius:7px; padding:6px 8px; text-align:right; }
+  .field input[type=text].wide { max-width:180px; text-align:left; }
+  .field input:focus { outline:2px solid var(--focus); outline-offset:0; border-color:transparent; }
+  .field.changed input, .field.changed .sw { outline:2px solid color-mix(in srgb, var(--blue) 55%, transparent); border-radius:7px; }
+  .field.error input { outline:2px solid var(--red); }
+  .field .err { grid-column:1 / -1; color:var(--red); font-size:12px; }
+  .unit { color:var(--dim); font-size:12px; min-width:22px; }
+  .sw { position:relative; width:38px; height:22px; border-radius:999px; background:var(--line); cursor:pointer;
+        border:0; padding:0; transition:background .15s; }
+  .sw[aria-checked="true"] { background:var(--blue); }
+  .sw::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px; border-radius:50%;
+               background:#fff; transition:left .15s; }
+  .sw[aria-checked="true"]::after { left:19px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .chip { border:1px solid var(--line); border-radius:999px; padding:3px 10px; background:var(--muted); cursor:pointer; font-size:12px; }
+  .chip[aria-pressed="true"] { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .formbar { display:flex; gap:8px; align-items:center; margin-top:14px; flex-wrap:wrap; }
+  .formbar .status { color:var(--dim); font-size:12px; }
+
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0;
+           background:var(--fg); color:var(--bg); padding:10px 16px; border-radius:10px; font-size:13px;
+           transition:all .2s; pointer-events:none; z-index:10; max-width:90vw; }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.err { background:var(--red); color:#fff; }
+
+  dialog { border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--fg); padding:20px; max-width:420px; }
+  dialog::backdrop { background:rgba(0,0,0,.45); }
+  dialog h3 { margin:0 0 8px; font-size:15px; } dialog p { margin:0 0 14px; color:var(--dim); }
+  dialog .row { display:flex; gap:8px; justify-content:flex-end; }
+  .filterbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .filterbar input[type=search] { background:var(--muted); border:1px solid var(--line); border-radius:7px; padding:6px 9px; min-width:180px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>New-Token Bot</h1>
-  <span id="mode" class="pill paper">paper</span>
-  <span id="paused" class="pill paused" hidden>pausiert</span>
-  <div class="kpi"><span>Bankroll</span><b id="bankroll">–</b></div>
-  <div class="kpi"><span>Cash</span><b id="cash">–</b></div>
-  <div class="kpi"><span>Offen (unrealisiert)</span><b id="unrealized">–</b></div>
-  <div class="kpi"><span>Heute</span><b id="daily">–</b></div>
-  <div class="kpi"><span>Trades · Treffer</span><b id="trades">–</b></div>
-  <div class="kpi"><span>Letzter Poll</span><b id="lastpoll">–</b></div>
-  <button id="toggle">Pause</button>
+  <div class="bar">
+    <h1><span id="conn" class="dot" title="Verbindung"></span> New-Token Bot</h1>
+    <span id="mode" class="pill paper">paper</span>
+    <span id="paused" class="pill paused" hidden>pausiert</span>
+    <div class="kpis">
+      <div class="kpi"><span>Bankroll</span><b id="k-bankroll">–</b></div>
+      <div class="kpi"><span>Cash</span><b id="k-cash">–</b></div>
+      <div class="kpi"><span>Unrealisiert</span><b id="k-unreal">–</b></div>
+      <div class="kpi"><span>Heute</span><b id="k-daily">–</b></div>
+      <div class="kpi"><span>Trades · Treffer</span><b id="k-trades">–</b></div>
+      <div class="kpi"><span>Letzter Poll</span><b id="k-poll">–</b></div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="b-poll" title="Sofort neue Tokens holen">Jetzt pollen</button>
+      <button class="btn primary" id="b-toggle">Pause</button>
+    </div>
+  </div>
+  <nav role="tablist">
+    <button role="tab" data-tab="overview" aria-selected="true">Übersicht</button>
+    <button role="tab" data-tab="control">Steuerung</button>
+    <button role="tab" data-tab="candidates">Kandidaten <span class="n" id="n-cands"></span></button>
+    <button role="tab" data-tab="log">Protokoll</button>
+  </nav>
 </header>
-<main>
-  <section class="wide">
-    <h2>Offene Positionen</h2>
-    <div id="open"></div>
-  </section>
-  <section>
-    <h2>Edge-Report – was ist aus den Kandidaten geworden?</h2>
-    <div id="edge"></div>
-    <p class="note">Vergleich der Vorwärtsrenditen nach Entscheidung. Hat <b>buy</b> keinen klaren Vorsprung vor <b>skip</b>/<b>watch</b>, hat die Strategie keine Kante – egal wie die Trades aussehen.</p>
-  </section>
-  <section>
-    <h2>Geschlossene Positionen</h2>
-    <div id="closed"></div>
-  </section>
-  <section class="wide">
-    <h2>Zuletzt bewertete Tokens</h2>
-    <div id="cands"></div>
-  </section>
-  <section class="wide">
-    <h2>Protokoll</h2>
-    <div id="log" class="log"></div>
-  </section>
-</main>
-<script>
-const $ = (id) => document.getElementById(id);
-const usd = (v) => (v == null ? '–' : (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('de-DE', {maximumFractionDigits: 2}));
-const pct = (v) => (v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(1) + '%');
-const cls = (v) => (v == null ? '' : v >= 0 ? 'pos' : 'neg');
-const ago = (t, now) => (t ? Math.round(now - t) + 's' : '–');
-const px = (v) => (v == null ? '–' : v >= 1 ? v.toFixed(4) : v.toPrecision(4));
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+<main>
+  <div id="tab-overview" class="grid">
+    <section>
+      <h2>Offene Positionen <span class="spacer"></span><span id="n-open" class="pill"></span></h2>
+      <div id="open"></div>
+    </section>
+    <div class="grid two">
+      <section>
+        <h2>Edge-Report</h2>
+        <div id="edge"></div>
+        <p class="note">Vorwärtsrendite nach Entscheidung. Hat <b>buy</b> keinen klaren Vorsprung vor <b>watch</b> und <b>skip</b>, hat die Strategie keine Kante – unabhängig davon, wie die Trades aussehen.</p>
+      </section>
+      <section>
+        <h2>Geschlossene Positionen</h2>
+        <div id="closed" class="scroll"></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="tab-control" class="grid" hidden>
+    <section>
+      <h2>Parameter <span class="spacer"></span><span class="note" style="margin:0">Änderungen gelten sofort und werden gespeichert.</span></h2>
+      <form id="form" autocomplete="off"><div class="groups" id="groups"></div>
+        <div class="formbar">
+          <button type="submit" class="btn primary" id="b-save" disabled>Speichern</button>
+          <button type="button" class="btn" id="b-revert" disabled>Verwerfen</button>
+          <button type="button" class="btn" id="b-defaults">Standardwerte laden</button>
+          <span class="status" id="form-status"></span>
+        </div>
+      </form>
+    </section>
+    <section>
+      <h2>Paper-Konto</h2>
+      <div class="formbar" style="margin-top:0">
+        <button class="btn danger" id="b-reset-pos">Positionen zurücksetzen</button>
+        <button class="btn danger" id="b-reset-all">Alles zurücksetzen (inkl. Edge-Daten)</button>
+        <span class="status">Startkapital <b id="k-initial">–</b> · läuft seit <b id="k-uptime">–</b> · Polls <b id="k-polls">–</b> · Fehler <b id="k-errors">–</b></span>
+      </div>
+    </section>
+  </div>
+
+  <div id="tab-candidates" class="grid" hidden>
+    <section>
+      <h2>Zuletzt bewertete Tokens
+        <span class="spacer"></span>
+        <span class="filterbar">
+          <button class="chip" data-f="buy" aria-pressed="true">buy</button>
+          <button class="chip" data-f="watch" aria-pressed="true">watch</button>
+          <button class="chip" data-f="skip" aria-pressed="true">skip</button>
+          <input type="search" id="q" placeholder="Symbol oder Grund suchen">
+        </span>
+      </h2>
+      <div id="cands" class="scroll" style="max-height:70vh"></div>
+    </section>
+  </div>
+
+  <div id="tab-log" class="grid" hidden>
+    <section><h2>Protokoll</h2><div id="log" class="log"></div></section>
+  </div>
+</main>
+
+<div id="toast" class="toast"></div>
+<dialog id="confirm"><h3 id="c-title"></h3><p id="c-text"></p><div class="row">
+  <button class="btn" id="c-no">Abbrechen</button><button class="btn danger" id="c-yes">Ja, ausführen</button></div></dialog>
+
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const usd = (v) => v == null ? '–' : (v < 0 ? '−' : '') + '$' + Math.abs(v).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const pct = (v) => v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(1) + '%';
+const cls = (v) => v == null ? '' : v > 0 ? 'pos' : v < 0 ? 'neg' : '';
+const px = (v) => v == null ? '–' : v >= 1 ? v.toFixed(4) : v.toPrecision(4);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hhmm = (t) => new Date(t * 1000).toLocaleTimeString('de-DE');
+const dur = (s) => s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1) + ' h';
+
+let state = null, schema = null, loaded = {}, draft = {}, errors = {};
+let filters = {buy: true, watch: true, skip: true}, query = '';
+
+// ---------- transport ----------
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok && !data.errors) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+}
+let toastTimer;
+function toast(msg, err) {
+  const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : '');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = 'toast', 2600);
+}
+function confirmDialog(title, text) {
+  return new Promise((resolve) => {
+    $('c-title').textContent = title; $('c-text').textContent = text;
+    const d = $('confirm'); d.showModal();
+    const done = (v) => { d.close(); $('c-yes').onclick = $('c-no').onclick = null; resolve(v); };
+    $('c-yes').onclick = () => done(true); $('c-no').onclick = () => done(false);
+    d.oncancel = () => done(false);
+  });
+}
+async function busy(btn, fn) {
+  btn.disabled = true;
+  try { await fn(); } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
+}
+
+// ---------- tables ----------
 function table(rows, cols, empty) {
   if (!rows.length) return `<div class="empty">${empty}</div>`;
   const head = cols.map((c) => `<th class="${c.num ? 'num' : ''}">${c.h}</th>`).join('');
@@ -92,77 +266,207 @@ function table(rows, cols, empty) {
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
-function render(s) {
-  $('mode').textContent = s.mode;
-  $('paused').hidden = !s.paused;
-  $('toggle').textContent = s.paused ? 'Fortsetzen' : 'Pause';
-  $('bankroll').textContent = usd(s.bankroll);
-  $('bankroll').className = cls(s.bankroll - s.initial);
-  $('cash').textContent = usd(s.cash);
-  $('unrealized').textContent = usd(s.unrealized);
-  $('unrealized').className = cls(s.unrealized);
-  $('daily').textContent = usd(s.daily_pnl) + (s.daily_limit_hit ? ' ⛔' : '');
-  $('daily').className = cls(s.daily_pnl);
-  $('trades').textContent = `${s.stats.closed} · ${s.stats.closed ? Math.round(100 * s.stats.wins / s.stats.closed) + '%' : '–'}`;
-  $('lastpoll').textContent = ago(s.last_poll, s.now) + (s.errors ? ` · ${s.errors} Fehler` : '');
-
+function renderOverview(s) {
+  $('n-open').textContent = s.open_positions.length + ' / ' + s.config['max_open_positions'];
   $('open').innerHTML = table(s.open_positions, [
     {h: 'Token', f: (r) => `<b>${esc(r.symbol)}</b> <span class="reasons">${esc(r.chain)}</span>`},
     {h: 'Einstieg', f: (r) => px(r.entry_price), num: true},
     {h: 'Kurs', f: (r) => px(r.price), num: true},
     {h: 'Gain', f: (r) => pct(r.gain_pct), num: true, cls: (r) => cls(r.gain_pct)},
-    {h: 'Größe', f: (r) => usd(r.size_usd * r.remaining_frac), num: true},
+    {h: 'Hoch', f: (r) => pct((r.peak_price / r.entry_price - 1) * 100), num: true},
+    {h: 'Offen', f: (r) => usd(r.size_usd * r.remaining_frac) + ` <span class="reasons">${Math.round(r.remaining_frac * 100)}%</span>`, num: true},
     {h: 'Unrealisiert', f: (r) => usd(r.unrealized), num: true, cls: (r) => cls(r.unrealized)},
     {h: 'Realisiert', f: (r) => usd(r.realized_usd), num: true, cls: (r) => cls(r.realized_usd)},
-    {h: 'Alter', f: (r) => r.age_min + ' min', num: true},
+    {h: 'Alter', f: (r) => dur(r.age_min * 60) + ` <span class="reasons">/ ${s.config['exits.time_stop_minutes']} min</span>`, num: true},
+    {h: '', f: (r) => `<button class="btn sm danger" data-close="${r.id}">Schließen</button>`, num: true},
   ], 'Keine offene Position.');
+  $('open').querySelectorAll('[data-close]').forEach((b) => b.onclick = () => busy(b, async () => {
+    const id = Number(b.dataset.close);
+    const p = s.open_positions.find((x) => x.id === id);
+    if (!await confirmDialog('Position schließen?', `${p.symbol} wird zum letzten Kurs (${px(p.price)}) komplett verkauft.`)) return;
+    const r = await api('/api/positions/close', {id});
+    if (!r.ok) throw new Error(r.error);
+    toast(`${p.symbol} geschlossen · ${usd(r.position.realized_usd)}`); refresh();
+  }));
 
-  $('edge').innerHTML = table(s.edge, [
-    {h: 'Entscheidung', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
+  const edge = s.edge.slice().sort((a, b) => a.horizon_min - b.horizon_min || ['buy','watch','skip'].indexOf(a.decision) - ['buy','watch','skip'].indexOf(b.decision));
+  $('edge').innerHTML = table(edge, [
     {h: 'Horizont', f: (r) => r.horizon_min + ' min', num: true},
+    {h: 'Entscheidung', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
     {h: 'n', f: (r) => r.n, num: true},
     {h: 'Ø Rendite', f: (r) => pct(r.avg_change_pct), num: true, cls: (r) => cls(r.avg_change_pct)},
-    {h: 'Trefferquote', f: (r) => Math.round(100 * r.win_rate) + '%', num: true},
+    {h: 'Treffer', f: (r) => Math.round(100 * r.win_rate) + '%', num: true},
   ], 'Noch keine Ergebnisse – die ersten kommen 5 Minuten nach dem ersten Kandidaten.');
 
   $('closed').innerHTML = table(s.closed, [
+    {h: 'Zeit', f: (r) => hhmm(r.closed_at)},
     {h: 'Token', f: (r) => `<b>${esc(r.symbol)}</b>`},
     {h: 'Grund', f: (r) => esc(r.exit_reason)},
     {h: 'Größe', f: (r) => usd(r.size_usd), num: true},
-    {h: 'P&L', f: (r) => usd(r.realized_usd), num: true, cls: (r) => cls(r.realized_usd)},
-    {h: 'Dauer', f: (r) => Math.round((r.closed_at - r.opened_at) / 60) + ' min', num: true},
+    {h: 'P&L', f: (r) => usd(r.realized_usd) + `<div class="bar-pnl"><i style="width:${Math.min(100, Math.abs(r.realized_usd) / r.size_usd * 100)}%;background:var(--${r.realized_usd >= 0 ? 'green' : 'red'})"></i></div>`, num: true, cls: (r) => cls(r.realized_usd)},
+    {h: 'Dauer', f: (r) => dur(r.closed_at - r.opened_at), num: true},
   ], 'Noch nichts geschlossen.');
+}
 
-  $('cands').innerHTML = table(s.candidates, [
-    {h: 'Zeit', f: (r) => new Date(r.seen_at * 1000).toLocaleTimeString('de-DE')},
-    {h: 'Token', f: (r) => `<b>${esc(r.symbol)}</b> <a href="${esc(r.snapshot.url || '#')}" target="_blank">↗</a>`},
+function renderCandidates(s) {
+  const q = query.trim().toLowerCase();
+  const rows = s.candidates.filter((r) => filters[r.decision] && (!q || (r.symbol || '').toLowerCase().includes(q) || r.reasons.join(' ').toLowerCase().includes(q)));
+  $('n-cands').textContent = s.candidates.length ? `(${s.candidates.length})` : '';
+  $('cands').innerHTML = table(rows, [
+    {h: 'Zeit', f: (r) => hhmm(r.seen_at)},
+    {h: 'Token', f: (r) => `<b>${esc(r.symbol)}</b> ${r.snapshot.url ? `<a href="${esc(r.snapshot.url)}" target="_blank" rel="noopener" title="auf DexScreener öffnen">↗</a>` : ''}`},
     {h: 'Entscheidung', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
-    {h: 'Score', f: (r) => r.score ?? '–', num: true},
+    {h: 'Score', f: (r) => r.score || '–', num: true},
     {h: 'Liq.', f: (r) => usd(r.snapshot.liquidity_usd), num: true},
     {h: 'Vol 5m', f: (r) => usd(r.snapshot.volume_m5), num: true},
+    {h: 'K/V 5m', f: (r) => `${r.snapshot.buys_m5 ?? '–'}/${r.snapshot.sells_m5 ?? '–'}`, num: true},
+    {h: 'Δ 5m', f: (r) => pct(r.snapshot.change_m5), num: true, cls: (r) => cls(r.snapshot.change_m5)},
     {h: 'Alter', f: (r) => r.snapshot.age_min == null ? '–' : Math.round(r.snapshot.age_min) + ' min', num: true},
     {h: 'Gründe', f: (r) => `<span class="reasons">${esc(r.reasons.join(' · '))}</span>`},
-  ], 'Noch keine Kandidaten gesehen.');
-
-  $('log').innerHTML = s.events.map((e) => `<div class="${esc(e.level)}">${new Date(e.at * 1000).toLocaleTimeString('de-DE')}  ${esc(e.message)}</div>`).join('');
+  ], s.candidates.length ? 'Nichts passt zum Filter.' : 'Noch keine Kandidaten gesehen.');
 }
 
+function renderLog(s) {
+  $('log').innerHTML = s.events.map((e) => `<div class="${esc(e.level)}"><span class="t">${hhmm(e.at)}</span>${esc(e.message)}</div>`).join('');
+}
+
+function renderHeader(s) {
+  $('mode').textContent = s.mode;
+  $('paused').hidden = !s.paused;
+  $('b-toggle').textContent = s.paused ? 'Fortsetzen' : 'Pause';
+  $('k-bankroll').textContent = usd(s.bankroll); $('k-bankroll').className = cls(s.bankroll - s.initial);
+  $('k-cash').textContent = usd(s.cash);
+  $('k-unreal').textContent = usd(s.unrealized); $('k-unreal').className = cls(s.unrealized);
+  $('k-daily').textContent = usd(s.daily_pnl) + (s.daily_limit_hit ? ' ⛔' : ''); $('k-daily').className = cls(s.daily_pnl);
+  $('k-daily').title = s.daily_limit_hit ? 'Tages-Verlustlimit erreicht – keine neuen Einstiege' : '';
+  $('k-trades').textContent = `${s.stats.closed} · ${s.stats.closed ? Math.round(100 * s.stats.wins / s.stats.closed) + '%' : '–'}`;
+  const since = s.last_poll ? s.now - s.last_poll : null;
+  $('k-poll').textContent = since == null ? 'noch keiner' : 'vor ' + dur(since);
+  $('conn').className = 'dot ' + (since == null ? 'warn' : since > 3 * s.poll_seconds ? 'bad' : 'ok');
+  $('conn').title = s.errors ? `${s.errors} Fehler – siehe Protokoll` : 'verbunden';
+  $('k-initial').textContent = usd(s.initial); $('k-uptime').textContent = dur(s.now - s.started_at);
+  $('k-polls').textContent = s.polls; $('k-errors').textContent = s.errors;
+}
+
+// ---------- control form ----------
+function fieldHtml(f) {
+  const unit = f.unit ? `<span class="unit">${esc(f.unit)}</span>` : '';
+  let ctl;
+  if (f.type === 'bool') ctl = `<button type="button" role="switch" class="sw" data-path="${f.path}" aria-checked="false"></button>`;
+  else if (f.type === 'chains') ctl = `<span class="chips" data-path="${f.path}">${schema.chains.map((c) => `<button type="button" class="chip" data-chain="${c}" aria-pressed="false">${c}</button>`).join('')}</span>`;
+  else if (f.type === 'ladder') ctl = `<input type="text" class="wide" data-path="${f.path}" placeholder="50: 0.5, 100: 0.25">`;
+  else ctl = `<input type="number" data-path="${f.path}" min="${f.min}" max="${f.max}" step="${f.step}" inputmode="decimal">${unit}`;
+  return `<div class="field" data-field="${f.path}"><div><label>${esc(f.label)}</label>${f.help ? `<small>${esc(f.help)}</small>` : ''}</div><div class="ctl">${ctl}</div><div class="err" hidden></div></div>`;
+}
+function buildForm() {
+  $('groups').innerHTML = schema.groups.map((g) => `<fieldset><legend>${g}</legend>${schema.fields.filter((f) => f.group === g).map(fieldHtml).join('')}</fieldset>`).join('');
+  $('groups').querySelectorAll('.sw').forEach((b) => b.onclick = () => { setDraft(b.dataset.path, b.getAttribute('aria-checked') !== 'true'); });
+  $('groups').querySelectorAll('.chips').forEach((box) => box.querySelectorAll('.chip').forEach((c) => c.onclick = () => {
+    const cur = new Set(draft[box.dataset.path] || []); cur.has(c.dataset.chain) ? cur.delete(c.dataset.chain) : cur.add(c.dataset.chain);
+    setDraft(box.dataset.path, schema.chains.filter((x) => cur.has(x)));
+  }));
+  $('groups').querySelectorAll('input').forEach((i) => i.oninput = () => setDraft(i.dataset.path, i.value));
+}
+const ladderText = (l) => Array.isArray(l) ? l.map(([p, f]) => `${p}: ${f}`).join(', ') : String(l ?? '');
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function normalized(path, v) {
+  const f = schema.fields.find((x) => x.path === path);
+  if (f.type === 'int' || f.type === 'float') { const n = Number(String(v).replace(',', '.')); return isNaN(n) ? v : n; }
+  return v;
+}
+function setDraft(path, value) {
+  draft[path] = value; delete errors[path];
+  paintField(path); paintFormBar();
+}
+function paintField(path) {
+  const f = schema.fields.find((x) => x.path === path);
+  const el = $('groups').querySelector(`[data-field="${path}"]`);
+  const v = draft[path];
+  if (f.type === 'bool') el.querySelector('.sw').setAttribute('aria-checked', String(!!v));
+  else if (f.type === 'chains') el.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String((v || []).includes(c.dataset.chain))));
+  else if (f.type === 'ladder') { const i = el.querySelector('input'); if (document.activeElement !== i) i.value = ladderText(v); }
+  else { const i = el.querySelector('input'); if (document.activeElement !== i) i.value = v ?? ''; }
+  const changed = f.type === 'ladder' ? !same(normalizeLadder(v), loaded[path]) : !same(normalized(path, v), loaded[path]);
+  el.classList.toggle('changed', changed);
+  el.classList.toggle('error', !!errors[path]);
+  const err = el.querySelector('.err'); err.hidden = !errors[path]; err.textContent = errors[path] || '';
+}
+function normalizeLadder(v) {
+  if (Array.isArray(v)) return v;
+  try { return String(v).split(',').map((s) => s.trim()).filter(Boolean).map((s) => s.split(':').map((x) => Number(x.trim()))); } catch { return v; }
+}
+function changedPatch() {
+  const patch = {};
+  for (const f of schema.fields) {
+    const v = f.type === 'ladder' ? normalizeLadder(draft[f.path]) : normalized(f.path, draft[f.path]);
+    if (!same(v, loaded[f.path])) patch[f.path] = draft[f.path];
+  }
+  return patch;
+}
+function paintFormBar() {
+  const n = Object.keys(changedPatch()).length;
+  $('b-save').disabled = n === 0; $('b-revert').disabled = n === 0;
+  $('form-status').textContent = n ? `${n} Änderung${n > 1 ? 'en' : ''} nicht gespeichert` : '';
+}
+function loadForm(cfg) {
+  loaded = JSON.parse(JSON.stringify(cfg)); draft = JSON.parse(JSON.stringify(cfg)); errors = {};
+  schema.fields.forEach((f) => paintField(f.path)); paintFormBar();
+}
+$('form').onsubmit = (ev) => { ev.preventDefault(); busy($('b-save'), async () => {
+  const patch = changedPatch(); if (!Object.keys(patch).length) return;
+  const r = await api('/api/config', {patch});
+  if (!r.ok) { errors = r.errors; Object.keys(errors).forEach(paintField); toast('Nicht gespeichert – bitte Fehler prüfen', true); return; }
+  loadForm(r.config); toast('Gespeichert – gilt ab sofort'); refresh();
+}); };
+$('b-revert').onclick = () => loadForm(loaded);
+$('b-defaults').onclick = async () => {
+  if (!await confirmDialog('Standardwerte laden?', 'Alle Felder werden auf die Werte aus bot/config.json gesetzt. Gespeichert wird erst mit „Speichern“.')) return;
+  const d = await api('/api/defaults'); draft = JSON.parse(JSON.stringify(d.config)); errors = {};
+  schema.fields.forEach((f) => paintField(f.path)); paintFormBar();
+};
+$('b-reset-pos').onclick = () => busy($('b-reset-pos'), async () => {
+  if (!await confirmDialog('Positionen zurücksetzen?', 'Alle offenen und geschlossenen Paper-Positionen werden gelöscht. Kandidaten und Edge-Daten bleiben.')) return;
+  await api('/api/reset', {what: 'positions'}); toast('Paper-Konto zurückgesetzt'); refresh();
+});
+$('b-reset-all').onclick = () => busy($('b-reset-all'), async () => {
+  if (!await confirmDialog('Wirklich alles zurücksetzen?', 'Positionen, Kandidaten und der komplette Edge-Report werden gelöscht. Das lässt sich nicht rückgängig machen.')) return;
+  await api('/api/reset', {what: 'all'}); toast('Alles zurückgesetzt'); refresh();
+});
+
+// ---------- header actions, tabs, filters ----------
+$('b-toggle').onclick = () => busy($('b-toggle'), async () => {
+  const r = await api('/api/control', {action: state && state.paused ? 'resume' : 'pause'});
+  toast(r.paused ? 'Pausiert – keine neuen Einstiege, Exits laufen weiter' : 'Fortgesetzt'); refresh();
+});
+$('b-poll').onclick = () => busy($('b-poll'), async () => { await api('/api/control', {action: 'poll'}); toast('Poll angestoßen'); setTimeout(refresh, 1500); });
+document.querySelectorAll('nav [role=tab]').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('nav [role=tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+  ['overview', 'control', 'candidates', 'log'].forEach((t) => $('tab-' + t).hidden = t !== b.dataset.tab);
+  try { localStorage.setItem('tab', b.dataset.tab); } catch {}
+});
+document.querySelectorAll('.filterbar .chip').forEach((c) => c.onclick = () => {
+  filters[c.dataset.f] = !filters[c.dataset.f]; c.setAttribute('aria-pressed', String(filters[c.dataset.f])); if (state) renderCandidates(state);
+});
+$('q').oninput = () => { query = $('q').value; if (state) renderCandidates(state); };
+
+// ---------- refresh loop ----------
+let firstConfig = true;
 async function refresh() {
   try {
-    const r = await fetch('/api/state');
-    render(await r.json());
+    const s = await api('/api/state'); state = s;
+    renderHeader(s); renderOverview(s); renderCandidates(s); renderLog(s);
+    if (firstConfig && schema) { loadForm(s.config); firstConfig = false; }
   } catch (e) {
-    $('lastpoll').textContent = 'keine Verbindung';
+    $('conn').className = 'dot bad'; $('conn').title = 'keine Verbindung zum Bot'; $('k-poll').textContent = 'keine Verbindung';
   }
 }
-$('toggle').onclick = async () => {
-  const paused = $('toggle').textContent === 'Fortsetzen';
-  await fetch('/api/control', {method: 'POST', headers: {'Content-Type': 'application/json'},
-                               body: JSON.stringify({action: paused ? 'resume' : 'pause'})});
-  refresh();
-};
-refresh();
-setInterval(refresh, 5000);
+(async () => {
+  try { schema = await api('/api/schema'); buildForm(); } catch (e) { toast('Schema nicht ladbar: ' + e.message, true); }
+  try { const t = localStorage.getItem('tab'); if (t) document.querySelector(`nav [data-tab="${t}"]`)?.click(); } catch {}
+  await refresh();
+  setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+})();
 </script>
 </body>
 </html>

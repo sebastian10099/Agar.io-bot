@@ -6,6 +6,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from . import settings
+
 WEB = Path(__file__).parent / "web"
 
 
@@ -30,6 +32,13 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                 self._send(200, (WEB / "index.html").read_bytes(), "text/html; charset=utf-8")
             elif self.path == "/api/state":
                 self._json(engine.state())
+            elif self.path == "/api/schema":
+                self._json(settings.schema_for_client())
+            elif self.path == "/api/config":
+                self._json({"config": settings.flat(engine.cfg)})
+            elif self.path == "/api/defaults":
+                bundled = json.loads((Path(__file__).parent / "config.json").read_text())
+                self._json({"config": settings.flat(bundled)})
             else:
                 self._json({"error": "not found"}, 404)
 
@@ -42,15 +51,23 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                 return
             if self.path == "/api/control":
                 action = body.get("action")
-                if action == "pause":
-                    engine.paused = True
-                elif action == "resume":
-                    engine.paused = False
+                if action in ("pause", "resume"):
+                    engine.set_paused(action == "pause")
+                elif action == "poll":
+                    engine.poll_now()
                 else:
                     self._json({"error": "unknown action"}, 400)
                     return
-                engine.store.log("info", f"dashboard: {action}")
                 self._json({"ok": True, "paused": engine.paused})
+            elif self.path == "/api/config":
+                result = engine.apply_config(body.get("patch") or {})
+                self._json(result, 200 if result["ok"] else 422)
+            elif self.path == "/api/positions/close":
+                result = engine.close_position(int(body.get("id") or 0))
+                self._json(result, 200 if result["ok"] else 409)
+            elif self.path == "/api/reset":
+                result = engine.reset(str(body.get("what") or "positions"))
+                self._json(result, 200 if result["ok"] else 400)
             else:
                 self._json({"error": "not found"}, 404)
 

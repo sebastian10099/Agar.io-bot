@@ -27,6 +27,43 @@ Falls der Starter „Kein Python gefunden, das HTTPS-Verbindungen aufbauen kann"
 meldet: Der python.org-Build bringt keine Zertifikate mit. Einmalig
 `/Applications/Python 3.x/Install Certificates.command` doppelklicken.
 
+## Die Steuerseite
+
+Das Dashboard ist zugleich die Steuerung. Vier Reiter:
+
+- **Übersicht** – offene Positionen mit Live-Gain, Hoch, Rest-Anteil und einem
+  Knopf zum manuellen Schließen; Edge-Report; geschlossene Positionen.
+- **Steuerung** – jeder Parameter der Strategie als Formular, gruppiert nach
+  Allgemein / Risiko / Filter / Strategie / Exits. Geänderte Felder werden
+  markiert, Fehler stehen direkt am Feld, „Speichern“ gilt **sofort** für den
+  laufenden Bot und landet in `~/Library/Application Support/NewTokenBot/config.json`.
+  Dazu: Standardwerte laden, Paper-Konto zurücksetzen (nur Positionen, oder
+  alles inklusive Edge-Daten).
+- **Kandidaten** – alle bewerteten Tokens mit Score, Kennzahlen und den
+  Gründen für die Entscheidung; filterbar nach buy/watch/skip und Suchtext.
+- **Protokoll** – was der Bot getan hat, inklusive jeder Änderung über die Seite.
+
+Oben rechts: **Jetzt pollen** (sofort neue Tokens holen) und **Pause**.
+Pause stoppt nur neue Einstiege – Exits offener Positionen laufen weiter.
+Der Punkt links im Titel zeigt, ob der Bot lebt (grün), noch nie gepollt hat
+(gelb) oder länger als drei Intervalle nichts gemeldet hat (rot).
+
+Die Seite redet über eine kleine JSON-API mit dem Bot, die du auch direkt
+nutzen kannst (nur von `127.0.0.1` erreichbar):
+
+| Methode | Pfad | Zweck |
+| --- | --- | --- |
+| GET | `/api/state` | Alles, was die Seite anzeigt |
+| GET | `/api/schema` | Parameter-Schema (Typ, Grenzen, Beschriftung) |
+| GET | `/api/config` · `/api/defaults` | Aktuelle bzw. Standard-Parameter |
+| POST | `/api/config` `{"patch": {"exits.stop_loss_pct": -25}}` | Parameter ändern, validiert, 422 bei Fehlern |
+| POST | `/api/control` `{"action": "pause"\|"resume"\|"poll"}` | Steuern |
+| POST | `/api/positions/close` `{"id": 3}` | Position zum letzten Kurs schließen |
+| POST | `/api/reset` `{"what": "positions"\|"all"}` | Paper-Konto zurücksetzen |
+
+Ein neuer Parameter ist ein Eintrag in `bot/settings.py` – Validierung und
+Formular entstehen daraus automatisch.
+
 ## Wie der Bot entscheidet
 
 ```
@@ -99,18 +136,20 @@ bot/
   paper.py       Paper-Engine mit Gebühren, Slippage und allen Exit-Regeln
   tracker.py     Vorwärtsrenditen für den Edge-Report
   store.py       SQLite
-  server.py      Lokales Dashboard (nur 127.0.0.1)
+  server.py      Lokales Dashboard und Steuer-API (nur 127.0.0.1)
+  settings.py    Parameter-Schema: Validierung + Formular aus einer Quelle
   demo.py        Offline-Markt für Demo und Tests
   live.py        Schnittstelle für Echtgeld — bewusst nicht implementiert
   sources/       DexScreener, RugCheck
-tests/           python3 -m unittest tests.test_bot
+tests/           python3 -m unittest tests.test_bot tests.test_control
 ```
 
 ## Tests
 
 ```bash
-python3 -m unittest -v tests.test_bot
+python3 -m unittest -v tests.test_bot tests.test_control
 ```
 
 Strategie-Entscheidungen, alle Exit-Regeln, der Tracker, ein kompletter
-Zyklus gegen den Demo-Markt und das Dashboard sind abgedeckt.
+Zyklus gegen den Demo-Markt, die Parameter-Validierung, Live-Änderungen,
+manuelles Schließen, Resets und jede API-Route sind abgedeckt.
