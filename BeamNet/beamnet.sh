@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.19"
+VERSION="1.20"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -241,6 +241,48 @@ players_of() {
     now=$(date +%s)
     if [[ -z $updated || $((now - updated)) -gt 90 ]]; then echo "?"; return; fi
     echo "${players:-0}/${max:-?}"
+}
+
+# Spielernamen eines Servers aus dem Lebenszeichen des Plugins: bereinigt (keine Steuerzeichen, hoechstens 32
+# Zeichen je Name), alphabetisch, hoechstens 30 Namen – leer, wenn das Lebenszeichen fehlt oder veraltet ist.
+names_of() {
+    local file="$SHARED/servers/$1.json"
+    [[ -f $file && ! -L $file ]] || return 0
+    command -v python3 >/dev/null || return 0
+    python3 -I - "$file" <<'EOF' 2>/dev/null
+import json, re, sys, time
+try:
+    with open(sys.argv[1], encoding="utf-8") as f:
+        st = json.load(f)
+except Exception:
+    sys.exit(0)
+if not isinstance(st, dict) or not isinstance(st.get("names"), list):
+    sys.exit(0)
+upd = st.get("updated")
+if not isinstance(upd, (int, float)) or time.time() - upd > 90:
+    sys.exit(0)
+clean = []
+for n in st["names"]:
+    n = re.sub(r"[\x00-\x1f\x7f]", "", str(n)).strip()[:32]
+    if n:
+        clean.append(n)
+clean.sort(key=str.lower)
+more = len(clean) - 30
+print(", ".join(clean[:30]) + (f" +{more} weitere" if more > 0 else ""))
+EOF
+}
+
+# Eine Zeile je Server mit Spielern: "Server 3 (italy): Sebi, Max" – fuer Meldungen und "beamnet players".
+online_lines() {
+    local nr pl names map
+    for nr in $(servers); do
+        pl=$(players_of "$(cfg "$nr" Port)")
+        [[ $pl =~ ^([0-9]+)/ ]] || continue
+        (( BASH_REMATCH[1] > 0 )) || continue
+        names=$(names_of "$(cfg "$nr" Port)")
+        map=$(map_short "$(cfg "$nr" Map)")
+        printf 'Server %s (%s): %s\n' "$nr" "${map:-?}" "${names:-${BASH_REMATCH[1]} Spieler}"
+    done
 }
 
 targets() {
@@ -716,15 +758,31 @@ cmd_plugin_toggle() {
 }
 
 cmd_players() {
-    local file
+    local file nr pl names map total=0 lines=""
     if [[ ! -d $SHARED/servers ]]; then
         echo "Noch keine Daten – das Plugin BeamNetCore ist nicht installiert (beamnet install-core)."
         return
     fi
-    for file in "$SHARED"/servers/*.json; do
-        [[ -f $file ]] || continue
-        printf '%s\n' "$(cat "$file")"
+    if [[ ${1:-} == json ]]; then
+        for file in "$SHARED"/servers/*.json; do
+            [[ -f $file ]] || continue
+            printf '%s\n' "$(cat "$file")"
+        done
+        return
+    fi
+    for nr in $(servers); do
+        pl=$(players_of "$(cfg "$nr" Port)")
+        map=$(map_short "$(cfg "$nr" Map)")
+        if [[ $pl =~ ^([0-9]+)/ ]]; then
+            total=$(( total + BASH_REMATCH[1] ))
+            names=$(names_of "$(cfg "$nr" Port)")
+            (( BASH_REMATCH[1] > 0 )) && lines+="$(printf 'Server %-3s %-8s %-22s %s' "$nr" "$pl" "$map" "${names:-(Namen erst mit Plugin 1.2+)}")"$'\n'
+        else
+            lines+="$(printf 'Server %-3s %-8s %-22s %s' "$nr" "?" "$map" "(kein Lebenszeichen – Plugin läuft nicht?)")"$'\n'
+        fi
     done
+    printf '%s%s Spieler online%s\n' "$BOLD" "$total" "$RESET"
+    printf '%s' "$lines"
 }
 
 # Gemeinsamer Datenordner mit Rechten fuer den Dienst-Benutzer (sonst kann das Plugin nichts speichern).
@@ -866,18 +924,43 @@ json_escape() {
     printf '%s' "$text" | tr -d '\000-\010\013-\037\177'
 }
 
-# Nachricht an Discord (nur wenn ein Webhook eingetragen ist).
+# Ist mindestens ein Meldeweg (Discord-Webhook oder Telegram-Bot) eingetragen?
+notify_configured() {
+    [[ -n $(conf_get DISCORD_WEBHOOK) || ( -n $(conf_get TELEGRAM_TOKEN) && -n $(conf_get TELEGRAM_CHAT) ) ]]
+}
+
+# Nachricht an Discord und/oder Telegram (nur die eingetragenen Wege). Telegram bekommt reinen Text (kein Markdown,
+# damit Spielernamen mit Sonderzeichen nichts kaputt machen).
 notify() {
-    local hook
+    local hook token chat rc=0 text=$1
     hook=$(conf_get DISCORD_WEBHOOK)
-    [[ -n $hook ]] || return 0
-    if [[ ! $hook =~ ^https://(discord|discordapp)\.com/api/webhooks/ ]]; then
-        echo "DISCORD_WEBHOOK in $CONF sieht nicht wie ein Discord-Webhook aus – nichts gesendet." >&2
-        return 1
+    if [[ -n $hook ]]; then
+        if [[ ! $hook =~ ^https://(discord|discordapp)\.com/api/webhooks/ ]]; then
+            echo "DISCORD_WEBHOOK in $CONF sieht nicht wie ein Discord-Webhook aus – nichts gesendet." >&2
+            rc=1
+        else
+            curl -fsS -m 10 -H "Content-Type: application/json" \
+                -d "{\"content\":\"$(json_escape "$text")\",\"allowed_mentions\":{\"parse\":[]}}" "$hook" >/dev/null \
+                || { echo "Discord-Meldung fehlgeschlagen" >&2; rc=1; }
+        fi
     fi
-    curl -fsS -m 10 -H "Content-Type: application/json" \
-        -d "{\"content\":\"$(json_escape "$1")\",\"allowed_mentions\":{\"parse\":[]}}" "$hook" >/dev/null \
-        || { echo "Discord-Meldung fehlgeschlagen" >&2; return 1; }
+    token=$(conf_get TELEGRAM_TOKEN)
+    chat=$(conf_get TELEGRAM_CHAT)
+    if [[ -n $token || -n $chat ]]; then
+        if [[ ! $token =~ ^[0-9]{5,}:[A-Za-z0-9_-]{20,}$ ]]; then
+            echo "TELEGRAM_TOKEN in $CONF sieht nicht wie ein Bot-Token von @BotFather aus (123456:ABC…) – nichts gesendet." >&2
+            rc=1
+        elif [[ ! $chat =~ ^(-?[0-9]+|@[A-Za-z0-9_]{5,})$ ]]; then
+            echo "TELEGRAM_CHAT in $CONF muss eine Chat-ID (Zahl, bei Gruppen negativ) oder @Kanalname sein – nichts gesendet." >&2
+            rc=1
+        else
+            curl -fsS -m 10 -H "Content-Type: application/json" \
+                -d "{\"chat_id\":\"$chat\",\"text\":\"$(json_escape "${text:0:4000}")\",\"disable_web_page_preview\":true}" \
+                "https://api.telegram.org/bot$token/sendMessage" >/dev/null \
+                || { echo "Telegram-Meldung fehlgeschlagen" >&2; rc=1; }
+        fi
+    fi
+    return $rc
 }
 
 # Wurde der Server in den letzten 15 Minuten vom Agenten gestoppt oder beendet?
@@ -1038,7 +1121,7 @@ cmd_rotation() {
 # Tagesspitze fuer die Tageszusammenfassung, peak.json fuer die Statusseite.
 watch_peak() {
     local -n pout=$1
-    local nr pl online=0 now today best=0 best_at=0 day_best=0 last_note=0
+    local nr pl online=0 now today best=0 best_at=0 day_best=0 last_note=0 line
     now=$(date +%s)
     today=$(date +%Y-%m-%d)
     for nr in $(servers); do
@@ -1060,6 +1143,7 @@ watch_peak() {
         # Erst ab 5 Spielern und mit einem bisherigen Rekord melden (der erste Lauf legt ihn nur fest).
         if (( best > 0 && online >= 5 && now - last_note >= 1800 )); then
             pout+=("🎉 Neuer Spielerrekord: $online Spieler gleichzeitig im Netzwerk (bisher $best)!")
+            while IFS= read -r line; do [[ -n $line ]] && pout+=("   $line"); done < <(online_lines)
             last_note=$now
         fi
         best=$online
@@ -1113,6 +1197,7 @@ watch_run() {
     done
     watch_rotation msgs
     watch_peak msgs
+    watch_online msgs
     watch_weekly msgs
     watch_season msgs
     watch_daily msgs
@@ -1123,12 +1208,47 @@ watch_run() {
     return 0
 }
 
+# Abstand der "Wer ist online"-Meldung in Minuten (ONLINE_REPORT; 0 = aus, fehlt = 60).
+online_report_min() {
+    local m
+    m=$(conf_get ONLINE_REPORT)
+    if [[ $m =~ ^[0-9]{1,4}$ ]]; then echo $(( 10#$m )); else echo 60; fi
+}
+
+# "Wer ist online": alle ONLINE_REPORT Minuten die Spieler je Server mit Namen melden – nur, wenn jemand faehrt und
+# sich die Runde seit der letzten Meldung geaendert hat (sonst wiederholt sich die Meldung nur).
+watch_online() {
+    local -n oout=$1
+    local every now last=0 lines total=0 nr pl fingerprint line
+    every=$(online_report_min)
+    (( every > 0 )) || return 0
+    notify_configured || return 0
+    now=$(date +%s)
+    last=$(cat "$STATE_DIR/online-at" 2>/dev/null)
+    [[ $last =~ ^[0-9]+$ ]] || last=0
+    (( now - last >= every * 60 )) || return 0
+    for nr in $(servers); do
+        pl=$(players_of "$(cfg "$nr" Port)")
+        [[ $pl =~ ^([0-9]+)/ ]] && total=$(( total + BASH_REMATCH[1] ))
+    done
+    (( total > 0 )) || return 0
+    lines=$(online_lines)
+    [[ -n $lines ]] || return 0
+    fingerprint=$(printf '%s' "$lines" | cksum)
+    [[ $fingerprint == "$(cat "$STATE_DIR/online-who" 2>/dev/null)" ]] && return 0
+    oout+=("👥 Gerade online: $total Spieler")
+    while IFS= read -r line; do [[ -n $line ]] && oout+=("   $line"); done <<<"$lines"
+    echo "$now" >"$STATE_DIR/online-at"
+    echo "$fingerprint" >"$STATE_DIR/online-who"
+    return 0
+}
+
 # Montags einmal die Wochensieger der Vorwoche nach Discord (braucht python3 und BeamNetCore-Daten).
 watch_weekly() {
     local -n out=$1
     local week line dow
     dow=${BEAMNET_DOW:-$(date -u +%u)}
-    [[ $dow == 1 && -n $(conf_get DISCORD_WEBHOOK) && -d $SHARED/players ]] || return 0
+    [[ $dow == 1 && -d $SHARED/players ]] && notify_configured || return 0
     command -v python3 >/dev/null || return 0
     week=$(date -u -d '7 days ago' +%G-W%V)
     [[ -f $STATE_DIR/weekly-$week ]] && return 0
@@ -1160,7 +1280,7 @@ watch_season() {
     local -n sout=$1
     local month line dom
     dom=${BEAMNET_DOM:-$(date -u +%d)}
-    [[ $dom == 01 && -n $(conf_get DISCORD_WEBHOOK) && -d $SHARED/players ]] || return 0
+    [[ $dom == 01 && -d $SHARED/players ]] && notify_configured || return 0
     command -v python3 >/dev/null || return 0
     month=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
     [[ -f $STATE_DIR/season-$month ]] && return 0
@@ -1203,7 +1323,7 @@ watch_daily() {
     local -n dout=$1
     local hour today line
     [[ $(conf_get DAILY_SUMMARY) == 0 ]] && return 0
-    [[ -n $(conf_get DISCORD_WEBHOOK) && -d $SHARED/players && ! -L $SHARED/players ]] || return 0
+    [[ -d $SHARED/players && ! -L $SHARED/players ]] && notify_configured || return 0
     command -v python3 >/dev/null || return 0
     hour=${BEAMNET_HOUR:-$(date +%H)}
     (( 10#$hour >= $(daily_hour) )) || return 0
@@ -1280,6 +1400,14 @@ watch_install() {
 # Discord-Webhook: Discord-Server → Servereinstellungen → Integrationen → Webhooks → Neuer Webhook → URL kopieren.
 # Leer = keine Discord-Meldungen.
 DISCORD_WEBHOOK=
+# Telegram: Bot bei @BotFather anlegen (/newbot) → Token hier eintragen. Chat-ID: dem Bot einmal schreiben (oder ihn
+# in die Gruppe holen) und https://api.telegram.org/bot<TOKEN>/getUpdates aufrufen → "chat":{"id":…}.
+# Gruppen haben eine negative ID; Kanaele gehen auch als @Kanalname. Leer = kein Telegram.
+TELEGRAM_TOKEN=
+TELEGRAM_CHAT=
+# "Wer ist online" (Spieler je Server mit Namen) alle N Minuten an Discord/Telegram, wenn jemand faehrt und sich die
+# Runde geaendert hat. 0 = aus.
+ONLINE_REPORT=60
 # 1 = ausgefallene Server automatisch neu starten (hoechstens 3x pro Stunde; nicht, wenn mit "beamnet stop"
 # gestoppt oder von OpenClaw gestoppt). 0 = nur melden.
 AUTO_RESTART=0
@@ -1334,15 +1462,18 @@ cmd_watch() {
         install) watch_install ;;
         uninstall) watch_uninstall ;;
         test)
-            [[ -n $(conf_get DISCORD_WEBHOOK) ]] || die "Kein DISCORD_WEBHOOK in $CONF eingetragen."
+            notify_configured || die "Weder DISCORD_WEBHOOK noch TELEGRAM_TOKEN/TELEGRAM_CHAT in $CONF eingetragen."
             notify "✅ BeamNet-Wächter: Testnachricht von $(hostname 2>/dev/null)" && ok "Testnachricht gesendet."
             ;;
         status)
             if [[ -f $SYSTEMD_DIR/beamnet-watch.timer ]]; then ok "Wächter eingerichtet"; else echo "Wächter nicht eingerichtet (beamnet watch install)."; fi
             if [[ -n $(conf_get DISCORD_WEBHOOK) ]]; then echo "Discord: an"; else echo "Discord: aus"; fi
+            if [[ -n $(conf_get TELEGRAM_TOKEN) && -n $(conf_get TELEGRAM_CHAT) ]]; then echo "Telegram: an"; else echo "Telegram: aus"; fi
+            if (( $(online_report_min) > 0 )) && notify_configured; then echo "Wer-ist-online-Meldung: alle $(online_report_min) Minuten"
+            else echo "Wer-ist-online-Meldung: aus"; fi
             if [[ $(conf_get AUTO_RESTART) == 1 ]]; then echo "Automatischer Neustart: an"; else echo "Automatischer Neustart: aus"; fi
             if [[ $(conf_get MAP_VOTE) == 0 ]]; then echo "Map-Abstimmung: aus"; else echo "Map-Abstimmung: an ($(vote_maps | wc -w) Maps)"; fi
-            if [[ $(conf_get DAILY_SUMMARY) == 0 || -z $(conf_get DISCORD_WEBHOOK) ]]; then echo "Tageszusammenfassung: aus"
+            if [[ $(conf_get DAILY_SUMMARY) == 0 ]] || ! notify_configured; then echo "Tageszusammenfassung: aus"
             else echo "Tageszusammenfassung: an (täglich ab $(daily_hour) Uhr)"; fi
             ls "$STATE_DIR"/maintenance-* >/dev/null 2>&1 && echo "In Wartung (bewusst gestoppt): $(ls "$STATE_DIR"/maintenance-* | sed 's/.*maintenance-//' | tr '\n' ' ')"
             return 0
@@ -1434,7 +1565,7 @@ step() {
 
 cmd_setup() {
     need_root setup
-    local saved_yes=$YES names webhook port old found=""
+    local saved_yes=$YES names webhook token chat port old found=""
     title "BeamNet-Einrichtung · Werkzeug $VERSION"
     echo "Ich gehe Schritt für Schritt durch und frage vor jedem Schritt (Enter = überspringen)."
 
@@ -1486,6 +1617,20 @@ cmd_setup() {
                 ok "Discord-Webhook gespeichert (Test: beamnet watch test)"
             else
                 warn "Das ist keine Discord-Webhook-URL – nicht gespeichert."
+            fi
+        fi
+        token=$(ask "Telegram-Bot-Token von @BotFather (Enter = kein Telegram):" "")
+        if [[ -n $token ]]; then
+            if [[ $token =~ ^[0-9]{5,}:[A-Za-z0-9_-]{20,}$ ]]; then
+                chat=$(ask "Telegram-Chat-ID (Zahl; Gruppen negativ) oder @Kanalname:" "")
+                if [[ $chat =~ ^(-?[0-9]+|@[A-Za-z0-9_]{5,})$ ]]; then
+                    conf_set TELEGRAM_TOKEN "$token"; conf_set TELEGRAM_CHAT "$chat"
+                    ok "Telegram gespeichert (Test: beamnet watch test)"
+                else
+                    warn "Das ist keine Chat-ID – Telegram nicht gespeichert."
+                fi
+            else
+                warn "Das ist kein Bot-Token (123456:ABC…) – Telegram nicht gespeichert."
             fi
         fi
         if confirm "Ausgefallene Server automatisch neu starten (höchstens 3x pro Stunde)?"; then conf_set AUTO_RESTART 1; fi
@@ -2051,13 +2196,13 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet plugins                Installierte Server-Plugins je Server
   beamnet plugin-disable <name>  Plugin auf allen Servern abschalten (verschiebt nach Server.disabled)
   beamnet plugin-enable <name>   … und wieder einschalten
-  beamnet players                Spieler je Server (mit Plugin BeamNetCore)
+  beamnet players [json]         Wer gerade fährt, je Server mit Namen (mit Plugin BeamNetCore)
   beamnet backup                 Sichert Konfigurationen, Plugins und Dienste nach $BACKUP_DIR
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, Moderation) auf allen Servern
   beamnet bans · unban <Name> · modlog [n]   Banns ansehen/aufheben, Moderationsprotokoll
   beamnet admin list · add <Name …> · remove <Name …>   Admins für Rennen und Moderation
   beamnet openclaw status|pause|resume   OpenClaw-Agent ansehen, anhalten (einfrieren), fortsetzen
-  beamnet watch install|status|test|uninstall   Wächter: meldet Ausfälle (auch an Discord), optional Neustart
+  beamnet watch install|status|test|uninstall   Wächter: Ausfälle, Rekorde, wer online ist – an Discord/Telegram
   beamnet web install [port]     Statusseite (Server, Bestenliste, Rekorde) als Webseite, Standard-Port 8080
   beamnet update                 Werkzeug und Plugin auf allen Servern auf den neuesten Stand bringen
   beamnet self-update            Nur das Werkzeug aktualisieren
@@ -2089,7 +2234,7 @@ main() {
         plugins) cmd_plugins ;;
         plugin-disable) cmd_plugin_toggle disable "$@" ;;
         plugin-enable) cmd_plugin_toggle enable "$@" ;;
-        players|spieler) cmd_players ;;
+        players|spieler) cmd_players "$@" ;;
         backup|sicherung) cmd_backup ;;
         install-core) cmd_install_core ;;
         openclaw) cmd_openclaw "$@" ;;

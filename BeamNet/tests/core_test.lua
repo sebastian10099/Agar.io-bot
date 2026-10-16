@@ -1531,6 +1531,52 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Last: volles Netzwerk (64 Spieler gleichzeitig) ---------------------------------------------------------------
+do
+    local first, count = 200, 64
+    local errorsBefore = 0
+    for _ in pairs(BN.errorLog) do errorsBefore = errorsBefore + 1 end
+    for pid = first, first + count - 1 do
+        players[pid] = { name = "Last" .. pid, ids = { beammp = tostring(7000 + pid) },
+                         vehicles = { [0] = { pos = { pid * 100, 0, 0 }, tim = 0 } } }
+        _G[events.onPlayerJoin](pid)
+    end
+    local t0 = os.clock()
+    for _ = 1, 120 do
+        for pid = first, first + count - 1 do move(pid, 0, 20) end
+        tick(1)
+    end
+    local perTick = (os.clock() - t0) / 120
+    print(string.format("  Last: %d Spieler fahren, %.1f ms je Takt (Takt = %d ms)", count, perTick * 1000, C.tickMs))
+    check(perTick * 1000 < C.tickMs / 4, "64 Spieler: ein Takt braucht weniger als ein Viertel des Taktabstands")
+    local kmOk, secOk, fileOk = 0, 0, 0
+    for pid = first, first + count - 1 do
+        local tot = BN.totals(BN.players[pid])
+        -- Der erste Takt setzt nur den Ausgangspunkt: 119 Schritte zu 20 m.
+        if math.abs(tot.km - 2.38) < 1e-9 then kmOk = kmOk + 1 end
+        if tot.seconds == 119 then secOk = secOk + 1 end
+        if readJson(SHARED .. "/players/" .. (7000 + pid) .. ".json") then fileOk = fileOk + 1 end
+    end
+    eq(kmOk, count, "64 Spieler: jeder hat genau seine 2,38 km")
+    eq(secOk, count, "64 Spieler: jeder hat genau seine 119 s Fahrzeit")
+    eq(fileOk, count, "64 Spieler: alle Dateien beim regelmaessigen Speichern geschrieben")
+    local st = readJson(SHARED .. "/servers/30814.json")
+    check(st and st.players >= count, "64 Spieler: Serverstatus zaehlt alle")
+    local board = BN.refreshBoard(true)
+    check(type(board) == "table" and #board >= 10, "64 Spieler: Bestenliste wird weiter berechnet")
+    local t1 = os.clock()
+    say(first, "/top")
+    say(first + 1, "/stats")
+    say(first + 2, "/server")
+    print(string.format("  Last: drei Chatbefehle bei %d Spielern in %.1f ms", count, (os.clock() - t1) * 1000))
+    check(os.clock() - t1 < 0.5, "64 Spieler: Chatbefehle bleiben schnell")
+    for pid = first, first + count - 1 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    local errorsAfter = 0
+    for _ in pairs(BN.errorLog) do errorsAfter = errorsAfter + 1 end
+    eq(errorsAfter, errorsBefore, "64 Spieler: keine neuen Fehler im Protokoll")
+    check(next(BN.players) == nil or BN.players[first] == nil, "64 Spieler: Sitzungen nach Abmeldung weg")
+end
+
 -- Herunterfahren speichert alle.
 tick(1)
 _G[events.onShutdown]()

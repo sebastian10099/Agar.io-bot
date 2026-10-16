@@ -47,7 +47,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet logs <nr> [zeilen]` | Letzte Zeilen des Server-Protokolls |
 | `beamnet plugins` | Installierte (und abgeschaltete) Plugins je Server |
 | `beamnet plugin-disable <name>` / `plugin-enable <name>` | Plugin auf allen Servern ab- oder einschalten – verschiebt nur nach `Resources/Server.disabled`, löscht nichts |
-| `beamnet players` | Spieler je Server (mit BeamNetCore) |
+| `beamnet players` | Wer gerade fährt: je Server mit Namen (mit BeamNetCore; `players json` = Rohdaten) |
 | `beamnet backup` | Konfigurationen, Plugins und systemd-Dienste nach `/root/beamnet-backups` (die 20 neuesten bleiben) |
 | `beamnet install-core` | Installiert BeamNetCore auf allen Servern |
 | `beamnet openclaw status / pause / resume` | OpenClaw-Agent ansehen, anhalten (einfrieren, nichts wird gelöscht) und fortsetzen |
@@ -75,20 +75,28 @@ Mit `-y` laufen Befehle ohne Rückfrage.
 
 ```bash
 beamnet watch install      # prüft ab jetzt jede Minute alle Server (systemd-Timer)
-nano /etc/beamnet.conf     # Discord-Webhook und automatischen Neustart eintragen
-beamnet watch test         # Testnachricht an Discord
+nano /etc/beamnet.conf     # Discord-Webhook und/oder Telegram-Bot, automatischen Neustart eintragen
+beamnet watch test         # Testnachricht an Discord/Telegram
 ```
 
 - Meldet „🔴 Server 5 (utah) ist ausgefallen“ und „🟢 … ist wieder online“ – im Systemprotokoll und, wenn eingetragen,
-  per **Discord-Webhook**. Jeder Ausfall wird nur einmal gemeldet.
+  per **Discord-Webhook** und/oder **Telegram-Bot**. Jeder Ausfall wird nur einmal gemeldet.
+- **Telegram einrichten:** bei [@BotFather](https://t.me/BotFather) `/newbot` → Token als `TELEGRAM_TOKEN=` in
+  `/etc/beamnet.conf`. Chat-ID: dem Bot einmal schreiben (oder ihn in die Gruppe holen) und
+  `https://api.telegram.org/bot<TOKEN>/getUpdates` im Browser öffnen → `"chat":{"id":…}` als `TELEGRAM_CHAT=`
+  (Gruppen haben eine negative ID, Kanäle gehen auch als `@Kanalname`). Alle Meldungen (Ausfälle, Rekorde, Wochen- und
+  Saisonsieger, Tageszusammenfassung, wer online ist) gehen an beide Wege, wenn beide eingetragen sind.
+- **Wer ist online:** alle 60 Minuten (`ONLINE_REPORT=…`, 0 = aus) die Spieler je Server **mit Namen**, z. B.
+  „👥 Gerade online: 14 Spieler · Server 1 (italy): Ana, Max, Sebi · Server 3 (utah): …“ – nur, wenn jemand fährt und
+  sich die Runde seit der letzten Meldung geändert hat. Dieselbe Übersicht im Terminal: `beamnet players`.
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
 - Er kämpft nicht gegen dich: Mit `beamnet stop` gestoppte Server gelten als Wartung (kein Alarm, kein Neustart), bis
   du sie mit `beamnet start` wieder startest.
 - Er kämpft nicht gegen OpenClaw: Hat der Agent einen Server gestoppt, meldet er das, startet aber nicht neu.
 - Montags postet er die **Wochensieger** der Vorwoche nach Discord, am 1. jedes Monats die **Saisonsieger**.
 - Er merkt sich den **Spielerrekord** (meiste Spieler gleichzeitig im ganzen Netzwerk): neuer Rekord ab 5 Spielern
-  nach Discord (höchstens alle 30 Minuten), die Tagesspitze steht in der Tageszusammenfassung, der Rekord auf der
-  Statusseite und in `api.json` (`peak`).
+  nach Discord/Telegram mit den Spielern je Server (höchstens alle 30 Minuten), die Tagesspitze steht in der
+  Tageszusammenfassung, der Rekord auf der Statusseite und in `api.json` (`peak`).
 - Er wechselt bei eingerichteter **Map-Rotation** (`beamnet rotation 5 italy utah west_coast_usa`) einmal am Tag ab
   6 Uhr (`ROTATE_HOUR`) die Map – aber nur, wenn gerade niemand auf dem Server fährt; sonst versucht er es später.
 - Er setzt **Map-Abstimmungen** aus dem Chat um (siehe unten): Map in der Konfiguration ändern (alte Datei als

@@ -1,5 +1,13 @@
 # BeamNet – Roadmap
 
+Erledigt (Werkzeug 1.20):
+- [x] Wächter meldet auch per **Telegram** (Bot-Token und Chat-ID in `/etc/beamnet.conf`, Abfrage im Setup); alle
+      Meldungen gehen an Discord und Telegram, je nachdem, was eingetragen ist.
+- [x] **Wer ist online** mit Spielernamen je Server: alle 60 Minuten (`ONLINE_REPORT`), nur bei Änderung; Namen auch
+      in der Rekordmeldung; `beamnet players` zeigt eine lesbare Übersicht statt JSON (`players json` = Rohdaten).
+- [x] Lasttest im Plugin: 64 Spieler gleichzeitig kosten etwa 4 ms je Takt (Budget 1000 ms); alle km, Fahrzeiten und
+      Dateien stimmen. Bestenliste bei 3000 Spielerdateien ≈ 0,4 s je Neuberechnung (alle 60 s) – siehe offene Punkte.
+
 Erledigt (Werkzeug 1.19):
 - [x] Spielerrekord: der Wächter zählt jede Minute die Spieler aller Server zusammen, meldet einen neuen Rekord nach
       Discord (ab 5 Spielern, höchstens alle 30 Minuten), hängt die Tagesspitze an die Tageszusammenfassung und zeigt
@@ -134,3 +142,6 @@ Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamne
 
 Ideen:
 - [ ] Geister-Rennen: bei `/rennen` die Bestzeit als Zwischenzeit-Vergleich an Kontrollpunkten.
+- [ ] Bestenliste aus einem Index statt aus allen Spielerdateien: ab etwa 3000 Spielerdateien kostet die Neuberechnung
+      0,4 s (10 000: 1,4 s) – je Server alle 60 s. Idee: das Plugin schreibt beim Speichern eine Zeile in
+      `players/index.jsonl`, die Liste liest nur noch diese Datei.

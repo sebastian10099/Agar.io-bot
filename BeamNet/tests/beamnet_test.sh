@@ -291,6 +291,8 @@ contains "$(cat "$T/systemd/beamnet-watch.service")" "^ExecStart=.*beamnet.sh wa
 contains "$(cat "$T/actions")" "enable --now" "watch install: Timer aktiviert"
 contains "$(cat "$T/beamnet.conf")" "^AUTO_RESTART=0$" "watch install: Neustart standardmaessig aus"
 contains "$(cat "$T/beamnet.conf")" "^MAP_VOTE=1$" "watch install: Map-Abstimmung standardmaessig an"
+contains "$(cat "$T/beamnet.conf")" "^ONLINE_REPORT=60$" "watch install: Wer-ist-online standardmaessig stuendlich"
+sed -i 's/^ONLINE_REPORT=.*/ONLINE_REPORT=0/' "$T/beamnet.conf"   # eigener Test weiter unten
 
 out=$("$TOOL" watch 2>&1)
 lacks "$out" "ausgefallen|online" "watch: erste Runde ohne Meldung"
@@ -646,7 +648,7 @@ lacks "$(cat "$T/actions")" "^(start|restart|stop|enable) " "setup ohne Zustimmu
 [[ ! -f $T/systemd/beamnet-watch.timer ]] && pass || fail "setup ohne Zustimmung: kein Waechter"
 # Alles bejahen (mit Admins, Webhook, Port).
 rm -rf "$T/root/1/Resources/Server/BeamNetCore"
-answers='j\nj\nj\nj\nSebi Max\nj\nhttps://discord.com/api/webhooks/123/abc_DEF-9\nj\nj\n8090\nj\n'
+answers='j\nj\nj\nj\nSebi Max\nj\nhttps://discord.com/api/webhooks/123/abc_DEF-9\n123456:ABCDEFghijklmnop_1234567890\n-1001234567890\nj\nj\n8090\nj\n'
 : >"$T/actions"
 out=$(printf "$answers" | "$TOOL" setup 2>&1)
 contains "$out" "Gesichert: $T/backups/" "setup: Sicherung"
@@ -655,12 +657,14 @@ contains "$out" "Plugin XPSystem auf 6 Server\\(n\\) abgeschaltet" "setup: alte 
 contains "$("$TOOL" admin list)" "Admins: Sebi, Max" "setup: Admins"
 contains "$(cat "$T/beamnet.conf")" "^DISCORD_WEBHOOK=https://discord.com/api/webhooks/123/abc_DEF-9$" "setup: Webhook"
 contains "$(cat "$T/beamnet.conf")" "^AUTO_RESTART=1$" "setup: automatischer Neustart"
+contains "$(cat "$T/beamnet.conf")" "^TELEGRAM_TOKEN=123456:ABCDEFghijklmnop_1234567890$" "setup: Telegram-Token"
+contains "$(cat "$T/beamnet.conf")" "^TELEGRAM_CHAT=-1001234567890$" "setup: Telegram-Chat"
 [[ $(grep -c '^DISCORD_WEBHOOK=' "$T/beamnet.conf") == 1 ]] && pass || fail "setup: Webhook nur einmal in der Datei"
 contains "$(cat "$T/systemd/beamnet-web.service")" "' 0\\.0\\.0\\.0 8090 " "setup: Statusseite auf Port 8090"
 contains "$(cat "$T/actions")" "restart beammp-6.service" "setup: Neustart"
 contains "$out" "Zum Teilen mit mir: beamnet report" "setup: Abschluss"
 # Ungueltiger Webhook wird nicht gespeichert.
-out=$(printf '\n\n\n\nj\nhttp://evil.example/x\n\nj\nkeinport\n\n' | "$TOOL" setup 2>&1)
+out=$(printf '\n\n\n\nj\nhttp://evil.example/x\n\n\nj\nkeinport\n\n' | "$TOOL" setup 2>&1)
 contains "$out" "keine Discord-Webhook-URL" "setup: falscher Webhook abgelehnt"
 contains "$(cat "$T/beamnet.conf")" "^DISCORD_WEBHOOK=https://discord.com/api/webhooks/123/abc_DEF-9$" "setup: alter Webhook bleibt"
 contains "$out" "Ungültiger Port 'keinport' – Statusseite übersprungen" "setup: ungueltiger Port bricht nicht ab"
@@ -842,9 +846,9 @@ out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
 lacks "$out" "Heute im Netzwerk" "daily: DAILY_SUMMARY=0 schaltet ab"
 contains "$("$TOOL" watch status 2>&1)" "Tageszusammenfassung: aus" "watch status: Tageszusammenfassung aus"
 # Ohne Webhook: nichts.
-sed -i '/^DAILY_SUMMARY=/d; s|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=|' "$T/beamnet.conf"
+sed -i '/^DAILY_SUMMARY=/d; s|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=|; s/^TELEGRAM_TOKEN=.*/TELEGRAM_TOKEN=/; s/^TELEGRAM_CHAT=.*/TELEGRAM_CHAT=/' "$T/beamnet.conf"
 out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
-lacks "$out" "Heute im Netzwerk" "daily: ohne Webhook keine Zusammenfassung"
+lacks "$out" "Heute im Netzwerk" "daily: ohne Webhook und Telegram keine Zusammenfassung"
 rm -rf "$P" "$T/fremd.json" "$T/root/shared/beamnet/races/italy.json" "$T/watch/daily-$todaydate"
 [[ -f $T/italy.keep ]] && mv "$T/italy.keep" "$T/root/shared/beamnet/races/italy.json"
 mv "$T/players.keep" "$P"
@@ -868,6 +872,7 @@ players_on 3 5
 out=$("$TOOL" watch 2>&1)
 contains "$out" "🎉 Neuer Spielerrekord: 12 Spieler gleichzeitig im Netzwerk \\(bisher 7\\)!" "peak: neuer Rekord gemeldet"
 contains "$(cat "$T/curl.log")" "Neuer Spielerrekord" "peak: an Discord"
+contains "$out" "^   Server 3 \\(.*\\): 5 Spieler$" "peak: Rekordmeldung zeigt die Server (ohne Namen im Lebenszeichen die Anzahl)"
 players_on 4 2
 out=$("$TOOL" watch 2>&1)
 lacks "$out" "Spielerrekord" "peak: höchstens alle 30 Minuten eine Meldung"
@@ -881,6 +886,60 @@ contains "$(cat "$T/web/index.html")" "Rekord: 14 gleichzeitig \\([0-9]{2}\\.[0-
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["peak"]["allTime"] == 14' "$T/web/api.json" && pass || fail "peak: in api.json"
 rm -f "$S"/servers/*.json
 cp "$T/conf.peak" "$T/beamnet.conf"
+
+# --- Telegram und "Wer ist online" ----------------------------------------------------------------------------------
+sed -i 's/^TELEGRAM_TOKEN=.*/TELEGRAM_TOKEN=123456:ABCDEFghijklmnop_1234567890/; s/^TELEGRAM_CHAT=.*/TELEGRAM_CHAT=-1001234567890/; s/^ONLINE_REPORT=.*/ONLINE_REPORT=1/' "$T/beamnet.conf"
+rm -f "$T"/watch/online-* "$T"/watch/daily-* "$T"/watch/peak*
+now=$(date +%s)
+echo "{\"name\":\"S1\",\"port\":30814,\"map\":\"gridmap_v2\",\"players\":2,\"max\":8,\"names\":[\"Sebi\",\"Max\\u0007\"],\"updated\":$now}" >"$T/root/shared/beamnet/servers/30814.json"
+echo "{\"name\":\"S3\",\"port\":30816,\"map\":\"italy\",\"players\":1,\"max\":8,\"names\":[\"Ana\"],\"updated\":$now}" >"$T/root/shared/beamnet/servers/30816.json"
+echo "{\"port\":30815,\"players\":4,\"max\":8,\"names\":[\"Alt\"],\"updated\":$((now - 600))}" >"$T/root/shared/beamnet/servers/30815.json"
+: >"$T/curl.log"
+out=$(BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+contains "$out" "👥 Gerade online: 3 Spieler" "online: Meldung mit Gesamtzahl (veraltetes Lebenszeichen zaehlt nicht)"
+contains "$out" "Server 1 \(gridmap_v2\): Max, Sebi$" "online: Namen je Server, sortiert, ohne Steuerzeichen"
+contains "$out" "Server 3 \(utah\): Ana$" "online: zweiter Server"
+lacks "$out" "Server 2 " "online: Server ohne aktuelles Lebenszeichen fehlt"
+contains "$(cat "$T/curl.log")" "https://api.telegram.org/bot123456:ABCDEFghijklmnop_1234567890/sendMessage" "online: an Telegram"
+contains "$(cat "$T/curl.log")" '\{"chat_id":"-1001234567890","text":"👥 Gerade online: 3 Spieler\\n   Server 1 \(gridmap_v2\): Max, Sebi\\n   Server 3 \(utah\): Ana","disable_web_page_preview":true\}' "online: Telegram-JSON (reiner Text)"
+contains "$(cat "$T/curl.log")" "https://discord.com/api/webhooks/1/abc" "online: weiterhin an Discord"
+: >"$T/curl.log"
+echo 0 >"$T/watch/online-at"
+out=$(BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+lacks "$out" "Gerade online" "online: unveraenderte Runde wird nicht wiederholt"
+date +%s >"$T/watch/online-at"
+echo "{\"name\":\"S1\",\"port\":30814,\"map\":\"gridmap_v2\",\"players\":1,\"max\":8,\"names\":[\"Sebi\"],\"updated\":$(date +%s)}" >"$T/root/shared/beamnet/servers/30814.json"
+out=$(BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+lacks "$out" "Gerade online" "online: Aenderung, aber Abstand noch nicht um"
+echo 0 >"$T/watch/online-at"
+out=$(BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+contains "$out" "👥 Gerade online: 2 Spieler" "online: nach Abstand und Aenderung erneut"
+contains "$out" "Server 1 \(gridmap_v2\): Sebi$" "online: neue Runde"
+# beamnet players zeigt Namen statt JSON; json liefert weiter die Rohdaten.
+out=$("$TOOL" players 2>&1)
+contains "$out" "2 Spieler online" "players: Gesamtzahl"
+contains "$out" "^Server 1   1/8      gridmap_v2             Sebi$" "players: Namen je Server"
+contains "$out" "^Server 2   \?        .*kein Lebenszeichen" "players: ohne Lebenszeichen"
+lacks "$out" '"names"' "players: kein rohes JSON"
+contains "$("$TOOL" players json 2>&1)" '"names":\["Sebi"\]' "players json: Rohdaten"
+# watch status und test mit Telegram.
+out=$("$TOOL" watch status 2>&1)
+contains "$out" "^Telegram: an$" "watch status: Telegram"
+contains "$out" "^Wer-ist-online-Meldung: alle 1 Minuten$" "watch status: Wer-ist-online"
+sed -i 's/^DISCORD_WEBHOOK=.*/DISCORD_WEBHOOK=/' "$T/beamnet.conf"
+: >"$T/curl.log"
+"$TOOL" watch test >/dev/null 2>&1 && pass || fail "watch test: nur Telegram reicht"
+contains "$(cat "$T/curl.log")" "Testnachricht" "watch test: Testnachricht an Telegram"
+lacks "$(cat "$T/curl.log")" "discord" "watch test: ohne Webhook nichts an Discord"
+# Falscher Token: nichts senden, deutliche Meldung.
+sed -i 's/^TELEGRAM_TOKEN=.*/TELEGRAM_TOKEN=kaputt/' "$T/beamnet.conf"
+: >"$T/curl.log"
+out=$("$TOOL" watch test 2>&1); rc=$?
+[[ $rc -ne 0 ]] && pass || fail "watch test: falscher Token meldet Fehler"
+contains "$out" "sieht nicht wie ein Bot-Token" "watch test: Hinweis auf falschen Token"
+[[ ! -s $T/curl.log ]] && pass || fail "watch test: mit falschem Token wird nichts gesendet"
+sed -i 's/^TELEGRAM_TOKEN=.*/TELEGRAM_TOKEN=/; s/^TELEGRAM_CHAT=.*/TELEGRAM_CHAT=/; s/^ONLINE_REPORT=.*/ONLINE_REPORT=0/; s|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/abc|' "$T/beamnet.conf"
+contains "$("$TOOL" watch status 2>&1)" "^Wer-ist-online-Meldung: aus$" "watch status: Wer-ist-online aus"
 
 # --- Sicherheit: root folgt nie Symlinks in Ordnern, die dem Dienst-Benutzer gehoeren ------------------------------
 S="$T/root/shared/beamnet"
