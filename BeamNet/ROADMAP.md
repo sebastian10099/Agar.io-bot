@@ -1,12 +1,75 @@
 # BeamNet – Roadmap
 
+## Die nächsten 40 Punkte (Stand Werkzeug 1.20 / Plugin 1.12)
+
+Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
+Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
+
+**A. Stabil bei vielen Spielern**
+1. [ ] Bestenliste aus einem Index (`players/index.jsonl`) statt aus allen Spielerdateien. Heute kostet sie bei
+       3000 Dateien 0,4 s, bei 10 000 Dateien 1,4 s, je Server alle 60 s.
+2. [ ] Wochen- und Saisonwertung aus demselben Index.
+3. [ ] Gestaffeltes Speichern: nicht alle Spieler in derselben Sekunde, sondern verteilt über die Minute.
+4. [ ] Lebenszeichen nur schreiben, wenn sich etwas geändert hat, spätestens alle 60 s. Das bedeutet weniger
+       Schreibzugriffe bei 12 Servern.
+5. [ ] Wächter misst CPU und RAM je Server (systemd) und warnt bei Dauerlast über 90 %.
+6. [ ] „Server voll“-Hilfe: Wer einem vollen Server beitreten will, bekommt im Chat den freien Server mit derselben
+       Map genannt. Bei 90 % Auslastung des ganzen Netzwerks geht eine Meldung an Discord/Telegram.
+7. [ ] Tägliche Sicherung des gemeinsamen Datenordners, 7 Tage aufbewahrt, mit `beamnet restore <datum>`.
+8. [ ] Der doctor prüft die Größe von Server.log und Journal und richtet eine Protokoll-Rotation ein.
+9. [ ] Lasttest in der CI mit echtem BeamMP-Server und vielen simulierten Spielerdateien.
+10. [ ] Der Wächter erkennt hängende Server (Prozess läuft, aber 3 Minuten kein Lebenszeichen) und startet sie neu.
+
+**B. Community, Discord und Telegram**
+11. [ ] Telegram-Bot antwortet auf `/online`, `/top`, `/rekord` und `/server` (der Wächter liest neue Nachrichten jede
+        Minute).
+12. [ ] Discord-Meldungen als Embeds (farbig, mit Feldern) statt reinem Text.
+13. [ ] Statusseite: Diagramm „Spieler je Stunde“ über die letzten 7 Tage, mit Rekordmarke.
+14. [ ] Statusseite: Block „Gerade online“ mit Namen je Server, verlinkt auf die Profile.
+15. [ ] Profilseite: Kilometer je Woche als kleines Diagramm, letzte Rekorde.
+16. [ ] Geplante Ansagen: `beamnet ansage "Event um 20 Uhr" --um 19:45`, auf allen Servern im Chat.
+17. [ ] Event-Modus: doppelte XP in einem Zeitfenster (z. B. Wochenende), angekündigt im Chat und in Discord.
+18. [ ] Begrüßung für neue Spieler beim ersten Besuch: kurze Regeln und die wichtigsten Befehle. 🤖
+19. [ ] `/wo <Name>`: Auf welchem Server fährt ein Freund gerade? 🤖
+20. [ ] Wochenbericht montags mit Spielerrekord, aktivster Server, beliebteste Map und Neulinge.
+
+**C. Rennen und Spielspaß**
+21. [ ] Geister-Vergleich: Zwischenzeiten auch gegen den Streckenrekord, nicht nur gegen die eigene Bestzeit.
+22. [ ] Gemeinsame Rennen: `/rennen start <Strecke>` mit Countdown für alle Teilnehmer und Ergebnisliste.
+23. [ ] Strecke der Woche: wechselt automatisch, Bonus-XP für Teilnahme und Top 3.
+24. [ ] Blitzer: Höchstgeschwindigkeit je Map als eigene Bestenliste (mit Plausibilitätsprüfung).
+25. [ ] Teams/Clans: `/team gründen|beitreten`, mit Team-Kilometern und Team-Wertung auf der Statusseite.
+26. [ ] Neue Erfolge: alle Maps befahren, Nachtfahrer, 1000 km, 10 Rekorde, Marathon (2 h am Stück). 🤖
+27. [ ] Saison-Titel: Die Top 3 der Saison bekommen einen Titel in `/stats` und auf der Statusseite.
+28. [ ] Tagesaufgaben je Map, z. B. „fahre 10 km auf Utah“. 🤖
+
+**D. Moderation und Sicherheit**
+29. [ ] Zeitlich begrenzter Bann (`/ban <Name> 3d`), prüfen und übernehmen aus Werkstatt-Aufgabe 03. 🤖
+30. [ ] `/melden <Name> <Grund>`: geht an die Admins per Discord/Telegram, mit Server und Zeit.
+31. [ ] Admin-Benachrichtigung bei Spam-Stummschaltung, Bann und auffälligen Rekorden (Telegram).
+32. [ ] Wortfilter (einstellbare Liste), mit Verwarnung statt sofortigem Kick.
+33. [ ] Schutz gegen Join-/Rejoin-Spam (zu viele Beitritte pro Minute pro IP).
+34. [ ] Dritte Sicherheitsprüfung durch ein Agenten-Team (Telegram-Token, Online-Meldung, Statusseite).
+
+**E. Betrieb und Werkzeug**
+35. [ ] `beamnet update` mit Rückfall: Meldet das Plugin nach dem Update Fehler, kommt automatisch die alte Version
+        zurück.
+36. [ ] Vorab-Update auf einem Server: `beamnet update --test 1`, die übrigen erst nach 10 Minuten ohne Fehler.
+37. [ ] `metrics.txt` (Prometheus-Format) für Grafana: Spieler, km/h, Fehler und Neustarts je Server.
+38. [ ] Werkstatt: Die CI prüft `lokal/*`-Branches automatisch (Tests, shellcheck) vor meiner Durchsicht. 🤖
+39. [ ] README und Befehlshilfe auch auf Englisch (für internationale Admins). 🤖
+40. [ ] Spieler-Hilfeseite auf der Statusseite: alle Chatbefehle, Ligen, Erfolge und Regeln. 🤖
+
+Außerdem, sobald der Server-Zugang steht: `beamnet doctor` auf dem echten Server, Ausgabe prüfen, Reparaturen
+übernehmen.
+
 Erledigt (Werkzeug 1.20):
 - [x] Wächter meldet auch per **Telegram** (Bot-Token und Chat-ID in `/etc/beamnet.conf`, Abfrage im Setup); alle
       Meldungen gehen an Discord und Telegram, je nachdem, was eingetragen ist.
 - [x] **Wer ist online** mit Spielernamen je Server: alle 60 Minuten (`ONLINE_REPORT`), nur bei Änderung; Namen auch
       in der Rekordmeldung; `beamnet players` zeigt eine lesbare Übersicht statt JSON (`players json` = Rohdaten).
 - [x] Lasttest im Plugin: 64 Spieler gleichzeitig kosten etwa 4 ms je Takt (Budget 1000 ms); alle km, Fahrzeiten und
-      Dateien stimmen. Bestenliste bei 3000 Spielerdateien ≈ 0,4 s je Neuberechnung (alle 60 s) – siehe offene Punkte.
+      Dateien stimmen. Bestenliste bei 3000 Spielerdateien ≈ 0,4 s je Neuberechnung (alle 60 s) – siehe Punkt 1.
 
 Erledigt (Werkzeug 1.19):
 - [x] Spielerrekord: der Wächter zählt jede Minute die Spieler aller Server zusammen, meldet einen neuen Rekord nach
@@ -140,8 +203,4 @@ Erledigt (Version 1.0):
 Als Nächstes (sobald der Server-Zugang wieder steht und die Ausgabe von `beamnet doctor` vorliegt):
 - [ ] Auf dem echten Server prüfen: `beamnet doctor`, `beamnet fix`, BeamNetCore installieren, alte Plugins vergleichen.
 
-Ideen:
-- [ ] Geister-Rennen: bei `/rennen` die Bestzeit als Zwischenzeit-Vergleich an Kontrollpunkten.
-- [ ] Bestenliste aus einem Index statt aus allen Spielerdateien: ab etwa 3000 Spielerdateien kostet die Neuberechnung
-      0,4 s (10 000: 1,4 s) – je Server alle 60 s. Idee: das Plugin schreibt beim Speichern eine Zeile in
-      `players/index.jsonl`, die Liste liest nur noch diese Datei.
+Ideen: siehe „Die nächsten 40 Punkte“ ganz oben.
