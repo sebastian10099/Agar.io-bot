@@ -1604,6 +1604,46 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Begruessung neuer Spieler und /regeln -----------------------------------------------------------------------
+do
+    local savedRules = C.rules
+    players[91] = { name = "Stammgast", ids = { beammp = "9101b" }, vehicles = {} }
+    _G[events.onPlayerJoin](91)
+    _G[events.onPlayerDisconnect](91)                       -- legt die Datei an (auch ohne zu fahren)
+    check(readJson(SHARED .. "/players/9101b.json") ~= nil, "Neuer Spieler: Datei auch ohne Fahren angelegt")
+    chatLog = {}
+    _G[events.onPlayerJoin](91)
+    check(not chatContains("Schön, dass du da bist", 91), "Bekannter Spieler: keine Neulings-Begruessung")
+    players[92] = { name = "Frischling", ids = { beammp = "9201" }, vehicles = {} }
+    _G[events.onPlayerJoin](92)
+    check(chatContains("Schön, dass du da bist, Frischling!", 92), "Neuer Spieler: persoenliche Begruessung")
+    check(chatContains("^1%. Fair fahren", 92) and chatContains("^3%. Den Anweisungen", 92), "Neuer Spieler: Regeln nummeriert")
+    check(chatContains("Frischling ist zum ersten Mal im BeamNet", 91), "Neuer Spieler: den anderen vorgestellt")
+    check(not chatContains("Frischling ist zum ersten Mal", 92), "Neuer Spieler: sich selbst nicht vorgestellt")
+    players[93] = { name = "Gast77", ids = {}, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](93)
+    check(not chatContains("ist zum ersten Mal", 91), "Gaeste werden nicht als neu vorgestellt")
+    say(91, "/regeln")
+    check(chatContains("^Regeln:", 91) and chatContains("^2%. Freundlich im Chat", 91), "/regeln zeigt die Regeln")
+    say(91, "/lang en"); chatLog = {}
+    say(91, "/rules")
+    check(chatContains("^1%. Drive fair", 91), "/rules: Standardregeln auf Englisch")
+    say(91, "/lang de")
+    -- Eigene Regeln aus config.json (ungueltige werden ignoriert).
+    writeJson(SHARED .. "/config.json", { rules = { "Nur Linksverkehr.", "Spass haben!" } })
+    BN.loadOverrides()
+    chatLog = {}; say(91, "/regeln")
+    check(chatContains("^1%. Nur Linksverkehr%.", 91) and chatContains("^2%. Spass haben!", 91), "Eigene Regeln aus config.json")
+    writeJson(SHARED .. "/config.json", { rules = { "ok", 5 } })
+    BN.loadOverrides()
+    chatLog = {}; say(91, "/regeln")
+    check(chatContains("Nur Linksverkehr", 91), "Ungueltige Regeln (keine Texte) werden ignoriert")
+    os.remove(SHARED .. "/config.json")
+    C.rules = savedRules
+    for pid = 91, 93 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+end
+
 -- --- XP-Event (/event) ------------------------------------------------------------------------------------------
 do
     local savedAdmins = C.admins

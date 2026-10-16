@@ -177,6 +177,7 @@ beamnet restart all
 | `/top [km \| xp \| woche \| vorwoche]` | Bestenliste (Top 5) – nach XP, Gesamtkilometern, Kilometern dieser oder der letzten Woche |
 | `/liga` | Alle Ligen und wie weit es bis zur nächsten ist |
 | `/server` | Alle BeamNet-Server mit Map und Spielerzahl (wechseln geht im BeamMP-Launcher) |
+| `/regeln` | Regeln des Netzwerks (englisch `/rules`). Eigene Regeln: `"rules": ["…", "…"]` in `config.json` (höchstens 10 Zeilen). Neue Spieler bekommen beim ersten Besuch eine Begrüßung mit den Regeln und werden den anderen vorgestellt (`"welcomeNew": false` schaltet ab) |
 | `/wo <Name>` | Auf welchem Server fährt ein Freund gerade? (Teil des Namens reicht; englisch `/where`) |
 | `/melden <Name> <Grund>` | Meldung an die Admins: sofort im Chat an Admins auf dem Server, über den Wächter an Discord/Telegram (höchstens alle 2 Minuten; englisch `/report`) |
 | `/km` | Eigene Kilometer |

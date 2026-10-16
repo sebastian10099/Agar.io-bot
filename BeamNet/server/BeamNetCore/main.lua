@@ -18,11 +18,19 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.17"
+BN.VERSION = "1.18"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
     serverConfig = "ServerConfig.toml",
+    -- Regeln fuer /regeln und die Begruessung neuer Spieler (hoechstens 10 Zeilen zu je 200 Zeichen).
+    rules = {
+        "Fair fahren: kein absichtliches Rammen oder Blockieren.",
+        "Freundlich im Chat – keine Beleidigungen, kein Spam.",
+        "Den Anweisungen der Admins folgen.",
+    },
+    -- Neue Spieler (erster Besuch im Netzwerk) begruessen und allen auf dem Server vorstellen.
+    welcomeNew = true,
     tickMs = 1000,
     statusEverySec = 15,
     saveEverySec = 60,
@@ -463,6 +471,10 @@ function BN.loadOverrides()
     for k, v in pairs(cfg) do
         if k == "leagues" then
             if BN.validLeagues(v) then C.leagues = v else print("[BeamNetCore] config.json: leagues ungueltig, Standard bleibt") end
+        elseif k == "rules" then
+            local ok = type(v) == "table" and #v <= 10
+            if ok then for _, line in ipairs(v) do if type(line) ~= "string" or #line > 200 then ok = false end end end
+            if ok then C.rules = v else print("[BeamNetCore] config.json: rules ungueltig (Liste aus Texten), Standard bleibt") end
         elseif defaults[k] ~= nil and type(v) == type(defaults[k]) and k ~= "sharedDir" then
             if type(v) == "number" then
                 -- Keine negativen Werte; ganze Zahlen dort, wo sie im Chat mit %d ausgegeben werden.
@@ -521,8 +533,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /melden · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /report · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /melden · /regeln · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /report · /rules · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -566,6 +578,14 @@ local EN = {
     ["Keine Serverliste verfügbar."] = "No server list available.",
     ["BeamNet-Server (wechseln im BeamMP-Launcher):"] = "BeamNet servers (switch in the BeamMP launcher):",
     ["XP-Event: %s-fache XP bis %s Uhr! (gestartet von %s)"] = "XP event: %sx XP until %s! (started by %s)",
+    ["Schön, dass du da bist, %s! Deine Kilometer und XP zählen auf allen BeamNet-Servern."] =
+        "Great to have you, %s! Your kilometres and XP count on every BeamNet server.",
+    ["%s ist zum ersten Mal im BeamNet – herzlich willkommen!"] = "%s is new to BeamNet – welcome!",
+    ["Regeln:"] = "Rules:",
+    ["Für dieses Netzwerk sind keine Regeln eingetragen."] = "No rules have been set for this network.",
+    ["Fair fahren: kein absichtliches Rammen oder Blockieren."] = "Drive fair: no deliberate ramming or blocking.",
+    ["Freundlich im Chat – keine Beleidigungen, kein Spam."] = "Be friendly in chat – no insults, no spam.",
+    ["Den Anweisungen der Admins folgen."] = "Follow the admins' instructions.",
     ["Das XP-Event ist vorbei – danke fürs Mitfahren!"] = "The XP event is over – thanks for driving!",
     ["XP-Event läuft: %s-fache XP bis %s Uhr."] = "XP event running: %sx XP until %s.",
     ["Gerade läuft kein XP-Event."] = "No XP event right now.",
@@ -766,7 +786,11 @@ local function loadRecord(id, name)
     local path = playersDir() .. "/" .. id .. ".json"
     local f, openErr, code = io.open(path, "rb")
     if not f then
-        if code == ENOENT then return normalizeRecord(emptyRecord(id, name), id, name) end
+        if code == ENOENT then
+            local rec = normalizeRecord(emptyRecord(id, name), id, name)
+            BN.lastLoadWasNew = true            -- erster Besuch im Netzwerk (fuer die Begruessung)
+            return rec
+        end
         return nil, openErr or "nicht lesbar"
     end
     local data, readErr = f:read("*a")
@@ -887,7 +911,11 @@ function BN.addPlayer(pid)
     local id = safeId(ids.beammp)
     -- achChecked = false: was bei der ersten Pruefung schon erreicht ist, wird nachtraeglich vergeben.
     local session = { pid = pid, name = name, id = id, ip = ids.ip, guest = id == nil, achChecked = false }
+    BN.lastLoadWasNew = false
     session.record = sessionRecord(id, name)
+    session.isNew = id ~= nil and BN.lastLoadWasNew
+    BN.lastLoadWasNew = false
+    if session.isNew then session.dirty = true end      -- Datei sofort anlegen: beim naechsten Mal nicht mehr "neu"
     BN.normalizeSession(session)
     if session.record.lang == "en" or session.record.lang == "de" then session.lang = session.record.lang end
     local mute = BN.findMute(id, ids.ip)
@@ -2095,7 +2123,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /melden · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /melden · /regeln · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
@@ -2568,6 +2596,19 @@ function commands.event(pid, arg)
     modlog({ action = "event", by = s.name, factor = factor, ["until"] = ev["until"] })
     BN.loadEvent(now)
 end
+
+-- Regeln (C.rules): nummeriert, eigene Texte unveraendert, die Standardregeln uebersetzt.
+function BN.sayRules(pid)
+    if type(C.rules) ~= "table" or #C.rules == 0 then return end
+    say(pid, "Regeln:")
+    for i, line in ipairs(C.rules) do chat(pid, string.format("%d. %s", i, tr(BN.langOf(pid), line))) end
+end
+
+function commands.regeln(pid)
+    if type(C.rules) ~= "table" or #C.rules == 0 then say(pid, "Für dieses Netzwerk sind keine Regeln eingetragen.") return end
+    BN.sayRules(pid)
+end
+commands.rules = commands.regeln
 
 -- Text fuer Meldungen: ohne Steuerzeichen, hoechstens maxBytes Bytes, nie mitten in einem UTF-8-Zeichen getrennt.
 local function clipText(text, maxBytes)
@@ -3050,6 +3091,13 @@ function BN_onPlayerJoin(pid)
     end
     local ev = BN.activeEvent()
     if ev then say(pid, "XP-Event läuft: %s-fache XP bis %s Uhr.", fmtFactor(ev.factor), os.date("%H:%M", ev["until"])) end
+    if s.isNew and C.welcomeNew then
+        say(pid, "Schön, dass du da bist, %s! Deine Kilometer und XP zählen auf allen BeamNet-Servern.", s.name)
+        BN.sayRules(pid)
+        for other in pairs(BN.players) do
+            if other ~= pid then say(other, "%s ist zum ersten Mal im BeamNet – herzlich willkommen!", s.name) end
+        end
+    end
     BN.writeStatus()
 end
 
