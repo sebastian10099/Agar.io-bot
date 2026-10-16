@@ -267,3 +267,50 @@ class ClaudeAdvisor:
             if isinstance(error, anthropic.APIConnectionError):
                 return "Keine Verbindung zur API"
         return f"{type(error).__name__}: {error}"
+
+
+def _self_check(argv: list[str]) -> int:
+    """`python3 -m bot.ai` - one real call on a fixture candidate, prints the verdict and cost."""
+    import argparse
+    from pathlib import Path
+
+    ap = argparse.ArgumentParser(description="Einmaliger KI-Selbsttest mit einem Beispiel-Kandidaten")
+    ap.add_argument("--model", default=DEFAULT_MODEL)
+    ap.add_argument("--effort", default="medium", choices=["low", "medium", "high"])
+    args = ap.parse_args(argv)
+
+    cfg = {"ai": {"mode": "advise", "model": args.model, "effort": args.effort, "max_calls_per_hour": 5}}
+    advisor = ClaudeAdvisor(cfg, log=lambda level, msg: print(f"[{level}] {msg}"))
+    status = advisor.status()
+    print(f"Modell {status['model']} · Schlüsselquelle: {status['key_source']}")
+    if not status["available"]:
+        print("Nicht verfügbar:", status["reason"])
+        return 1
+
+    fixtures = Path(__file__).parent.parent / "tests" / "fixtures" / "pairs.json"
+    raw = next(p for p in json.loads(fixtures.read_text()) if p["baseToken"]["symbol"] == "RUN")
+    raw.pop("_demo", None)
+    raw["pairCreatedAt"] = int((time.time() - 12 * 60) * 1000)
+    from .sources.dexscreener import normalize_pair
+    pair = normalize_pair(raw)
+    rug = {"score": 120, "danger": [], "warn": []}
+    rules = {"decision": "buy", "score": 64.4, "reasons": ["liquidity 7", "activity 10", "pressure 15", "momentum 8", "age 10", "socials 5", "rugcheck 9"]}
+
+    print("Frage Claude nach dem Beispiel-Token RUN ...")
+    started = time.time()
+    verdict = advisor.judge(pair, rug, rules)
+    took = time.time() - started
+    if verdict is None:
+        print("Kein Urteil:", advisor.status()["reason"])
+        return 2
+    print(f"Urteil: {verdict['decision']} ({verdict['confidence']:.0%}) in {took:.1f}s · {verdict['model']}")
+    for r in verdict["reasons"]:
+        print("  -", r)
+    for f in verdict["risk_flags"]:
+        print("  ! ", f)
+    print(f"Kosten dieser Anfrage: ≈ ${advisor.cost_total:.4f}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_self_check(sys.argv[1:]))

@@ -144,7 +144,13 @@ pip install anthropic            # offizielles SDK, einzige Zusatzabhängigkeit
 ```
 
 Schlüssel: `ANTHROPIC_API_KEY` in der Umgebung, ein `ant auth login`-Profil,
-oder auf dem Mac über die Steuerseite in den Schlüsselbund speichern.
+oder auf dem Mac über die Steuerseite in den Schlüsselbund speichern. Dann
+einmal prüfen, ob die Verbindung steht – ein echter Aufruf mit einem
+Beispiel-Token, Urteil und Kosten werden ausgegeben:
+
+```bash
+python3 -m bot.ai
+```
 
 Technik: Modell `claude-opus-5-5` (einstellbar), adaptives Denken mit
 einstellbarer Tiefe (`effort`), strukturierte JSON-Ausgabe per Schema,
