@@ -31,6 +31,10 @@ class Paper:
     def close_manually(self, pos: dict[str, Any], price: float, now: Optional[float] = None) -> None:
         self._sell(pos, pos["remaining_frac"], price, "manual", now or time.time())
 
+    def sell_part(self, pos: dict[str, Any], frac: float, price: float, now: Optional[float] = None) -> None:
+        """Sell a share of the ORIGINAL size (like a ladder rung), capped at what is left."""
+        self._sell(pos, frac, price, "manual_partial", now or time.time())
+
     # --- accounting -----------------------------------------------------
     def bankroll(self) -> float:
         return self.initial + self.store.realized_all()
