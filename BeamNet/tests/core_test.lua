@@ -2310,6 +2310,12 @@ do
     _G[events.onPlayerDisconnect](96)
     eq(readJson(SHARED .. "/players/9696.json").jobsDone, 2, "Auftrag: gespeichert")
     check((readJson(SHARED .. "/players/9696.json").dayJobs or 0) >= 1, "Auftrag: Tageszaehler fuer die Tageszusammenfassung")
+    check((readJson(SHARED .. "/players/9696.json").weekJobs or 0) >= 1, "Auftrag: Wochenzaehler fuer den Wochenbericht")
+    do
+        local r = { week = "2000-W01", weekKm = 3, weekJobs = 4 }
+        BN.applyWeek(r)
+        check(r.lastWeekJobs == 4 and r.weekJobs == 0, "Auftrag: Wochenwechsel merkt die Auftraege der Vorwoche")
+    end
     -- Manipulierte Datei: unbekannte Typen und Unsinn fallen weg, lange Namen werden gekuerzt.
     writeJson(SHARED .. "/places/gridmap_v2.json", { places = { 5, { type = "x", x = 1, y = 1, z = 1 }, { type = "schule", name = string.rep("A", 99), x = 1, y = 2, z = 3 }, { type = "schule", name = "ohne", x = "a" } } })
     local list = BN.loadPlaces()

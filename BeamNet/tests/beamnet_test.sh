@@ -393,8 +393,8 @@ contains "$out" "🟢 Server 6 \\(my_mod_map\\) ist wieder online" "watch: wiede
 # Wochensieger montags nach Discord (einmal je Woche).
 lastweek=$(date -u -d '7 days ago' +%G-W%V)
 inweek=$(( ( $(date +%s) - 7 * 86400 + 3600 ) / 3600 * 3600 ))   # eine Stunde nach "vor 7 Tagen": in der Vorwoche
-echo "{\"id\":\"1\",\"name\":\"Sebi\",\"week\":\"$lastweek\",\"weekKm\":42.5,\"firstSeen\":$inweek}" >"$T/root/shared/beamnet/players/1.json"
-echo "{\"id\":\"2\",\"name\":\"Max\",\"lastWeek\":\"$lastweek\",\"lastWeekKm\":12,\"firstSeen\":1}" >"$T/root/shared/beamnet/players/2.json"
+echo "{\"id\":\"1\",\"name\":\"Sebi\",\"week\":\"$lastweek\",\"weekKm\":42.5,\"weekJobs\":3,\"firstSeen\":$inweek}" >"$T/root/shared/beamnet/players/1.json"
+echo "{\"id\":\"2\",\"name\":\"Max\",\"lastWeek\":\"$lastweek\",\"lastWeekKm\":12,\"lastWeekJobs\":2,\"firstSeen\":1}" >"$T/root/shared/beamnet/players/2.json"
 echo "{\"id\":\"9\",\"name\":\"Fremd\",\"week\":\"$lastweek\",\"weekKm\":999}" >"$T/fremd-week.json"
 ln -sf "$T/fremd-week.json" "$T/root/shared/beamnet/players/9.json"
 mkdir -p "$T/watch"; echo "$inweek 23" >"$T/watch/hours"
@@ -402,7 +402,7 @@ mkdir -p "$T/watch"; echo "$inweek 23" >"$T/watch/hours"
 out=$(BEAMNET_DOW=1 "$TOOL" watch 2>&1)
 contains "$out" "🏁 Wochensieger .* KW .*: 1\\. Sebi \\(42\\.5 km\\) · 2\\. Max \\(12\\.0 km\\)" "watch: Wochensieger"
 lacks "$out" "Fremd" "watch: Wochensieger folgt keinem Symlink"
-contains "$out" "📈 Die Woche: 2 Fahrer · 54 km · Spitze 23 Spieler gleichzeitig \\([A-Z][a-z] [0-9]+ Uhr\\) · 1 neuer Fahrer$" "watch: Wochenzahlen (Fahrer, km, Spitze, Neue)"
+contains "$out" "📈 Die Woche: 2 Fahrer · 54 km · Spitze 23 Spieler gleichzeitig \\([A-Z][a-z] [0-9]+ Uhr\\) · 1 neuer Fahrer · 5 Aufträge$" "watch: Wochenzahlen (Fahrer, km, Spitze, Neue, Aufträge)"
 rm -f "$T/root/shared/beamnet/players/9.json" "$T/fremd-week.json"
 contains "$(cat "$T/curl.log")" "Wochensieger" "watch: Wochensieger an Discord"
 out=$(BEAMNET_DOW=1 "$TOOL" watch 2>&1)

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.42"
+BN.VERSION = "1.43"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1020,7 +1020,7 @@ local function normalizeRecord(rec, id, name)
     rec.id = id or rec.id
     rec.name = name or rec.name
     for _, k in ipairs({ "km", "seconds", "weekKm", "topSpeedKmh", "bonusXp", "racesFinished", "recordsSet",
-                         "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm", "streak", "bestStreak", "jobsDone", "dayJobs" }) do
+                         "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm", "streak", "bestStreak", "jobsDone", "dayJobs", "weekJobs" }) do
         rec[k] = tonumber(rec[k]) or 0
     end
     for _, k in ipairs({ "maps", "achievements", "dayMaps", "mapKm" }) do
@@ -1149,10 +1149,13 @@ local function applyWeek(rec)
         end
         rec.lastWeek = rec.week
         rec.lastWeekKm = km
+        rec.lastWeekJobs = tonumber(rec.weekJobs) or 0
         rec.week = wk
         rec.weekKm = 0
+        rec.weekJobs = 0
     end
 end
+BN.applyWeek = applyWeek
 
 -- Hat der Spieler in dieser Sitzung auf dieser Map wirklich etwas gefahren? (Nur dann zaehlt die Map –
 -- kurz vorbeischauen reicht nicht fuer Erfolge und die Tagesaufgabe "verschiedene Server".)
@@ -1313,6 +1316,7 @@ function BN.savePlayer(s)
     rec.recordsSet = rec.recordsSet + s.pendingRecords
     rec.jobsDone = rec.jobsDone + s.pendingJobs
     rec.dayJobs = rec.dayJobs + s.pendingJobs
+    rec.weekJobs = rec.weekJobs + s.pendingJobs
     -- Tages-Serie: der erste Tag zaehlt, Bonus-XP gibt es ab dem zweiten Tag in Folge.
     if C.streakXp > 0 and rec.dayKm >= C.streakMinKm and rec.streakDay ~= rec.day then
         rec.streak = rec.streakDay == rec.day - 1 and rec.streak + 1 or 1

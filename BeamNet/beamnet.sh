@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.56"
+VERSION="1.57"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2538,11 +2538,14 @@ def load(path):
 def number(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
-rows, new = [], 0
+rows, new, jobs = [], 0, 0
 for path in glob.glob(folder + "/*.json"):
     r = load(path)
     if not r:
         continue
+    j = number(r.get("weekJobs") if r.get("week") == week else r.get("lastWeekJobs") if r.get("lastWeek") == week else None)
+    if j and 0 < j < 100000:
+        jobs += int(j)
     km = r.get("weekKm") if r.get("week") == week else r.get("lastWeekKm") if r.get("lastWeek") == week else None
     km = number(km)
     if km and km > 0:
@@ -2568,6 +2571,8 @@ if rows:
         parts.append(f"Spitze {peak} Spieler gleichzeitig ({days[lt.tm_wday]} {lt.tm_hour} Uhr)")
     if new > 0:
         parts.append(f"{new} {'neue Fahrer' if new != 1 else 'neuer Fahrer'}")
+    if jobs > 0:
+        parts.append(f"{jobs} {'Aufträge' if jobs != 1 else 'Auftrag'}")
     print("📈 Die Woche: " + " · ".join(parts))
 PY
 )
