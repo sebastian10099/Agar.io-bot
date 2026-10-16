@@ -1717,6 +1717,40 @@ do
     for pid = 94, 95 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
 end
 
+-- --- Geplante Ansagen ------------------------------------------------------------------------------------------
+do
+    local savedAdmins = C.admins
+    C.admins = { "Ansager" }
+    players[96] = { name = "Ansager", ids = { beammp = "9601c" }, vehicles = {} }
+    players[97] = { name = "Hoerer", ids = { beammp = "9701c" }, vehicles = {} }
+    _G[events.onPlayerJoin](96); _G[events.onPlayerJoin](97)
+    local at = BN.nextClockTime(os.date("%H:%M", clock + 3600))
+    check(at and at > clock and at <= clock + 3600, "nextClockTime: Uhrzeit in einer Stunde")
+    local past = BN.nextClockTime(os.date("%H:%M", clock - 3600))
+    check(past and past > clock + 20 * 3600, "nextClockTime: vergangene Uhrzeit -> morgen")
+    check(BN.nextClockTime("25:00") == nil and BN.nextClockTime("abc") == nil, "nextClockTime: ungueltig")
+    chatLog = {}
+    say(96, "/ansage " .. os.date("%H:%M", at) .. " Rennen am Hafen gleich!")
+    check(chatContains("Ansage geplant für %d%d:%d%d Uhr: Rennen am Hafen gleich!", 96), "Ansage: geplant bestaetigt")
+    check(not chatContains("%[Ansage%] Rennen am Hafen", 97), "Ansage: noch nicht gesendet")
+    -- Ein anderer Server startet neu: die geplante Ansage geht nicht verloren.
+    BN.seenAnnouncements = {}
+    BN.markAnnouncementsSeen()
+    BN.sync(true)
+    check(not chatContains("%[Ansage%] Rennen am Hafen", 97), "Ansage: vor der Zeit nichts")
+    clock = at + 5
+    BN.sync(true)
+    check(chatContains("%[Ansage%] Rennen am Hafen gleich!", 97), "Ansage: zur geplanten Zeit auf allen Servern")
+    chatLog = {}
+    BN.sync(true)
+    check(not chatContains("%[Ansage%]", 97), "Ansage: nur einmal")
+    -- Sofortige Ansage wie bisher.
+    say(96, "/ansage Jetzt sofort")
+    check(chatContains("%[Ansage%] Jetzt sofort", 97), "Ansage: ohne Uhrzeit sofort")
+    for pid = 96, 97 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    C.admins = savedAdmins
+end
+
 -- --- XP-Event (/event) ------------------------------------------------------------------------------------------
 do
     local savedAdmins = C.admins

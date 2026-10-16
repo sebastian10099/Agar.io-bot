@@ -1020,6 +1020,26 @@ rm -f "$S"/servers/*.json
 out=$(BEAMNET_CANARY=1 BEAMNET_CANARY_WAIT=0 "$TOOL" -y install-core 2>&1)
 lacks "$out" "Teste BeamNetCore" "canary: ohne Lebenszeichen kein Testserver"
 
+# --- Ansagen von der Konsole (beamnet ansage) --------------------------------------------------------------------------
+A="$T/root/shared/beamnet/announcements.json"
+rm -f "$A"
+contains "$("$TOOL" ansage 2>&1)" "Keine geplanten Ansagen" "ansage: ohne geplante Ansagen"
+out=$("$TOOL" ansage "Neustart in 5 Minuten" 2>&1)
+contains "$out" "Ansage gesendet" "ansage: sofort"
+python3 -c 'import json,sys,time; d=json.load(open(sys.argv[1])); a=d["list"][-1]; assert a["text"]=="Neustart in 5 Minuten" and a["by"]=="Konsole" and abs(a["at"]-time.time())<5' "$A" \
+    && pass || fail "ansage: Eintrag fuer BeamNetCore geschrieben"
+soon=$(date -d '+2 hours' +%H:%M)
+out=$("$TOOL" ansage "$soon" $'Event\tam Hafen' 2>&1)
+contains "$out" "Ansage geplant für [0-9.]+ $soon Uhr" "ansage: mit Uhrzeit geplant"
+contains "$("$TOOL" ansage 2>&1)" "$soon  Event am Hafen  \\(Konsole\\)" "ansage: geplante Ansagen werden gezeigt (ohne Steuerzeichen)"
+for i in $(seq 1 25); do "$TOOL" ansage "Nr $i" >/dev/null 2>&1; done
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert len(d["list"])==20' "$A" && pass || fail "ansage: hoechstens 20 Eintraege"
+echo '{"list":[{"id":"x","text":"GEHEIM","at":1}]}' >"$T/fremd-ann.json"; rm -f "$A"; ln -s "$T/fremd-ann.json" "$A"
+"$TOOL" ansage "Hallo" >/dev/null 2>&1
+lacks "$([[ -L $A ]] || cat "$A")" "GEHEIM" "ansage: liest keine Symlinks"
+[[ $(cat "$T/fremd-ann.json") == '{"list":[{"id":"x","text":"GEHEIM","at":1}]}' ]] && pass || fail "ansage: Symlink-Ziel unveraendert"
+rm -f "$A" "$T/fremd-ann.json"
+
 # --- Taegliche Datensicherung und Wiederherstellung --------------------------------------------------------------------
 S="$T/root/shared/beamnet"
 B="$T/backups"

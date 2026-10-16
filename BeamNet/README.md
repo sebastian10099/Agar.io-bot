@@ -255,7 +255,7 @@ Englische Befehlsnamen funktionieren ebenfalls: `/help`, `/league`, `/race [new|
 | `/unban <Name>` · `/bans` | Bann aufheben · aktive Banns zeigen |
 | `/warn <Name> <Text>` | Verwarnung nur an diesen Spieler |
 | `/mute <Name> [Minuten]` | Im Chat stummschalten (Standard 10 min) – gilt auf allen Servern und auch nach Neu-Verbinden |
-| `/ansage <Text>` | Nachricht auf allen Servern gleichzeitig, z. B. „Neustart in 5 Minuten“ |
+| `/ansage [HH:MM] <Text>` | Nachricht auf allen Servern gleichzeitig, z. B. „Neustart in 5 Minuten“; mit Uhrzeit geplant (`/ansage 19:45 Event am Hafen um 20 Uhr!`). Von der Server-Konsole: `beamnet ansage [HH:MM] <Text>`, `beamnet ansage` zeigt die geplanten |
 | `/event <Faktor> <Dauer>` | **XP-Event** auf allen Servern, z. B. `/event 2 2h` (doppelte XP für 2 Stunden; Faktor 1,5–5, höchstens 24 h), `/event stop` beendet. Start und Ende werden im Chat angesagt und an Discord/Telegram gemeldet. `/event` ohne Angaben zeigt allen Spielern das laufende Event |
 
 - Teilnamen genügen (`/ban max`), solange sie eindeutig sind – sonst passiert nichts und es kommt ein Hinweis. Ein

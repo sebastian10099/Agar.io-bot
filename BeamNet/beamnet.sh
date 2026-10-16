@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.39"
+VERSION="1.40"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -906,6 +906,65 @@ cmd_backup() {
     echo "Enthält die AuthKeys – nicht weitergeben."
     # Nur die 20 neuesten behalten.
     find "$BACKUP_DIR" -maxdepth 1 -name 'beamnet-*.tgz' -printf '%T@ %p\n' 2>/dev/null | sort -rn | tail -n +21 | cut -d' ' -f2- | xargs -r rm -f
+}
+
+# Ansage auf allen Servern (ueber announcements.json, das BeamNetCore alle 3 s liest): sofort oder zu einer Uhrzeit.
+#   beamnet ansage                    – geplante Ansagen zeigen
+#   beamnet ansage [HH:MM] <Text>     – ansagen (mit Uhrzeit: heute, oder morgen, wenn schon vorbei)
+cmd_ansage() {
+    need_root ansage
+    local when="" text out
+    command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
+    [[ -d $SHARED && ! -L $SHARED ]] || die "Kein gemeinsamer Ordner – ist BeamNetCore installiert? (beamnet install-core)"
+    if [[ ${1:-} =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]]; then when=$1; shift; fi
+    text="$*"
+    out=$(mktemp)
+    local rc=0
+    python3 -I - "$SHARED/announcements.json" "$out" "$when" "$text" <<'PY' || rc=$?
+import datetime, json, os, random, re, stat, sys, time
+path, out, when, text = sys.argv[1:5]
+def read_nofollow(p):
+    fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise OSError
+        return f.read(1 << 20).decode("utf-8", "replace")
+try:
+    data = json.loads(read_nofollow(path))
+except FileNotFoundError:
+    data = {}
+except Exception:
+    print("announcements.json ist fehlerhaft – bitte prüfen."); sys.exit(1)
+lst = data.get("list") if isinstance(data, dict) and isinstance(data.get("list"), list) else []
+now = int(time.time())
+text = " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", text).split())[:300]
+if not text:
+    planned = [a for a in lst if isinstance(a, dict) and isinstance(a.get("at"), (int, float)) and a["at"] > now]
+    if not planned:
+        print("Keine geplanten Ansagen. Neue: beamnet ansage [HH:MM] <Text>")
+    for a in sorted(planned, key=lambda a: a["at"]):
+        print(f"{time.strftime('%d.%m. %H:%M', time.localtime(a['at']))}  {str(a.get('text', ''))[:300]}  ({str(a.get('by', '?'))[:40]})")
+    sys.exit(2)
+at = now
+if when:
+    h, m = (int(x) for x in when.split(":"))
+    t = datetime.datetime.now().replace(hour=h, minute=m, second=0, microsecond=0)
+    if t.timestamp() <= now:
+        t += datetime.timedelta(days=1)
+    at = int(t.timestamp())
+lst.append({"id": f"{now}-konsole-{random.randint(100000, 999999)}", "text": text, "by": "Konsole", "at": at})
+data = {"list": lst[-20:]}
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(data, f, ensure_ascii=False)
+print(("Ansage geplant für " + time.strftime("%d.%m. %H:%M", time.localtime(at)) + " Uhr") if at > now else "Ansage gesendet")
+PY
+    if (( rc == 2 )); then rm -f "$out"; return 0; fi        # nur die Liste gezeigt
+    (( rc == 0 )) || { rm -f "$out"; exit 1; }
+    if [[ -s $out ]]; then
+        safe put "$SHARED/announcements.json" 664 "$SERVICE_USER" <"$out" || { rm -f "$out"; die "Konnte die Ansage nicht speichern."; }
+    fi
+    rm -f "$out"
+    return 0
 }
 
 # Datensicherungen (taeglich vom Waechter): auflisten oder einen Stand zuruecksetzen.
@@ -3213,6 +3272,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet restore [JJJJ-MM-TT]   Tägliche Datensicherungen (vom Wächter) anzeigen oder einen Stand zurückholen
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, Moderation) auf allen Servern
   beamnet bans · unban <Name> · modlog [n]   Banns ansehen/aufheben, Moderationsprotokoll
+  beamnet ansage [HH:MM] <Text>  Ansage auf allen Servern, sofort oder zur Uhrzeit (ohne Text: geplante zeigen)
   beamnet admin list · add <Name …> · remove <Name …>   Admins für Rennen und Moderation
   beamnet openclaw status|pause|resume   OpenClaw-Agent ansehen, anhalten (einfrieren), fortsetzen
   beamnet watch install|status|test|uninstall   Wächter: Ausfälle, Rekorde, wer online ist – an Discord/Telegram
@@ -3260,6 +3320,7 @@ main() {
         admin|admins) cmd_admin "$@" ;;
         unban) cmd_unban "$@" ;;
         modlog) cmd_modlog "$@" ;;
+        ansage|announce) cmd_ansage "$@" ;;
         self-update) cmd_self_update ;;
         update|aktualisieren) cmd_update ;;
         version|--version) echo "BeamNet $VERSION" ;;

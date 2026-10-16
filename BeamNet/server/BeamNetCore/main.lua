@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.21"
+BN.VERSION = "1.22"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -688,7 +688,8 @@ local EN = {
     ["Aufruf: /mute <Name> [Minuten]"] = "Usage: /mute <name> [minutes]",
     ["Du wurdest für %d min stummgeschaltet."] = "You have been muted for %d min.",
     ["%s ist %d min stumm."] = "%s is muted for %d min.",
-    ["Aufruf: /ansage <Text> – erscheint auf allen BeamNet-Servern."] = "Usage: /announce <text> – shown on all BeamNet servers.",
+    ["Aufruf: /ansage [HH:MM] <Text> – erscheint auf allen BeamNet-Servern (mit Uhrzeit: dann)."] = "Usage: /announce [HH:MM] <text> – shown on all BeamNet servers (with a time: then).",
+    ["Ansage geplant für %s Uhr: %s"] = "Announcement scheduled for %s: %s",
     ["Interner Fehler – bitte einem Admin melden."] = "Internal error – please tell an admin.",
     ["Bitte etwas langsamer mit den Befehlen."] = "Please slow down with the commands.",
     ["Erfolg für %s: %s (+%d XP)"] = "Achievement for %s: %s (+%d XP)",
@@ -1990,9 +1991,11 @@ function BN.sync(force)
     local data = json.decode(readFile(announcementsFile()) or "")
     if type(data) == "table" and type(data.list) == "table" then
         for _, a in ipairs(data.list) do
-            if type(a) == "table" and a.id and not BN.seenAnnouncements[a.id] then
+            -- Geplante Ansagen (Zeit in der Zukunft) warten; verpasste (Server war aus) nach 2 Minuten nicht mehr.
+            local at = tonumber(a.at) or 0
+            if type(a) == "table" and a.id and not BN.seenAnnouncements[a.id] and at <= now then
                 BN.seenAnnouncements[a.id] = true
-                if now - (tonumber(a.at) or 0) <= 120 then sayAll("[Ansage] %s", tostring(a.text)) end
+                if now - at <= 120 then sayAll("[Ansage] %s", tostring(a.text)) end
             end
         end
     end
@@ -2041,21 +2044,43 @@ function BN.markAnnouncementsSeen()
     local data = json.decode(readFile(announcementsFile()) or "")
     if type(data) == "table" and type(data.list) == "table" then
         for _, a in ipairs(data.list) do
-            if type(a) == "table" and a.id then BN.seenAnnouncements[a.id] = true end
+            -- Geplante (noch kommende) Ansagen nicht als gesehen markieren.
+            if type(a) == "table" and a.id and (tonumber(a.at) or 0) <= BN.now() then BN.seenAnnouncements[a.id] = true end
         end
     end
 end
 
-function BN.announce(text, by)
+-- at: Zeitpunkt (Standard jetzt); liegt er in der Zukunft, sagen alle Server die Ansage dann an.
+function BN.announce(text, by, at)
+    local now = BN.now()
+    at = at or now
     local data = json.decode(readFile(announcementsFile()) or "")
     if type(data) ~= "table" or type(data.list) ~= "table" then data = { list = {} } end
-    local id = string.format("%d-%s-%d", BN.now(), tostring(BN.server.port), math.random(100000, 999999))
-    data.list[#data.list + 1] = { id = id, text = text, by = by, at = BN.now() }
+    local id = string.format("%d-%s-%d", now, tostring(BN.server.port), math.random(100000, 999999))
+    data.list[#data.list + 1] = { id = id, text = text, by = by, at = at }
     while #data.list > 20 do table.remove(data.list, 1) end
     ensureDir(C.sharedDir)
     writeFileAtomic(announcementsFile(), json.encode(data))
-    BN.seenAnnouncements[id] = true
-    sayAll("[Ansage] %s", text)
+    if at <= now then
+        BN.seenAnnouncements[id] = true
+        sayAll("[Ansage] %s", text)
+    end
+end
+
+-- Naechster Zeitpunkt fuer "HH:MM" (heute oder, wenn schon vorbei, morgen) in Ortszeit des Servers.
+function BN.nextClockTime(hhmm)
+    local h, m = tostring(hhmm or ""):match("^(%d%d?):(%d%d)$")
+    h, m = tonumber(h), tonumber(m)
+    if not h or h > 23 or m > 59 then return nil end
+    local now = BN.now()
+    local t = os.date("*t", now)
+    t.hour, t.min, t.sec = h, m, 0
+    local at = os.time(t)
+    if at <= now then
+        t.day = t.day + 1
+        at = os.time(t)
+    end
+    return at
 end
 
 -- Spamschutz. Gibt true zurueck, wenn die Nachricht unterdrueckt werden soll.
@@ -2622,7 +2647,15 @@ end
 function commands.ansage(pid, arg)
     local admin = adminOnly(pid)
     if not admin then return end
-    if not arg or arg == "" then say(pid, "Aufruf: /ansage <Text> – erscheint auf allen BeamNet-Servern.") return end
+    if not arg or arg == "" then say(pid, "Aufruf: /ansage [HH:MM] <Text> – erscheint auf allen BeamNet-Servern (mit Uhrzeit: dann).") return end
+    local hhmm, rest = tostring(arg):match("^(%d%d?:%d%d)%s+(.+)$")
+    local at = hhmm and BN.nextClockTime(hhmm)
+    if at then
+        BN.announce(rest, admin.name, at)
+        say(pid, "Ansage geplant für %s Uhr: %s", os.date("%H:%M", at), rest)
+        modlog({ action = "ansage", by = admin.name, reason = rest, ["until"] = at })
+        return
+    end
     BN.announce(arg, admin.name)
     modlog({ action = "ansage", by = admin.name, reason = arg })
 end
