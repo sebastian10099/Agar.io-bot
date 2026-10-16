@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.55"
+VERSION="1.56"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3536,6 +3536,17 @@ def hours(sec):
     return f"{sec / 3600:.1f} h" if sec >= 3600 else f"{int(sec // 60)} min"
 
 
+def streak_text(r):
+    """Laufende Tages-Serie (zaehlt nur, wenn zuletzt heute oder gestern gefahren) und die beste."""
+    day = int(now // 86400)
+    sd, cur, best_s = num(r.get("streakDay")), int(num(r.get("streak"))), int(num(r.get("bestStreak")))
+    cur = cur if 0 < cur < 100000 and day - 1 <= sd <= day else 0
+    best_s = max(cur, best_s if 0 <= best_s < 100000 else 0)
+    if best_s < 2:
+        return "–"
+    return f"{cur} {'Tag' if cur == 1 else 'Tage'} (beste: {best_s})"
+
+
 written = set()
 for rank, r in enumerate(ranked, 1):
     rid = str(r.get("id"))
@@ -3561,6 +3572,8 @@ for rank, r in enumerate(ranked, 1):
         stat("Spitze", f"{int(num(r.get('topSpeedKmh')))} km/h"), stat("Rennen", int(num(r.get("racesFinished")))),
         stat(f"Saison {E(season_title)}", f"{month_xp(r)} XP" + (f" · Platz {sr}" if sr else "")),
         stat("Lieblingsmap", E(map_name(fav)) if fav else "–"),
+        stat("Aufträge", int(num(r.get("jobsDone")))),
+        stat("Tages-Serie", streak_text(r)),
     ])
     profile = f"""<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
