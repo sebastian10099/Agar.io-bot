@@ -511,6 +511,57 @@ rm -f "$T/watch/rotate-5"; status5 0
 BEAMNET_HOUR=07 "$TOOL" watch >/dev/null 2>&1
 lacks "$(cat "$T/actions")" "restart beammp-5" "rotation: abschaltbar"
 
+# Spielerplaetze: Auslastung je Server und Map, mehr Plaetze fuer volle Server und beliebte Maps.
+rm -f "$T/watch/usage-"* "$T/watch/slots-"*
+status5 3
+BEAMNET_HOUR=05 "$TOOL" watch >/dev/null 2>&1; status5 3
+BEAMNET_HOUR=05 "$TOOL" watch >/dev/null 2>&1
+contains "$(cat "$T/watch/usage-$(date +%Y-%m-%d)")" "^5 italy 3 6$" "slots: Auslastung je Minute (Spitze, Spielerminuten)"
+rm -f "$T/watch/usage-"*
+for d in 1 2 3 4 5; do
+    f="$T/watch/usage-$(date -d "-$d days" +%Y-%m-%d)"
+    echo "5 italy 8 300" >>"$f"
+    if (( d <= 3 )); then
+        { echo "2 west_coast_usa $([[ $d == 1 ]] && echo 8 || echo 3) 2000"; echo "4 east_coast_usa 2 1500"; echo "1 gridmap_v2 1 1200"; } >>"$f"
+    fi
+done
+echo "6 my_mod_map 8 99999" >"$T/watch/usage-$(date -d "-40 days" +%Y-%m-%d)"
+echo "kaputt" >>"$T/watch/usage-$(date -d "-1 days" +%Y-%m-%d)"
+out=$("$TOOL" slots 2>&1)
+contains "$out" "^  5 +italy +8 +8 +5 .*→ 12 \(5× voll in 30 Tagen\)" "slots: oft voll – mehr Plätze"
+contains "$out" "^  2 +west_coast_usa +8 +8 +1 .*→ 12 \(beliebte Map \(Platz 1\)\)" "slots: beliebte Map und einmal voll – mehr Plätze"
+contains "$out" "^  4 +east_coast_usa +8 +2 +0 .*bleibt" "slots: nie voll – bleibt"
+contains "$out" "^  6 +my_mod_map +8 +0 +0 .*bleibt" "slots: alte Daten (über 30 Tage) zählen nicht"
+sed -i 's/^SLOTS_MAX=.*/SLOTS_MAX=10/' "$T/beamnet.conf"
+contains "$("$TOOL" slots 2>&1)" "^  5 +italy .*→ 10 " "slots: Obergrenze SLOTS_MAX"
+sed -i 's/^SLOTS_MAX=.*/SLOTS_MAX=20/' "$T/beamnet.conf"
+# Automatisch: nicht vor SLOTS_HOUR, nicht solange jemand faehrt, dann einmal am Tag.
+: >"$T/actions"; status5 0
+BEAMNET_HOUR=05 "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/actions")" "restart beammp-5" "slots: nicht vor der Uhrzeit"
+status5 2
+BEAMNET_HOUR=07 "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/actions")" "restart beammp-5" "slots: nicht, solange jemand fährt"
+status5 0
+out=$(BEAMNET_HOUR=07 "$TOOL" watch 2>&1)
+contains "$out" "📈 Server 5 \(italy\): mehr Platz – jetzt 12 statt 8 Spieler \(5× voll in 30 Tagen\)" "slots: automatisch erhöht, sobald leer"
+contains "$(cat "$T/root/5/ServerConfig.toml")" "^MaxPlayers = 12$" "slots: MaxPlayers in der Konfiguration"
+contains "$(cat "$T/root/5/ServerConfig.toml")" '^Map = "/levels/italy/info.json"$' "slots: übrige Konfiguration unverändert"
+: >"$T/actions"; status5 0
+BEAMNET_HOUR=08 "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/actions")" "restart beammp-5" "slots: nur einmal am Tag"
+# Von Hand setzen und pruefen.
+contains "$("$TOOL" slots 5 99 2>&1)" "Plätze: 2 bis 64" "slots: Grenzen beim Setzen"
+contains "$("$TOOL" slots 5 abc 2>&1)" "Aufruf: beamnet slots <nr> <plätze>" "slots: nur Zahlen"
+"$TOOL" slots 5 8 >/dev/null 2>&1 </dev/null
+contains "$(cat "$T/root/5/ServerConfig.toml")" "^MaxPlayers = 8$" "slots: von Hand gesetzt"
+sed -i 's/^AUTO_SLOTS=.*/AUTO_SLOTS=0/' "$T/beamnet.conf"
+rm -f "$T/watch/slots-"*; : >"$T/actions"; status5 0
+BEAMNET_HOUR=07 "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/actions")" "restart beammp-5" "slots: AUTO_SLOTS=0 schaltet ab"
+sed -i 's/^AUTO_SLOTS=.*/AUTO_SLOTS=1/' "$T/beamnet.conf"
+rm -f "$T/watch/usage-"* "$T/watch/slots-"*
+
 # doctor prueft das Lebenszeichen des Waechters.
 "$TOOL" rotation 3 italy utah >/dev/null 2>&1
 "$TOOL" watch >/dev/null 2>&1

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.50"
+VERSION="1.51"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -112,6 +112,7 @@ map_short() {
 #   safe put <Datei> <Modus> [<Besitzer>]   – stdin atomar schreiben (exklusive Zwischendatei, dann rename)
 #   safe get <Datei>                        – Inhalt ausgeben, nur wenn regulaere Datei und kein Symlink
 #   safe mapline <Datei> <Map> <Sicherungsordner> – Map-Zeile ersetzen, Sicherung im root-Ordner (letzte 20)
+#   safe keyline <Datei> <Schluessel> <Zahl> <Sicherungsordner> – ebenso fuer eine Zahl (z. B. MaxPlayers)
 #   safe chmoddir <Modus> <Ordner …>         – Rechte setzen, ohne Symlinks zu folgen
 read -r -d '' SAFE_PY <<'PY'
 import os, pwd, re, stat, sys, time
@@ -196,11 +197,18 @@ try:
         put(sys.argv[2], sys.stdin.buffer.read(), int(sys.argv[3], 8), uid, gid)
     elif cmd == "get":
         sys.stdout.buffer.write(get(sys.argv[2])[0])
-    elif cmd == "mapline":
-        path, mp, bdir = sys.argv[2], sys.argv[3], sys.argv[4]
+    elif cmd in ("mapline", "keyline"):
+        if cmd == "mapline":
+            path, mp, bdir = sys.argv[2], sys.argv[3], sys.argv[4]
+            key, value = "Map", '"/levels/%s/info.json"' % mp
+        else:
+            # Zahlenwert (z. B. MaxPlayers); nur Buchstaben als Schluessel, nur 1-3 Ziffern als Wert
+            path, key, value, bdir = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+            if not re.fullmatch(r"[A-Za-z]+", key) or not re.fullmatch(r"[0-9]{1,3}", value):
+                sys.exit(4)
         data, st = get(path)
         text = data.decode("utf-8", "surrogateescape")
-        pattern = re.compile(r"^([ \t]*)Map[ \t]*=.*$", re.M)
+        pattern = re.compile(r"^([ \t]*)" + key + r"[ \t]*=.*$", re.M)
         if not pattern.search(text):
             sys.exit(3)
         os.makedirs(bdir, mode=0o700, exist_ok=True)
@@ -211,7 +219,7 @@ try:
         olds = sorted(n for n in os.listdir(bdir) if n.startswith(prefix))
         for n in olds[:-20]:
             os.remove(os.path.join(bdir, n))
-        new = pattern.sub(lambda m: m.group(1) + 'Map = "/levels/%s/info.json"' % mp, text)
+        new = pattern.sub(lambda m: m.group(1) + key + " = " + value, text, count=1)
         put(path, new.encode("utf-8", "surrogateescape"), stat.S_IMODE(st.st_mode), st.st_uid, st.st_gid)
     elif cmd == "chmoddir":
         mode = int(sys.argv[2], 8)
@@ -938,6 +946,167 @@ cmd_maps() {
 write_map() {
     mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
     safe mapline "$ROOT/$1/ServerConfig.toml" "$2" "$BACKUP_DIR/config/$1"
+}
+
+write_slots() {
+    mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
+    safe keyline "$ROOT/$1/ServerConfig.toml" MaxPlayers "$2" "$BACKUP_DIR/config/$1"
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Spielerplaetze nach Beliebtheit: Der Waechter schreibt jede Minute je Server "nr map spitze spielerminuten" in
+# usage-<Datum> (31 Tage). beamnet slots zeigt die letzten 30 Tage und schlaegt mehr Plaetze vor: SLOTS_STEP mehr fuer
+# Server, die an mindestens SLOTS_FULL_DAYS Tagen voll waren (90 % der Plaetze), und noch einmal SLOTS_STEP, wenn ihre
+# Map zu den 3 beliebtesten gehoert (Spielerstunden) und sie mindestens einmal voll waren. Hoechstens SLOTS_MAX.
+# Mit AUTO_SLOTS=1 (Standard) stellt der Waechter das einmal am Tag ab SLOTS_HOUR um – nur, wenn der Server leer ist.
+
+slots_conf() {
+    local v
+    v=$(conf_get "$1"); [[ $v =~ ^[0-9]{1,3}$ ]] && echo "$v" || echo "$2"
+}
+
+usage_record() {     # stdin: Zeilen "nr map spieler"
+    local file
+    file="$STATE_DIR/usage-$(date +%Y-%m-%d)"
+    { cat "$file" 2>/dev/null; echo "--"; cat; } | awk '
+        $0 == "--" { sep = 1; next }
+        !sep && NF == 4 && $1 ~ /^[0-9]+$/ { k = $1 " " $2; mx[k] = $3 + 0; pm[k] = $4 + 0; next }
+        sep && NF == 3 && $1 ~ /^[0-9]+$/ { k = $1 " " $2; if (!(k in mx) || $3 + 0 > mx[k]) mx[k] = $3 + 0; pm[k] += $3 }
+        END { for (k in mx) print k, mx[k], pm[k] + 0 }' >"$file.new" && mv "$file.new" "$file"
+    find "$STATE_DIR" -maxdepth 1 -name 'usage-*' -mtime +31 -delete 2>/dev/null
+    return 0
+}
+
+# Zeilen "nr map plaetze neu spitze volleTage stunden grund" je Server (grund: Text mit _ statt Leerzeichen, - = keiner).
+read -r -d '' SLOTS_PY <<'PY'
+import datetime, math, os, re, sys
+state, smax, step, need = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+cut = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+daymax, pm_map, pm_srv = {}, {}, {}
+try:
+    names = os.listdir(state)
+except OSError:
+    names = []
+for name in names:
+    m = re.fullmatch(r"usage-(\d{4}-\d{2}-\d{2})", name)
+    if not m or m.group(1) <= cut:
+        continue
+    try:
+        with open(os.path.join(state, name), encoding="utf-8", errors="replace") as f:
+            lines = f.read(1 << 20).splitlines()
+    except OSError:
+        continue
+    for line in lines:
+        p = line.split()
+        if len(p) != 4 or not p[0].isdigit() or not p[2].isdigit() or not p[3].isdigit():
+            continue
+        nr, mp, mx, pm = p[0], p[1], int(p[2]), int(p[3])
+        key = (nr, m.group(1))
+        daymax[key] = max(daymax.get(key, 0), mx)
+        pm_map[mp] = pm_map.get(mp, 0) + pm
+        pm_srv[nr] = pm_srv.get(nr, 0) + pm
+popular = [mp for mp, v in sorted(pm_map.items(), key=lambda e: -e[1]) if v > 0][:3]
+for arg in sys.argv[5:]:
+    nr, mp, cur = arg.split(":")
+    cur = int(cur)
+    days = [v for (n, _), v in daymax.items() if n == nr]
+    peak = max(days, default=0)
+    full = sum(1 for v in days if cur > 0 and v >= max(1, math.ceil(cur * 0.9)))
+    new, why = cur, []
+    if full >= need:
+        new += step
+        why.append(f"{full}× voll in 30 Tagen")
+    if mp in popular and full >= 1:
+        new += step
+        why.append(f"beliebte Map (Platz {popular.index(mp) + 1})")
+    new = max(cur, min(new, smax))
+    print(nr, mp, cur, new, peak, full, round(pm_srv.get(nr, 0) / 60), "_".join(" · ".join(why).split()) or "-")
+PY
+
+slots_plan() {
+    local nr args=() cur mp
+    for nr in $(servers); do
+        cur=$(cfg "$nr" MaxPlayers)
+        [[ $cur =~ ^[0-9]{1,3}$ ]] || continue
+        mp=$(map_short "$(cfg "$nr" Map)")
+        [[ $mp =~ ^[A-Za-z0-9_.-]+$ ]] || mp="?"
+        args+=("$nr:$mp:$cur")
+    done
+    (( ${#args[@]} > 0 )) || return 0
+    python3 -I -c "$SLOTS_PY" "$STATE_DIR" "$(slots_conf SLOTS_MAX 20)" "$(slots_conf SLOTS_STEP 4)" \
+        "$(slots_conf SLOTS_FULL_DAYS 2)" "${args[@]}"
+}
+
+# beamnet slots [apply | <nr> <plaetze>]
+cmd_slots() {
+    local nr mp cur new peak full hours why changed=0
+    if [[ ${1:-} =~ ^[0-9]+$ ]]; then
+        need_root slots
+        [[ $# -eq 2 && $2 =~ ^[0-9]{1,3}$ ]] || die "Aufruf: beamnet slots <nr> <plätze>   (z. B. beamnet slots 3 16)"
+        (( $2 >= 2 && $2 <= 64 )) || die "Plätze: 2 bis 64."
+        targets "$1" >/dev/null
+        write_slots "$1" "$2" || die "In $ROOT/$1/ServerConfig.toml steht keine MaxPlayers-Zeile."
+        ok "Server $1: $2 Plätze (alte Konfiguration gesichert in $BACKUP_DIR/config/$1)"
+        echo "BeamMP liest MaxPlayers nur beim Start."
+        if confirm "Server $1 jetzt neu starten?"; then
+            clear_maintenance "$1"
+            systemctl restart "$(unit "$1")" && verify_running "$1"
+        fi
+        return 0
+    fi
+    if [[ ${1:-} == apply ]]; then
+        need_root slots
+        while read -r nr mp cur new peak full hours why; do
+            (( new > cur )) || continue
+            write_slots "$nr" "$new" || { warn "Server $nr: keine MaxPlayers-Zeile."; continue; }
+            ok "Server $nr ($mp): $cur → $new Plätze (${why//_/ })"
+            changed=1
+        done < <(slots_plan)
+        (( changed )) || { echo "Keine Änderung nötig."; return 0; }
+        echo "Wirksam nach einem Neustart: beamnet restart all (der Wächter macht es mit AUTO_SLOTS=1 automatisch, sobald ein Server leer ist)."
+        return 0
+    fi
+    [[ $# -eq 0 ]] || die "Aufruf: beamnet slots [apply | <nr> <plätze>]"
+    echo "Spielerplätze – letzte 30 Tage (Spitze = meiste Spieler gleichzeitig, voll = Tage mit 90 % belegt):"
+    printf '  %-6s %-16s %6s %7s %5s %8s  %s\n' "Server" "Map" "Plätze" "Spitze" "voll" "Stunden" "Vorschlag"
+    while read -r nr mp cur new peak full hours why; do
+        local tip="bleibt"
+        (( new > cur )) && tip="→ $new (${why//_/ })"
+        printf '  %-6s %-16s %6s %7s %5s %8s  %s\n' "$nr" "$mp" "$cur" "$peak" "$full" "$hours" "$tip"
+    done < <(slots_plan)
+    echo "Übernehmen: beamnet slots apply · selbst setzen: beamnet slots <nr> <plätze> · automatisch: AUTO_SLOTS=1 (Standard)"
+}
+
+# Einmal am Tag ab SLOTS_HOUR: Vorschlaege fuer leere Server uebernehmen und neu starten (AUTO_SLOTS=0 schaltet ab).
+watch_slots() {
+    local -n slotout=$1
+    local hour start today nr mp cur new peak full hours why pl
+    [[ $(conf_get AUTO_SLOTS) == 0 ]] && return 0
+    hour=${BEAMNET_HOUR:-$(date +%H)}
+    start=$(slots_conf SLOTS_HOUR 6)
+    (( 10#$hour >= 10#$start )) || return 0
+    today=$(date +%Y-%m-%d)
+    local open=0
+    for nr in $(servers); do [[ $(cat "$STATE_DIR/slots-$nr" 2>/dev/null) == "$today" ]] || open=1; done
+    (( open )) || return 0
+    while read -r nr mp cur new peak full hours why; do
+        [[ $(cat "$STATE_DIR/slots-$nr" 2>/dev/null) == "$today" ]] && continue
+        # Nichts zu tun, in Wartung oder aus: fuer heute erledigt. Nur besetzte Server werden spaeter erneut geprueft.
+        if (( new <= cur )) || [[ -f $STATE_DIR/maintenance-$nr ]] || ! unit_active "$nr"; then
+            echo "$today" >"$STATE_DIR/slots-$nr"
+            continue
+        fi
+        pl=$(players_of "$(cfg "$nr" Port)")
+        [[ $pl == 0/* ]] || continue        # nur leer – sonst beim naechsten Lauf erneut
+        echo "$today" >"$STATE_DIR/slots-$nr"
+        write_slots "$nr" "$new" || continue
+        if systemctl restart "$(unit "$nr")"; then
+            slotout+=("📈 Server $nr ($mp): mehr Platz – jetzt $new statt $cur Spieler (${why//_/ }).")
+        else
+            slotout+=("⚠️ Server $nr: Neustart nach dem Erhöhen der Plätze fehlgeschlagen (beamnet logs $nr).")
+        fi
+    done < <(slots_plan)
+    return 0
 }
 
 cmd_set_map() {
@@ -1841,10 +2010,18 @@ watch_peak() {
     local nr pl online=0 now today best=0 best_at=0 day_best=0 last_note=0 line
     now=$(date +%s)
     today=$(date +%Y-%m-%d)
+    local usage="" mp
     for nr in $(servers); do
         pl=$(players_of "$(cfg "$nr" Port)")
-        [[ $pl =~ ^([0-9]+)/ ]] && online=$(( online + BASH_REMATCH[1] ))
+        if [[ $pl =~ ^([0-9]+)/ ]]; then
+            pl=${BASH_REMATCH[1]}
+            online=$(( online + pl ))
+            mp=$(map_short "$(cfg "$nr" Map)")
+            [[ $mp =~ ^[A-Za-z0-9_.-]+$ ]] || mp="?"
+            usage+="$nr $mp $pl"$'\n'
+        fi
     done
+    [[ -n $usage ]] && printf '%s' "$usage" | usage_record
     read -r best best_at last_note < <(cat "$STATE_DIR/peak" 2>/dev/null; echo)
     [[ $best =~ ^[0-9]+$ ]] || best=0
     [[ $best_at =~ ^[0-9]+$ ]] || best_at=0
@@ -1947,6 +2124,7 @@ watch_run() {
         echo "$state" >"$STATE_DIR/state-$nr"
     done
     watch_rotation msgs
+    watch_slots msgs
     watch_load msgs
     watch_index
     watch_backup msgs
@@ -2521,6 +2699,14 @@ MEM_WARN_MB=1500
 # Netzwerk fast voll: Meldung ab diesem Anteil belegter Plaetze (Prozent), mit freien Servern. - = aus.
 CAPACITY_WARN=90
 LOAD_MINUTES=5
+# Mehr Spielerplaetze fuer beliebte Server (beamnet slots): einmal am Tag ab SLOTS_HOUR, nur wenn der Server leer ist.
+# +SLOTS_STEP bei SLOTS_FULL_DAYS vollen Tagen in 30 Tagen, nochmals +SLOTS_STEP fuer eine Top-3-Map; hoechstens
+# SLOTS_MAX. AUTO_SLOTS=0 = nur Vorschlag anzeigen.
+AUTO_SLOTS=1
+SLOTS_MAX=20
+SLOTS_STEP=4
+SLOTS_FULL_DAYS=2
+SLOTS_HOUR=6
 # Haengt ein Server (Dienst laeuft, aber seit HANG_MIN Minuten kein Lebenszeichen von BeamNetCore)? Antwortet er auch
 # auf seinem Port nicht mehr, startet ihn der Waechter mit AUTO_RESTART=1 neu; sonst nur Meldung. 0 = aus.
 HANG_MIN=3
@@ -3522,6 +3708,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet maps                   Maps aller Server und verfügbare Vanilla-Maps
   beamnet set-map <nr> <map>     Map ändern (sichert die Konfiguration, fragt vor dem Neustart)
   beamnet rotation [<nr> <map> …|<nr> aus]  Tägliche Map-Rotation (Wechsel, wenn der Server leer ist)
+  beamnet slots [apply|<nr> <plätze>]      Spielerplätze: Auslastung 30 Tage, mehr Plätze für beliebte Server
   beamnet logs <nr> [zeilen]     Letzte Zeilen des Server-Protokolls
   beamnet plugins                Installierte Server-Plugins je Server
   beamnet plugin-disable <name>  Plugin auf allen Servern abschalten (verschiebt nach Server.disabled)
@@ -3563,6 +3750,7 @@ main() {
         maps) cmd_maps ;;
         set-map) cmd_set_map "$@" ;;
         rotation|rotate) cmd_rotation "$@" ;;
+        slots|plaetze|plätze) cmd_slots "$@" ;;
         logs|log) cmd_logs "$@" ;;
         plugins) cmd_plugins ;;
         plugin-disable) cmd_plugin_toggle disable "$@" ;;

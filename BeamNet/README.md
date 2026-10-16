@@ -55,6 +55,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet maps` | Maps aller Server und die verfügbaren Vanilla-Maps |
 | `beamnet set-map <nr> <map>` | Map ändern (sichert vorher, fragt vor dem Neustart); Mod-Maps mit `--force` |
 | `beamnet rotation <nr> <map> <map> …` | Tägliche Map-Rotation: jeden Tag die nächste Map der Liste, sobald der Server leer ist (`… <nr> aus` beendet sie) |
+| `beamnet slots` | **Spielerplätze nach Beliebtheit:** zeigt je Server die letzten 30 Tage (Spitze, Tage voll, Spielerstunden) und schlägt mehr Plätze vor – +4 für Server, die an mindestens 2 Tagen voll waren, nochmals +4, wenn ihre Map zu den 3 beliebtesten gehört (höchstens 20). Der Wächter stellt das einmal am Tag ab 6 Uhr selbst um, sobald der Server leer ist (`AUTO_SLOTS=0` = nur Vorschlag). `beamnet slots apply` übernimmt sofort, `beamnet slots <nr> <plätze>` setzt von Hand |
 | `beamnet logs <nr> [zeilen]` | Letzte Zeilen des Server-Protokolls |
 | `beamnet plugins` | Installierte (und abgeschaltete) Plugins je Server |
 | `beamnet plugin-disable <name>` / `plugin-enable <name>` | Plugin auf allen Servern ab- oder einschalten – verschiebt nur nach `Resources/Server.disabled`, löscht nichts |
