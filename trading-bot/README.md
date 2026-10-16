@@ -180,6 +180,12 @@ Token dort noch nicht gelistet, wird er mit den Zahlen des Feeds bewertet und
 der Kandidat trägt „via Feed“. Fällt eine Quelle aus, steht das einmal im
 Protokoll und in der Quellen-Karte – die anderen laufen weiter.
 
+**Wiedervorlage:** Ein Token, der nur „zu neu“ war, wird nach zwei Minuten
+erneut bewertet, ein `watch` alle fünf Minuten (seine Zahlen bewegen sich
+schnell), ein harter `skip` (RugCheck-Gefahr, zu alt, parabolisch) erst nach
+einer halben Stunde. So verpasst der Bot nicht das Fenster zwischen Minute 2
+und 30, nur weil er den Token in Minute 1 schon gesehen hat.
+
 **Harte Filter** (ein Verstoß = `skip`, Grund wird gespeichert):
 
 - Alter 2–120 Minuten — nicht in der ersten Minute kaufen, nicht alten Tokens hinterherlaufen

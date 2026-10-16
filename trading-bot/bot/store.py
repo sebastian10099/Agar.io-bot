@@ -140,6 +140,18 @@ class Store:
                         (chain, token))
         return row["t"] if row and row["t"] is not None else None
 
+    def last_verdict(self, chain: str, token: str) -> Optional[dict[str, Any]]:
+        """Most recent evaluation of a token: when, what, and why."""
+        row = self._one("SELECT seen_at, decision, reasons FROM candidates WHERE chain=? AND token=? "
+                        "ORDER BY seen_at DESC LIMIT 1", (chain, token))
+        if not row:
+            return None
+        try:
+            row["reasons"] = json.loads(row["reasons"] or "[]")
+        except json.JSONDecodeError:
+            row["reasons"] = []
+        return row
+
     def schedule_outcomes(self, candidate_id: int, seen_at: float, horizons: Iterable[int]) -> None:
         for h in horizons:
             self._exec("INSERT OR IGNORE INTO outcomes(candidate_id, horizon_min, due_at) "

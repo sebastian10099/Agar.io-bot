@@ -540,3 +540,29 @@ class WhyTests(unittest.TestCase):
         rc2 = RugCheck(fetch=lambda url, **kw: {"score_normalised": 10, "risks": []})
         self.assertEqual(rc2.summary("Mint1")["score"], 10); self.assertEqual(rc2.health()["ok"], True)
         rc2.summary("Mint1"); self.assertEqual(rc2.health()["calls"], 1)      # cached, not counted
+
+
+class ReseeTests(unittest.TestCase):
+    def test_too_new_and_watch_are_rechecked_sooner_than_hard_skips(self):
+        import bot.demo as demo
+        cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
+        from bot.engine import resee_after, RESEE_TOO_NEW, RESEE_WATCH, RESEE_SECONDS
+        self.assertEqual(resee_after(None), 0)
+        self.assertEqual(resee_after({"decision": "skip", "reasons": ["too new (0.7 min)"]}), RESEE_TOO_NEW)
+        self.assertEqual(resee_after({"decision": "watch", "reasons": ["score 50 < 60"]}), RESEE_WATCH)
+        self.assertEqual(resee_after({"decision": "skip", "reasons": ["rugcheck danger: x"]}), RESEE_SECONDS)
+        self.assertEqual(resee_after({"decision": "buy", "reasons": []}), RESEE_SECONDS)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            eng = Engine(CFG, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            eng.poll_once()                                   # NEW is "too new", HONEY is rug danger, DUMP is watch
+            def seen(sym): return [c for c in store.candidates() if c["symbol"] == sym]
+            self.assertEqual((len(seen("NEW")), len(seen("HONEY")), len(seen("DUMP"))), (1, 1, 1))
+            t[0] = dex.started + 60; eng.poll_once()          # one minute: nothing yet
+            self.assertEqual((len(seen("NEW")), len(seen("HONEY")), len(seen("DUMP"))), (1, 1, 1))
+            t[0] = dex.started + 150; eng.poll_once()         # 2.5 min: NEW again, DUMP not yet, HONEY not
+            self.assertEqual((len(seen("NEW")), len(seen("HONEY")), len(seen("DUMP"))), (2, 1, 1))
+            t[0] = dex.started + 330; eng.poll_once()         # 5.5 min: DUMP (watch) again, HONEY still not
+            self.assertEqual((len(seen("HONEY")), len(seen("DUMP"))), (1, 2))
+            store.close()

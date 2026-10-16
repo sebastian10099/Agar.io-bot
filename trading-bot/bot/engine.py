@@ -13,7 +13,20 @@ from .store import Store
 from .strategy import evaluate
 from .tracker import Tracker
 
-RESEE_SECONDS = 30 * 60  # do not re-evaluate the same token within half an hour
+RESEE_SECONDS = 30 * 60      # a hard skip (rug danger, too old, parabolic) is not re-evaluated within half an hour
+RESEE_TOO_NEW = 2 * 60       # "too new" is a timing issue, not a verdict: look again in two minutes
+RESEE_WATCH = 5 * 60         # a watch passed every filter; its numbers move fast, so re-check every five minutes
+
+
+def resee_after(last: Optional[dict[str, Any]]) -> float:
+    """How long after its last evaluation a token may be looked at again."""
+    if last is None:
+        return 0.0
+    if last["decision"] == "skip" and any("too new" in r for r in last["reasons"]):
+        return RESEE_TOO_NEW
+    if last["decision"] == "watch":
+        return RESEE_WATCH
+    return RESEE_SECONDS
 VERSION = "0.9"
 APP_ID = "new-token-bot"      # marker in /api/state so starters can tell this bot from whatever else listens on the port
 TICK_KEEP_DAYS = 7       # price ticks of positions closed longer ago are dropped at start
@@ -74,8 +87,8 @@ class Engine:
             for p in pairs:
                 p["source"] = (tokens.get(p["token"]) or {}).get("source")
                 counts["seen"] += 1
-                last = self.store.last_seen(chain, p["token"])
-                if last is not None and now - last < RESEE_SECONDS:
+                last = self.store.last_verdict(chain, p["token"])
+                if last is not None and now - last["seen_at"] < resee_after(last):
                     continue
                 counts["new"] += 1
                 rug = self.rug.summary(p["token"]) if chain == "solana" else None
