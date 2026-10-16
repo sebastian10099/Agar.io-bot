@@ -1,5 +1,18 @@
 # BeamNet – Roadmap
 
+Erledigt (Plugin 1.12) – Gesamtprüfung des Plugins, von einem Agenten-Team umgesetzt:
+- [x] Rundkurs-Rekorde nicht mehr erschummelbar: ein Lauf braucht eine Mindest-Fahrstrecke (80 % der Streckenlänge;
+      die Länge kommt aus der Admin-Fahrt zwischen `/rennen neu` und `/rennen ziel`, sonst vom ersten gültigen Lauf,
+      ohne Länge auf Rundkursen mindestens 400 m – `raceMinLapM`).
+- [x] Lkw mit Anhänger oder mehrere Fahrzeuge zählen km nicht mehr doppelt; Fahrzeit nur, wenn man sich in den letzten
+      30 s bewegt hat (kein XP fürs Parken).
+- [x] Nicht lesbare Spielerdatei wird nie mehr überschrieben (Zuwächse bleiben erhalten); kaputte Datei wird als
+      `<id>.json.kaputt-<Zeit>` aufgehoben. Sprachwahl springt nach Serverwechsel nicht mehr zurück.
+- [x] Abstimmung: Stimmen verschwundener Spieler verfallen; gescheiterter Map-Wechsel wird nach 3 Minuten gemeldet.
+- [x] Zwischenzeiten bei Rennen (Vergleich mit der eigenen Bestzeit alle 500 m, `raceSplitM`); keine Zwischenzeit
+      hinter der Ziellinie.
+- [x] Kalenderwoche ohne `%G/%V` (lief auf Windows-Servern nicht), Emojis in Namen auf dem Mac.
+
 Erledigt (Werkzeug 1.17) – Sicherheitsprüfung der neuen Funktionen:
 - [x] root folgt nie mehr Symlinks in Ordnern, die `beammp` gehören (vorher konnte ein manipuliertes Plugin über
       vorbereitete Symlinks root dazu bringen, fremde Dateien zu überschreiben): Lebenszeichen, Map-Umstellung,
