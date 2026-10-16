@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.49"
+VERSION="1.50"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -116,8 +116,38 @@ map_short() {
 read -r -d '' SAFE_PY <<'PY'
 import os, pwd, re, stat, sys, time
 
+# Oeffnet den Ordner Stueck fuer Stueck ab "/" ohne Symlinks zu folgen – auch nicht in Zwischenordnern (sonst koennte
+# beammp z. B. Resources/Server zwischen Pruefung und Schreiben gegen einen Symlink tauschen). Ausnahme: Symlinks,
+# die root gehoeren (etwa /var/run -> /run oder ein verlinktes Installationsverzeichnis): die kann beammp nicht anlegen;
+# ihr Ziel wird mit denselben Regeln weiterverfolgt.
+TRUST_LINK_UID = int(os.environ.get("BEAMNET_TRUST_LINK_UID", "0"))
+
 def opendir(path):
-    return os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    parts = [p for p in os.path.abspath(path).split("/") if p]
+    for _ in range(40):
+        fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+        cur, restart = "/", None
+        try:
+            for i, part in enumerate(parts):
+                try:
+                    nfd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                except OSError:
+                    st = os.stat(part, dir_fd=fd, follow_symlinks=False)
+                    if not stat.S_ISLNK(st.st_mode) or st.st_uid != TRUST_LINK_UID:
+                        raise
+                    restart = os.path.normpath(os.path.join(cur, os.readlink(part, dir_fd=fd), *parts[i + 1:]))
+                    break
+                os.close(fd)
+                fd = nfd
+                cur = os.path.join(cur, part)
+        except BaseException:
+            os.close(fd)
+            raise
+        if restart is None:
+            return fd
+        os.close(fd)
+        parts = [p for p in restart.split("/") if p]
+    raise OSError("zu viele Symlinks: " + path)
 
 def put(dest, data, mode, uid=-1, gid=-1):
     d, base = os.path.split(os.path.abspath(dest))
@@ -150,6 +180,10 @@ def get(path):
         st = os.fstat(f.fileno())
         if not stat.S_ISREG(st.st_mode):
             raise OSError("keine regulaere Datei: " + path)
+        # Mehrfach verlinkt: koennte ein Hardlink auf eine fremde Datei sein (z. B. /etc/shadow bei
+        # fs.protected_hardlinks=0) – nie lesen und weitergeben.
+        if st.st_nlink != 1:
+            raise OSError("mehrfach verlinkte Datei: " + path)
         return f.read(), st
 
 cmd = sys.argv[1]
@@ -984,14 +1018,19 @@ except FileNotFoundError:
 except Exception:
     print("announcements.json ist fehlerhaft – bitte prüfen."); sys.exit(1)
 lst = data.get("list") if isinstance(data, dict) and isinstance(data.get("list"), list) else []
+# Nur gueltige Eintraege (Tabelle mit sinnvoller Zeit); fremde fallen beim naechsten Schreiben weg.
+lst = [a for a in lst if isinstance(a, dict) and isinstance(a.get("at"), (int, float)) and 0 <= a["at"] < 4e9]
 now = int(time.time())
-text = " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", text).split())[:300]
+def clean(v, n):
+    # Steuerzeichen (auch C1, z. B. Terminal-Escapes aus einer Ingame-Ansage) nie aufs Root-Terminal
+    return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(v)).split())[:n]
+text = clean(text, 300)
 if not text:
-    planned = [a for a in lst if isinstance(a, dict) and isinstance(a.get("at"), (int, float)) and a["at"] > now]
+    planned = [a for a in lst if a["at"] > now]
     if not planned:
         print("Keine geplanten Ansagen. Neue: beamnet ansage [HH:MM] <Text>")
     for a in sorted(planned, key=lambda a: a["at"]):
-        print(f"{time.strftime('%d.%m. %H:%M', time.localtime(a['at']))}  {str(a.get('text', ''))[:300]}  ({str(a.get('by', '?'))[:40]})")
+        print(f"{time.strftime('%d.%m. %H:%M', time.localtime(a['at']))}  {clean(a.get('text', ''), 300)}  ({clean(a.get('by', '?'), 40)})")
     sys.exit(2)
 at = now
 if when:
@@ -1001,7 +1040,11 @@ if when:
         t += datetime.timedelta(days=1)
     at = int(t.timestamp())
 lst.append({"id": f"{now}-konsole-{random.randint(100000, 999999)}", "text": text, "by": "Konsole", "at": at})
-data = {"list": lst[-20:]}
+# Kuerzen wie im Plugin: erst laengst angesagte (aelter als 2 Minuten), dann die aeltesten.
+while len(lst) > 20:
+    old = next((i for i, a in enumerate(lst) if a["at"] < now - 120), 0)
+    del lst[old]
+data = {"list": lst}
 with open(out, "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False)
 print(("Ansage geplant für " + time.strftime("%d.%m. %H:%M", time.localtime(at)) + " Uhr") if at > now else "Ansage gesendet")
@@ -1711,6 +1754,8 @@ for raw in chunk[:end].splitlines():
         lines.append(f"🚫 {who} hat sich zu oft neu verbunden und wird{span} abgewiesen ({where(e)})")
     elif a == "event-stop":
         lines.append(f"🎉 {by} hat das XP-Event beendet")
+    elif a == "team-loeschen":
+        lines.append(f"🛡️ {by} hat das Team {who} gelöscht")
 for l in lines[:10]:
     print(l)
 if len(lines) > 10:

@@ -2090,6 +2090,101 @@ do
     clock = savedClock
 end
 
+-- --- Funde der vierten Code-Pruefung ---------------------------------------------------------------------------
+do
+    os.remove(SHARED .. "/teams.json")
+    os.remove(SHARED .. "/mutes.json")
+    local savedAdmins = C.admins
+    C.admins = { "Obmann" }
+    for pid, name in pairs({ [91] = "Stumm", [92] = "Gruender", [93] = "Obmann" }) do
+        players[pid] = { name = name, ids = { beammp = tostring(9100 + pid) }, vehicles = {} }
+        _G[events.onPlayerJoin](pid)
+    end
+    -- (1) Stummgeschaltete koennen ueber /team gruenden nichts an alle senden, Schimpfwoerter sind kein Teamname.
+    BN.players[91].mutedUntil = clock + 300
+    chatLog = {}
+    say(91, "/team gründen Hallo Welt")
+    check(chatContains("Du bist noch 300 s stummgeschaltet", 91) and not chatContains("gegründet", 92), "Fund 1: stumm keine Teamgruendung")
+    say(92, "/team gründen Die Wichser")
+    check(chatContains("Dieser Teamname ist nicht erlaubt", 92) and not chatContains("gegründet", 91), "Fund 1: Wortfilter fuer Teamnamen")
+    say(92, "/team gründen Gute Leute")
+    check(chatContains("Gruender hat das Team Gute Leute gegründet", 91), "Fund 1: normaler Teamname geht")
+    say(92, "/team verlassen")
+    chatLog = {}
+    say(92, "/team gründen Noch Eins")
+    check(chatContains("Ein neues Team kannst du erst in 10 min gründen", 92) and not chatContains("gegründet", 91), "Fund 1: Abklingzeit fuer Gruendungen")
+    say(93, "/team gründen Admins")
+    say(92, "/team löschen Admins")
+    check(chatContains("Nur Admins können Teams löschen", 92), "Fund 1: Loeschen nur fuer Admins")
+    say(93, "/team löschen admins")
+    check(chatContains("Team Admins gelöscht", 93) and readJson(SHARED .. "/teams.json").teams["admins"] == nil, "Fund 1: Admin loescht Team")
+    -- (4) teams.json nicht lesbar: nichts ueberschreiben; kaputtes JSON wird beiseitegelegt.
+    os.execute('mkdir -p "' .. SHARED .. '/teams.json.d" && rm -f "' .. SHARED .. '/teams.json" && mv "' .. SHARED .. '/teams.json.d" "' .. SHARED .. '/teams.json"')
+    check(BN.loadTeams(true) == nil, "Fund 4: Lesefehler ergibt nil")
+    BN.teamFounded = {}
+    say(91, "/team")
+    check(chatContains("Teams gerade nicht verfügbar", 91), "Fund 4: bei Lesefehler kein Schreiben")
+    os.execute('rmdir "' .. SHARED .. '/teams.json"')
+    local fk = io.open(SHARED .. "/teams.json", "w"); fk:write("{kaputt"); fk:close()
+    check(BN.loadTeams(true) ~= nil, "Fund 4: kaputte Datei ergibt neue Liste")
+    local moved = false
+    for _, f in ipairs(FS.ListFiles(SHARED)) do if f:find("teams.json.kaputt-", 1, true) then moved = true end end
+    check(moved, "Fund 4: kaputte teams.json beiseitegelegt")
+    -- (2) Stummschaltung durch den Wortfilter gilt nach dem Neuverbinden weiter.
+    BN.players[91].mutedUntil = nil
+    for _ = 1, C.filterStrikes do say(91, "du arschloch") end
+    check(BN.findMute("9191") ~= nil, "Fund 2: Filter-Stummschaltung gespeichert")
+    _G[events.onPlayerDisconnect](91)
+    _G[events.onPlayerJoin](91)
+    check(BN.players[91].mutedUntil and BN.players[91].mutedUntil > clock, "Fund 2: nach dem Neuverbinden weiter stumm")
+    -- (7) Gruppenrennen: Abklingzeit fuer Nicht-Admins, Ende wenn niemand losfaehrt.
+    BN.track(93, 0, { 9000, 0, 0 }, 1); say(93, "/rennen neu block")
+    BN.track(93, 0, { 9900, 0, 0 }, 2); say(93, "/rennen ziel block")
+    BN.groupStarts = {}
+    chatLog = {}
+    say(92, "/rennen gruppe block")
+    check(BN.group ~= nil, "Fund 7: Spieler startet Gruppenrennen")
+    BN.track(92, 0, { 9000, 0, 0 }, 100)
+    tick(C.groupRaceDelaySec + 62)
+    check(BN.group == nil, "Fund 7: niemand faehrt los – nach einer Minute vorbei")
+    say(92, "/rennen gruppe block")
+    check(BN.group == nil and chatContains("Bitte warte noch %d+ s, bevor du wieder ein Gruppenrennen startest", 92), "Fund 7: Abklingzeit")
+    say(91, "/rennen gruppe block")
+    check(BN.group == nil and chatContains("stummgeschaltet", 91), "Fund 7: Stummgeschaltete starten keine Gruppe")
+    say(93, "/rennen loeschen block")
+    -- (6) Fremde Eintraege in announcements.json stoppen die Ansagen nicht; geplante bleiben beim Kuerzen.
+    local list = { 5, "x", { id = "alt", text = "alt", at = clock - 1000 } }
+    for i = 1, 25 do list[#list + 1] = { id = "plan" .. i, text = "plan", at = clock + 3600 + i } end
+    writeJson(SHARED .. "/announcements.json", { list = list })
+    check(pcall(BN.sync, true), "Fund 6: Abgleich ueberlebt fremde Eintraege")
+    BN.announce("Jetzt", "Obmann")
+    local a = readJson(SHARED .. "/announcements.json").list
+    local planned, nowAnn, bad = 0, 0, 0
+    for _, e in ipairs(a) do
+        if type(e) ~= "table" then bad = bad + 1
+        elseif e.text == "plan" then planned = planned + 1
+        elseif e.text == "Jetzt" then nowAnn = nowAnn + 1 end
+    end
+    check(#a == 20 and bad == 0 and nowAnn == 1 and planned == 19, "Fund 6: beim Kuerzen gehen erst vergangene, dann die aeltesten")
+    os.remove(SHARED .. "/announcements.json")
+    -- (5) Geplante Ansage: die Uhrzeit stimmt in Ortszeit (auch ueber die Zeitumstellung hinweg).
+    for _, hhmm in ipairs({ "00:00", "02:30", "20:00", "23:59" }) do
+        local at = BN.nextClockTime(hhmm)
+        check(os.date("%H:%M", at) == hhmm and at > clock and at - clock <= 25 * 3600, "Fund 5: " .. hhmm .. " in Ortszeit")
+    end
+    -- (14) Ein Gast mit dem Namen eines Admins ist nicht vom Verbindungslimit ausgenommen.
+    BN.joins = {}
+    local auth = _G[events.onPlayerAuth]
+    local blocked = false
+    for _ = 1, 10 do if auth("Obmann", "GUEST", true, { ip = "8.8.4.4" }) ~= nil then blocked = true end end
+    check(blocked, "Fund 14: Gast mit Admin-Namen wird begrenzt")
+    BN.joins = {}
+    for _, pid in ipairs({ 91, 92, 93 }) do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    os.remove(SHARED .. "/mutes.json")
+    os.remove(SHARED .. "/teams.json")
+    C.admins = savedAdmins
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.31"
+BN.VERSION = "1.32"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -790,6 +790,12 @@ local EN = {
     ["Sprache: Deutsch. English: /lang en"] = "Language: English. Deutsch: /lang de",
     ["Sprache auf Deutsch gestellt."] = "Language set to English.",
     ["Sprachen: /lang de · /lang en"] = "Languages: /lang de · /lang en",
+    ["Dieser Teamname ist nicht erlaubt."] = "This team name is not allowed.",
+    ["Ein neues Team kannst du erst in %d min gründen."] = "You can found a new team in %d min.",
+    ["Teams gerade nicht verfügbar – bitte später noch einmal."] = "Teams are not available right now – please try again later.",
+    ["Nur Admins können Teams löschen."] = "Only admins can delete teams.",
+    ["Team %s gelöscht."] = "Team %s deleted.",
+    ["Bitte warte noch %d s, bevor du wieder ein Gruppenrennen startest."] = "Please wait %d s before starting another group race.",
     -- Freunde
     ["hier"] = "here",
     [" · und %d weitere"] = " · and %d more",
@@ -1958,6 +1964,8 @@ function BN.endGroup()
     end
 end
 
+BN.groupStarts = BN.groupStarts or {}
+
 function BN.groupTick()
     local g = BN.group
     if not g then return end
@@ -1980,7 +1988,14 @@ function BN.groupTick()
         local m = BN.players[pid]
         if m and m.race and m.race.group and not g.done[pid] then waiting = waiting + 1 end
     end
-    if waiting == 0 or now - g.startAt > C.groupRaceMaxSec then BN.endGroup() end
+    -- Faehrt eine Minute nach dem Start niemand los (alle stehen noch im Startbereich), ist die Gruppe vorbei: so
+    -- blockiert niemand die Gruppenrennen, indem er einfach stehen bleibt.
+    local moving = #g.results > 0
+    for pid in pairs(g.members) do
+        local m = BN.players[pid]
+        if m and m.race and m.race.group and m.race.state == "running" then moving = true end
+    end
+    if waiting == 0 or now - g.startAt > C.groupRaceMaxSec or (not moving and now - g.startAt > 60) then BN.endGroup() end
 end
 
 function BN.joinGroup(pid)
@@ -2197,7 +2212,7 @@ function BN.saveMute(s, untilTs)
     local data = BN.loadMutes()
     local now, kept = BN.now(), {}
     for _, m in ipairs(data.mutes) do
-        local same = (s.id and m.id == s.id) or (not s.id and s.ip and m.ip == s.ip)
+        local same = type(m) == "table" and ((s.id and m.id == s.id) or (not s.id and s.ip and m.ip == s.ip))
         if type(m) == "table" and not same and tonumber(m["until"]) and m["until"] > now then kept[#kept + 1] = m end
     end
     kept[#kept + 1] = { id = s.id, ip = (not s.id) and s.ip or nil, name = s.name, ["until"] = untilTs }
@@ -2274,7 +2289,7 @@ function BN.sync(force)
     if type(data) == "table" and type(data.list) == "table" then
         for _, a in ipairs(data.list) do
             -- Geplante Ansagen (Zeit in der Zukunft) warten; verpasste (Server war aus) nach 2 Minuten nicht mehr.
-            local at = tonumber(a.at) or 0
+            local at = type(a) == "table" and tonumber(a.at) or 0
             if type(a) == "table" and a.id and not BN.seenAnnouncements[a.id] and at <= now then
                 BN.seenAnnouncements[a.id] = true
                 if now - at <= 120 then sayAll("[Ansage] %s", tostring(a.text)) end
@@ -2339,8 +2354,20 @@ function BN.announce(text, by, at)
     local data = json.decode(readFile(announcementsFile()) or "")
     if type(data) ~= "table" or type(data.list) ~= "table" then data = { list = {} } end
     local id = string.format("%d-%s-%d", now, tostring(BN.server.port), math.random(100000, 999999))
-    data.list[#data.list + 1] = { id = id, text = text, by = by, at = at }
-    while #data.list > 20 do table.remove(data.list, 1) end
+    -- Nur gueltige Eintraege behalten; beim Kuerzen zuerst die laengst angesagten, geplante bleiben moeglichst.
+    local kept = {}
+    for _, a in ipairs(data.list) do
+        if type(a) == "table" and tonumber(a.at) then kept[#kept + 1] = a end
+    end
+    kept[#kept + 1] = { id = id, text = text, by = by, at = at }
+    while #kept > 20 do
+        local drop = 1
+        for i, a in ipairs(kept) do
+            if tonumber(a.at) < now - 120 then drop = i break end     -- schon von allen Servern angesagt
+        end
+        table.remove(kept, drop)
+    end
+    data.list = kept
     ensureDir(C.sharedDir)
     writeFileAtomic(announcementsFile(), json.encode(data))
     if at <= now then
@@ -2356,10 +2383,13 @@ function BN.nextClockTime(hhmm)
     if not h or h > 23 or m > 59 then return nil end
     local now = BN.now()
     local t = os.date("*t", now)
-    t.hour, t.min, t.sec = h, m, 0
+    -- isdst offen lassen: sonst uebernimmt os.time die Sommer-/Winterzeit von jetzt (Ansage ueber die Zeitumstellung
+    -- hinweg eine Stunde daneben).
+    t.hour, t.min, t.sec, t.isdst = h, m, 0, nil
     local at = os.time(t)
     if at <= now then
-        t.day = t.day + 1
+        t = os.date("*t", now)
+        t.day, t.hour, t.min, t.sec, t.isdst = t.day + 1, h, m, 0, nil
         at = os.time(t)
     end
     return at
@@ -2393,6 +2423,7 @@ function BN.filterCheck(s, message)
         s.filterTimes = {}
         s.mutedUntil = now + C.filterMuteSec
         s.muteNoticeAt = now
+        BN.saveMute(s, s.mutedUntil)          -- gilt auch nach dem Neuverbinden und auf den anderen Servern
         say(s.pid, "Bitte freundlich bleiben – du bist %d Minuten stummgeschaltet.", math.ceil(C.filterMuteSec / 60))
         modlog({ action = "filter-mute", target = s.name, targetId = s.id, seconds = C.filterMuteSec })
     else
@@ -2809,6 +2840,20 @@ function commands.rennen(pid, arg)
             say(pid, "Es läuft schon ein Gruppenrennen auf %s – mitmachen: /rennen mit", BN.group.name)
             return
         end
+        if not BN.isAdmin(s) then
+            if s.mutedUntil and BN.now() < s.mutedUntil then
+                say(pid, "Du bist noch %d s stummgeschaltet.", s.mutedUntil - BN.now())
+                return
+            end
+            -- Hoechstens ein Gruppenrennen je Spieler alle 3 Minuten (auch ueber Neuverbinden hinweg).
+            local key = s.id or ("ip:" .. tostring(s.ip or s.pid))
+            local last = BN.groupStarts[key]
+            if last and BN.now() - last < 180 then
+                say(pid, "Bitte warte noch %d s, bevor du wieder ein Gruppenrennen startest.", 180 - (BN.now() - last))
+                return
+            end
+            BN.groupStarts[key] = BN.now()
+        end
         BN.group = { name = name, startAt = BN.now() + C.groupRaceDelaySec, by = s.name, members = {}, results = {}, done = {} }
         sayAll("Gruppenrennen auf %s in %d s, gestartet von %s! Mitmachen: /rennen mit", name, C.groupRaceDelaySec, s.name)
         BN.joinGroup(pid)
@@ -3075,11 +3120,25 @@ commands.rules = commands.regeln
 -- Kilometer der Mitglieder (aus der Bestenliste, also inklusive der Spieler online).
 BN.TEAM_MAX = 20
 
-function BN.loadTeams()
-    local data = json.decode(readFile(teamsFile()) or "")
-    if type(data) ~= "table" or type(data.teams) ~= "table" then data = { teams = {} } end
+-- strict: Lesefehler (ausser "Datei fehlt") ergeben nil und den Fehler – dann darf nichts geschrieben werden. Eine
+-- kaputte Datei wird beiseitegelegt (teams.json.kaputt-<Zeit>) und neu begonnen. Ohne strict immer eine Tabelle.
+function BN.loadTeams(strict)
+    local f, err, code = io.open(teamsFile(), "rb")
+    if not f then
+        if code == ENOENT or not strict then return { teams = {} } end
+        return nil, err
+    end
+    local raw, readErr = f:read("*a")
+    f:close()
+    if raw == nil and strict then return nil, readErr or "teams.json nicht lesbar" end
+    local data = json.decode(raw or "")
+    if type(data) ~= "table" or type(data.teams) ~= "table" then
+        if strict and raw and raw ~= "" then os.rename(teamsFile(), teamsFile() .. ".kaputt-" .. tostring(BN.now())) end
+        return { teams = {} }
+    end
     return data
 end
+BN.teamFounded = BN.teamFounded or {}
 
 local function saveTeams(data)
     ensureDir(C.sharedDir)
@@ -3122,7 +3181,7 @@ function commands.team(pid, arg)
     for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
     local sub = (words[1] or ""):lower()
     local aliases = { gruenden = "gründen", create = "gründen", found = "gründen", join = "beitreten",
-                      leave = "verlassen", list = "liste", top = "liste" }
+                      leave = "verlassen", list = "liste", top = "liste", loeschen = "löschen", delete = "löschen" }
     sub = aliases[sub] or sub
     if sub == "liste" then
         local list = BN.teamRanking()
@@ -3134,7 +3193,24 @@ function commands.team(pid, arg)
         return
     end
     if s.guest then say(pid, "Teams gibt es nur mit BeamMP-Konto.") return end
-    local data = BN.loadTeams()
+    -- Streng lesen: Kann teams.json gerade nicht gelesen werden, wird nichts geschrieben (sonst waeren alle Teams weg).
+    local data, loadErr = BN.loadTeams(true)
+    if not data then
+        BN.logError("teams.json", loadErr)
+        say(pid, "Teams gerade nicht verfügbar – bitte später noch einmal.")
+        return
+    end
+    if sub == "löschen" then
+        if not BN.isAdmin(s) then say(pid, "Nur Admins können Teams löschen.") return end
+        local name = table.concat(words, " ", 2)
+        local t = data.teams[teamKey(name)]
+        if not t then say(pid, "Das Team %s gibt es nicht. Liste: /team liste", name) return end
+        data.teams[teamKey(name)] = nil
+        if not saveTeams(data) then say(pid, "Teams gerade nicht verfügbar – bitte später noch einmal.") return end
+        modlog({ action = "team-loeschen", by = s.name, target = t.name })
+        say(pid, "Team %s gelöscht.", t.name)
+        return
+    end
     local key, mine = teamOf(data, s.id)
     if sub == "" then
         if not mine then say(pid, "Du bist in keinem Team. /team gründen <Name> · /team beitreten <Name> · /team liste") return end
@@ -3160,12 +3236,29 @@ function commands.team(pid, arg)
         end
         local existing = data.teams[teamKey(name)]
         if sub == "gründen" then
+            if not BN.isAdmin(s) then
+                local now = BN.now()
+                if s.mutedUntil and now < s.mutedUntil then
+                    say(pid, "Du bist noch %d s stummgeschaltet.", s.mutedUntil - now)
+                    return
+                end
+                if BN.filterHit(name) then
+                    say(pid, "Dieser Teamname ist nicht erlaubt.")
+                    return
+                end
+                local last = BN.teamFounded[s.id]
+                if last and now - last < 600 then
+                    say(pid, "Ein neues Team kannst du erst in %d min gründen.", math.ceil((600 - (now - last)) / 60))
+                    return
+                end
+            end
             if existing then say(pid, "Das Team %s gibt es schon – /team beitreten %s", existing.name, existing.name) return end
             local count = 0
             for _ in pairs(data.teams) do count = count + 1 end
             if count >= 500 then say(pid, "Es gibt schon zu viele Teams.") return end
             data.teams[teamKey(name)] = { name = name, by = s.name, created = BN.now(), members = { [s.id] = s.name } }
-            saveTeams(data)
+            if not saveTeams(data) then say(pid, "Teams gerade nicht verfügbar – bitte später noch einmal.") return end
+            BN.teamFounded[s.id] = BN.now()
             sayAll("%s hat das Team %s gegründet – mitmachen: /team beitreten %s", s.name, name, name)
             return
         end
@@ -3907,7 +4000,7 @@ BN.joins = BN.joins or {}
 function BN.joinAllowed(name, id, ip)
     for _, a in ipairs(C.admins or {}) do
         a = tostring(a)
-        if (id and a == id) or a:lower() == tostring(name or ""):lower() then return true end
+        if id and (a == id or a:lower() == tostring(name or ""):lower()) then return true end
     end
     local now = BN.now()
     local keys = {}

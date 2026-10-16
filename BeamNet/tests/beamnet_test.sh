@@ -96,6 +96,7 @@ export FAKE="$T" PATH="$T/bin:$PATH"
 ME=$(/usr/bin/id -un)
 export BEAMNET_ROOT="$T/root" BEAMNET_USER="$ME" BEAMNET_SHARED="$T/root/shared/beamnet"
 export BEAMNET_CANARY=0          # Update zuerst auf einem Testserver: eigener Test weiter unten
+export BEAMNET_TRUST_LINK_UID=-1   # die Tests laufen als root: alle Symlinks gehoeren root – keinem vertrauen
 export BEAMNET_LOGROTATE="$T/logrotate.d/beamnet"
 mkdir -p "$T/logrotate.d"
 export BEAMNET_BACKUP_DIR="$T/backups" BEAMNET_AUTH_KEYS="$T/authorized_keys" BEAMNET_WAIT=0 BEAMNET_FAKE_PROCS="$T/procs"
@@ -1586,6 +1587,17 @@ ln -s "$victim/passwd" "$S/config.json"
 "$TOOL" admin add Sicherheit >/dev/null 2>&1
 unchanged && pass || fail "Sicherheit: admin folgt keinem Symlink"
 rm -f "$S/config.json"; mv "$T/config.keep" "$S/config.json" 2>/dev/null
+# Hardlink auf eine fremde Datei (bei fs.protected_hardlinks=0 moeglich): safe get liest sie nicht.
+ln "$victim/creds.json" "$S/servers/30899.json"
+lacks "$("$TOOL" players json 2>&1)" "GEHEIMNIS-ROOT" "Sicherheit: Hardlink im gemeinsamen Ordner wird nicht gelesen"
+rm -f "$S/servers/30899.json"
+# Zwischenordner als Symlink (Resources/Server -> fremder Ordner): install-core schreibt nicht hindurch.
+mkdir -p "$victim/srv/BeamNetCore"
+mv "$T/root/2/Resources/Server" "$T/server2.keep"
+ln -s "$victim/srv" "$T/root/2/Resources/Server"
+"$TOOL" install-core -y >/dev/null 2>&1
+[[ ! -e $victim/srv/BeamNetCore/main.lua ]] && pass || fail "Sicherheit: install-core folgt keinem Symlink in einem Zwischenordner"
+rm -f "$T/root/2/Resources/Server"; mv "$T/server2.keep" "$T/root/2/Resources/Server"
 # Rotation: doppelte Maps und "all" werden abgelehnt.
 contains "$("$TOOL" rotation 5 italy utah italy 2>&1)" "Jede Map nur einmal" "rotation: doppelte Maps abgelehnt"
 contains "$("$TOOL" rotation all italy utah 2>&1)" "eine Server-Nummer" "rotation: nur eine Server-Nummer"
