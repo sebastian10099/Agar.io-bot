@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.61"
+VERSION="1.62"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3415,6 +3415,24 @@ for path in sorted(glob.glob(os.path.join(shared, "races", "*.json"))):
         if isinstance(recs, list) and recs and isinstance(recs[0], dict):
             races.append((os.path.basename(path)[:-5], name, recs[0]))
 
+# Demnaechst: geplante Ansagen (announcements.json) und ein laufendes XP-Event (event.json), beides vom Plugin.
+upcoming = []
+ann = load(os.path.join(shared, "announcements.json"))
+for a in (ann.get("list") if isinstance(ann, dict) and isinstance(ann.get("list"), list) else [])[:50]:
+    at = num(a.get("at")) if isinstance(a, dict) else 0
+    if now < at < now + 14 * 86400:
+        txt = " ".join(__import__("re").sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(a.get("text", ""))).split())[:300]
+        upcoming.append((at, f"📢 {E(txt)}"))
+ev = load(os.path.join(shared, "event.json"))
+if isinstance(ev, dict) and now < num(ev.get("until")) < now + 2 * 86400 and 1 < num(ev.get("factor")) <= 5:
+    f = num(ev.get("factor"))
+    fs = (f"{f:.1f}".replace(".", ",") if f != int(f) else str(int(f)))
+    upcoming.append((now, f"🎉 XP-Event läuft: {fs}-fache XP bis {time.strftime('%H:%M', time.localtime(num(ev.get('until'))))} Uhr"))
+upcoming.sort(key=lambda x: x[0])
+DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+upcoming_rows = [f"<tr><td>{'jetzt' if at <= now else DAYS[time.localtime(at).tm_wday] + ' ' + time.strftime('%d.%m. %H:%M', time.localtime(at))}</td><td>{t}</td></tr>"
+                 for at, t in upcoming[:8]]
+
 # Orte fuer Fahrauftraege (places/<Map>.json, vom Plugin): je Map die Anzahl je Typ.
 PLACE_ICONS = {"krankenhaus": "🚑", "schule": "🚌", "feuerwehr": "🚒", "polizei": "🚓", "tankstelle": "⛽",
                "werkstatt": "🔧", "supermarkt": "🛒", "bahnhof": "🚕", "flughafen": "✈️", "hafen": "⚓", "hotel": "🏨",
@@ -3643,6 +3661,7 @@ page = f"""<!doctype html>
 <h1><span>{E(title)}</span> Status</h1>
 <div class=sub>{len(servers)} Server online · {online} Spieler{peak_text} · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))} (aktualisiert sich jede Minute)</div>
 <section><h2>Server</h2>{table(["Server", "Map", "Spieler#"], rows, "Gerade meldet sich kein Server.")}</section>
+{('<section><h2>Demnächst</h2>' + table(["Wann", "Was"], upcoming_rows, "") + '</section>') if upcoming_rows else ""}
 {hours_chart()}
 {community}
 <section><h2>Bestenliste</h2>{table(["#", "Name", "Level#", "Liga", "XP#", "Kilometer#", "Erfolge#"], top, "Noch keine Einträge – einfach losfahren!")}</section>

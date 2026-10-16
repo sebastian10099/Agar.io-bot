@@ -159,7 +159,7 @@ Woche, die Saison, die Streckenrekorde, die beliebtesten Maps (Kilometer je Map)
 der letzten 7 Tage (braucht den Wächter); hell oder dunkel je nach Gerät, auch fürs Handy. Ein Klick auf einen Namen
 öffnet die **Profilseite** des Fahrers: Level, Liga, Rang, Kilometer, Fahrzeit, Spitze, Saison-Platz, Lieblingsmap, Erfolge,
 Kilometer je Map, eigene Bestzeiten, Aufträge und Tages-Serie. Ein Klick auf eine Strecke öffnet ihre **Streckenseite** (Top 10
-mit Datum, Länge, Zahl der Fahrer). Außerdem: Meiste Aufträge, Orte für Aufträge je Map und das Wochenziel. Für Grafana/Prometheus gibt es `metrics.txt` (Spieler je Server, gesamt,
+mit Datum, Länge, Zahl der Fahrer). Außerdem: Meiste Aufträge, Orte für Aufträge je Map, das Wochenziel und „Demnächst“ (geplante Ansagen der nächsten 14 Tage und ein laufendes XP-Event). Für Grafana/Prometheus gibt es `metrics.txt` (Spieler je Server, gesamt,
 Rekord, Fahrer, Kilometer) unter derselben Adresse. Dazu eine **Hilfeseite** (`hilfe.html`, unten verlinkt) mit Regeln,
 allen Chat-Befehlen, XP-Regeln, Ligen und Erfolgen – zum Teilen mit neuen Spielern. Eigener Titel: `WEB_TITLE=…` in
 `/etc/beamnet.conf`. Der kleine Webserver läuft abgeschottet (eigener Benutzer, nur Lesezugriff auf die Seite).

@@ -649,6 +649,17 @@ echo '{"week":"2000-W01","goal":600}' >"$T/root/shared/beamnet/community.json"
 "$TOOL" web run >/dev/null 2>&1
 lacks "$(cat "$T/web/index.html")" "Wochenziel für alle" "Statusseite: altes Wochenziel nicht gezeigt"
 rm -f "$T/root/shared/beamnet/players/63.json" "$T/root/shared/beamnet/players/64.json" "$T/root/shared/beamnet/community.json"
+# Demnaechst: geplante Ansagen und laufendes XP-Event; Vergangenes und Unsinn nicht.
+now=$(date +%s)
+echo "{\"list\":[{\"id\":\"a\",\"text\":\"Gruppenrennen <b>heute</b>\",\"at\":$((now + 3600))},{\"id\":\"b\",\"text\":\"Alt\",\"at\":$((now - 60))},5]}" >"$T/root/shared/beamnet/announcements.json"
+echo "{\"factor\":2,\"until\":$((now + 1800)),\"by\":\"Orga\"}" >"$T/root/shared/beamnet/event.json"
+"$TOOL" web run >/dev/null 2>&1
+page=$(cat "$T/web/index.html")
+contains "$page" "<h2>Demnächst</h2>.*<td>jetzt</td><td>🎉 XP-Event läuft: 2-fache XP bis [0-9:]+ Uhr</td>.*📢 Gruppenrennen &lt;b&gt;heute&lt;/b&gt;" "Statusseite: Demnächst (Event, geplante Ansage, maskiert)"
+lacks "$page" "📢 Alt" "Statusseite: vergangene Ansagen nicht unter Demnächst"
+rm -f "$T/root/shared/beamnet/announcements.json" "$T/root/shared/beamnet/event.json"
+"$TOOL" web run >/dev/null 2>&1
+lacks "$(cat "$T/web/index.html")" "Demnächst" "Statusseite: ohne Termine kein Abschnitt Demnächst"
 # Orte fuer Auftraege je Map (kaputte Eintraege und unbekannte Typen ignoriert).
 mkdir -p "$T/root/shared/beamnet/places"
 echo '{"places":[{"type":"krankenhaus","name":"A","x":1,"y":1,"z":1},{"type":"schule","name":"B"},{"type":"krankenhaus","name":"C"},{"type":"<b>"},5]}' >"$T/root/shared/beamnet/places/italy.json"
