@@ -58,12 +58,13 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
         Die Messung filtert Sprünge über 540 km/h, die Seite zeigt nichts über 600 km/h (Plugin 1.21, Werkzeug 1.39).
         Später: je Map.
 25. [ ] Teams/Clans: `/team gründen|beitreten`, mit Team-Kilometern und Team-Wertung auf der Statusseite.
-26. [ ] Neue Erfolge: alle Maps befahren, Nachtfahrer, 1000 km, 10 Rekorde, Marathon (2 h am Stück). 🤖
+26. [ ] Neue Erfolge (5000 km, 50 Stunden, 50 Rennen, 5 Rekorde) – als Aufgabe 07 für die lokale KI vorbereitet. 🤖
 27. [ ] Saison-Titel: Die Top 3 der Saison bekommen einen Titel in `/stats` und auf der Statusseite.
 28. [ ] Tagesaufgaben je Map, z. B. „fahre 10 km auf Utah“. 🤖
 
 **D. Moderation und Sicherheit**
-29. [ ] Zeitlich begrenzter Bann (`/ban <Name> 3d`), prüfen und übernehmen aus Werkstatt-Aufgabe 03. 🤖
+29. [~] Zeitlich begrenzter Bann gibt es schon (`/ban <Name> 2h`, auch `m`/`d`). Feinschliff (`2H`, `1w`, riesige
+        Zahlen) liegt als Aufgabe 03 bei der lokalen KI. 🤖
 30. [x] `/melden <Name> <Grund>` (englisch `/report`): sofort an Admins auf dem Server, über den Wächter an
         Discord/Telegram mit Server und Uhrzeit; höchstens alle 2 Minuten je Spieler; im Moderationsprotokoll.
 31. [x] Admin-Benachrichtigung an Discord/Telegram bei Bann, Kick, Stummschaltung (auch Spam) und Verwarnung,
@@ -82,8 +83,9 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 36. [x] Update zuerst auf einem Server: dem laufenden mit den wenigsten Spielern. Die übrigen folgen erst, wenn er sich
         mit der neuen Version meldet (bis 60 s) (Werkzeug 1.38).
 37. [ ] `metrics.txt` (Prometheus-Format) für Grafana: Spieler, km/h, Fehler und Neustarts je Server.
-38. [ ] Werkstatt: Die CI prüft `lokal/*`-Branches automatisch (Tests, shellcheck) vor meiner Durchsicht. 🤖
-39. [ ] README und Befehlshilfe auch auf Englisch (für internationale Admins). 🤖
+38. [x] Die CI läuft bei jedem Push auf jeden Branch mit BeamNet-Änderungen, also auch auf `lokal/*` der Werkstatt.
+        Ich sehe das Ergebnis vor der Durchsicht.
+39. [ ] Englische Kurzanleitung `README.en.md` – als Aufgabe 08 für die lokale KI vorbereitet. 🤖
 40. [x] Hilfeseite `hilfe.html` mit Regeln (auch eigene aus `config.json`), allen Chat-Befehlen, XP-Regeln, Ligen
         und Erfolgen, verlinkt von der Statusseite (Werkzeug 1.37).
 
