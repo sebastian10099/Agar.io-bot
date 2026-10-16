@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.58"
+VERSION="1.59"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3441,7 +3441,13 @@ if isinstance(cg, dict) and cg.get("week") == week and 0 < num(cg.get("goal")) <
                  f'<p class=small>Alle fahren zusammen; wer diese Woche mitfährt, bekommt Bonus-XP. Im Spiel: <b>/ziel</b></p></section>')
 popular_rows = [f"<tr><td>{E(map_name(m))}</td><td class=n>{km(v)}</td><td class=n>{d}</td></tr>"
                 for m, (v, d) in sorted(popular.items(), key=lambda x: (-x[1][0], x[0]))[:10]]
-records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name', '?')))}</td><td class=n>{race_time(b.get('time'))}</td></tr>"
+TRACK_OK = __import__("re").compile(r"^[A-Za-z0-9_-]{1,64}$")
+def track_link(m, n):
+    """Streckenname als Link auf die Streckenseite (nur bei unbedenklichen Namen)."""
+    if TRACK_OK.match(m) and TRACK_OK.match(str(n)):
+        return f'<a href="t/{m}-{n}.html">{E(str(n))}</a>'
+    return E(str(n))
+records = [f"<tr><td>{E(map_name(m))}</td><td>{track_link(m, n)}</td><td>{E(str(b.get('name', '?')))}</td><td class=n>{race_time(b.get('time'))}</td></tr>"
            for m, n, b in races]
 
 
@@ -3698,6 +3704,47 @@ for rank, r in enumerate(ranked, 1):
 # Seiten von Fahrern, die es nicht mehr gibt, entfernen.
 for old in glob.glob(os.path.join(pdir, "*.html")):
     if os.path.basename(old) not in written:
+        os.remove(old)
+
+# --- Streckenseite je Strecke: Top 10, Laenge, Zahl der Fahrer -------------------------------------------------------
+tdir = os.path.join(os.path.dirname(out), "t")
+os.makedirs(tdir, exist_ok=True)
+twritten = set()
+for path in sorted(glob.glob(os.path.join(shared, "races", "*.json"))):
+    m = os.path.basename(path)[:-5]
+    data = load(path)
+    tracks = data.get("tracks") if isinstance(data, dict) else None
+    if not TRACK_OK.match(m) or not isinstance(tracks, dict):
+        continue
+    for n, t in sorted(tracks.items()):
+        if not isinstance(t, dict) or not TRACK_OK.match(str(n)):
+            continue
+        recs = [r for r in (t.get("records") if isinstance(t.get("records"), list) else []) if isinstance(r, dict)][:50]
+        rows = []
+        for i, r in enumerate(recs[:10], 1):
+            at = num(r.get("at"))
+            when = time.strftime("%d.%m.%Y", time.localtime(at)) if 0 < at < 4e9 else "–"
+            rows.append(f"<tr><td class=n>{i}</td><td>{link(r, '../')}</td><td class=n>{race_time(r.get('time'))}</td><td>{when}</td></tr>")
+        length = num(t.get("lengthM"))
+        info = [f"Map {E(map_name(m))}"]
+        if 0 < length < 1e6:
+            info.append(f"Länge {length / 1000:.1f} km".replace(".", ","))
+        info.append(f"{len(recs)} {'Fahrer' if len(recs) != 1 else 'Fahrer'} mit Zeit")
+        page_t = f"""<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60"><title>{E(str(n))} – {E(title)}</title>
+{STYLE}</head><body><main>
+<div class=sub><a href="../index.html">← {E(title)} Status</a></div>
+<h1>{E(str(n))}</h1>
+<div class=sub>{" · ".join(info)}</div>
+<section><h2>Bestenliste</h2>{table(["#", "Name", "Zeit#", "Am"], rows, "Noch keine Zeit – im Spiel: /rennen " + E(str(n)))}</section>
+<footer>Im Spiel starten: <b>/rennen {E(str(n))}</b> · gemeinsam: <b>/rennen gruppe {E(str(n))}</b> · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))}</footer>
+</main></body></html>
+"""
+        write(os.path.join(tdir, f"{m}-{n}.html"), page_t)
+        twritten.add(f"{m}-{n}.html")
+for old in glob.glob(os.path.join(tdir, "*.html")):
+    if os.path.basename(old) not in twritten:
         os.remove(old)
 
 # Hilfeseite fuer Spieler: Befehle, XP, Ligen, Erfolge, Regeln (eigene Regeln aus config.json wie im Plugin).

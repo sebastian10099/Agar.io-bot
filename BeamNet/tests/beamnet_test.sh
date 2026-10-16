@@ -607,6 +607,17 @@ echo "kaputt" >"$T/root/shared/beamnet/players/3.json"
 # Ab Plugin 1.9: Saison-XP als Zaehler (monthXp) statt Startwert.
 echo "{\"id\":\"4\",\"name\":\"Zaehler\",\"km\":40,\"seconds\":0,\"xp\":400,\"month\":\"$month\",\"monthXp\":321,\"mapKm\":{\"italy\":30.5,\"utah\":9.5}}" >"$T/root/shared/beamnet/players/4.json"
 mkdir -p "$T/root/shared/beamnet/races"
+# Streckenseiten (mit einer Strecke mit unsicherem Namen, die weder verlinkt noch als Seite erzeugt wird).
+echo '{"tracks":{"sprint":{"lengthM":1520,"records":[{"id":"1","name":"Sebi","time":49.0667,"at":1760000000}]},"leer":{"records":[]},"<b>x":{"records":[{"name":"Y","time":5}]}}}' >"$T/root/shared/beamnet/races/italy.json"
+"$TOOL" web run >/dev/null 2>&1
+page=$(cat "$T/web/index.html")
+contains "$page" '<td><a href="t/italy-sprint.html">sprint</a></td>' "Statusseite: Strecke verlinkt"
+lacks "$page" 'href="t/italy-&lt;' "Statusseite: unsichere Streckennamen nicht verlinkt"
+track=$(cat "$T/web/t/italy-sprint.html" 2>/dev/null)
+contains "$track" "<h1>sprint</h1>" "Streckenseite: erzeugt"
+contains "$track" "Map Italy · Länge 1,5 km · 1 Fahrer mit Zeit" "Streckenseite: Map, Länge, Fahrer"
+contains "$track" '<td class=n>1</td><td><a href="../p/1.html">Sebi</a></td><td class=n>0:49\.1</td>' "Streckenseite: Bestenliste mit Profil-Link"
+[[ -f $T/web/t/italy-leer.html && ! -e "$T/web/t/italy-<b>x.html" ]] && pass || fail "Streckenseite: auch ohne Zeiten, nie mit unsicherem Namen"
 echo '{"tracks":{"sprint":{"records":[{"id":"1","name":"Sebi","time":49.0667}]},"leer":{"records":[]}}}' >"$T/root/shared/beamnet/races/italy.json"
 out=$("$TOOL" web run 2>&1)
 contains "$out" "Statusseite erzeugt" "web run"
@@ -743,7 +754,7 @@ cp "$T/server-ids.bak" "$T/root/shared/beamnet/servers/30814.json"
 "$TOOL" web run >/dev/null 2>&1
 page=$(cat "$T/web/index.html")
 contains "$page" "<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td class=n>33.3 km</td>" "Statusseite: Woche"
-contains "$page" "<td>Italy</td><td>sprint</td><td>Sebi</td><td class=n>0:49.1</td>" "Statusseite: Rekorde"
+contains "$page" "<td>Italy</td><td><a href=\"t/italy-sprint.html\">sprint</a></td><td>Sebi</td><td class=n>0:49.1</td>" "Statusseite: Rekorde"
 contains "$page" "<h2>Saison [A-Za-zä]+ [0-9]{4}</h2>.*<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td class=n>500</td>" "Statusseite: Saison"
 contains "$page" "<td class=n>2</td><td><a href=\"p/4.html\">Zaehler</a></td><td class=n>321</td>" "Statusseite: Saison-Zaehler (1.9)"
 contains "$page" "<th class=n>XP</th>" "Statusseite: Zahlenspalten rechtsbuendig"
