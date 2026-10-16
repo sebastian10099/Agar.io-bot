@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.69"
+VERSION="1.70"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2402,6 +2402,7 @@ watch_run() {
     watch_peak msgs
     watch_capacity msgs
     watch_online msgs
+    watch_autoevent msgs
     watch_weekly msgs
     watch_season msgs
     watch_daily msgs
@@ -2410,6 +2411,128 @@ watch_run() {
         printf '%s\n' "${msgs[@]}"
         notify "$(printf '%s\n' "${msgs[@]}")"
     fi
+    return 0
+}
+
+# ---------------------------------------------------------------------------------------------------------------------
+# XP-Abende: netzweites XP-Event (event.json, wie /event im Spiel) – von Hand oder automatisch nach Plan (AUTO_EVENT).
+
+# AUTO_EVENT="fr,sa 20:00 2 2h" pruefen; Ausgabe "Tage(1-7, mit Komma) HH MM Faktor Sekunden" oder Fehler.
+autoevent_spec() {
+    local spec=${1-$(conf_get AUTO_EVENT)} days hhmm factor dur d out="" n
+    [[ -n $spec && $spec != 0 && $spec != aus ]] || return 1
+    read -r days hhmm factor dur _ <<<"$spec"
+    [[ $hhmm =~ ^([01]?[0-9]|2[0-3]):([0-5][0-9])$ ]] || return 1
+    local hh=$(( 10#${BASH_REMATCH[1]} )) mm=${BASH_REMATCH[2]}
+    factor=${factor/,/.}
+    [[ $factor =~ ^[1-5](\.[0-9])?$ ]] || return 1
+    awk -v f="$factor" 'BEGIN { exit !(f >= 1.5 && f <= 5) }' || return 1
+    [[ $dur =~ ^([0-9]{1,4})([mh])$ ]] || return 1
+    n=${BASH_REMATCH[1]}
+    if [[ ${BASH_REMATCH[2]} == h ]]; then n=$(( 10#$n * 3600 )); else n=$(( 10#$n * 60 )); fi
+    (( n >= 600 && n <= 6 * 3600 )) || return 1
+    case ${days,,} in täglich|taeglich|alle|jeden) out="1,2,3,4,5,6,7" ;;
+        *)
+            for d in ${days//,/ }; do
+                case ${d,,} in
+                    mo) out+="1," ;; di) out+="2," ;; mi) out+="3," ;; do) out+="4," ;; fr) out+="5," ;;
+                    sa) out+="6," ;; so) out+="7," ;; *) return 1 ;;
+                esac
+            done
+            out=${out%,} ;;
+    esac
+    [[ -n $out ]] || return 1
+    printf '%s %02d %s %s %s\n' "$out" "$hh" "$mm" "$factor" "$n"
+}
+
+# Laeuft gerade ein XP-Event (event.json mit "until" in der Zukunft)?
+event_running() {
+    [[ -f $SHARED/event.json ]] || return 1
+    safe get "$SHARED/event.json" 2>/dev/null | python3 -I -c '
+import json, sys, time
+try:
+    d = json.loads(sys.stdin.read(65536))
+    sys.exit(0 if isinstance(d, dict) and float(d.get("until", 0)) > time.time() and float(d.get("factor", 1)) > 1 else 1)
+except Exception:
+    sys.exit(1)'
+}
+
+# event_write <Faktor> <Sekunden> <von>: XP-Event fuer alle Server schreiben (Faktor 1 = beenden).
+event_write() {
+    [[ -d $SHARED && ! -L $SHARED ]] || return 1
+    python3 -I -c '
+import json, sys, time
+f, sec, by = float(sys.argv[1]), int(sys.argv[2]), sys.argv[3]
+now = int(time.time())
+ev = {"factor": f, "until": now + sec, "by": by, "at": now, "id": "%d-%s" % (now, "stop" if f <= 1 else "konsole")}
+print(json.dumps(ev, ensure_ascii=False))' "$1" "$2" "$3" | safe put "$SHARED/event.json" 664 "$SERVICE_USER"
+}
+
+# beamnet event: Stand · start <Faktor> <Dauer> · stop · auto <Tage> <HH:MM> <Faktor> <Dauer> · auto aus
+cmd_event() {
+    local sub=${1:-} spec
+    case $sub in
+        ""|status)
+            if event_running; then echo "XP-Event läuft gerade (Ende: siehe /event im Spiel)."; else echo "Gerade läuft kein XP-Event."; fi
+            spec=$(conf_get AUTO_EVENT)
+            if autoevent_spec >/dev/null; then echo "Automatischer XP-Abend: $spec"
+            else echo "Automatischer XP-Abend: aus (beamnet event auto fr,sa 20:00 2 2h)"; fi
+            ;;
+        start)
+            need_root event
+            local f=${2:-} d=${3:-}
+            spec=$(autoevent_spec "mo 00:00 $f $d") || die "Aufruf: beamnet event start <Faktor 1,5–5> <Dauer 10m–6h, z. B. 2h>"
+            read -r _ _ _ f d <<<"$spec"
+            event_write "$f" "$d" "Konsole" || die "Konnte das Event nicht speichern."
+            ok "XP-Event gestartet: ${f/./,}-fache XP für $(( d / 60 )) Minuten auf allen Servern."
+            ;;
+        stop)
+            need_root event
+            event_write 1 0 "Konsole" || die "Konnte das Event nicht beenden."
+            ok "XP-Event beendet."
+            ;;
+        auto)
+            need_root event
+            shift
+            if [[ ${1:-} == aus || ${1:-} == off || ${1:-} == 0 ]]; then conf_set AUTO_EVENT ""; ok "Automatischer XP-Abend aus."; return 0; fi
+            spec="$*"
+            autoevent_spec "$spec" >/dev/null || die "Aufruf: beamnet event auto <Tage, z. B. fr,sa oder täglich> <HH:MM> <Faktor 1,5–5> <Dauer 10m–6h> – z. B. beamnet event auto fr,sa 20:00 2 2h"
+            conf_set AUTO_EVENT "$spec"
+            ok "Automatischer XP-Abend: $spec – eine Stunde vorher kommt eine Ankündigung (Spiel, Discord/Telegram)."
+            [[ -f $SYSTEMD_DIR/beamnet-watch.timer ]] || echo "Hinweis: Der XP-Abend braucht den Wächter – beamnet watch install"
+            ;;
+        *) die "Aufruf: beamnet event [start <Faktor> <Dauer>|stop|auto <Tage> <HH:MM> <Faktor> <Dauer>|auto aus]" ;;
+    esac
+}
+
+# Automatischer XP-Abend: eine Stunde vorher Ankuendigung (Discord/Telegram und im Spiel), zur Startzeit startet der
+# Waechter das netzweite XP-Event (in den ersten 10 Minuten; nicht, wenn schon eines laeuft). Jeweils einmal am Tag.
+watch_autoevent() {
+    local -n aout=$1
+    local spec days hh mm factor secs now start key endt nice
+    spec=$(autoevent_spec) || return 0
+    read -r days hh mm factor secs <<<"$spec"
+    now=${BEAMNET_NOW:-$(date +%s)}
+    [[ ,$days, == *",$(date -d "@$now" +%u),"* ]] || return 0
+    key=$(date -d "@$now" +%F)
+    start=$(date -d "$key $hh:$mm" +%s 2>/dev/null) || return 0
+    endt=$(date -d "@$(( start + secs ))" +%H:%M)
+    nice=${factor/./,}
+    nice=${nice%,0}
+    if (( now >= start - 3600 && now < start )) && [[ ! -f $STATE_DIR/autoevent-warn-$key ]]; then
+        : >"$STATE_DIR/autoevent-warn-$key"
+        aout+=("🎉 Heute $hh:$mm–$endt Uhr: XP-Abend mit $nice-facher XP auf allen BeamNet-Servern – kommt vorbei!")
+        (YES=1 ANSAGE_BY="XP-Abend" cmd_ansage "🎉 Heute $hh:$mm–$endt Uhr: XP-Abend mit $nice-facher XP auf allen Servern!") >/dev/null 2>&1
+    fi
+    if (( now >= start && now < start + 600 )) && [[ ! -f $STATE_DIR/autoevent-start-$key ]]; then
+        : >"$STATE_DIR/autoevent-start-$key"
+        if event_running; then
+            aout+=("ℹ️ XP-Abend: es läuft schon ein XP-Event – kein zweites gestartet.")
+        elif event_write "$factor" "$(( start + secs - now ))" "XP-Abend"; then
+            aout+=("🚀 XP-Abend läuft: $nice-fache XP bis $endt Uhr auf allen Servern.")
+        fi
+    fi
+    find "$STATE_DIR" -maxdepth 1 -name 'autoevent-*' -mtime +3 -delete 2>/dev/null
     return 0
 }
 
@@ -3064,6 +3187,9 @@ TELEGRAM_ADMINS=
 # Netzwerk-Uebersicht alle N Minuten an Discord/Telegram, solange jemand spielt: Spieler je Server (Konten mit Namen,
 # Gaeste gezaehlt), leere Server und Auslastung je Map. 0 = aus.
 NETWORK_REPORT=10
+# Automatischer XP-Abend (netzweites XP-Event nach Plan, eine Stunde vorher angekuendigt), z. B. "fr,sa 20:00 2 2h"
+# (Tage mo..so oder taeglich, Uhrzeit, Faktor 1,5-5, Dauer 10m-6h). Leer = aus. Einfacher: beamnet event auto ...
+AUTO_EVENT=
 # 1 = ausgefallene Server automatisch neu starten (hoechstens 3x pro Stunde; nicht, wenn mit "beamnet stop"
 # gestoppt oder von OpenClaw gestoppt). 0 = nur melden.
 AUTO_RESTART=0
@@ -4273,6 +4399,8 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, Moderation) auf allen Servern
   beamnet bans · unban <Name> · modlog [n]   Banns ansehen/aufheben, Moderationsprotokoll
   beamnet ansage [HH:MM] <Text>  Ansage auf allen Servern, sofort oder zur Uhrzeit (ohne Text: geplante zeigen)
+  beamnet event [start <Faktor> <Dauer>|stop]   XP-Event auf allen Servern (z. B. start 2 2h)
+  beamnet event auto <Tage> <HH:MM> <Faktor> <Dauer>|aus   Automatischer XP-Abend, z. B. auto fr,sa 20:00 2 2h
   beamnet admin list · add <Name …> · remove <Name …>   Admins für Rennen und Moderation
   beamnet openclaw status|pause|resume   OpenClaw-Agent ansehen, anhalten (einfrieren), fortsetzen
   beamnet watch install|status|test|uninstall   Wächter: Ausfälle, Rekorde, wer online ist – an Discord/Telegram
@@ -4322,6 +4450,7 @@ main() {
         unban) cmd_unban "$@" ;;
         modlog) cmd_modlog "$@" ;;
         ansage|announce) cmd_ansage "$@" ;;
+        event|xp-abend) cmd_event "$@" ;;
         self-update) cmd_self_update ;;
         update|aktualisieren) cmd_update ;;
         version|--version) echo "BeamNet $VERSION" ;;

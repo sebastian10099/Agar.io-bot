@@ -1302,6 +1302,51 @@ lacks "$([[ -L $A ]] || cat "$A")" "GEHEIM" "ansage: liest keine Symlinks"
 [[ $(cat "$T/fremd-ann.json") == '{"list":[{"id":"x","text":"GEHEIM","at":1}]}' ]] && pass || fail "ansage: Symlink-Ziel unveraendert"
 rm -f "$A" "$T/fremd-ann.json"
 
+# --- XP-Abende (beamnet event, watch_autoevent) ------------------------------------------------------------------------
+E="$T/root/shared/beamnet/event.json"
+A="$T/root/shared/beamnet/announcements.json"
+rm -f "$E" "$A" "$T"/watch/autoevent-*
+contains "$("$TOOL" event 2>&1)" "Automatischer XP-Abend: aus" "event: Stand ohne Plan"
+contains "$("$TOOL" event auto xx 20:00 2 2h 2>&1)" "Aufruf: beamnet event auto" "event auto: falsche Tage abgelehnt"
+contains "$("$TOOL" event auto fr 25:00 2 2h 2>&1)" "Aufruf: beamnet event auto" "event auto: falsche Uhrzeit abgelehnt"
+contains "$("$TOOL" event auto fr 20:00 9 2h 2>&1)" "Aufruf: beamnet event auto" "event auto: Faktor hoechstens 5"
+contains "$("$TOOL" event auto fr 20:00 2 8h 2>&1)" "Aufruf: beamnet event auto" "event auto: hoechstens 6 Stunden"
+"$TOOL" event auto fr,sa 20:00 2 2h >/dev/null 2>&1
+contains "$(cat "$T/beamnet.conf")" "^AUTO_EVENT=fr,sa 20:00 2 2h$" "event auto: Plan gespeichert"
+contains "$("$TOOL" event 2>&1)" "Automatischer XP-Abend: fr,sa 20:00 2 2h" "event: Plan wird gezeigt"
+fri=$(date -d "next friday" +%F)
+start=$(date -d "$fri 20:00" +%s)
+out=$(BEAMNET_NOW=$(( start - 86400 * 2 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+lacks "$out" "XP-Abend" "autoevent: an anderen Tagen nichts"
+out=$(BEAMNET_NOW=$(( start - 7200 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+lacks "$out" "XP-Abend" "autoevent: zwei Stunden vorher noch nichts"
+out=$(BEAMNET_NOW=$(( start - 1800 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+contains "$out" "🎉 Heute 20:00–22:00 Uhr: XP-Abend mit 2-facher XP auf allen BeamNet-Servern" "autoevent: Ankuendigung eine Stunde vorher"
+contains "$(cat "$A" 2>/dev/null)" "XP-Abend mit 2-facher XP" "autoevent: Ankuendigung auch im Spiel"
+out=$(BEAMNET_NOW=$(( start - 1700 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+lacks "$out" "🎉 Heute" "autoevent: Ankuendigung nur einmal"
+out=$(BEAMNET_NOW=$(( start + 60 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+contains "$out" "🚀 XP-Abend läuft: 2-fache XP bis 22:00 Uhr" "autoevent: Start zur Uhrzeit"
+python3 -c 'import json,sys,time; d=json.load(open(sys.argv[1])); assert d["factor"]==2 and d["by"]=="XP-Abend" and 7000 < d["until"]-time.time() <= 7140' "$E" \
+    && pass || fail "autoevent: event.json fuer das Plugin (Faktor, Ende)"
+out=$(BEAMNET_NOW=$(( start + 120 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+lacks "$out" "🚀" "autoevent: Start nur einmal"
+# Laeuft schon ein Event (z. B. von einem Admin), wird kein zweites gestartet.
+rm -f "$T"/watch/autoevent-start-*
+"$TOOL" event start 3 1h >/dev/null 2>&1
+out=$(BEAMNET_NOW=$(( start + 60 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+contains "$out" "es läuft schon ein XP-Event" "autoevent: kein zweites Event"
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["factor"]==3' "$E" && pass || fail "autoevent: laufendes Event bleibt"
+# Von Hand: start/stop.
+contains "$("$TOOL" event start 9 2h 2>&1)" "Aufruf: beamnet event start" "event start: Faktor geprueft"
+contains "$("$TOOL" event start 1,5 90m 2>&1)" "1,5-fache XP für 90 Minuten" "event start: mit Komma"
+contains "$("$TOOL" event 2>&1)" "XP-Event läuft gerade" "event: laufendes Event erkannt"
+"$TOOL" event stop >/dev/null 2>&1
+contains "$("$TOOL" event 2>&1)" "Gerade läuft kein XP-Event" "event stop: beendet"
+"$TOOL" event auto aus >/dev/null 2>&1
+contains "$("$TOOL" event 2>&1)" "Automatischer XP-Abend: aus" "event auto aus"
+rm -f "$E" "$A" "$T"/watch/autoevent-*
+
 # --- Taegliche Datensicherung und Wiederherstellung --------------------------------------------------------------------
 S="$T/root/shared/beamnet"
 B="$T/backups"

@@ -120,6 +120,12 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   kommt die Übersicht höchstens alle 30 Minuten; wird das Netzwerk leer, einmal „gerade niemand online“. Dieselbe
   Übersicht schickt der Bot auf `/server` in Telegram; im Terminal: `beamnet players`. (Ältere Konfigurationen mit
   `ONLINE_REPORT=…` bekommen automatisch die neue Übersicht alle 10 Minuten; `ONLINE_REPORT=0` schaltet sie weiter ab.)
+- **XP-Abende:** `sudo beamnet event auto fr,sa 20:00 2 2h` – freitags und samstags um 20 Uhr startet der Wächter
+  zwei Stunden lang doppelte XP auf allen Servern. Eine Stunde vorher kommt die Ankündigung in Discord/Telegram und im
+  Spiel („🎉 Heute 20:00–22:00 Uhr: XP-Abend mit 2-facher XP …“) – so wissen alle, wann sich das Einloggen lohnt und
+  die Server füllen sich zur selben Zeit. Tage `mo`…`so` oder `täglich`, Faktor 1,5–5, Dauer 10m–6h; läuft schon ein
+  Event (z. B. `/event` eines Admins), startet kein zweites. Aus: `beamnet event auto aus`. Von Hand:
+  `beamnet event start 2 2h`, `beamnet event stop`, Stand: `beamnet event`.
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
 - Er meldet **Moderation** an Discord/Telegram: Bann (mit Dauer), Kick, Stummschaltung (auch automatisch wegen Spam)
   und Verwarnung, jeweils mit Admin, Grund und Server; dazu `/melden` aus dem Spiel. Abschalten: `MODLOG_NOTIFY=0`.
