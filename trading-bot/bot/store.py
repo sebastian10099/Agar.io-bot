@@ -158,16 +158,33 @@ class Store:
             r["snapshot"] = json.loads(r["snapshot"] or "{}")
         return rows
 
-    def edge_report(self) -> list[dict[str, Any]]:
-        """Average forward return per decision bucket and horizon. This is the
-        number that says whether the filter has an edge at all."""
-        return self._rows(
-            "SELECT c.decision, o.horizon_min, COUNT(*) AS n, "
-            "AVG(o.change_pct) AS avg_change_pct, "
-            "SUM(CASE WHEN o.change_pct > 0 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate "
+    def edge_report(self, key: str = "decision") -> list[dict[str, Any]]:
+        """Average forward return per bucket and horizon. key='decision' groups by
+        the final decision; 'rule_decision' / 'ai_decision' read the snapshot, so
+        the rules and the model can be compared on the same candidates."""
+        rows = self._rows(
+            "SELECT c.decision, c.snapshot, o.horizon_min, o.change_pct "
             "FROM outcomes o JOIN candidates c ON c.id = o.candidate_id "
-            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL "
-            "GROUP BY c.decision, o.horizon_min ORDER BY c.decision, o.horizon_min")
+            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL")
+        buckets: dict[tuple, list[float]] = {}
+        for r in rows:
+            if key == "decision":
+                label = r["decision"]
+            else:
+                try:
+                    label = json.loads(r["snapshot"] or "{}").get(key)
+                except json.JSONDecodeError:
+                    label = None
+            if not label:
+                continue
+            buckets.setdefault((label, r["horizon_min"]), []).append(float(r["change_pct"]))
+        order = {"buy": 0, "watch": 1, "skip": 2}
+        out = []
+        for (label, horizon), vals in sorted(buckets.items(), key=lambda kv: (order.get(kv[0][0], 9), kv[0][1])):
+            out.append({"decision": label, "horizon_min": horizon, "n": len(vals),
+                        "avg_change_pct": sum(vals) / len(vals),
+                        "win_rate": sum(1 for v in vals if v > 0) / len(vals)})
+        return out
 
     # --- positions / trades ---------------------------------------------
     def open_position(self, p: dict[str, Any]) -> int:

@@ -80,6 +80,7 @@ nutzen kannst (nur von `127.0.0.1` erreichbar):
 | POST | `/api/reset` `{"what": "positions"\|"all", "bankroll": 500}` | Paper-Konto zurücksetzen, optional mit neuem Startkapital |
 | GET/POST | `/api/profiles` · `/api/profiles/apply` · `/api/profiles/delete` | Parameter-Profile verwalten |
 | GET | `/api/export/positions.csv` · `trades.csv` · `candidates.csv` | Export (Semikolon-CSV, UTF-8 mit BOM) |
+| POST | `/api/ai/key` `{"key": "sk-ant-…"}` | Anthropic-Schlüssel im macOS-Schlüsselbund ablegen |
 
 Ein neuer Parameter ist ein Eintrag in `bot/settings.py` – Validierung und
 Formular entstehen daraus automatisch.
@@ -113,6 +114,45 @@ Alter (5–30 min ideal), Socials und RugCheck. Ab 60 Punkten `buy`, darunter `w
 - Zeit-Stop nach 45 Minuten — neue Tokens verfallen schnell, Halten ist kein Plan
 - Maximal 5 offene Positionen, Tages-Verlustlimit 5 % → danach keine neuen Einstiege
 - **Jeder Fill zahlt 1 % Gebühr und 2 % Slippage.** Das ist bewusst pessimistisch. Ein Bot, der nur mit null Kosten profitabel ist, ist nicht profitabel.
+
+## KI-Modus: Claude als zweiter Blick – oder als Entscheider
+
+Im Reiter *Steuerung* unter **KI** lässt sich Claude zuschalten. Die harten
+Sicherheitsfilter (RugCheck-Gefahrenflags, Liquidität, Altersfenster) bleiben
+immer davor: Das Modell sieht nur Kandidaten, die sie bestanden haben, und
+bekommt deren Kennzahlen, die RugCheck-Zusammenfassung und das Urteil der
+Regeln. Es antwortet strukturiert mit `buy` / `watch` / `skip`, einer
+Vertrauenszahl, bis zu drei Gründen und Warnzeichen.
+
+| Modus | Was passiert |
+| --- | --- |
+| **Aus** | Nur die Regeln entscheiden. |
+| **Beraten** | Die Regeln entscheiden, das KI-Urteil wird bei jedem Kandidaten mitprotokolliert. |
+| **Entscheiden** | Das KI-Urteil ersetzt die Regel-Entscheidung; gekauft wird nur ab der eingestellten Mindest-Vertrauenszahl. |
+
+Der Punkt ist die Messung: Der Edge-Report in der Übersicht lässt sich auf
+**Bot / Regeln / KI** umschalten und zeigt die Vorwärtsrendite derselben
+Kandidaten nach dem jeweiligen Urteil. Fang mit *Beraten* an. Erst wenn die
+KI-Spalte über Wochen klar vor den Regeln liegt, ist *Entscheiden* mehr als
+ein Gefühl. Ein Sprachmodell kann Kurse nicht vorhersagen; es kann Warnzeichen
+lesen, die starre Regeln übersehen – ob das Geld wert ist, sagt nur der Report.
+
+Einrichtung:
+
+```bash
+pip install anthropic            # offizielles SDK, einzige Zusatzabhängigkeit
+```
+
+Schlüssel: `ANTHROPIC_API_KEY` in der Umgebung, ein `ant auth login`-Profil,
+oder auf dem Mac über die Steuerseite in den Schlüsselbund speichern.
+
+Technik: Modell `claude-opus-5-5` (einstellbar), adaptives Denken mit
+einstellbarer Tiefe (`effort`), strukturierte JSON-Ausgabe per Schema,
+serverseitige Fallbacks bei Sicherheitsablehnungen, Prompt-Caching für den
+festen Systemteil. Kostenbremse über *Max. Anfragen pro Stunde*; der laufende
+Verbrauch steht auf der Steuerseite. Jeder Fehler (ungültiger Schlüssel,
+Rate-Limit, Modell nicht gefunden) landet im Protokoll, und die Regeln
+entscheiden dann allein weiter.
 
 ## Der Edge-Report — der wichtigste Teil
 
@@ -159,15 +199,16 @@ bot/
   server.py      Lokales Dashboard und Steuer-API (nur 127.0.0.1)
   settings.py    Parameter-Schema: Validierung + Formular aus einer Quelle
   demo.py        Offline-Markt für Demo und Tests
+  ai.py          Claude-Anbindung: zweiter Blick auf gefilterte Kandidaten
   live.py        Schnittstelle für Echtgeld — bewusst nicht implementiert
   sources/       DexScreener, RugCheck
-tests/           python3 -m unittest tests.test_bot tests.test_control
+tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai
 ```
 
 ## Tests
 
 ```bash
-python3 -m unittest -v tests.test_bot tests.test_control
+python3 -m unittest -v tests.test_bot tests.test_control tests.test_ai
 ```
 
 Strategie-Entscheidungen, alle Exit-Regeln, der Tracker, ein kompletter

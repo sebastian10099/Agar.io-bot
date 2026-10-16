@@ -6,6 +6,7 @@ import time
 from typing import Any, Callable, Optional
 
 from . import settings
+from .ai import ClaudeAdvisor
 from .paper import Paper
 from .store import Store
 from .strategy import evaluate
@@ -16,12 +17,13 @@ RESEE_SECONDS = 30 * 60  # do not re-evaluate the same token within half an hour
 
 class Engine:
     def __init__(self, cfg: dict[str, Any], store: Store, dex: Any, rug: Any,
-                 clock: Callable[[], float] = time.time) -> None:
+                 clock: Callable[[], float] = time.time, advisor: Any = None) -> None:
         self.cfg = cfg
         self.store = store
         self.dex = dex
         self.rug = rug
         self.clock = clock
+        self.advisor = advisor or ClaudeAdvisor(cfg, log=store.log)
         self.paper = Paper(store, cfg)
         self.tracker = Tracker(store, cfg, dex.price)
         self.paused = False
@@ -54,6 +56,18 @@ class Engine:
                 rug = self.rug.summary(p["token"]) if chain == "solana" else None
                 verdict = evaluate(p, rug, self.cfg)
                 decision = verdict["decision"]
+                p["rule_decision"] = decision
+                ai = self.advisor.judge(p, rug, verdict) if decision in ("buy", "watch") else None
+                if ai:
+                    p["ai_decision"], p["ai_confidence"] = ai["decision"], round(ai["confidence"], 2)
+                    p["ai_reasons"], p["ai_flags"], p["ai_model"] = ai["reasons"], ai["risk_flags"], ai["model"]
+                    verdict["reasons"].append("KI " + ai["decision"] + f" ({ai['confidence']:.0%}): " + "; ".join(ai["reasons"][:2]))
+                    if self.cfg["ai"].get("mode") == "decide":
+                        want = ai["decision"]
+                        if want == "buy" and ai["confidence"] < float(self.cfg["ai"].get("min_confidence", 0.6)):
+                            want = "watch"
+                            verdict["reasons"].append("KI-Vertrauen unter Schwelle")
+                        decision = want
                 if decision == "buy" and not self.paused:
                     blocked = self.paper.can_open(chain, p["token"])
                     if blocked:
@@ -149,6 +163,30 @@ class Engine:
             if not price:
                 return {"ok": False, "error": "Kein Kurs verfügbar"}
             self.paper.close_manually(pos, price, self.clock())
+            self.last_prices[pos["pair"]] = price
+            return {"ok": True, "position": self.store.position(pid)}
+
+    def sell_position(self, pid: int, frac: Any) -> dict[str, Any]:
+        """Partial manual exit: frac is the share of the original size, 0 < frac <= remaining."""
+        try:
+            frac = float(str(frac).replace(",", "."))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "Anteil ist keine Zahl"}
+        if not 0 < frac <= 1:
+            return {"ok": False, "error": "Anteil muss zwischen 0 und 1 liegen"}
+        with self._lock:
+            pos = self.store.position(pid)
+            if pos is None or pos["status"] != "open":
+                return {"ok": False, "error": "Position ist nicht offen"}
+            if frac > pos["remaining_frac"] + 1e-9:
+                return {"ok": False, "error": f"Nur noch {pos['remaining_frac'] * 100:.0f}% der Position offen"}
+            price = self.dex.price(pos["chain"], pos["pair"]) or self.last_prices.get(pos["pair"])
+            if not price:
+                return {"ok": False, "error": "Kein Kurs verfügbar"}
+            if abs(frac - pos["remaining_frac"]) < 1e-9:
+                self.paper.close_manually(pos, price, self.clock())
+            else:
+                self.paper.sell_part(pos, frac, price, self.clock())
             self.last_prices[pos["pair"]] = price
             return {"ok": True, "position": self.store.position(pid)}
 
@@ -266,6 +304,8 @@ class Engine:
             "stats": self.store.stats(), "open_positions": open_positions,
             "closed": self.store.closed_positions(50), "candidates": self.store.candidates(80),
             "edge": self.store.edge_report(), "events": self.store.events(60),
+            "edge_rules": self.store.edge_report("rule_decision"), "edge_ai": self.store.edge_report("ai_decision"),
+            "ai": self.advisor.status(),
             "equity": self.store.equity_curve(),
             "config": settings.flat(self.cfg),
         }

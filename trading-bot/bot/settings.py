@@ -75,9 +75,21 @@ SCHEMA: list[dict[str, Any]] = [
      "help": "Abstand vom Hoch. Wird erst scharf, wenn das Hoch so weit im Plus lag."},
     {"path": "exits.time_stop_minutes", "type": "float", "min": 1, "max": 10080, "step": 1,
      "label": "Zeit-Stop", "unit": "min", "group": "Exits"},
+
+    {"path": "ai.mode", "type": "enum", "options": [["off", "Aus"], ["advise", "Beraten – Urteil nur protokollieren"], ["decide", "Entscheiden – Urteil ersetzt die Regeln"]],
+     "label": "KI-Modus", "group": "KI",
+     "help": "Claude bewertet nur Kandidaten, die die harten Filter bestanden haben. „Beraten“ misst, ob die KI besser wäre; „Entscheiden“ lässt sie kaufen."},
+    {"path": "ai.model", "type": "text", "max_len": 60, "label": "Modell", "group": "KI",
+     "help": "Standard claude-opus-5-5. Nur ändern, wenn du weißt, welches Modell du willst."},
+    {"path": "ai.effort", "type": "enum", "options": [["low", "niedrig"], ["medium", "mittel"], ["high", "hoch"]],
+     "label": "Denk-Tiefe", "group": "KI", "help": "Mehr Tiefe = genauer, langsamer, teurer."},
+    {"path": "ai.max_calls_per_hour", "type": "int", "min": 1, "max": 600, "step": 1,
+     "label": "Max. Anfragen pro Stunde", "group": "KI", "help": "Kostenbremse. Darüber hinaus wird nicht gefragt, die Regeln entscheiden allein."},
+    {"path": "ai.min_confidence", "type": "float", "min": 0, "max": 1, "step": 0.05,
+     "label": "Mindest-Vertrauen für Kauf", "group": "KI", "help": "Im Modus „Entscheiden“ kauft die KI nur ab dieser Vertrauenszahl."},
 ]
 
-GROUPS = ["Allgemein", "Risiko", "Filter", "Strategie", "Exits"]
+GROUPS = ["Allgemein", "Risiko", "Filter", "Strategie", "Exits", "KI"]
 
 
 def get_path(cfg: dict[str, Any], path: str) -> Any:
@@ -168,6 +180,16 @@ def validate(patch: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
                 clean[path] = sorted(set(chains), key=chains.index)
             elif kind == "ladder":
                 clean[path] = parse_ladder(raw)
+            elif kind == "enum":
+                allowed = [o[0] for o in entry["options"]]
+                if raw not in allowed:
+                    raise ValueError("muss eines von " + ", ".join(allowed) + " sein")
+                clean[path] = raw
+            elif kind == "text":
+                value = str(raw).strip()
+                if not value or len(value) > entry.get("max_len", 200):
+                    raise ValueError("fehlt oder ist zu lang")
+                clean[path] = value
             else:
                 errors[path] = "unbekannter Typ"
         except (TypeError, ValueError) as error:

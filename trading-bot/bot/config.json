@@ -1,14 +1,17 @@
 {
   "mode": "paper",
-  "chains": ["solana"],
+  "chains": [
+    "solana"
+  ],
   "poll_seconds": 20,
-
   "bankroll_usd": 1000,
   "risk_per_trade_pct": 1.0,
   "max_open_positions": 5,
   "daily_loss_limit_pct": 5.0,
-  "paper": {"fee_pct": 1.0, "slippage_pct": 2.0},
-
+  "paper": {
+    "fee_pct": 1.0,
+    "slippage_pct": 2.0
+  },
   "filters": {
     "min_age_minutes": 2,
     "max_age_minutes": 120,
@@ -24,24 +27,40 @@
     "max_rugcheck_score": 2000,
     "allow_rugcheck_unknown": false
   },
-
   "exits": {
     "stop_loss_pct": -30,
-    "take_profit_ladder": [[50, 0.5], [100, 0.25]],
+    "take_profit_ladder": [
+      [
+        50,
+        0.5
+      ],
+      [
+        100,
+        0.25
+      ]
+    ],
     "trailing_stop_pct": 25,
     "time_stop_minutes": 45
   },
-
   "scoring": {
     "min_score": 60
   },
-
   "tracker": {
-    "horizons_minutes": [5, 15, 60]
+    "horizons_minutes": [
+      5,
+      15,
+      60
+    ]
   },
-
   "dashboard": {
     "host": "127.0.0.1",
     "port": 8765
+  },
+  "ai": {
+    "mode": "off",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "max_calls_per_hour": 60,
+    "min_confidence": 0.6
   }
 }

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from . import settings
+from .ai import store_key
 
 WEB = Path(__file__).parent / "web"
 
@@ -100,6 +101,13 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             elif self.path == "/api/positions/close":
                 result = engine.close_position(int(body.get("id") or 0))
                 self._json(result, 200 if result["ok"] else 409)
+            elif self.path == "/api/ai/key":
+                result = store_key(str(body.get("key") or ""))
+                if result["ok"]:
+                    engine.advisor._client = None
+                    engine.advisor._client_error = None
+                    engine.store.log("info", "dashboard: Anthropic-Schlüssel im Schlüsselbund gespeichert")
+                self._json(result, 200 if result["ok"] else 400)
             elif self.path == "/api/profiles":
                 result = engine.save_profile(str(body.get("name") or ""), body.get("config"))
                 self._json(result, 200 if result["ok"] else 400)
@@ -109,6 +117,9 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             elif self.path == "/api/profiles/delete":
                 result = engine.delete_profile(str(body.get("name") or ""))
                 self._json(result, 200 if result["ok"] else 404)
+            elif self.path == "/api/positions/sell":
+                result = engine.sell_position(int(body.get("id") or 0), body.get("frac"))
+                self._json(result, 200 if result["ok"] else 409)
             elif self.path == "/api/positions/open":
                 result = engine.open_from_candidate(int(body.get("candidate_id") or 0))
                 self._json(result, 200 if result["ok"] else 409)

@@ -133,6 +133,21 @@ class EngineControlTests(unittest.TestCase):
         self.assertFalse(self.engine.reset("positions", "abc")["ok"])
         self.assertEqual(self.engine.paper.initial, 2500.0)
 
+    def test_partial_sell(self):
+        self.engine.poll_once()
+        pos = self.store.open_positions()[0]
+        self.assertFalse(self.engine.sell_position(pos["id"], 0)["ok"])
+        self.assertFalse(self.engine.sell_position(pos["id"], "x")["ok"])
+        r = self.engine.sell_position(pos["id"], "0,5")
+        self.assertTrue(r["ok"], r)
+        self.assertAlmostEqual(r["position"]["remaining_frac"], 0.5)
+        self.assertEqual(r["position"]["status"], "open")
+        self.assertFalse(self.engine.sell_position(pos["id"], 0.75)["ok"])   # more than is left
+        r = self.engine.sell_position(pos["id"], 0.5)                          # the rest -> closed
+        self.assertEqual(r["position"]["status"], "closed")
+        self.assertEqual(r["position"]["exit_reason"], "manual")
+        self.assertEqual([t["reason"] for t in self.store.trades_for(pos["id"])], ["entry", "manual_partial", "manual"])
+
     def test_profiles_roundtrip(self):
         self.assertTrue(self.engine.apply_config({"scoring.min_score": 70})["ok"])
         r = self.engine.save_profile("Streng")
@@ -155,6 +170,89 @@ class EngineControlTests(unittest.TestCase):
         self.assertEqual(counts["buy"], 0)
         self.assertEqual(self.store.open_positions(), [])
         self.assertTrue(any("not opened: paused" in r for c in self.store.candidates() for r in c["reasons"]))
+
+
+class FakeAdvisor:
+    def __init__(self, verdicts):
+        self.verdicts, self.asked = verdicts, []
+    def judge(self, pair, rug, rules):
+        self.asked.append(pair["symbol"])
+        v = self.verdicts.get(pair["symbol"])
+        return dict(v, model="fake") if v else None
+    def status(self):
+        return {"mode": "advise", "available": True, "reason": "", "calls_last_hour": len(self.asked), "calls_total": len(self.asked), "cost_total_usd": 0, "model": "fake", "key_source": "test"}
+
+
+class AiModeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.sqlite")
+        self.dex = FakeDex(accel=1.0)
+        self.t = [self.dex.started]
+        self.dex.now = lambda: self.t[0]
+        self.cfg = copy.deepcopy(CFG)
+
+    def tearDown(self):
+        self.store.close()
+        self.tmp.cleanup()
+
+    def engine_with(self, mode, verdicts):
+        self.cfg["ai"]["mode"] = mode
+        adv = FakeAdvisor(verdicts)
+        return Engine(self.cfg, self.store, self.dex, FakeRug(), clock=self.dex.now, advisor=adv), adv
+
+    def test_advise_records_but_rules_decide(self):
+        eng, adv = self.engine_with("advise", {"RUN": {"decision": "skip", "confidence": 0.9, "reasons": ["zu heiß"], "risk_flags": ["x"]}})
+        counts = eng.poll_once()
+        self.assertEqual(counts["buy"], 1)                     # rules still bought RUN
+        run = next(c for c in self.store.candidates() if c["symbol"] == "RUN")
+        self.assertEqual(run["snapshot"]["ai_decision"], "skip")
+        self.assertEqual(run["snapshot"]["rule_decision"], "buy")
+        self.assertTrue(any(r.startswith("KI skip") for r in run["reasons"]))
+        self.assertNotIn("HONEY", adv.asked)                   # hard-filter skips never reach the model
+        self.assertIn("DUMP", adv.asked)                        # watch candidates do
+
+    def test_decide_mode_lets_ai_buy_and_veto(self):
+        eng, adv = self.engine_with("decide", {"RUN": {"decision": "watch", "confidence": 0.9, "reasons": [], "risk_flags": []},
+                                               "DUMP": {"decision": "buy", "confidence": 0.8, "reasons": ["Kaufdruck"], "risk_flags": []},
+                                               "MEH": {"decision": "buy", "confidence": 0.3, "reasons": [], "risk_flags": []}})
+        counts = eng.poll_once()
+        by = {c["symbol"]: c for c in self.store.candidates()}
+        self.assertEqual(by["RUN"]["decision"], "watch")        # AI vetoed the rules' buy
+        self.assertEqual(by["DUMP"]["decision"], "buy")         # AI bought what the rules only watched
+        self.assertEqual(by["MEH"]["decision"], "watch")        # below min_confidence
+        self.assertTrue(any("unter Schwelle" in r for r in by["MEH"]["reasons"]))
+        self.assertEqual(counts["buy"], 1)
+
+    def test_unavailable_advisor_changes_nothing(self):
+        eng, adv = self.engine_with("decide", {})
+        counts = eng.poll_once()
+        self.assertEqual(counts["buy"], 1)
+        run = next(c for c in self.store.candidates() if c["symbol"] == "RUN")
+        self.assertNotIn("ai_decision", run["snapshot"])
+
+    def test_edge_report_by_ai_and_rules(self):
+        eng, adv = self.engine_with("advise", {"RUN": {"decision": "skip", "confidence": 0.9, "reasons": [], "risk_flags": []},
+                                               "DUMP": {"decision": "buy", "confidence": 0.9, "reasons": [], "risk_flags": []}})
+        eng.poll_once()
+        self.t[0] = self.dex.started + 61 * 60
+        eng.poll_once()
+        ai = {(r["decision"], r["horizon_min"]) for r in self.store.edge_report("ai_decision")}
+        self.assertIn(("buy", 5), ai)
+        self.assertIn(("skip", 5), ai)
+        rules = {r["decision"] for r in self.store.edge_report("rule_decision")}
+        self.assertEqual(rules, {"buy", "watch", "skip"})
+        state = eng.state()
+        self.assertIn("edge_ai", state)
+        self.assertEqual(state["ai"]["mode"], "advise")
+
+    def test_ai_settings_validate(self):
+        from bot import settings
+        clean, errors = settings.validate({"ai.mode": "decide", "ai.effort": "high", "ai.model": " claude-opus-5-5 ", "ai.min_confidence": "0,7"})
+        self.assertEqual(errors, {})
+        self.assertEqual(clean["ai.model"], "claude-opus-5-5")
+        clean, errors = settings.validate({"ai.mode": "yolo", "ai.model": "", "ai.max_calls_per_hour": 0})
+        self.assertEqual(set(errors), {"ai.mode", "ai.model", "ai.max_calls_per_hour"})
 
 
 class ControlApiTests(unittest.TestCase):
@@ -249,6 +347,11 @@ class ControlApiTests(unittest.TestCase):
         status, d = self.call("GET", f"/api/positions/{pid}")
         self.assertEqual(status, 200)
         self.assertEqual(len(d["trades"]), 1)
+        status, r = self.call("POST", "/api/positions/sell", {"id": pid, "frac": 0.25})
+        self.assertEqual(status, 200, r)
+        self.assertAlmostEqual(r["position"]["remaining_frac"], 0.75)
+        status, r = self.call("POST", "/api/positions/sell", {"id": pid, "frac": 2})
+        self.assertEqual(status, 409)
         status, d = self.call("GET", "/api/positions/424242")
         self.assertEqual(status, 404)
         status, r = self.call("POST", "/api/reset", {"what": "positions", "bankroll": 750})

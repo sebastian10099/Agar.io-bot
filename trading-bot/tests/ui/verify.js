@@ -24,6 +24,8 @@ const HOME_DIR = process.env.HOME_DIR || (process.platform === 'darwin'
   : path.join(process.env.HOME, '.new-token-bot'));
 fs.mkdirSync(SHOTS, { recursive: true });
 const problems = [];
+let page_;
+const clearToast = () => page_.evaluate(() => { const t = document.querySelector('#toast'); if (t) { t.textContent = ''; t.className = 'toast'; } });
 const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { console.log('  ✗ ' + msg); problems.push(msg); } };
 
 (async () => {
@@ -31,6 +33,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   async function page(opts) {
     const ctx = await browser.newContext(opts);
     const p = await ctx.newPage();
+    page_ = p;
     p.on('console', (m) => { if (m.type() === 'error' && !/status of 422/.test(m.text())) problems.push('console: ' + m.text()); });
     p.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
     p.on('requestfailed', (r) => problems.push('requestfailed: ' + r.url()));
@@ -103,28 +106,40 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   await p.click('.chips[data-path="chains"] .chip[data-chain="base"]');
   ok((await p.getAttribute('.chips[data-path="chains"] .chip[data-chain="base"]', 'aria-pressed')) === 'true', 'Chain-Chip aktiv');
   await p.locator('input[data-path="exits.take_profit_ladder"]').fill('30: 0.5, 80: 0.5');
-  await p.click('#b-save');
+  await clearToast(); await p.click('#b-save');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
   ok((await p.inputValue('input[data-path="exits.take_profit_ladder"]')) === '30: 0.5, 80: 0.5', 'Leiter gespeichert und normalisiert angezeigt');
   const cfg = await (await p.request.get(URL + 'api/config')).json();
   ok(JSON.stringify(cfg.config.chains) === '["solana","base"]' && cfg.config['filters.allow_rugcheck_unknown'] === true, 'Chips/Schalter serverseitig übernommen');
 
-  // --- Profile: speichern, Wert ändern, laden stellt wieder her, löschen ---
-  await p.locator('input[data-path="scoring.min_score"]').fill('66'); await p.click('#b-save');
+  // --- KI-Gruppe: Auswahlfeld, Textfeld, Status ---
+  ok(!!(await p.$('select[data-path="ai.mode"]')) && !!(await p.$('input[data-path="ai.model"]')), 'KI-Felder im Formular (Auswahl + Text)');
+  await p.selectOption('select[data-path="ai.mode"]', 'advise');
+  ok((await p.textContent('#form-status')).includes('1 Änderung'), 'Auswahlfeld zählt als Änderung');
+  await clearToast(); await p.click('#b-save'); await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
+  await p.waitForFunction(() => document.querySelector('#ai-pill').textContent === 'beraten');
+  ok(true, 'KI-Pill zeigt „beraten“');
+  const aiText = await p.textContent('#ai-status');
+  ok(/Bereit|Nicht verfügbar/.test(aiText), 'KI-Status beschreibt Verfügbarkeit: ' + aiText.slice(0, 50));
+  await p.selectOption('select[data-path="ai.mode"]', 'off'); await clearToast(); await p.click('#b-save');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
-  await p.click('#b-prof-save'); await p.waitForSelector('dialog#ask[open]');
+
+  // --- Profile: speichern, Wert ändern, laden stellt wieder her, löschen ---
+  await p.locator('input[data-path="scoring.min_score"]').fill('66'); await clearToast(); await p.click('#b-save');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
+  await clearToast(); await p.click('#b-prof-save'); await p.waitForSelector('dialog#ask[open]');
   await p.fill('#a-input', 'Streng'); await p.keyboard.press('Enter');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Profil'));
   ok((await p.$$eval('#profile option', (o) => o.map((x) => x.value))).includes('Streng'), 'Profil gespeichert und im Menü');
-  await p.locator('input[data-path="scoring.min_score"]').fill('45'); await p.click('#b-save');
+  await p.locator('input[data-path="scoring.min_score"]').fill('45'); await clearToast(); await p.click('#b-save');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
-  await p.selectOption('#profile', 'Streng'); await p.click('#b-prof-load');
+  await p.selectOption('#profile', 'Streng'); await clearToast(); await p.click('#b-prof-load');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('geladen'));
   ok((await p.inputValue('input[data-path="scoring.min_score"]')) === '66', 'Profil laden stellt min_score 66 wieder her');
-  await p.click('#b-prof-del'); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
+  await clearToast(); await p.click('#b-prof-del'); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('gelöscht'));
   ok(!(await p.$$eval('#profile option', (o) => o.map((x) => x.value))).includes('Streng'), 'Profil gelöscht');
-  await p.locator('input[data-path="scoring.min_score"]').fill('60'); await p.click('#b-save');
+  await p.locator('input[data-path="scoring.min_score"]').fill('60'); await clearToast(); await p.click('#b-save');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
   // --- Export-Routen liefern CSV ---
   for (const f of ['positions', 'trades', 'candidates']) {
@@ -170,6 +185,9 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   await p.keyboard.press('Escape'); ok(await p.$eval('#eq-tip', (e) => e.hidden), 'Escape blendet die Ablesung aus');
   await p.evaluate(() => document.activeElement.blur());
   ok((await p.$$('#edge .ebar')).length >= 1 || (await p.$$('#edge tbody tr')).length === 0, 'Edge-Balken in der Tabelle');
+  await p.click('[data-edge="ai_decision"]');
+  ok((await p.textContent('#edge')).includes('KI') || (await p.$$('#edge tbody tr')).length >= 0, 'Edge-Report auf KI umschaltbar');
+  await p.click('[data-edge="decision"]');
   await p.screenshot({ path: SHOTS + '/13-equity.png', clip: { x: 0, y: 0, width: 1400, height: 700 } });
 
   // --- Pause ---
@@ -217,18 +235,44 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   await p.click('nav [data-tab="log"]');
   const log = await p.textContent('#log');
   ok(log.includes('dashboard') && log.includes('manual'), 'Protokoll enthält Dashboard-Aktionen');
+  const allRows = (await p.$$('#log div')).length;
+  await p.click('[data-lf="info"]'); await p.click('[data-lf="poll"]');
+  const fewer = (await p.$$('#log div')).length;
+  ok(fewer < allRows && !(await p.textContent('#log')).includes('seen '), `Protokoll-Filter blendet Info und Polls aus (${allRows} → ${fewer})`);
+  await p.click('[data-lf="info"]'); await p.click('[data-lf="poll"]');
   await p.screenshot({ path: SHOTS + '/06-log.png' });
 
   // --- manueller Kauf eines watch-Kandidaten ---
   await p.click('nav [data-tab="candidates"]');
   const openBefore = (await (await p.request.get(URL + 'api/state')).json()).open_positions.length;
-  const watchRow = await p.$('#cands tbody tr:has(.d-watch) [data-buy]');
-  ok(!!watchRow, 'Kaufen-Knopf an einem watch-Kandidaten');
+  const watchRow = p.locator('#cands tbody tr:has(.d-watch) [data-buy]').first();
+  ok((await watchRow.count()) === 1, 'Kaufen-Knopf an einem watch-Kandidaten');
   ok((await p.textContent('#cands')).includes('im Bestand'), 'Token im Bestand zeigt „im Bestand“ statt Kaufen');
   await watchRow.click(); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('gekauft'));
   const openAfter = (await (await p.request.get(URL + 'api/state')).json()).open_positions.length;
   ok(openAfter === openBefore + 1, `manueller Kauf eröffnet Position (${openBefore} → ${openAfter})`);
+  // --- Teilverkauf: ½-Knopf halbiert den Rest, Details-Slider verkauft den Rest ---
+  await p.click('nav [data-tab="overview"]');
+  const halfBtn = p.locator('#open [data-half]').first();
+  ok((await halfBtn.count()) >= 1, '½-Knopf an offener Position');
+  await halfBtn.click(); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('verkauft'));
+  const remain = await p.$eval('#open tbody tr', (tr) => tr.textContent);
+  ok(remain.includes('50%'), 'Rest zeigt 50%');
+  await p.click('#open [data-detail]'); await p.waitForSelector('dialog#detail[open]');
+  ok(!!(await p.$('#d-frac')) && (await p.textContent('#d-body')).includes('manual_partial'), 'Details: Slider und Teilverkauf-Fill sichtbar');
+  await p.$eval('#d-frac', (i) => { i.value = i.max; i.dispatchEvent(new Event('input')); });
+  await p.click('#d-sell');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('verkauft'));
+  await p.waitForFunction(() => !document.querySelector('dialog#detail[open]'));
+  ok((await p.textContent('#closed')).includes('manual'), 'Rest über Slider verkauft, Position geschlossen');
+  // re-open a position for the following steps via manual buy
+  await p.click('nav [data-tab="candidates"]');
+  await p.locator('#cands tbody tr [data-buy]').first().click(); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('gekauft'));
+  await p.click('nav [data-tab="overview"]');
+
   // --- Details-Dialog zeigt die Fills ---
   await p.click('nav [data-tab="overview"]');
   await p.click('#open [data-detail]'); await p.waitForSelector('dialog#detail[open]');

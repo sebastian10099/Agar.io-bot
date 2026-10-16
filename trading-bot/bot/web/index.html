@@ -86,7 +86,7 @@
   .scroll { max-height:420px; overflow:auto; -webkit-overflow-scrolling:touch; }
   .scroll.x { max-height:none; }
   .scroll table { min-width:640px; }
-  #cands table { min-width:1120px; }
+  #cands table { min-width:1200px; }
   #cands td:nth-last-child(2) { min-width:300px; white-space:normal; }
   #cands td:last-child, #cands td:nth-child(9) { white-space:nowrap; }
   .pos { color:var(--green); } .neg { color:var(--red); }
@@ -136,6 +136,7 @@
   .field input[type=number], .field input[type=text] { width:100%; max-width:150px; background:var(--muted);
       border:1px solid var(--line-strong); border-radius:7px; padding:6px 8px; text-align:right; }
   .field input[type=text].wide { max-width:180px; text-align:left; }
+  .field select.btn { max-width:260px; min-width:0; font-size:13px; }
   .field input:focus { outline:2px solid var(--focus); outline-offset:0; }
   .field.changed input, .field.changed .sw { outline:2px solid color-mix(in srgb, var(--blue) 55%, transparent); border-radius:7px; }
   .field.error input { outline:2px solid var(--red); }
@@ -176,6 +177,8 @@
   dialog h3 { margin:0 0 8px; font-size:15px; } dialog p { margin:0 0 14px; color:var(--dim); }
   dialog .row { display:flex; gap:8px; justify-content:flex-end; }
   .filterbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  input[type=range] { accent-color:var(--blue); width:160px; }
+  input[type=range]:focus-visible { outline:2px solid var(--focus); outline-offset:3px; border-radius:4px; }
   .filterbar input[type=search] { background:var(--muted); border:1px solid var(--line-strong); border-radius:7px; padding:6px 9px; min-width:180px; }
   .filterbar input[type=search]:focus { outline:2px solid var(--focus); outline-offset:0; }
 </style>
@@ -222,7 +225,8 @@
     </section>
     <div class="grid two">
       <section>
-        <h2>Edge-Report</h2>
+        <h2>Edge-Report <span class="spacer"></span><span class="filterbar" role="group" aria-label="Edge-Report nach">
+          <button class="chip" data-edge="decision" aria-pressed="true">Bot</button><button class="chip" data-edge="rule_decision" aria-pressed="false">Regeln</button><button class="chip" data-edge="ai_decision" aria-pressed="false">KI</button></span></h2>
         <div id="edge"></div>
         <p class="note">Vorwärtsrendite nach Entscheidung. Hat <b>buy</b> keinen klaren Vorsprung vor <b>watch</b> und <b>skip</b>, hat die Strategie keine Kante – unabhängig davon, wie die Trades aussehen.</p>
       </section>
@@ -253,6 +257,16 @@
       </form>
     </section>
     <section>
+      <h2>KI-Modus <span class="spacer"></span><span id="ai-pill" class="pill"></span></h2>
+      <p class="note" id="ai-status" style="margin:0 0 10px"></p>
+      <div class="formbar" style="margin-top:0">
+        <label for="ai-key" class="status">Anthropic-Schlüssel</label>
+        <input type="password" id="ai-key" autocomplete="off" placeholder="sk-ant-…" style="width:260px;background:var(--muted);border:1px solid var(--line-strong);border-radius:7px;padding:6px 8px">
+        <button class="btn" id="b-ai-key">Im Schlüsselbund speichern</button>
+      </div>
+      <p class="note">Nur auf macOS; sonst <code>ANTHROPIC_API_KEY</code> in der Umgebung setzen. Die KI sieht nur Kandidaten, die die harten Filter bestanden haben. Im Edge-Report (Übersicht) vergleichst du <b>Regeln</b> gegen <b>KI</b> auf denselben Tokens – erst wenn die KI dort über Wochen vorn liegt, lohnt „Entscheiden“.</p>
+    </section>
+    <section>
       <h2>Paper-Konto</h2>
       <div class="formbar" style="margin-top:0">
         <label for="bankroll" class="status">Startkapital beim Zurücksetzen</label>
@@ -281,7 +295,10 @@
   </div>
 
   <div id="tab-log" class="grid" role="tabpanel" aria-labelledby="tabbtn-log" hidden>
-    <section><h2>Protokoll</h2><div id="log" class="log"></div></section>
+    <section><h2>Protokoll <span class="spacer"></span><span class="filterbar" role="group" aria-label="Protokoll filtern">
+      <button class="chip" data-lf="trade" aria-pressed="true">Trades</button><button class="chip" data-lf="poll" aria-pressed="true">Polls</button>
+      <button class="chip" data-lf="info" aria-pressed="true">Info</button><button class="chip" data-lf="error" aria-pressed="true">Fehler</button></span></h2>
+      <div id="log" class="log"></div></section>
   </div>
 </main>
 
@@ -308,6 +325,12 @@ const dur = (s) => s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60)
 let state = null, schema = null, loaded = {}, draft = {}, errors = {};
 let filters = {buy: true, watch: true, skip: true}, query = '';
 let sort = { key: 'seen_at', dir: -1 };
+let edgeView = 'decision';
+document.querySelectorAll('[data-edge]').forEach((c) => c.onclick = () => {
+  edgeView = c.dataset.edge;
+  document.querySelectorAll('[data-edge]').forEach((x) => x.setAttribute('aria-pressed', String(x === c)));
+  if (state) renderOverview(state);
+});
 const sortKeys = {
   seen_at: (r) => r.seen_at, symbol: (r) => (r.symbol || '').toLowerCase(), decision: (r) => ({buy: 0, watch: 1, skip: 2})[r.decision] ?? 3,
   score: (r) => r.score || 0, liq: (r) => r.snapshot.liquidity_usd || 0, vol: (r) => r.snapshot.volume_m5 || 0,
@@ -376,8 +399,16 @@ function renderOverview(s) {
     {h: 'Stop', f: (r) => { const g = targets(r, s.config); return `<span class="neg">${px(g.stop)}</span>` + (g.trailPrice ? `<div class="reasons" title="Trailing-Stop, scharf">↑ ${px(g.trailPrice)}</div>` : ''); }, num: true},
     {h: 'Nächstes Ziel', f: (r) => { const g = targets(r, s.config); return g.next ? `<span class="pos">${px(g.next.price)}</span><div class="reasons">+${g.next.pct}% · ${Math.round(g.next.frac * 100)}% verkaufen</div>` : '<span class="reasons">Leiter fertig</span>'; }, num: true},
     {h: 'Zeit', f: (r) => { const g = targets(r, s.config); return dur(r.age_min * 60) + `<div class="reasons">${g.left > 0 ? 'noch ' + dur(g.left * 60) : 'Zeit-Stop fällig'}</div>`; }, num: true},
-    {h: '<span class="sr">Aktion</span>', f: (r) => `<button class="btn sm" data-detail="${r.id}" aria-label="${esc(r.symbol)} Details">Details</button> <button class="btn sm danger" data-close="${r.id}" aria-label="${esc(r.symbol)} schließen">Schließen</button>`, num: true},
+    {h: '<span class="sr">Aktion</span>', f: (r) => `<button class="btn sm" data-detail="${r.id}" aria-label="${esc(r.symbol)} Details">Details</button> <button class="btn sm" data-half="${r.id}" aria-label="${esc(r.symbol)} zur Hälfte verkaufen" title="Die Hälfte des Restes verkaufen">½</button> <button class="btn sm danger" data-close="${r.id}" aria-label="${esc(r.symbol)} schließen">Schließen</button>`, num: true},
   ], 'Keine offene Position.');
+  $('open').querySelectorAll('[data-half]').forEach((b) => b.onclick = () => busy(b, async () => {
+    const p = s.open_positions.find((x) => x.id === Number(b.dataset.half));
+    const frac = Math.round(p.remaining_frac * 50) / 100;
+    if (!await confirmDialog(`${p.symbol}: die Hälfte verkaufen?`, `${Math.round(frac * 100)}% der ursprünglichen Position werden zum letzten Kurs (${px(p.price)}) verkauft, ${Math.round((p.remaining_frac - frac) * 100)}% bleiben offen.`)) return;
+    const r = await api('/api/positions/sell', {id: p.id, frac});
+    if (!r.ok) throw new Error(r.error);
+    toast(`${p.symbol}: ${Math.round(frac * 100)}% verkauft · realisiert ${usd(r.position.realized_usd)}`); refresh();
+  }));
   $('open').querySelectorAll('[data-detail]').forEach((b) => b.onclick = () => busy(b, () => showDetail(Number(b.dataset.detail))));
   $('open').querySelectorAll('[data-close]').forEach((b) => b.onclick = () => busy(b, async () => {
     const id = Number(b.dataset.close);
@@ -388,7 +419,8 @@ function renderOverview(s) {
     toast(`${p.symbol} geschlossen · ${usd(r.position.realized_usd)}`); refresh();
   }));
 
-  const edge = s.edge.slice().sort((a, b) => a.horizon_min - b.horizon_min || ['buy','watch','skip'].indexOf(a.decision) - ['buy','watch','skip'].indexOf(b.decision));
+  const source = edgeView === 'rule_decision' ? s.edge_rules : edgeView === 'ai_decision' ? s.edge_ai : s.edge;
+  const edge = (source || []).slice().sort((a, b) => a.horizon_min - b.horizon_min || ['buy','watch','skip'].indexOf(a.decision) - ['buy','watch','skip'].indexOf(b.decision));
   const maxAbs = Math.max(1, ...edge.map((r) => Math.abs(r.avg_change_pct || 0)));
   const ebar = (v) => { const w = Math.min(50, Math.abs(v || 0) / maxAbs * 50); return `<span class="ebar" aria-hidden="true"><i class="${v < 0 ? 'neg' : ''}" style="${v < 0 ? `right:50%;width:${w}%` : `left:50%;width:${w}%`}"></i></span>`; };
   $('edge').innerHTML = table(edge, [
@@ -397,7 +429,7 @@ function renderOverview(s) {
     {h: 'n', f: (r) => r.n, num: true},
     {h: 'Ø Rendite', f: (r) => `<span class="${cls(r.avg_change_pct)}">${pct(r.avg_change_pct)}</span>${ebar(r.avg_change_pct)}`, num: true},
     {h: 'Treffer', f: (r) => Math.round(100 * r.win_rate) + '%', num: true},
-  ], 'Noch keine Ergebnisse – die ersten kommen 5 Minuten nach dem ersten Kandidaten.');
+  ], edgeView === 'ai_decision' ? 'Noch keine KI-Urteile mit Ergebnis – KI-Modus einschalten und 5 Minuten warten.' : 'Noch keine Ergebnisse – die ersten kommen 5 Minuten nach dem ersten Kandidaten.');
   renderEquity(s);
 
   $('closed').innerHTML = table(s.closed, [
@@ -429,6 +461,7 @@ function renderCandidates(s) {
     {h: 'K/V 5m', f: (r) => `${r.snapshot.buys_m5 ?? '–'}/${r.snapshot.sells_m5 ?? '–'}`, num: true},
     {h: 'Δ 5m', sort: 'change', f: (r) => pct(r.snapshot.change_m5), num: true, cls: (r) => cls(r.snapshot.change_m5)},
     {h: 'Alter', sort: 'age', f: (r) => r.snapshot.age_min == null ? '–' : Math.round(r.snapshot.age_min) + ' min', num: true},
+    {h: 'KI', f: (r) => r.snapshot.ai_decision ? `<span class="d-${r.snapshot.ai_decision}" title="${esc((r.snapshot.ai_reasons || []).concat(r.snapshot.ai_flags || []).join(' · '))}">${r.snapshot.ai_decision} <span class="reasons">${Math.round((r.snapshot.ai_confidence || 0) * 100)}%</span></span>` : '<span class="reasons">–</span>'},
     {h: 'Gründe', f: (r) => `<span class="reasons">${esc(r.reasons.join(' · '))}</span>`},
     {h: '<span class="sr">Aktion</span>', f: (r) => holding.has(r.token) ? `<span class="reasons" title="bereits im Bestand">im Bestand</span>` : `<button class="btn sm" data-buy="${r.id}" aria-label="${esc(r.symbol)} manuell kaufen" title="Als Paper-Position eröffnen, unabhängig vom Bot-Urteil">Kaufen</button>`, num: true},
   ], s.candidates.length ? 'Nichts passt zum Filter.' : 'Noch keine Kandidaten gesehen.');
@@ -526,9 +559,14 @@ $('equity').addEventListener('focus', () => { if (eq.pts.length) showEq(eq.idx <
 $('equity').addEventListener('blur', hideEq);
 new ResizeObserver(() => { if (state) renderEquity(state); }).observe($('equity'));
 
+const logFilter = {trade: true, poll: true, info: true, error: true};
 function renderLog(s) {
-  $('log').innerHTML = s.events.map((e) => `<div class="${esc(e.level)}"><span class="t">${hhmm(e.at)}</span>${esc(e.message)}</div>`).join('');
+  const rows = s.events.filter((e) => logFilter[e.level] !== false);
+  $('log').innerHTML = rows.length ? rows.map((e) => `<div class="${esc(e.level)}"><span class="t">${hhmm(e.at)}</span>${esc(e.message)}</div>`).join('') : '<div class="empty">Nichts in dieser Auswahl.</div>';
 }
+document.querySelectorAll('[data-lf]').forEach((c) => c.onclick = () => {
+  logFilter[c.dataset.lf] = !logFilter[c.dataset.lf]; c.setAttribute('aria-pressed', String(logFilter[c.dataset.lf])); if (state) renderLog(state);
+});
 
 function renderHeader(s) {
   $('mode').textContent = s.mode;
@@ -547,6 +585,7 @@ function renderHeader(s) {
   $('conn').setAttribute('aria-label', 'Verbindung: ' + ({ok: 'verbunden', warn: 'noch kein Poll', bad: 'keine Daten seit ' + dur(since)})[connState] + (s.errors ? `, ${s.errors} Fehler` : ''));
   $('conn').title = $('conn').getAttribute('aria-label');
   $('k-initial').textContent = usd(s.initial); $('k-uptime').textContent = dur(s.now - s.started_at);
+  renderAi(s);
   if (document.activeElement !== $('bankroll') && !$('bankroll').value) $('bankroll').value = s.initial;
   $('k-polls').textContent = s.polls; $('k-errors').textContent = s.errors;
 }
@@ -560,12 +599,14 @@ function fieldHtml(f) {
   if (f.type === 'bool') ctl = `<button type="button" role="switch" class="sw" id="${id}" data-path="${f.path}" aria-checked="false" aria-labelledby="${id}-label"${described}></button>`;
   else if (f.type === 'chains') ctl = `<span class="chips" role="group" data-path="${f.path}" aria-labelledby="${id}-label">${schema.chains.map((c) => `<button type="button" class="chip" data-chain="${c}" aria-pressed="false">${c}</button>`).join('')}</span>`;
   else if (f.type === 'ladder') ctl = `<input type="text" class="wide" id="${id}" data-path="${f.path}" placeholder="50: 0.5, 100: 0.25"${described} aria-errormessage="${id}-err">`;
+  else if (f.type === 'enum') ctl = `<select class="btn" id="${id}" data-path="${f.path}"${described}>${f.options.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select>`;
+  else if (f.type === 'text') ctl = `<input type="text" class="wide" id="${id}" data-path="${f.path}" maxlength="${f.max_len || 200}"${described} aria-errormessage="${id}-err">`;
   else ctl = `<input type="number" id="${id}" data-path="${f.path}" min="${f.min}" max="${f.max}" step="${f.step}" inputmode="decimal"${described} aria-errormessage="${id}-err">${unit}`;
   return `<div class="field" data-field="${f.path}"><div><label id="${id}-label" for="${id}">${esc(f.label)}</label>${f.help ? `<small id="${id}-help">${esc(f.help)}</small>` : ''}</div><div class="ctl">${ctl}</div><div class="err" id="${id}-err" role="alert" hidden></div></div>`;
 }
 function buildForm() {
   // two balanced columns: the long Filter group gets its own, the short ones share the other
-  const columns = [['Filter', 'Strategie'], ['Allgemein', 'Risiko', 'Exits']];
+  const columns = [['Filter', 'Strategie'], ['Allgemein', 'Risiko', 'Exits', 'KI']];
   const rest = schema.groups.filter((g) => !columns.flat().includes(g));
   columns[1].push(...rest);
   const fieldset = (g) => `<fieldset data-group="${g}"><legend>${g}</legend>${schema.fields.filter((f) => f.group === g).map(fieldHtml).join('')}</fieldset>`;
@@ -576,6 +617,7 @@ function buildForm() {
     setDraft(box.dataset.path, schema.chains.filter((x) => cur.has(x)));
   }));
   $('groups').querySelectorAll('input').forEach((i) => i.oninput = () => setDraft(i.dataset.path, i.value));
+  $('groups').querySelectorAll('select[data-path]').forEach((i) => i.onchange = () => setDraft(i.dataset.path, i.value));
 }
 const ladderText = (l) => Array.isArray(l) ? l.map(([p, f]) => `${p}: ${f}`).join(', ') : String(l ?? '');
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -595,6 +637,7 @@ function paintField(path) {
   if (f.type === 'bool') el.querySelector('.sw').setAttribute('aria-checked', String(!!v));
   else if (f.type === 'chains') el.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String((v || []).includes(c.dataset.chain))));
   else if (f.type === 'ladder') { const i = el.querySelector('input'); if (document.activeElement !== i) i.value = ladderText(v); }
+  else if (f.type === 'enum') { el.querySelector('select').value = v ?? ''; }
   else { const i = el.querySelector('input'); if (document.activeElement !== i) i.value = v ?? ''; }
   const changed = f.type === 'ladder' ? !same(normalizeLadder(v), loaded[path]) : !same(normalized(path, v), loaded[path]);
   el.classList.toggle('changed', changed);
@@ -650,6 +693,18 @@ function paintProfiles() {
 }
 async function loadProfiles() { try { profiles = (await api('/api/profiles')).profiles || {}; paintProfiles(); } catch (e) { toast('Profile nicht ladbar: ' + e.message, true); } }
 $('profile').onchange = () => { $('b-prof-load').disabled = $('b-prof-del').disabled = !$('profile').value; };
+$('b-ai-key').onclick = () => busy($('b-ai-key'), async () => {
+  const key = $('ai-key').value.trim(); if (!key) { toast('Schlüssel fehlt', true); return; }
+  const r = await api('/api/ai/key', {key}); if (!r.ok) throw new Error(r.error);
+  $('ai-key').value = ''; toast('Schlüssel gespeichert'); refresh();
+});
+function renderAi(s) {
+  const a = s.ai || {}; const modeLabel = {off: 'aus', advise: 'beraten', decide: 'entscheiden'}[a.mode] || a.mode;
+  $('ai-pill').textContent = modeLabel; $('ai-pill').className = 'pill ' + (a.mode === 'off' ? '' : a.available ? 'paper' : 'paused');
+  $('ai-status').textContent = a.mode === 'off' ? 'Aus. Oben unter „KI“ einschalten.' :
+    (a.available ? `Bereit · ${a.model} · ${a.calls_last_hour} Anfragen in der letzten Stunde · ${a.calls_total} gesamt · ≈ $${(a.cost_total_usd || 0).toFixed(3)} seit Start · Schlüssel: ${a.key_source}` : 'Nicht verfügbar: ' + (a.reason || 'kein Zugang'))
+    + (a.available && a.reason ? ` · zuletzt: ${a.reason}` : '');
+}
 $('b-prof-save').onclick = () => busy($('b-prof-save'), async () => {
   const name = await askDialog('Profil speichern', 'Die aktuell gespeicherten Parameter werden unter diesem Namen abgelegt. Ungespeicherte Änderungen im Formular zuerst speichern.', $('profile').value);
   if (!name) return;
@@ -674,7 +729,10 @@ async function showDetail(id) {
   const p = d.position;
   $('d-title').textContent = `${p.symbol} · ${p.status === 'open' ? 'offen' : 'geschlossen (' + p.exit_reason + ')'}`;
   $('d-sub').textContent = `Einstieg ${px(p.entry_price)} · Größe ${usd(p.size_usd)} · Hoch ${pct((p.peak_price / p.entry_price - 1) * 100)} · realisiert ${usd(p.realized_usd)}` + (d.price ? ` · Kurs ${px(d.price)}` : '');
-  $('d-body').innerHTML = table(d.trades, [
+  const partial = p.status === 'open' ? `<div class="formbar" style="margin:0 0 12px"><label for="d-frac" class="status">Teilverkauf, Anteil der ursprünglichen Position</label>
+    <input type="range" id="d-frac" min="5" max="${Math.round(p.remaining_frac * 100)}" step="5" value="${Math.max(5, Math.round(p.remaining_frac * 50 / 5) * 5)}" aria-valuetext="">
+    <b id="d-frac-v"></b><button type="button" class="btn sm danger" id="d-sell">Verkaufen</button></div>` : '';
+  $('d-body').innerHTML = partial + table(d.trades, [
     {h: 'Zeit', f: (r) => hhmm(r.at)},
     {h: 'Seite', f: (r) => r.side === 'buy' ? '<span class="pos">Kauf</span>' : '<span class="neg">Verkauf</span>'},
     {h: 'Grund', f: (r) => esc(r.reason)},
@@ -682,6 +740,16 @@ async function showDetail(id) {
     {h: 'Anteil', f: (r) => Math.round(r.frac * 100) + '%', num: true},
     {h: 'Betrag', f: (r) => usd(r.usd), num: true},
   ], 'Keine Fills.');
+  if (p.status === 'open') {
+    const paint = () => { $('d-frac-v').textContent = $('d-frac').value + '%'; $('d-frac').setAttribute('aria-valuetext', $('d-frac').value + ' Prozent'); };
+    $('d-frac').oninput = paint; paint();
+    $('d-sell').onclick = () => busy($('d-sell'), async () => {
+      const frac = Number($('d-frac').value) / 100;
+      const r = await api('/api/positions/sell', {id: p.id, frac});
+      if (!r.ok) throw new Error(r.error);
+      $('detail').close(); toast(`${p.symbol}: ${Math.round(frac * 100)}% verkauft · realisiert ${usd(r.position.realized_usd)}`); refresh();
+    });
+  }
   $('detail').showModal();
 }
 $('b-revert').onclick = () => loadForm(loaded);
@@ -715,7 +783,7 @@ document.querySelectorAll('nav [role=tab]').forEach((b) => b.onclick = () => {
   ['overview', 'control', 'candidates', 'log'].forEach((t) => $('tab-' + t).hidden = t !== b.dataset.tab);
   try { localStorage.setItem('tab', b.dataset.tab); } catch {}
 });
-document.querySelectorAll('.filterbar .chip').forEach((c) => c.onclick = () => {
+document.querySelectorAll('.filterbar .chip[data-f]').forEach((c) => c.onclick = () => {
   filters[c.dataset.f] = !filters[c.dataset.f]; c.setAttribute('aria-pressed', String(filters[c.dataset.f])); if (state) renderCandidates(state);
 });
 $('q').oninput = () => { query = $('q').value; if (state) renderCandidates(state); };
