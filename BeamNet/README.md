@@ -45,7 +45,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet status` | Übersicht: läuft?, Autostart, wer den Prozess gestartet hat, Port, Spieler, Map, Name |
 | `beamnet doctor` | Diagnose mit Erklärung und Lösung je Problem (siehe unten) |
 | `beamnet report` | Bericht zum Teilen: Status + Diagnose + Plugins + Fehlerzeilen der Protokolle, ohne IPs und AuthKeys |
-| `beamnet fix` | Beendet „wilde“ Server-Prozesse (per `nohup` als root gestartet), setzt Dateirechte zurück, schaltet Autostart ein, startet alles sauber über systemd und prüft danach, ob die Server **an bleiben** |
+| `beamnet fix` | Beendet „wilde“ Server-Prozesse (per `nohup` als root gestartet), setzt Dateirechte zurück, richtet die Protokoll-Rotation ein (logrotate), schaltet Autostart ein, startet alles sauber über systemd und prüft danach, ob die Server **an bleiben** |
 | `beamnet start / stop / restart [nr … \| all]` | Server steuern; `stop` und `restart` fragen vorher |
 | `beamnet maps` | Maps aller Server und die verfügbaren Vanilla-Maps |
 | `beamnet set-map <nr> <map>` | Map ändern (sichert vorher, fragt vor dem Neustart); Mod-Maps mit `--force` |

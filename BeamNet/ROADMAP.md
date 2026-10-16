@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.41 / Plugin 1.22)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.42 / Plugin 1.22)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -22,7 +22,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 7. [x] Tägliche Sicherung der Spielerdaten (ab 4 Uhr, 14 Tage aufbewahrt) und `beamnet restore [datum]`.
        Gesichert werden nur reguläre Dateien, ohne Symlinks. Beim Zurückholen wird jedes Archiv-Mitglied geprüft und der
        bisherige Stand beiseitegelegt (Werkzeug 1.26).
-8. [ ] Der doctor prüft die Größe von Server.log und Journal und richtet eine Protokoll-Rotation ein.
+8. [x] Der doctor meldet sehr große `Server.log` (ab 200 MB) und eine fehlende Rotation. `beamnet fix` richtet
+       logrotate ein: wöchentlich oder ab 100 MB, 4 Stände, copytruncate, sodass der Server weiterläuft (Werkzeug 1.42).
 9. [ ] Lasttest in der CI mit echtem BeamMP-Server und vielen simulierten Spielerdateien.
 10. [x] Der Wächter erkennt hängende Server: Der Dienst läuft, aber BeamNetCore meldet sich seit 3 Minuten nicht
         (`HANG_MIN`). Antwortet der Port auch nicht, folgt mit `AUTO_RESTART=1` ein Neustart. Antwortet er noch, gibt

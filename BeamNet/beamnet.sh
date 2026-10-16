@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.41"
+VERSION="1.42"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -23,6 +23,7 @@ WAIT_SECONDS="${BEAMNET_WAIT:-15}"
 CONF="${BEAMNET_CONF:-/etc/beamnet.conf}"
 STATE_DIR="${BEAMNET_STATE:-/var/lib/beamnet}"
 SYSTEMD_DIR="${BEAMNET_SYSTEMD_DIR:-/etc/systemd/system}"
+LOGROTATE_FILE="${BEAMNET_LOGROTATE:-/etc/logrotate.d/beamnet}"
 WEB_DIR="${BEAMNET_WEB_DIR:-/var/www/beamnet}"
 # Hoechstens so viele automatische Neustarts je Server und Stunde (Schutz vor Endlosschleifen).
 MAX_RESTARTS_PER_HOUR=3
@@ -598,8 +599,30 @@ cmd_doctor() {
 
     title "System"
     check_system
+    check_logs
 
     summary
+}
+
+# Server-Protokolle: wachsen bei langer Laufzeit ohne Grenze. Rotation (logrotate, copytruncate) richtet "beamnet fix" ein.
+check_logs() {
+    local nr log mb big=""
+    for nr in $(servers); do
+        log="$ROOT/$nr/Server.log"
+        [[ -f $log && ! -L $log ]] || continue
+        mb=$(( $(stat -c %s "$log" 2>/dev/null || echo 0) / 1048576 ))
+        (( mb >= 200 )) && big+="Server $nr: $mb MB  "
+    done
+    if [[ -n $big ]]; then
+        warn "Sehr große Server-Protokolle: ${big% }"
+        hint "beamnet fix   (richtet die wöchentliche Protokoll-Rotation ein; die Server laufen dabei weiter)"
+    fi
+    if [[ -f $LOGROTATE_FILE ]]; then
+        ok "Protokoll-Rotation eingerichtet ($LOGROTATE_FILE)"
+    else
+        warn "Keine Protokoll-Rotation für Server.log – sie wachsen ohne Grenze"
+        hint "beamnet fix"
+    fi
 }
 
 # Laeuft der Waechter wirklich? (Lebenszeichen watch.json; ohne ihn keine Ausfallmeldungen, Abstimmungen, Rotation)
@@ -825,7 +848,32 @@ cmd_fix() {
             chown -hR "$SERVICE_USER:$SERVICE_USER" "$ROOT/$nr" && ok "  Rechte gesetzt"
         fi
     done
-    title "3. Autostart und Start"
+    title "3. Protokoll-Rotation"
+    if [[ -f $LOGROTATE_FILE ]]; then
+        ok "Schon eingerichtet ($LOGROTATE_FILE)"
+    elif [[ -d $(dirname "$LOGROTATE_FILE") ]]; then
+        cat >"$LOGROTATE_FILE" <<EOF
+# BeamNet: Server-Protokolle der BeamMP-Server woechentlich (oder ab 100 MB) rotieren, 4 Stueck behalten.
+# copytruncate: der laufende Server schreibt einfach weiter. su: die Ordner gehoeren $SERVICE_USER.
+$ROOT/*/Server.log {
+    su $SERVICE_USER $SERVICE_USER
+    weekly
+    maxsize 100M
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+EOF
+        chmod 644 "$LOGROTATE_FILE"
+        ok "Protokoll-Rotation eingerichtet ($LOGROTATE_FILE)"
+    else
+        warn "logrotate ist nicht installiert (apt install logrotate) – Rotation übersprungen"
+    fi
+
+    title "4. Autostart und Start"
     for nr in $list; do
         unit_exists "$nr" || { bad "Server $nr hat keinen Dienst $(unit "$nr") – übersprungen"; continue; }
         unit_enabled "$nr" || { systemctl enable "$(unit "$nr")" >/dev/null 2>&1 && ok "Server $nr: Autostart an"; }

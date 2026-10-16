@@ -96,6 +96,8 @@ export FAKE="$T" PATH="$T/bin:$PATH"
 ME=$(/usr/bin/id -un)
 export BEAMNET_ROOT="$T/root" BEAMNET_USER="$ME" BEAMNET_SHARED="$T/root/shared/beamnet"
 export BEAMNET_CANARY=0          # Update zuerst auf einem Testserver: eigener Test weiter unten
+export BEAMNET_LOGROTATE="$T/logrotate.d/beamnet"
+mkdir -p "$T/logrotate.d"
 export BEAMNET_BACKUP_DIR="$T/backups" BEAMNET_AUTH_KEYS="$T/authorized_keys" BEAMNET_WAIT=0 BEAMNET_FAKE_PROCS="$T/procs"
 
 maps=(gridmap_v2 west_coast_usa italy east_coast_usa utah utah)
@@ -174,10 +176,21 @@ else
     OWNER_TEST=0
 fi
 
-# fix mit -y: Rechte, Autostart, Start. Server 6 wird von OpenClaw sofort wieder gestoppt (Sabotage).
+# Protokolle: sehr grosse Server.log und fehlende Rotation meldet doctor, fix richtet sie ein.
+truncate -s 300M "$T/root/3/Server.log"
+out=$("$TOOL" doctor 2>&1)
+contains "$out" "Sehr große Server-Protokolle: Server 3: 300 MB" "Doctor: grosses Protokoll"
+contains "$out" "Keine Protokoll-Rotation für Server.log" "Doctor: Rotation fehlt"
+truncate -s 0 "$T/root/3/Server.log"
+# fix mit -y: Rechte, Rotation, Autostart, Start. Server 6 wird von OpenClaw sofort wieder gestoppt (Sabotage).
 touch "$T/state/beammp-6.service.sabotage"
 : >"$T/actions"
 out=$("$TOOL" fix -y)
+contains "$out" "Protokoll-Rotation eingerichtet" "Fix richtet Protokoll-Rotation ein"
+contains "$(cat "$BEAMNET_LOGROTATE")" "^$T/root/\\*/Server.log \\{$" "Rotation: alle Server-Protokolle"
+contains "$(cat "$BEAMNET_LOGROTATE")" "^    su $ME $ME$" "Rotation: als Dienst-Benutzer (Ordner gehoeren ihm)"
+contains "$(cat "$BEAMNET_LOGROTATE")" "^    copytruncate$" "Rotation: Server schreibt weiter (copytruncate)"
+contains "$("$TOOL" doctor 2>&1)" "Protokoll-Rotation eingerichtet" "Doctor: Rotation erkannt"
 contains "$out" "Server 5: 999991 root" "Fix zeigt wilden Prozess"
 [[ $OWNER_TEST == 1 ]] && contains "$(cat "$T/actions")" "chown -hR .* $T/root/2" "Fix setzt Rechte"
 contains "$(cat "$T/actions")" "enable beammp-6.service" "Fix schaltet Autostart ein"
