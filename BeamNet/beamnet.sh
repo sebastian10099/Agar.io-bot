@@ -4009,6 +4009,7 @@ COMMANDS = [
     ("/freund &lt;Name&gt;", "Freundesliste: Nachricht, sobald ein Freund irgendwo online kommt (/freund zeigt alle, /freund weg &lt;Name&gt; entfernt)"),
     ("/auftrag", "Fahrauftrag holen: Patient ins Krankenhaus, Kinder zur Schule, Taxi, Lieferung … mit Zeitlimit und XP (/auftrag stop bricht ab)"),
     ("/orte", "Alle Orte (Krankenhaus, Schule, Feuerwache …) auf dieser Map"),
+    ("/ort vorschlag &lt;Typ&gt; &lt;Name&gt;", "Einen Ort für Aufträge vorschlagen (z. B. krankenhaus, schule) – die Admins entscheiden"),
     ("/ziel", "Wochenziel für alle: zusammen Kilometer sammeln – wer mitfährt, bekommt Bonus-XP"),
     ("/fangen", "Verfolgungsjagd: einer flüchtet, alle anderen jagen ihn – XP fürs Fangen und fürs Entkommen (/fangen mit)"),
     ("/duell &lt;Name&gt; &lt;Strecke&gt;", "Fordere einen Spieler zum Zeitrennen heraus (annehmen: /duell ja) – der Sieger bekommt Bonus-XP"),

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.51"
+BN.VERSION = "1.52"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -986,7 +986,21 @@ local EN = {
     ["Bring die Fracht zum Hafen %s"] = "Take the cargo to %s harbor",
     ["Taxi: Bring den Gast zum Hotel %s"] = "Taxi: take the guest to %s hotel",
     ["Liefere das Paket nach %s"] = "Deliver the parcel to %s",
-    ["Nur Admins legen Orte an. Alle Orte: /orte"] = "Only admins create places. All places: /places",
+    ["Nur Admins legen Orte an – du kannst einen vorschlagen: /ort vorschlag <Typ> <Name>"] =
+        "Only admins create places – you can suggest one: /place suggest <type> <name>",
+    ["Vorschläge gibt es nur mit BeamMP-Konto."] = "Suggestions need a BeamMP account.",
+    ["Aufruf: /ort vorschlag <Typ> <Name> – z. B. /ort vorschlag krankenhaus St. Marien"] = "Usage: /place suggest <type> <name> – e.g. /place suggest hospital St. Mary",
+    ["Bitte warte noch %d min mit dem nächsten Vorschlag."] = "Please wait %d min before your next suggestion.",
+    ["Es gibt schon viele offene Vorschläge – die Admins schauen sie sich an."] = "There are already many open suggestions – the admins will look at them.",
+    ["Danke! Dein Vorschlag %s (%s) ist bei den Admins."] = "Thanks! Your suggestion %s (%s) went to the admins.",
+    ["📍 %s schlägt einen Ort vor: %s %s – /ort vorschlaege"] = "📍 %s suggests a place: %s %s – /place suggestions",
+    ["Keine offenen Vorschläge."] = "No open suggestions.",
+    ["Vorschläge (annehmen: /ort annehmen <Nr> · ablehnen: /ort ablehnen <Nr>):"] = "Suggestions (accept: /place accept <no> · reject: /place reject <no>):",
+    ["Aufruf: /ort %s <Nr> – Liste: /ort vorschlaege"] = "Usage: /place %s <no> – list: /place suggestions",
+    ["Den Ort %s gibt es schon – Vorschlag entfernt."] = "The place %s already exists – suggestion removed.",
+    ["%s %s ist jetzt ein Ort für Aufträge."] = "%s %s is now a place for jobs.",
+    ["Dein Vorschlag %s wurde angenommen – danke!"] = "Your suggestion %s was accepted – thanks!",
+    ["Vorschlag %s abgelehnt."] = "Suggestion %s rejected.",
     ["Aufruf: /ort neu <Typ> <Name> – Typen: %s"] = "Usage: /place new <type> <name> – types: %s",
     ["Keine Position – bitte erst mit einem Fahrzeug an den Ort fahren."] = "No position – please drive to the place with a vehicle first.",
     ["Den Ort %s gibt es schon (löschen: /ort weg %s)."] = "The place %s already exists (delete: /place remove %s).",
@@ -996,8 +1010,8 @@ local EN = {
     ["Ort %s gelöscht."] = "Place %s deleted.",
     ["Den Ort „%s“ gibt es auf dieser Map nicht."] = "There is no place \"%s\" on this map.",
     ["Aufruf: /ort neu <Typ> <Name> · /ort weg <Name> · /orte"] = "Usage: /place new <type> <name> · /place remove <name> · /places",
-    ["Noch keine Orte auf dieser Map. Admins legen sie an: /ort neu krankenhaus <Name>"] =
-        "No places on this map yet. Admins create them: /place new hospital <name>",
+    ["Noch keine Orte auf dieser Map. Admins legen sie an: /ort neu krankenhaus <Name> – oder schlag einen vor: /ort vorschlag krankenhaus <Name>"] =
+        "No places on this map yet. Admins create them: /place new hospital <name> – or suggest one: /place suggest hospital <name>",
     ["Orte auf dieser Map (%d) – Auftrag holen: /auftrag"] = "Places on this map (%d) – get a job: /job",
     ["… und %d weitere"] = "… and %d more",
     ["Steig erst in ein Fahrzeug, dann gibt es einen Auftrag."] = "Get into a vehicle first, then you get a job.",
@@ -4077,24 +4091,31 @@ local function placesFile()
     return placesDir() .. "/" .. map .. ".json"
 end
 
+-- Liefert die Orte und die Vorschlaege von Spielern (beide bereinigt).
 function BN.loadPlaces()
     local data = json.decode(readFile(placesFile()) or "")
-    local list = {}
-    if type(data) == "table" and type(data.places) == "table" then
-        for _, p in ipairs(data.places) do
-            if type(p) == "table" and BN.PLACE_TYPES[p.type] and tonumber(p.x) and tonumber(p.y) and tonumber(p.z) then
+    local function clean(src, max)
+        local list = {}
+        if type(src) ~= "table" then return list end
+        for _, p in ipairs(src) do
+            if type(p) == "table" and type(p.type) == "string" and BN.PLACE_TYPES[p.type] and tonumber(p.x)
+                and tonumber(p.y) and tonumber(p.z) and #list < max then
                 list[#list + 1] = { type = p.type, name = clipText(p.name, 40), x = tonumber(p.x), y = tonumber(p.y),
-                                    z = tonumber(p.z), by = p.by }
+                                    z = tonumber(p.z), by = clipText(p.by, 32), byId = safeId(p.byId),
+                                    at = tonumber(p.at) }
             end
         end
+        return list
     end
-    return list
+    if type(data) ~= "table" then return {}, {} end
+    return clean(data.places, BN.MAX_PLACES), clean(data.suggestions, 30)
 end
 
-local function savePlaces(list)
+local function savePlaces(list, suggestions)
     ensureDir(C.sharedDir)
     ensureDir(placesDir())
-    return writeFileAtomic(placesFile(), json.encode({ places = list }))
+    if suggestions == nil then suggestions = select(2, BN.loadPlaces()) end
+    return writeFileAtomic(placesFile(), json.encode({ places = list, suggestions = suggestions }))
 end
 
 local function fmtDist(lang, m)
@@ -4120,11 +4141,78 @@ function commands.ort(pid, arg)
     for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
     local sub = (words[1] or ""):lower()
     if sub == "" or sub == "liste" or sub == "list" then return commands.orte(pid) end
+    if sub == "vorschlag" or sub == "vorschlagen" or sub == "suggest" then
+        -- Jeder mit Konto darf vorschlagen (hoechstens einer alle 10 Minuten, 30 offene je Map); Admins nehmen an.
+        if s.guest then say(pid, "Vorschläge gibt es nur mit BeamMP-Konto.") return end
+        local typ = (words[2] or ""):lower()
+        typ = PLACE_ALIASES[typ] or typ
+        local name = clipText(table.concat(words, " ", 3), 40)
+        if not BN.PLACE_TYPES[typ] or #name < 2 then
+            say(pid, "Aufruf: /ort vorschlag <Typ> <Name> – z. B. /ort vorschlag krankenhaus St. Marien")
+            return
+        end
+        local pos = currentPosition(s)
+        if not pos then say(pid, "Keine Position – bitte erst mit einem Fahrzeug an den Ort fahren.") return end
+        local now = BN.now()
+        if s.lastSuggestAt and now - s.lastSuggestAt < 600 then
+            say(pid, "Bitte warte noch %d min mit dem nächsten Vorschlag.", math.ceil((600 - (now - s.lastSuggestAt)) / 60))
+            return
+        end
+        local places, suggestions = BN.loadPlaces()
+        if #suggestions >= 30 then say(pid, "Es gibt schon viele offene Vorschläge – die Admins schauen sie sich an.") return end
+        s.lastSuggestAt = now
+        suggestions[#suggestions + 1] = { type = typ, name = name, x = pos.x, y = pos.y, z = pos.z, by = s.name, byId = s.id, at = now }
+        if not savePlaces(places, suggestions) then say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.") return end
+        say(pid, "Danke! Dein Vorschlag %s (%s) ist bei den Admins.", name, typ)
+        for apid, a in pairs(BN.players) do
+            if BN.isAdmin(a) then say(apid, "📍 %s schlägt einen Ort vor: %s %s – /ort vorschlaege", s.name, BN.PLACE_TYPES[typ].icon, name) end
+        end
+        return
+    end
     if not BN.isAdmin(s) then
-        say(pid, "Nur Admins legen Orte an. Alle Orte: /orte")
+        say(pid, "Nur Admins legen Orte an – du kannst einen vorschlagen: /ort vorschlag <Typ> <Name>")
         return
     end
     local places = BN.loadPlaces()
+    if sub == "vorschlaege" or sub == "vorschläge" or sub == "suggestions" then
+        local _, suggestions = BN.loadPlaces()
+        if #suggestions == 0 then say(pid, "Keine offenen Vorschläge.") return end
+        say(pid, "Vorschläge (annehmen: /ort annehmen <Nr> · ablehnen: /ort ablehnen <Nr>):")
+        local pos, lang = currentPosition(s), BN.langOf(pid)
+        for i, p in ipairs(suggestions) do
+            if i > 10 then break end
+            chat(pid, string.format("%d. %s %s (%s) von %s%s", i, BN.PLACE_TYPES[p.type].icon, p.name, p.type, p.by or "?",
+                pos and (" · " .. fmtDist(lang, dist(pos, p))) or ""))
+        end
+        return
+    end
+    if sub == "annehmen" or sub == "accept" or sub == "ablehnen" or sub == "reject" then
+        local nr = tonumber(words[2])
+        local _, suggestions = BN.loadPlaces()
+        local p = nr and suggestions[math.floor(nr)]
+        if not p then say(pid, "Aufruf: /ort %s <Nr> – Liste: /ort vorschlaege", sub) return end
+        table.remove(suggestions, math.floor(nr))
+        if sub == "annehmen" or sub == "accept" then
+            for _, q in ipairs(places) do
+                if q.name:lower() == p.name:lower() then
+                    savePlaces(places, suggestions)
+                    say(pid, "Den Ort %s gibt es schon – Vorschlag entfernt.", q.name)
+                    return
+                end
+            end
+            if #places >= BN.MAX_PLACES then say(pid, "Auf dieser Map gibt es schon %d Orte.", BN.MAX_PLACES) return end
+            places[#places + 1] = { type = p.type, name = p.name, x = p.x, y = p.y, z = p.z, by = p.by }
+            if not savePlaces(places, suggestions) then say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.") return end
+            say(pid, "%s %s ist jetzt ein Ort für Aufträge.", BN.PLACE_TYPES[p.type].icon, p.name)
+            for opid, o in pairs(BN.players) do
+                if p.byId and o.id == p.byId then say(opid, "Dein Vorschlag %s wurde angenommen – danke!", p.name) end
+            end
+        else
+            savePlaces(places, suggestions)
+            say(pid, "Vorschlag %s abgelehnt.", p.name)
+        end
+        return
+    end
     if sub == "neu" or sub == "new" then
         local typ = (words[2] or ""):lower()
         typ = PLACE_ALIASES[typ] or typ
@@ -4176,7 +4264,7 @@ commands.place = commands.ort
 function commands.orte(pid)
     local places = BN.loadPlaces()
     if #places == 0 then
-        say(pid, "Noch keine Orte auf dieser Map. Admins legen sie an: /ort neu krankenhaus <Name>")
+        say(pid, "Noch keine Orte auf dieser Map. Admins legen sie an: /ort neu krankenhaus <Name> – oder schlag einen vor: /ort vorschlag krankenhaus <Name>")
         return
     end
     local s, lang = session(pid), BN.langOf(pid)

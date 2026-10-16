@@ -2605,6 +2605,51 @@ do
     os.execute('rm -rf "' .. SHARED .. '/places"')
 end
 
+-- --- Ort-Vorschlaege von Spielern ------------------------------------------------------------------------------
+do
+    os.execute('rm -rf "' .. SHARED .. '/places"')
+    local savedAdmins = C.admins
+    C.admins = { "Pruefer" }
+    players[123] = { name = "Pruefer", ids = { beammp = "12323" }, vehicles = {} }
+    players[124] = { name = "Melder", ids = { beammp = "12424" }, vehicles = {} }
+    players[125] = { name = "GastV", ids = {}, vehicles = {} }
+    for _, pid in ipairs({ 123, 124, 125 }) do _G[events.onPlayerJoin](pid) end
+    BN.track(124, 0, { 31000, 0, 0 }, 1)
+    chatLog = {}
+    say(124, "/ort neu krankenhaus Klinik")
+    check(chatContains("du kannst einen vorschlagen: /ort vorschlag", 124), "Vorschlag: Hinweis fuer Nicht-Admins")
+    say(125, "/ort vorschlag schule X")
+    check(chatContains("Vorschläge gibt es nur mit BeamMP%-Konto", 125), "Vorschlag: nicht fuer Gaeste")
+    say(124, "/ort vorschlag krankenhaus Klinik Nord")
+    check(chatContains("Danke! Dein Vorschlag Klinik Nord %(krankenhaus%) ist bei den Admins", 124), "Vorschlag: angenommen zur Pruefung")
+    check(chatContains("📍 Melder schlägt einen Ort vor: 🚑 Klinik Nord", 123), "Vorschlag: Admins bekommen Bescheid")
+    say(124, "/ort vorschlag schule Grundschule Sued")
+    check(chatContains("Bitte warte noch %d+ min mit dem nächsten Vorschlag", 124), "Vorschlag: einer alle 10 Minuten")
+    eq(#BN.loadPlaces(), 0, "Vorschlag: noch kein Ort")
+    say(123, "/ort vorschlaege")
+    check(chatContains("^1%. 🚑 Klinik Nord %(krankenhaus%) von Melder", 123), "Vorschlag: Liste fuer Admins")
+    say(123, "/ort annehmen 1")
+    check(chatContains("🚑 Klinik Nord ist jetzt ein Ort für Aufträge", 123) and chatContains("Dein Vorschlag Klinik Nord wurde angenommen", 124), "Vorschlag: annehmen")
+    local places, sugg = BN.loadPlaces()
+    check(#places == 1 and places[1].x == 31000 and #sugg == 0, "Vorschlag: als Ort gespeichert, Vorschlag weg")
+    BN.players[124].lastSuggestAt = nil
+    say(124, "/ort vorschlag schule Grundschule Sued")
+    say(123, "/ort ablehnen 1")
+    check(chatContains("Vorschlag Grundschule Sued abgelehnt", 123) and #select(2, BN.loadPlaces()) == 0, "Vorschlag: ablehnen")
+    say(123, "/ort annehmen 7")
+    check(chatContains("Aufruf: /ort annehmen <Nr>", 123), "Vorschlag: falsche Nummer")
+    -- Ein Admin legt einen Ort an: offene Vorschlaege bleiben erhalten.
+    BN.players[124].lastSuggestAt = nil
+    say(124, "/ort vorschlag tankstelle Tanke")
+    BN.track(123, 0, { 35000, 0, 0 }, 2)
+    say(123, "/ort neu schule Neue Schule")
+    check(#BN.loadPlaces() == 2 and #select(2, BN.loadPlaces()) == 1, "Vorschlag: bleibt beim Anlegen anderer Orte erhalten")
+    for _, pid in ipairs({ 123, 124, 125 }) do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    for _, id in ipairs({ "12323", "12424" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+    os.execute('rm -rf "' .. SHARED .. '/places"')
+    C.admins = savedAdmins
+end
+
 -- --- Verfolgungsjagd (/fangen) --------------------------------------------------------------------------------
 do
     players[101] = { name = "Jaeger", ids = { beammp = "10101" }, vehicles = { [1] = { pos = { 40000, 0, 0 }, tim = 0 } } }
