@@ -139,3 +139,53 @@ class AntPathTests(unittest.TestCase):
             exe = os.path.join(d, "NewTokenBot", "bin", "ant")
             open(exe, "w").write("#!/bin/sh\n"); os.chmod(exe, 0o755)
             self.assertEqual(ai.ant_path(), exe)
+
+
+class OpenRouterTests(unittest.TestCase):
+    def advisor(self, post, key="sk-or-v1-testkey-0123456789"):
+        import os
+        from unittest import mock
+        from bot.ai import ClaudeAdvisor
+        cfg = {"ai": {"mode": "advise", "provider": "openrouter", "openrouter_model": "meta-llama/llama-3.3-70b-instruct:free", "max_calls_per_hour": 60}}
+        self.env = mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": key} if key else {}, clear=False)
+        self.env.start(); self.addCleanup(self.env.stop)
+        if not key:
+            os.environ.pop("OPENROUTER_API_KEY", None)
+        a = ClaudeAdvisor(cfg, log=lambda l, m: None); a._post = post
+        return a
+
+    def test_free_model_verdict_and_status(self):
+        seen = {}
+        def post(url, body, headers=None):
+            seen.update(url=url, body=body, headers=headers)
+            return {"model": "meta-llama/llama-3.3-70b-instruct:free", "usage": {"cost": 0},
+                    "choices": [{"message": {"content": "```json\n{\"decision\": \"watch\", \"confidence\": 0.55, \"reasons\": [\"Volumen dünn\"], \"risk_flags\": []}\n```"}}]}
+        a = self.advisor(post)
+        st = a.status()
+        self.assertEqual((st["provider"], st["available"], st["key_source"]), ("openrouter", True, "env"))
+        v = a.judge({"symbol": "RUN"}, None, {"decision": "buy", "score": 70, "reasons": []})
+        self.assertEqual((v["decision"], v["confidence"], v["reasons"]), ("watch", 0.55, ["Volumen dünn"]))
+        self.assertIn("openrouter.ai", seen["url"]); self.assertEqual(seen["headers"]["Authorization"], "Bearer sk-or-v1-testkey-0123456789")
+        self.assertEqual(seen["body"]["response_format"], {"type": "json_object"}); self.assertEqual(a.calls_total, 1)
+
+    def test_errors_are_described(self):
+        from bot.sources.http import HttpError
+        for status, needle in ((401, "ungültig"), (402, "Guthaben"), (429, "Rate-Limit"), (404, "nicht gefunden")):
+            a = self.advisor(lambda u, b, headers=None: (_ for _ in ()).throw(HttpError(status, "x")))
+            self.assertIsNone(a.judge({"symbol": "RUN"}, None, {})); self.assertIn(needle, a.status()["reason"])
+        a = self.advisor(lambda u, b, headers=None: {"error": {"message": "model is overloaded"}})
+        self.assertIsNone(a.judge({"symbol": "RUN"}, None, {})); self.assertIn("overloaded", a.status()["reason"])
+        a = self.advisor(lambda u, b, headers=None: {"choices": [{"message": {"content": "keine Ahnung"}}]})
+        self.assertIsNone(a.judge({"symbol": "RUN"}, None, {})); self.assertIn("kein JSON", a.status()["reason"])
+
+    def test_without_key_nothing_is_called(self):
+        called = []
+        a = self.advisor(lambda u, b, headers=None: called.append(1), key="")
+        self.assertFalse(a.status()["available"]); self.assertIn("OpenRouter-Schlüssel", a.status()["reason"])
+        self.assertIsNone(a.judge({"symbol": "RUN"}, None, {})); self.assertEqual(called, [])
+
+    def test_settings_accept_provider(self):
+        from bot import settings
+        clean, errors = settings.validate({"ai.provider": "openrouter", "ai.openrouter_model": "deepseek/deepseek-chat-v3-0324:free"})
+        self.assertEqual(errors, {}); self.assertEqual(clean["ai.provider"], "openrouter")
+        self.assertIn("ai.provider", settings.validate({"ai.provider": "gemini"})[1])

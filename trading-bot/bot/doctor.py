@@ -112,9 +112,15 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
     out.append(_check("Anthropic-SDK", sdk))
 
     def ai_key() -> str:
-        from .ai import credential_source
-        src = credential_source()
+        from .ai import credential_source, openrouter_source
+        provider = (cfg.get("ai") or {}).get("provider", "anthropic")
         mode = (cfg.get("ai") or {}).get("mode", "off")
+        if provider == "openrouter":
+            src = openrouter_source()
+            if mode != "off" and src == "none":
+                raise RuntimeError(f"KI-Modus „{mode}“ mit OpenRouter, aber kein Schlüssel – unten im KI-Bereich speichern (kostenlos auf openrouter.ai)")
+            return f"OpenRouter-Schlüssel: {src} · Modus {mode}"
+        src = credential_source()
         if mode != "off" and src == "none":
             raise RuntimeError(f"KI-Modus „{mode}“ an, aber kein Zugang (kein Schlüssel, kein Profil) – „Mit Claude anmelden“ auf der Steuerseite")
         from .ai import ant_path

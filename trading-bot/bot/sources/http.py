@@ -30,6 +30,19 @@ class HttpError(Exception):
         self.body = body
 
 
+def post_json(url: str, body: Any, timeout: float = 60, headers: Optional[dict] = None) -> Any:
+    """One POST with a JSON body; HTTP errors raise HttpError with the body."""
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, method="POST",
+                                 headers={"User-Agent": "new-token-bot/0.1", "Accept": "application/json",
+                                          "Content-Type": "application/json", **(headers or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise HttpError(e.code, e.read().decode("utf-8", "replace")) from None
+
+
 def get_json(url: str, timeout: float = 15, retries: int = 2, headers: Optional[dict] = None) -> Any:
     last: Exception = RuntimeError("no attempt")
     for attempt in range(retries + 1):

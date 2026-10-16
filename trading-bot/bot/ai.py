@@ -20,7 +20,11 @@ import time
 from typing import Any, Optional
 
 KEYCHAIN_SERVICE = "NewTokenBot Anthropic"
+KEYCHAIN_SERVICES = {"anthropic": "NewTokenBot Anthropic", "openrouter": "NewTokenBot OpenRouter"}
 DEFAULT_MODEL = "claude-opus-5-5"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+PROVIDERS = ("anthropic", "openrouter")
 
 # $ per million tokens, Claude Opus 5.5 (input / output / cache read / cache write)
 PRICES = {
@@ -59,12 +63,12 @@ SCHEMA = {
 }
 
 
-def keychain_key() -> str:
+def keychain_key(provider: str = "anthropic") -> str:
     if sys.platform != "darwin":
         return ""
     try:
         result = subprocess.run(
-            ["/usr/bin/security", "find-generic-password", "-s", KEYCHAIN_SERVICE,
+            ["/usr/bin/security", "find-generic-password", "-s", KEYCHAIN_SERVICES.get(provider, KEYCHAIN_SERVICE),
              "-a", os.environ.get("USER", ""), "-w"],
             capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.TimeoutExpired):
@@ -131,15 +135,30 @@ def start_login(runner=None) -> dict[str, Any]:
     return {"ok": True, "already": False, "detail": "Browser geöffnet – dort mit deinem Claude-Konto anmelden. Die Seite merkt es von selbst."}
 
 
-def store_key(value: str) -> dict[str, Any]:
+def openrouter_key() -> str:
+    return os.environ.get("OPENROUTER_API_KEY") or keychain_key("openrouter")
+
+
+def openrouter_source() -> str:
+    if os.environ.get("OPENROUTER_API_KEY"):
+        return "env"
+    if keychain_key("openrouter"):
+        return "keychain"
+    return "none"
+
+
+def store_key(value: str, provider: str = "anthropic") -> dict[str, Any]:
     value = (value or "").strip()
+    if provider not in KEYCHAIN_SERVICES:
+        return {"ok": False, "error": "Unbekannter Anbieter."}
     if len(value) < 20 or any(c.isspace() for c in value):
         return {"ok": False, "error": "Der Schlüssel sieht nicht gültig aus."}
     if sys.platform != "darwin":
-        return {"ok": False, "error": "Schlüsselbund gibt es nur auf macOS. Setze ANTHROPIC_API_KEY in der Umgebung."}
+        env = "ANTHROPIC_API_KEY" if provider == "anthropic" else "OPENROUTER_API_KEY"
+        return {"ok": False, "error": f"Schlüsselbund gibt es nur auf macOS. Setze {env} in der Umgebung."}
     try:
         result = subprocess.run(
-            ["/usr/bin/security", "add-generic-password", "-U", "-s", KEYCHAIN_SERVICE,
+            ["/usr/bin/security", "add-generic-password", "-U", "-s", KEYCHAIN_SERVICES[provider],
              "-a", os.environ.get("USER", ""), "-w", value],
             capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.TimeoutExpired) as error:
@@ -147,6 +166,11 @@ def store_key(value: str) -> dict[str, Any]:
     if result.returncode != 0:
         return {"ok": False, "error": "Der Schlüssel konnte nicht gespeichert werden."}
     return {"ok": True}
+
+
+def _default_post(url: str, body: Any, headers: Optional[dict] = None) -> Any:
+    from .sources.http import post_json
+    return post_json(url, body, timeout=90, headers=headers)
 
 
 def _estimate_cost(model: str, usage: Any) -> float:
@@ -162,6 +186,7 @@ class ClaudeAdvisor:
         self.cfg = cfg
         self.log = log or (lambda level, msg: None)
         self._client = client
+        self._post = None                      # injectable HTTP POST for OpenRouter (tests)
         self._client_error: Optional[str] = None
         self._calls: list[float] = []
         self._last_error: Optional[str] = None
@@ -177,6 +202,17 @@ class ClaudeAdvisor:
     @property
     def enabled(self) -> bool:
         return self.settings.get("mode", "off") in ("advise", "decide")
+
+    @property
+    def provider(self) -> str:
+        p = self.settings.get("provider", "anthropic")
+        return p if p in PROVIDERS else "anthropic"
+
+    @property
+    def model(self) -> str:
+        if self.provider == "openrouter":
+            return self.settings.get("openrouter_model") or DEFAULT_OPENROUTER_MODEL
+        return self.settings.get("model") or DEFAULT_MODEL
 
     def _client_or_none(self) -> Any:
         if self._client is not None:
@@ -204,9 +240,19 @@ class ClaudeAdvisor:
         s = self.settings
         now = time.time()
         self._calls = [t for t in self._calls if now - t < 3600]
+        if self.provider == "openrouter":
+            available = bool(openrouter_key()) if self.enabled else False
+            reason = ("Kein OpenRouter-Schlüssel: unten speichern oder OPENROUTER_API_KEY setzen" if self.enabled and not available else "") or self._last_error or ""
+            return {
+                "mode": s.get("mode", "off"), "provider": "openrouter", "model": self.model,
+                "available": available, "reason": reason,
+                "calls_last_hour": len(self._calls), "calls_total": self.calls_total,
+                "cost_total_usd": round(self.cost_total, 4),
+                "key_source": openrouter_source(),
+            }
         client = self._client_or_none() if self.enabled else None
         return {
-            "mode": s.get("mode", "off"), "model": s.get("model", DEFAULT_MODEL),
+            "mode": s.get("mode", "off"), "provider": "anthropic", "model": self.model,
             "available": client is not None, "reason": self._client_error or self._last_error or "",
             "calls_last_hour": len(self._calls), "calls_total": self.calls_total,
             "cost_total_usd": round(self.cost_total, 4),
@@ -218,6 +264,8 @@ class ClaudeAdvisor:
               rules: dict[str, Any]) -> Optional[dict[str, Any]]:
         if not self.enabled:
             return None
+        if self.provider == "openrouter":
+            return self._judge_openrouter(pair, rug, rules)
         client = self._client_or_none()
         if client is None:
             return None
@@ -227,13 +275,8 @@ class ClaudeAdvisor:
             self._last_error = "Stundenlimit für KI-Anfragen erreicht"
             return None
 
-        model = self.settings.get("model") or DEFAULT_MODEL
-        facts = {k: pair.get(k) for k in ("symbol", "name", "chain", "dex", "age_min", "price_usd", "liquidity_usd",
-                                           "fdv", "volume_m5", "volume_h1", "buys_m5", "sells_m5", "buys_h1", "sells_h1",
-                                           "change_m5", "change_h1", "boosts", "has_socials")}
-        payload = {"token": facts, "rugcheck": rug, "regel_urteil": rules}
-        user = ("Kandidat (Kennzahlen von DexScreener, RugCheck-Zusammenfassung, Urteil der Regeln):\n"
-                + json.dumps(payload, ensure_ascii=False, default=str))
+        model = self.model
+        user = self._user_message(pair, rug, rules)
         request = dict(
             model=model, max_tokens=2048,
             system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
@@ -280,6 +323,106 @@ class ClaudeAdvisor:
             "model": getattr(response, "model", model),
         }
 
+    @staticmethod
+    def _user_message(pair: dict[str, Any], rug: Optional[dict[str, Any]], rules: dict[str, Any]) -> str:
+        facts = {k: pair.get(k) for k in ("symbol", "name", "chain", "dex", "age_min", "price_usd", "liquidity_usd",
+                                           "fdv", "volume_m5", "volume_h1", "buys_m5", "sells_m5", "buys_h1", "sells_h1",
+                                           "change_m5", "change_h1", "boosts", "has_socials")}
+        payload = {"token": facts, "rugcheck": rug, "regel_urteil": rules}
+        return ("Kandidat (Kennzahlen von DexScreener, RugCheck-Zusammenfassung, Urteil der Regeln):\n"
+                + json.dumps(payload, ensure_ascii=False, default=str))
+
+    @staticmethod
+    def _parse_verdict(text: str) -> Optional[dict[str, Any]]:
+        text = (text or "").strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            text = text[4:] if text.lower().startswith("json") else text
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end < 0:
+            return None
+        try:
+            data = json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            return None
+        return data if isinstance(data, dict) else None
+
+    # --- OpenRouter: any OpenAI-compatible model, free ones included -----------------
+    def _judge_openrouter(self, pair: dict[str, Any], rug: Optional[dict[str, Any]],
+                          rules: dict[str, Any]) -> Optional[dict[str, Any]]:
+        key = openrouter_key()
+        if not key:
+            self._last_error = "Kein OpenRouter-Schlüssel"
+            return None
+        now = time.time()
+        self._calls = [t for t in self._calls if now - t < 3600]
+        if len(self._calls) >= int(self.settings.get("max_calls_per_hour", 60)):
+            self._last_error = "Stundenlimit für KI-Anfragen erreicht"
+            return None
+        model = self.model
+        body = {
+            "model": model, "max_tokens": 600, "temperature": 0.2,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": SYSTEM + "\n\nAntworte NUR mit einem JSON-Objekt mit genau diesen Feldern: "
+                 "decision (\"buy\"|\"watch\"|\"skip\"), confidence (Zahl 0-1), reasons (Liste mit bis zu 3 kurzen deutschen Sätzen), "
+                 "risk_flags (Liste konkreter Warnzeichen, leer wenn keine)."},
+                {"role": "user", "content": self._user_message(pair, rug, rules)},
+            ],
+        }
+        headers = {"Authorization": f"Bearer {key}", "HTTP-Referer": "https://github.com/sebastian10099/Agar.io-bot", "X-Title": "New Token Bot"}
+        post = self._post or _default_post
+        self._calls.append(now)
+        self.calls_total += 1
+        try:
+            response = post(OPENROUTER_URL, body, headers=headers)
+        except Exception as error:  # noqa: BLE001 - mapped below
+            self._last_error = self._describe_http(error)
+            self.log("error", "KI (OpenRouter): " + self._last_error)
+            return None
+        if isinstance(response, dict) and response.get("error"):
+            err = response["error"]
+            self._last_error = f"OpenRouter: {err.get('message', err) if isinstance(err, dict) else err}"[:200]
+            self.log("error", "KI (OpenRouter): " + self._last_error)
+            return None
+        try:
+            text = response["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            self._last_error = "OpenRouter-Antwort ohne Inhalt"
+            return None
+        usage = response.get("usage") or {}
+        self.cost_total += float(usage.get("cost") or 0)     # OpenRouter reports $ cost; free models say 0
+        data = self._parse_verdict(text if isinstance(text, str) else "")
+        if not data:
+            self._last_error = "KI-Antwort war kein JSON"
+            return None
+        if data.get("decision") not in ("buy", "watch", "skip"):
+            self._last_error = "KI-Antwort ohne gültige Entscheidung"
+            return None
+        self._last_error = None
+        return {
+            "decision": data["decision"],
+            "confidence": max(0.0, min(1.0, float(data.get("confidence", 0) or 0))),
+            "reasons": [str(r)[:200] for r in (data.get("reasons") or [])][:3],
+            "risk_flags": [str(r)[:100] for r in (data.get("risk_flags") or [])][:4],
+            "model": str(response.get("model") or model),
+        }
+
+    @staticmethod
+    def _describe_http(error: Exception) -> str:
+        status = getattr(error, "status", None)
+        if status == 401:
+            return "OpenRouter-Schlüssel ungültig (401)"
+        if status == 402:
+            return "OpenRouter: kein Guthaben für dieses Modell (402) – ein Modell mit „:free“ wählen"
+        if status == 404:
+            return "OpenRouter: Modell nicht gefunden (404) – ai.openrouter_model prüfen"
+        if status == 429:
+            return "OpenRouter: Rate-Limit (429) – freie Modelle erlauben nur wenige Anfragen pro Minute"
+        if status:
+            return f"OpenRouter-Fehler {status}: {str(getattr(error, 'body', ''))[:120]}"
+        return f"Keine Verbindung zu OpenRouter: {type(error).__name__}: {str(error)[:120]}"
+
     def _create(self, client: Any, request: dict[str, Any]) -> Any:
         """Beta endpoint with server-side refusal fallbacks; if the platform
         rejects the fallback parameter, retry once without it and remember."""
@@ -324,9 +467,12 @@ def _self_check(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Einmaliger KI-Selbsttest mit einem Beispiel-Kandidaten")
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--effort", default="medium", choices=["low", "medium", "high"])
+    ap.add_argument("--provider", default="anthropic", choices=list(PROVIDERS))
+    ap.add_argument("--openrouter-model", default=DEFAULT_OPENROUTER_MODEL)
     args = ap.parse_args(argv)
 
-    cfg = {"ai": {"mode": "advise", "model": args.model, "effort": args.effort, "max_calls_per_hour": 5}}
+    cfg = {"ai": {"mode": "advise", "provider": args.provider, "model": args.model, "openrouter_model": args.openrouter_model,
+                  "effort": args.effort, "max_calls_per_hour": 5}}
     advisor = ClaudeAdvisor(cfg, log=lambda level, msg: print(f"[{level}] {msg}"))
     status = advisor.status()
     print(f"Modell {status['model']} · Schlüsselquelle: {status['key_source']}")
@@ -343,7 +489,7 @@ def _self_check(argv: list[str]) -> int:
     rug = {"score": 120, "danger": [], "warn": []}
     rules = {"decision": "buy", "score": 64.4, "reasons": ["liquidity 7", "activity 10", "pressure 15", "momentum 8", "age 10", "socials 5", "rugcheck 9"]}
 
-    print("Frage Claude nach dem Beispiel-Token RUN ...")
+    print(f"Frage {'OpenRouter' if args.provider == 'openrouter' else 'Claude'} nach dem Beispiel-Token RUN ...")
     started = time.time()
     verdict = advisor.judge(pair, rug, rules)
     took = time.time() - started

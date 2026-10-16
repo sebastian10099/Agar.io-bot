@@ -203,7 +203,12 @@ Alter (5–30 min ideal), Socials und RugCheck. Ab 60 Punkten `buy`, darunter `w
 
 ## KI-Modus: Claude als zweiter Blick – oder als Entscheider
 
-**Zugang ohne Schlüssel:** Knopf „Mit Claude anmelden“ auf der Steuerseite.
+**Zwei Anbieter:** Claude (Anthropic) oder **OpenRouter** – dort gibt es einen
+kostenlosen Schlüssel (openrouter.ai) und Modelle mit „:free“, die nichts kosten.
+Anbieter und Modell stehen im Formular unter „KI“; der Schlüssel wird unten im
+KI-Bereich gespeichert. `python3 -m bot.ai --provider openrouter` macht den Test.
+
+**Zugang ohne Schlüssel (Claude):** Knopf „Mit Claude anmelden“ auf der Steuerseite.
 Er startet `ant auth login` (Anthropic-CLI, einmalig `brew install
 anthropics/tap/ant`), der Browser geht auf, du meldest dich mit deinem
 Claude-Konto an, und der Bot nutzt ab dann dieses Profil – kein Schlüssel zum

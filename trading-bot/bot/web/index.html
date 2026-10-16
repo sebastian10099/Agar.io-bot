@@ -303,7 +303,7 @@
         <span class="status" id="ai-login-status"></span>
       </div>
       <div class="formbar" style="margin-top:0">
-        <label for="ai-key" class="status">oder Anthropic-Schlüssel</label>
+        <label for="ai-key" class="status" id="ai-key-label">oder Anthropic-Schlüssel</label>
         <input type="password" id="ai-key" autocomplete="off" placeholder="sk-ant-…" style="width:260px;background:var(--muted);border:1px solid var(--line-strong);border-radius:7px;padding:6px 8px">
         <button class="btn" id="b-ai-key">Im Schlüsselbund speichern</button>
       </div>
@@ -944,7 +944,7 @@ $('b-ai-login').onclick = () => busy($('b-ai-login'), async () => {
 });
 $('b-ai-key').onclick = () => busy($('b-ai-key'), async () => {
   const key = $('ai-key').value.trim(); if (!key) { toast('Schlüssel fehlt', true); return; }
-  const r = await api('/api/ai/key', {key}); if (!r.ok) throw new Error(r.error);
+  const r = await api('/api/ai/key', {key, provider: (state && state.config['ai.provider']) || 'anthropic'}); if (!r.ok) throw new Error(r.error);
   $('ai-key').value = ''; toast('Schlüssel gespeichert'); refresh();
 });
 let lastDoctor = null;
@@ -1003,9 +1003,13 @@ function renderSources(s) {
 }
 function renderAi(s) {
   const a = s.ai || {}; const modeLabel = {off: 'aus', advise: 'beraten', decide: 'entscheiden'}[a.mode] || a.mode;
+  const or = a.provider === 'openrouter';
+  $('b-ai-login').hidden = or; $('ai-login-status').hidden = or;
+  $('ai-key-label').textContent = or ? 'OpenRouter-Schlüssel' : 'oder Anthropic-Schlüssel';
+  $('ai-key').placeholder = or ? 'sk-or-v1-…' : 'sk-ant-…';
   $('ai-pill').textContent = modeLabel; $('ai-pill').className = 'pill ' + (a.mode === 'off' ? '' : a.available ? 'paper' : 'paused');
   $('ai-status').textContent = a.mode === 'off' ? 'Aus. Oben unter „KI“ einschalten.' :
-    (a.available ? `Bereit · ${a.model} · ${a.calls_last_hour} Anfragen in der letzten Stunde · ${a.calls_total} gesamt · ≈ $${(a.cost_total_usd || 0).toFixed(3)} seit Start · Schlüssel: ${a.key_source}` : 'Nicht verfügbar: ' + (a.reason || 'kein Zugang'))
+    (a.available ? `Bereit · ${or ? 'OpenRouter' : 'Claude'} · ${a.model} · ${a.calls_last_hour} Anfragen in der letzten Stunde · ${a.calls_total} gesamt · ≈ $${(a.cost_total_usd || 0).toFixed(3)} seit Start · Schlüssel: ${a.key_source}` : 'Nicht verfügbar: ' + (a.reason || 'kein Zugang'))
     + (a.available && a.reason ? ` · zuletzt: ${a.reason}` : '');
 }
 $('b-prof-save').onclick = () => busy($('b-prof-save'), async () => {

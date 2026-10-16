@@ -130,6 +130,15 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok(/Browser geöffnet|Schon angemeldet|fehlt|brew install/.test(loginTxt + (await p.textContent('#toast'))), 'Anmelden-Knopf antwortet (Browser, Profil oder Installationshinweis): ' + loginTxt.slice(0, 60));
   await p.selectOption('select[data-path="ai.mode"]', 'off'); await clearToast(); await p.click('#b-save');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
+  // --- Anbieter OpenRouter: Schlüsselfeld wechselt, Anmelden-Knopf verschwindet ---
+  await p.selectOption('select[data-path="ai.provider"]', 'openrouter'); await clearToast(); await p.click('#b-save');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
+  await p.waitForFunction(() => document.querySelector('#ai-key-label').textContent.includes('OpenRouter'));
+  ok(await p.$eval('#b-ai-login', (b) => b.hidden) && (await p.getAttribute('#ai-key', 'placeholder')).startsWith('sk-or'), 'OpenRouter gewählt: Anmelden-Knopf weg, Schlüsselfeld für OpenRouter');
+  ok(/OpenRouter-Schlüssel|Nicht verfügbar|Aus\./.test(await p.textContent('#ai-status')), 'KI-Status nennt den fehlenden OpenRouter-Schlüssel oder „Aus“');
+  await p.selectOption('select[data-path="ai.provider"]', 'anthropic'); await clearToast(); await p.click('#b-save');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
+  await p.waitForFunction(() => !document.querySelector('#b-ai-login').hidden);
 
   // --- Quellen: Status-Liste, Multi-Chips, Quelle am Kandidaten ---
   const srcRows = await p.$$eval('#sources li', (l) => l.map((x) => ({ text: x.textContent, dot: x.querySelector('.dot').className })));

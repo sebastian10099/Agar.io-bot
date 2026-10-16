@@ -111,7 +111,7 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                 result = engine.close_position(int(body.get("id") or 0))
                 self._json(result, 200 if result["ok"] else 409)
             elif self.path == "/api/ai/key":
-                result = store_key(str(body.get("key") or ""))
+                result = store_key(str(body.get("key") or ""), str(body.get("provider") or "anthropic"))
                 if result["ok"]:
                     engine.advisor._client = None
                     engine.advisor._client_error = None
