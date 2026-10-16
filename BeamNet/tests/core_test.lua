@@ -1887,10 +1887,14 @@ do
     check(chatContains("Strecke \"gibtsnicht\" gibt es auf dieser Map nicht", 121), "Serie: nur vorhandene Strecken")
     say(121, "/serie neu tour teila teilb")
     check(chatContains("Serie tour angelegt: teila → teilb", 121), "Serie: angelegt")
-    local function run(pid, from, to, t0)
+    say(121, "/serie neu stop teila teilb")
+    check(chatContains("stop ist ein Befehl und kein Serienname", 121), "Serie: reservierte Namen")
+    say(121, "/serie neu doppelt teila teila")
+    check(chatContains("Jede Strecke nur einmal pro Serie %(teila doppelt%)", 121), "Serie: keine doppelten Strecken")
+    local function run(pid, from, to, t0, step)
         BN.track(pid, 0, { from, 0, 0 }, t0); BN.track(pid, 0, { from + 10, 0, 0 }, t0 + 0.2)
         local x, tim = from + 10, t0 + 0.2
-        while x < to do x = math.min(to, x + 25); tim = tim + 1; BN.track(pid, 0, { x, 0, 0 }, tim) end
+        while x < to do x = math.min(to, x + (step or 25)); tim = tim + 1; BN.track(pid, 0, { x, 0, 0 }, tim) end
     end
     local b0 = BN.players[122].pendingBonus
     chatLog = {}
@@ -1909,6 +1913,27 @@ do
     chatLog = {}
     say(122, "/serie")
     check(chatContains("^tour: teila → teilb · Serienfahrer 1:", 122), "Serie: Liste mit Bestzeit")
+    -- Langsamer als die eigene Bestzeit: keine XP (sonst endlos wiederholbar).
+    b0 = BN.players[122].pendingBonus
+    chatLog = {}
+    say(122, "/serie tour")
+    run(122, 6000, 7000, 500, 20)
+    run(122, 7000, 8000, 700, 20)
+    check(chatContains("deine Bestzeit: 1:", 122), "Serie: langsamer – Hinweis auf Bestzeit")
+    check(not chatContains("Serie tour geschafft: [^%(]*%+%d+ XP", 122), "Serie: langsamer – keine Serien-XP")
+    -- Kaputte Serien-Daten (falsche Typen) fuehren zu keinem Laufzeitfehler.
+    local rf = SHARED .. "/races/gridmap_v2.json"
+    local raw = readJson(rf)
+    raw.series.kaputt = { tracks = { "teila", 7 }, records = { 5, "x", { time = "a" } } }
+    raw.series.tour.records[#raw.series.tour.records + 1] = 42
+    writeJson(rf, raw)
+    chatLog = {}
+    say(122, "/serie")
+    check(chatContains("^kaputt: teila → 7", 122), "Serie: Liste trotz kaputter Daten")
+    say(122, "/serie tour")
+    run(122, 6000, 7000, 900)
+    run(122, 7000, 8000, 1100)
+    check(chatContains("🏁 Serie tour geschafft", 122), "Serie: Ziel trotz kaputter Rekorde")
     -- Zu langsam: nach 30 Minuten verfaellt die Serie.
     say(122, "/serie tour")
     run(122, 6000, 7000, 1000)
@@ -1920,7 +1945,14 @@ do
     check(chatContains("Serie abgebrochen", 122) and BN.players[122].series == nil, "Serie: abbrechen")
     say(121, "/serie weg tour")
     check(chatContains("Serie tour gelöscht", 121), "Serie: loeschen")
-    say(121, "/rennen loeschen teila"); say(121, "/rennen loeschen teilb")
+    -- Wird eine Strecke geloescht, verschwinden die Serien mit dieser Strecke.
+    say(121, "/serie neu runde teila teilb")
+    chatLog = {}
+    say(121, "/rennen loeschen teila")
+    check(chatContains("Mit gelöscht %(Serien mit dieser Strecke%): kaputt, runde", 121), "Serie: mit der Strecke geloescht")
+    local left = BN.loadTracks().series or {}
+    check(left.runde == nil and left.kaputt == nil, "Serie: keine Serie mit geloeschter Strecke")
+    say(121, "/rennen loeschen teilb")
     for _, pid in ipairs({ 121, 122 }) do
         if BN.players[pid] then BN.players[pid].pendingBonus, BN.players[pid].pendingRaces, BN.players[pid].pendingRecords = 0, 0, 0 end
         _G[events.onPlayerDisconnect](pid); players[pid] = nil
@@ -2344,7 +2376,8 @@ end
 
 -- --- Fahrauftraege (/auftrag, /ort) ----------------------------------------------------------------------------
 do
-    os.execute('rm -rf "' .. SHARED .. '/places"')
+    os.execute('rm -rf "' .. SHARED .. '/places" "' .. SHARED .. '/placesuggest"')
+    BN.suggestAt = {}
     local savedAdmins = C.admins
     C.admins = { "Planer" }
     players[95] = { name = "Planer", ids = { beammp = "9595" }, vehicles = {} }
@@ -2608,7 +2641,8 @@ end
 
 -- --- Ort-Vorschlaege von Spielern ------------------------------------------------------------------------------
 do
-    os.execute('rm -rf "' .. SHARED .. '/places"')
+    os.execute('rm -rf "' .. SHARED .. '/places" "' .. SHARED .. '/placesuggest"')
+    BN.suggestAt = {}
     local savedAdmins = C.admins
     C.admins = { "Pruefer" }
     players[123] = { name = "Pruefer", ids = { beammp = "12323" }, vehicles = {} }
@@ -2628,23 +2662,54 @@ do
     check(chatContains("Bitte warte noch %d+ min mit dem nächsten Vorschlag", 124), "Vorschlag: einer alle 10 Minuten")
     eq(#BN.loadPlaces(), 0, "Vorschlag: noch kein Ort")
     say(123, "/ort vorschlaege")
-    check(chatContains("^1%. 🚑 Klinik Nord %(krankenhaus%) von Melder", 123), "Vorschlag: Liste fuer Admins")
-    say(123, "/ort annehmen 1")
+    local sid1 = select(2, BN.loadPlaces())[1].sid
+    check(chatContains("^#" .. sid1 .. " 🚑 Klinik Nord %(krankenhaus%) von Melder", 123), "Vorschlag: Liste fuer Admins")
+    say(123, "/ort annehmen #" .. sid1)
     check(chatContains("🚑 Klinik Nord ist jetzt ein Ort für Aufträge", 123) and chatContains("Dein Vorschlag Klinik Nord wurde angenommen", 124), "Vorschlag: annehmen")
     local places, sugg = BN.loadPlaces()
     check(#places == 1 and places[1].x == 31000 and #sugg == 0, "Vorschlag: als Ort gespeichert, Vorschlag weg")
-    BN.players[124].lastSuggestAt = nil
+    -- Die Wartezeit gilt je Konto, auch nach Neuverbinden.
+    _G[events.onPlayerDisconnect](124)
+    _G[events.onPlayerJoin](124)
+    BN.track(124, 0, { 33000, 0, 0 }, 1)
+    chatLog = {}
+    say(124, "/ort vorschlag schule Grundschule Sued")
+    check(chatContains("Bitte warte noch %d+ min", 124), "Vorschlag: Wartezeit bleibt nach Neuverbinden")
+    BN.suggestAt = {}
     say(124, "/ort vorschlag schule Grundschule Sued")
     say(123, "/ort ablehnen 1")
+    check(chatContains("Aufruf: /ort ablehnen <Nr>", 123), "Vorschlag: Listennummer statt Kennung abgelehnt")
+    say(123, "/ort ablehnen " .. select(2, BN.loadPlaces())[1].sid)
     check(chatContains("Vorschlag Grundschule Sued abgelehnt", 123) and #select(2, BN.loadPlaces()) == 0, "Vorschlag: ablehnen")
     say(123, "/ort annehmen 7")
     check(chatContains("Aufruf: /ort annehmen <Nr>", 123), "Vorschlag: falsche Nummer")
     -- Ein Admin legt einen Ort an: offene Vorschlaege bleiben erhalten.
-    BN.players[124].lastSuggestAt = nil
+    BN.suggestAt = {}
     say(124, "/ort vorschlag tankstelle Tanke")
     BN.track(123, 0, { 35000, 0, 0 }, 2)
     say(123, "/ort neu schule Neue Schule")
     check(#BN.loadPlaces() == 2 and #select(2, BN.loadPlaces()) == 1, "Vorschlag: bleibt beim Anlegen anderer Orte erhalten")
+    -- Hoechstens 3 offene Vorschlaege je Spieler.
+    for i = 1, 3 do BN.suggestAt = {}; say(124, "/ort vorschlag tankstelle Tanke " .. i) end
+    eq(#select(2, BN.loadPlaces()), 3, "Vorschlag: hoechstens 3 offene je Spieler")
+    -- Kaputte Orte-Datei: nichts wird geaendert (sonst waeren alle Orte weg).
+    local pf = SHARED .. "/places/" .. BN.mapKey() .. ".json"
+    local f = io.open(pf, "w"); f:write("{kaputt"); f:close()
+    chatLog = {}
+    say(123, "/ort neu schule Noch Eine")
+    check(chatContains("kaputt oder nicht lesbar", 123), "Orte: kaputte Datei wird gemeldet")
+    say(123, "/ort annehmen " .. select(2, BN.loadPlaces())[1].sid)
+    check(chatContains("kaputt oder nicht lesbar", 123), "Orte: annehmen bei kaputter Datei verweigert")
+    f = io.open(pf, "r"); local body = f:read("*a"); f:close()
+    eq(body, "{kaputt", "Orte: kaputte Datei bleibt unberuehrt")
+    eq(#select(2, BN.loadPlaces()), 3, "Orte: Vorschlaege bleiben bei kaputter Orte-Datei")
+    -- Unbekannte Eintraege bleiben beim Schreiben erhalten.
+    f = io.open(pf, "w"); f:write('{"places":[{"type":"zukunft","name":"Neu","x":1,"y":2,"z":3}]}'); f:close()
+    say(123, "/ort neu schule Noch Eine")
+    f = io.open(pf, "r"); body = f:read("*a"); f:close()
+    check(body:find("zukunft", 1, true) and body:find("Noch Eine", 1, true), "Orte: unbekannte Eintraege bleiben erhalten")
+    BN.suggestAt = {}
+    os.execute('rm -rf "' .. SHARED .. '/placesuggest"')
     for _, pid in ipairs({ 123, 124, 125 }) do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
     for _, id in ipairs({ "12323", "12424" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
     os.execute('rm -rf "' .. SHARED .. '/places"')
@@ -2681,6 +2746,47 @@ do
     chatLog = {}
     tick(301)
     check(chatContains("Einsatz bei Wache vorbei – niemand war schnell genug", 126), "Einsatz: verfaellt")
+    -- Teleport ans Ziel zaehlt nicht – und wer gesprungen ist, ist fuer diesen Einsatz raus.
+    BN.alert, BN.nextAlertAt = nil, clock
+    BN.alertTick()
+    check(BN.alert ~= nil, "Einsatz: neuer Alarm")
+    players[126].vehicles[1].pos = { 60000, 0, 0 }; tick(2)
+    check(BN.alert ~= nil, "Einsatz: Teleport gewinnt nicht")
+    players[126].vehicles[1].pos = { 61000, 0, 0 }; tick(1)
+    for _ = 1, 50 do move(126, 1, -20, 0, 0); tick(1) end
+    check(BN.alert ~= nil, "Einsatz: nach Sprung ausgeschieden")
+    -- Zuruecksetzen scheidet aus.
+    BN.alert, BN.nextAlertAt = nil, clock
+    players[126].vehicles[1].pos = { 61000, 0, 0 }; tick(1)
+    BN.alert, BN.nextAlertAt = nil, clock
+    BN.alertTick()
+    _G[events.onVehicleReset](126, 1)
+    for _ = 1, 50 do move(126, 1, -20, 0, 0); tick(1) end
+    check(BN.alert ~= nil, "Einsatz: nach Zuruecksetzen ausgeschieden")
+    -- Ein zweites Fahrzeug direkt am Ziel zaehlt nicht.
+    BN.alert = nil
+    players[126].vehicles[1].pos = { 61000, 0, 0 }; tick(1)
+    BN.alert, BN.nextAlertAt = nil, clock
+    BN.alertTick()
+    players[126].vehicles[2] = { pos = { 60005, 0, 0 }, tim = 0 }
+    tick(2)
+    check(BN.alert ~= nil, "Einsatz: zweites Fahrzeug am Ziel gewinnt nicht")
+    players[126].vehicles[2] = nil
+    _G[events.onVehicleDeleted](126, 2)
+    BN.alert = nil
+    -- Gaeste zaehlen nicht zu den Mitspielern.
+    players[128] = { name = "GastE", ids = {}, vehicles = { [1] = { pos = { 50000, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](128)
+    tick(1)
+    local savedMin0 = C.alertMinPlayers
+    local drivers = 0
+    for _, o in pairs(BN.players) do if not o.guest and next(o.vehicles) then drivers = drivers + 1 end end
+    C.alertMinPlayers = drivers + 1
+    BN.alert, BN.nextAlertAt = nil, clock
+    BN.alertTick()
+    check(BN.alert == nil, "Einsatz: Gaeste zaehlen nicht mit")
+    C.alertMinPlayers = savedMin0
+    _G[events.onPlayerDisconnect](128); players[128] = nil
     -- Zu wenige Spieler auf dem Server: kein Alarm.
     _G[events.onPlayerDisconnect](127); players[127] = nil
     local online = 0
@@ -3006,7 +3112,24 @@ do
     say(120, "/start")
     check(chatContains("Du kennst dich schon aus", 120) and not chatContains("Einsteiger%-Schritt", 120), "Einsteiger: nicht fuer alte Hasen")
     _G[events.onPlayerDisconnect](120); players[120] = nil
-    for _, id in ipairs({ "11919", "12020" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+    -- Beim Beitritt war die Datei nicht lesbar (Spieler gilt als neu), laut Datei faehrt er aber schon lange:
+    -- beim Speichern kein Einsteiger-Pfad und keine Schritt-XP.
+    C.tutorialXp = 1000                  -- deutlich groesser als alle anderen Bonus-XP dieser Fahrt
+    players[121] = { name = "Kaputtlese", ids = { beammp = "12121" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](121)
+    check(BN.players[121].tutorialStarted, "Einsteiger: gilt beim Beitritt als neu")
+    writeJson(SHARED .. "/players/12121.json", { id = "12121", name = "Kaputtlese", km = 300, seconds = 9000, bonusXp = 10 })
+    BN.savedRecently["12121"] = nil
+    tick(1)
+    for _ = 1, 60 do move(121, 0, 20); tick(1) end
+    BN.savePlayer(BN.players[121])
+    rec = readJson(SHARED .. "/players/12121.json")
+    check(rec.tutorial == false and rec.bonusXp < 1000, "Einsteiger: erfahrener Spieler mit unlesbarer Datei bekommt nichts")
+    chatLog = {}
+    tick(2)
+    check(not chatContains("Einsteiger", 121), "Einsteiger: danach keine Schritte mehr")
+    _G[events.onPlayerDisconnect](121); players[121] = nil
+    for _, id in ipairs({ "11919", "12020", "12121" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
     C.tutorialXp = 0
 end
 

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.53"
+BN.VERSION = "1.54"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -619,6 +619,11 @@ local EN = {
     ["Serie %s: Teil %d von %d geschafft (bisher %s). Weiter: %s"] = "Series %s: part %d of %d done (so far %s). Next: %s",
     ["🏆 Neuer Serienrekord %s: %s in %s!"] = "🏆 New series record %s: %s in %s!",
     ["🏁 Serie %s geschafft: %s gesamt – +%d XP"] = "🏁 Series %s done: %s total – +%d XP",
+    ["🏁 Serie %s geschafft: %s gesamt (deine Bestzeit: %s – XP gibt es für eine neue Bestzeit)"] =
+        "🏁 Series %s done: %s total (your best: %s – XP only for a new personal best)",
+    ["%s ist ein Befehl und kein Serienname – bitte einen anderen Namen."] = "%s is a command, not a series name – please pick another name.",
+    ["Jede Strecke nur einmal pro Serie (%s doppelt)."] = "Each track only once per series (%s twice).",
+    ["Mit gelöscht (Serien mit dieser Strecke): %s"] = "Also deleted (series using this track): %s",
     ["Noch keine Serien auf dieser Map. Admins: /serie neu <Name> <Strecke1> <Strecke2> …"] = "No series on this map yet. Admins: /series new <name> <track1> <track2> …",
     ["Serien auf dieser Map – starten mit /serie <Name>:"] = "Series on this map – start with /series <name>:",
     ["Du fährst gerade keine Serie."] = "You are not driving a series.",
@@ -1399,6 +1404,7 @@ function BN.savePlayer(s)
     applyDay(rec)
     BN.applyMonth(rec)
     local xpBefore = xpOf(rec)
+    local fileKm = rec.km
     local map = currentMap(s)
     rec.dayKm = rec.dayKm + s.pendingKm
     rec.daySeconds = rec.daySeconds + s.pendingSeconds
@@ -1464,7 +1470,14 @@ function BN.savePlayer(s)
     if s.friendsChanged then rec.friends = s.record.friends end
     if s.pendingRecap then rec.recapMonth = s.pendingRecap end
     if s.pendingSeenVersion then rec.seenVersion = s.pendingSeenVersion end
-    if s.tutorialStarted and type(rec.tutorial) ~= "table" then rec.tutorial = {} end
+    if s.tutorialStarted and rec.tutorial == nil and fileKm >= 5 then
+        -- Beim Beitritt war die Datei nicht lesbar (oder ein anderer Server hat inzwischen viel gespeichert): wer laut
+        -- Datei schon faehrt, bekommt keinen Einsteiger-Pfad – auch nicht die schon gutgeschriebenen Schritt-XP.
+        for _, xp in pairs(s.pendingTutorial or {}) do rec.bonusXp = rec.bonusXp - xp end
+        rec.tutorial = false
+        s.pendingTutorial, s.tutorialStarted, s.tutorialFinished = nil, nil, true
+    end
+    if s.tutorialStarted and type(rec.tutorial) ~= "table" and rec.tutorial ~= false then rec.tutorial = {} end
     if s.pendingTutorial and type(rec.tutorial) == "table" then
         -- Schon auf einem anderen Server bekommen: nicht doppelt.
         for id, xp in pairs(s.pendingTutorial) do
@@ -1741,6 +1754,11 @@ function BN.track(pid, vid, pos, tim, vel)
     if j and j.vid == vid then
         if jump then j.jumped = true else j.legDriven = (j.legDriven or 0) + counted end
     end
+    -- Einsatz-Alarm: genauso – nur das Fahrzeug vom Alarmbeginn, ein Sprung scheidet aus.
+    local e = BN.alert and BN.alert.entries[s.id]
+    if e and e.pid == pid and e.vid == vid then
+        if jump then e.out = true else e.driven = e.driven + counted end
+    end
     local speed
     if type(vel) == "table" then
         local vx, vy, vz = tonumber(vel[1] or vel.x) or 0, tonumber(vel[2] or vel.y) or 0, tonumber(vel[3] or vel.z) or 0
@@ -1764,6 +1782,8 @@ function BN.forgetVehicle(pid, vid)
     if not s then return end
     s.vehicles[vid] = nil
     if s.job and s.job.vid == vid then s.job.reset = true end   -- danach: weiter nur ohne Sprung (siehe jobTick)
+    local e = BN.alert and BN.alert.entries[s.id]
+    if e and e.pid == pid and e.vid == vid then e.out = true end   -- Zuruecksetzen/Fahrzeug weg: aus dem Einsatz
     local r = s.race
     if r and r.vid == vid and r.state ~= "armed" then
         BN.raceInvalid(s, "Fahrzeug zurückgesetzt")
@@ -2261,6 +2281,20 @@ local function saveTracks(data)
     ensureDir(racesDir())
     return writeFileAtomic(racesFile(), json.encode(data))
 end
+
+-- Text fuer Meldungen: ohne Steuerzeichen, hoechstens maxBytes Bytes, nie mitten in einem UTF-8-Zeichen getrennt.
+local function clipText(text, maxBytes)
+    text = tostring(text or ""):gsub("[%z\1-\31\127]", " ")
+    if #text <= maxBytes then return text end
+    local cut = maxBytes
+    while cut > 0 do
+        local b = text:byte(cut + 1) or 0
+        if b < 0x80 or b >= 0xC0 then break end       -- naechstes Byte beginnt ein Zeichen: hier trennen
+        cut = cut - 1
+    end
+    return text:sub(1, cut) .. "…"
+end
+BN.clipText = clipText
 
 local function trackName(name)
     name = tostring(name or ""):lower()
@@ -3367,8 +3401,22 @@ function commands.rennen(pid, arg)
         if sub == "loeschen" or sub == "löschen" then
             if not track then say(pid, "Strecke %s gibt es nicht.", name) return end
             data.tracks[name] = nil
+            -- Serien mit dieser Strecke liessen sich nicht mehr fahren: mit entfernen.
+            local gone = {}
+            if type(data.series) == "table" then
+                for n, d in pairs(data.series) do
+                    local uses = type(d) ~= "table" or type(d.tracks) ~= "table"
+                    if not uses then for _, t in ipairs(d.tracks) do if t == name then uses = true end end end
+                    if uses then gone[#gone + 1] = n end
+                end
+                for _, n in ipairs(gone) do data.series[n] = nil end
+            end
             saveTracks(data)
             say(pid, "Strecke %s gelöscht.", name)
+            if #gone > 0 then
+                table.sort(gone)
+                say(pid, "Mit gelöscht (Serien mit dieser Strecke): %s", table.concat(gone, ", "))
+            end
             return
         end
         local pos = currentPosition(s)
@@ -3490,6 +3538,9 @@ end
 -- Start nicht), innerhalb von 30 Minuten. Serien stehen in races/<Map>.json unter "series".
 
 BN.SERIES_MAX_SEC = 1800
+-- Unterbefehle von /serie: als Serienname nicht startbar.
+BN.SERIES_RESERVED = { stop = true, liste = true, list = true, neu = true, new = true, weg = true, loeschen = true,
+                       ["löschen"] = true, delete = true }
 
 -- Naechster Teil nach einem Zieleinlauf; true, wenn die Serie weitergeht oder gerade fertig wurde.
 function BN.seriesNext(s, trackDone, time)
@@ -3511,24 +3562,35 @@ function BN.seriesNext(s, trackDone, time)
     end
     s.series, s.race = nil, nil
     local total = se.total
-    local bonus = C.seriesXp
-    local record = false
+    -- XP nur fuer eine neue eigene Bestzeit (die erste Runde ist immer eine): sonst liesse sich eine kurze Serie
+    -- endlos fuer XP wiederholen.
+    local bonus, record, best = s.guest and C.seriesXp or 0, false, nil
     if not s.guest then
         local data = BN.loadTracks()
         local def = type(data.series) == "table" and data.series[se.name]
         if type(def) == "table" then
-            def.records = type(def.records) == "table" and def.records or {}
-            local prevBest = def.records[1] and tonumber(def.records[1].time)
-            local mine
-            for _, e in ipairs(def.records) do if type(e) == "table" and e.id == s.id then mine = e end end
-            if not mine then
-                mine = { id = s.id, name = s.name, time = total, at = now }
-                def.records[#def.records + 1] = mine
-            elseif total < (tonumber(mine.time) or math.huge) then
-                mine.time, mine.name, mine.at = total, s.name, now
+            local records = {}
+            if type(def.records) == "table" then
+                for _, e in ipairs(def.records) do
+                    if type(e) == "table" and tonumber(e.time) and type(e.id) == "string" then records[#records + 1] = e end
+                end
             end
-            table.sort(def.records, function(a, b) return (tonumber(a.time) or math.huge) < (tonumber(b.time) or math.huge) end)
-            while #def.records > 50 do table.remove(def.records) end
+            def.records = records
+            table.sort(records, function(a, b) return tonumber(a.time) < tonumber(b.time) end)
+            local prevBest = records[1] and tonumber(records[1].time)
+            local mine
+            for _, e in ipairs(records) do if e.id == s.id then mine = e end end
+            if not mine then
+                records[#records + 1] = { id = s.id, name = s.name, time = total, at = now }
+                bonus = C.seriesXp
+            elseif total < tonumber(mine.time) then
+                mine.time, mine.name, mine.at = total, s.name, now
+                bonus = C.seriesXp
+            else
+                best = tonumber(mine.time)
+            end
+            table.sort(records, function(a, b) return tonumber(a.time) < tonumber(b.time) end)
+            while #records > 50 do table.remove(records) end
             if not prevBest or total < prevBest then
                 record = true
                 bonus = bonus + C.raceRecordXp
@@ -3540,7 +3602,12 @@ function BN.seriesNext(s, trackDone, time)
     if record then
         sayAll("🏆 Neuer Serienrekord %s: %s in %s!", se.name, s.name, BN.fmtRaceTime(total))
     end
-    say(s.pid, "🏁 Serie %s geschafft: %s gesamt – +%d XP", se.name, BN.fmtRaceTime(total), bonus)
+    if best then
+        say(s.pid, "🏁 Serie %s geschafft: %s gesamt (deine Bestzeit: %s – XP gibt es für eine neue Bestzeit)", se.name,
+            BN.fmtRaceTime(total), BN.fmtRaceTime(best))
+    else
+        say(s.pid, "🏁 Serie %s geschafft: %s gesamt – +%d XP", se.name, BN.fmtRaceTime(total), bonus)
+    end
     return true
 end
 
@@ -3553,7 +3620,7 @@ function commands.serie(pid, arg)
     local series = type(data.series) == "table" and data.series or {}
     if sub == "" or sub == "liste" or sub == "list" then
         local names = {}
-        for n, d in pairs(series) do if type(d) == "table" and type(d.tracks) == "table" then names[#names + 1] = n end end
+        for n, d in pairs(series) do if type(n) == "string" and type(d) == "table" and type(d.tracks) == "table" then names[#names + 1] = n end end
         table.sort(names)
         if #names == 0 then
             say(pid, "Noch keine Serien auf dieser Map. Admins: /serie neu <Name> <Strecke1> <Strecke2> …")
@@ -3562,9 +3629,12 @@ function commands.serie(pid, arg)
         say(pid, "Serien auf dieser Map – starten mit /serie <Name>:")
         for _, n in ipairs(names) do
             local d = series[n]
-            local best = type(d.records) == "table" and type(d.records[1]) == "table" and d.records[1] or nil
-            chat(pid, string.format("%s: %s%s", n, table.concat(d.tracks, " → "),
-                best and (" · " .. tostring(best.name) .. " " .. BN.fmtRaceTime(tonumber(best.time))) or ""))
+            local best = type(d.records) == "table" and type(d.records[1]) == "table" and tonumber(d.records[1].time)
+                and d.records[1] or nil
+            local tracks = {}
+            for i, t in ipairs(d.tracks) do if i <= 5 then tracks[i] = tostring(t) end end
+            chat(pid, string.format("%s: %s%s", n, table.concat(tracks, " → "),
+                best and (" · " .. clipText(best.name, 32) .. " " .. BN.fmtRaceTime(tonumber(best.time))) or ""))
         end
         return
     end
@@ -3586,7 +3656,8 @@ function commands.serie(pid, arg)
             say(pid, "Serie %s gelöscht.", name)
             return
         end
-        local tracks = {}
+        if BN.SERIES_RESERVED[name] then say(pid, "%s ist ein Befehl und kein Serienname – bitte einen anderen Namen.", name) return end
+        local tracks, seen = {}, {}
         for i = 3, #words do
             local t = trackName(words[i])
             local def = t and data.tracks[t]
@@ -3594,6 +3665,8 @@ function commands.serie(pid, arg)
                 say(pid, "Strecke \"%s\" gibt es auf dieser Map nicht (oder sie hat kein Ziel).", tostring(words[i]))
                 return
             end
+            if seen[t] then say(pid, "Jede Strecke nur einmal pro Serie (%s doppelt).", t) return end
+            seen[t] = true
             tracks[#tracks + 1] = t
         end
         if #tracks < 2 or #tracks > 5 then say(pid, "Eine Serie hat 2 bis 5 Strecken.") return end
@@ -4026,20 +4099,6 @@ function commands.team(pid, arg)
     say(pid, "Aufruf: /team · /team gründen <Name> · /team beitreten <Name> · /team verlassen · /team liste")
 end
 
--- Text fuer Meldungen: ohne Steuerzeichen, hoechstens maxBytes Bytes, nie mitten in einem UTF-8-Zeichen getrennt.
-local function clipText(text, maxBytes)
-    text = tostring(text or ""):gsub("[%z\1-\31\127]", " ")
-    if #text <= maxBytes then return text end
-    local cut = maxBytes
-    while cut > 0 do
-        local b = text:byte(cut + 1) or 0
-        if b < 0x80 or b >= 0xC0 then break end       -- naechstes Byte beginnt ein Zeichen: hier trennen
-        cut = cut - 1
-    end
-    return text:sub(1, cut) .. "…"
-end
-BN.clipText = clipText
-
 -- /melden <Name> <Grund> (englisch /report): an die Admins – sofort im Chat an Admins auf diesem Server und ueber
 -- den Waechter (reports/*.json) an Discord/Telegram. Hoechstens eine Meldung je Spieler in BN.REPORT_COOLDOWN s.
 BN.REPORT_COOLDOWN = 120
@@ -4112,31 +4171,51 @@ local function placesFile()
     return placesDir() .. "/" .. map .. ".json"
 end
 
--- Liefert die Orte und die Vorschlaege von Spielern (beide bereinigt).
-function BN.loadPlaces()
-    local data = json.decode(readFile(placesFile()) or "")
-    local function clean(src, max)
-        local list = {}
-        if type(src) ~= "table" then return list end
-        for _, p in ipairs(src) do
-            if type(p) == "table" and type(p.type) == "string" and BN.PLACE_TYPES[p.type] and tonumber(p.x)
-                and tonumber(p.y) and tonumber(p.z) and #list < max then
-                list[#list + 1] = { type = p.type, name = clipText(p.name, 40), x = tonumber(p.x), y = tonumber(p.y),
-                                    z = tonumber(p.z), by = clipText(p.by, 32), byId = safeId(p.byId),
-                                    at = tonumber(p.at) }
-            end
-        end
-        return list
+-- Orte (places/<Map>.json, nur Admins schreiben) und Vorschlaege von Spielern (placesuggest/<Map>.json, getrennt –
+-- so beruehren Spieler die Orte-Datei nie). Lesen streng: "fehlt" ist leer, "kaputt/unlesbar" ist nil – dann wird
+-- nichts geschrieben (sonst waeren alle Orte weg). Beim Schreiben bleiben unbekannte Eintraege roh erhalten.
+local function suggestDir() return C.sharedDir .. "/placesuggest" end
+local function suggestFile() return suggestDir() .. "/" .. BN.mapKey() .. ".json" end
+
+local function readListFile(path, key)
+    local f, err, code = io.open(path, "rb")
+    if not f then
+        if code == ENOENT then return {} end
+        return nil, err
     end
-    if type(data) ~= "table" then return {}, {} end
-    return clean(data.places, BN.MAX_PLACES), clean(data.suggestions, 30)
+    local raw = f:read("*a")
+    f:close()
+    if raw == nil then return nil, "nicht lesbar" end
+    local data = json.decode(raw)
+    if type(data) ~= "table" then return nil, "kaputt" end
+    if data[key] == nil then return {} end
+    if type(data[key]) ~= "table" then return nil, "kaputt" end
+    return data[key]
 end
 
-local function savePlaces(list, suggestions)
+local function cleanPlaces(src, max)
+    local list = {}
+    for _, p in ipairs(src or {}) do
+        if type(p) == "table" and type(p.type) == "string" and BN.PLACE_TYPES[p.type] and tonumber(p.x)
+            and tonumber(p.y) and tonumber(p.z) and #list < max then
+            list[#list + 1] = { type = p.type, name = clipText(p.name, 40), x = tonumber(p.x), y = tonumber(p.y),
+                                z = tonumber(p.z), by = clipText(p.by, 32), byId = safeId(p.byId),
+                                at = tonumber(p.at), sid = type(p.sid) == "string" and p.sid:sub(1, 8) or nil }
+        end
+    end
+    return list
+end
+
+-- Orte und Vorschlaege dieser Map (bereinigt, fuer Auftraege und Anzeige).
+function BN.loadPlaces()
+    return cleanPlaces(readListFile(placesFile(), "places"), BN.MAX_PLACES),
+           cleanPlaces(readListFile(suggestFile(), "suggestions"), 30)
+end
+
+local function writeList(dir, path, key, list)
     ensureDir(C.sharedDir)
-    ensureDir(placesDir())
-    if suggestions == nil then suggestions = select(2, BN.loadPlaces()) end
-    return writeFileAtomic(placesFile(), json.encode({ places = list, suggestions = suggestions }))
+    ensureDir(dir)
+    return writeFileAtomic(path, json.encode({ [key] = list }))
 end
 
 local function fmtDist(lang, m)
@@ -4162,8 +4241,10 @@ function commands.ort(pid, arg)
     for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
     local sub = (words[1] or ""):lower()
     if sub == "" or sub == "liste" or sub == "list" then return commands.orte(pid) end
+    local broken = "Die Orte-Datei dieser Map ist kaputt oder nicht lesbar – nichts geändert (beamnet doctor)."
     if sub == "vorschlag" or sub == "vorschlagen" or sub == "suggest" then
-        -- Jeder mit Konto darf vorschlagen (hoechstens einer alle 10 Minuten, 30 offene je Map); Admins nehmen an.
+        -- Jeder mit Konto: hoechstens einer alle 10 Minuten (je Konto, auch ueber Neuverbinden), 3 offene je Spieler,
+        -- 30 je Map; Admins nehmen an.
         if s.guest then say(pid, "Vorschläge gibt es nur mit BeamMP-Konto.") return end
         local typ = (words[2] or ""):lower()
         typ = PLACE_ALIASES[typ] or typ
@@ -4175,15 +4256,27 @@ function commands.ort(pid, arg)
         local pos = currentPosition(s)
         if not pos then say(pid, "Keine Position – bitte erst mit einem Fahrzeug an den Ort fahren.") return end
         local now = BN.now()
-        if s.lastSuggestAt and now - s.lastSuggestAt < 600 then
-            say(pid, "Bitte warte noch %d min mit dem nächsten Vorschlag.", math.ceil((600 - (now - s.lastSuggestAt)) / 60))
+        BN.suggestAt = BN.suggestAt or {}
+        local last = BN.suggestAt[s.id]
+        if last and now - last < 600 then
+            say(pid, "Bitte warte noch %d min mit dem nächsten Vorschlag.", math.ceil((600 - (now - last)) / 60))
             return
         end
-        local places, suggestions = BN.loadPlaces()
-        if #suggestions >= 30 then say(pid, "Es gibt schon viele offene Vorschläge – die Admins schauen sie sich an.") return end
-        s.lastSuggestAt = now
-        suggestions[#suggestions + 1] = { type = typ, name = name, x = pos.x, y = pos.y, z = pos.z, by = s.name, byId = s.id, at = now }
-        if not savePlaces(places, suggestions) then say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.") return end
+        local raw, err = readListFile(suggestFile(), "suggestions")
+        if not raw then BN.logError("Ort-Vorschlaege", err) say(pid, broken) return end
+        local list, mine = cleanPlaces(raw, 1000), 0
+        for _, p in ipairs(list) do if p.byId == s.id then mine = mine + 1 end end
+        if #list >= 30 or mine >= 3 then say(pid, "Es gibt schon viele offene Vorschläge – die Admins schauen sie sich an.") return end
+        local sid, taken = tostring(math.floor(now) % 100000), {}
+        for _, p in ipairs(list) do if p.sid then taken[p.sid] = true end end
+        while taken[sid] do sid = tostring((tonumber(sid) + 1) % 100000) end
+        list[#list + 1] = { type = typ, name = name, x = pos.x, y = pos.y, z = pos.z, by = s.name, byId = s.id, at = now, sid = sid }
+        if not writeList(suggestDir(), suggestFile(), "suggestions", list) then
+            say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.")
+            return
+        end
+        for k, t in pairs(BN.suggestAt) do if now - t >= 600 then BN.suggestAt[k] = nil end end
+        BN.suggestAt[s.id] = now
         say(pid, "Danke! Dein Vorschlag %s (%s) ist bei den Admins.", name, typ)
         modlog({ action = "ort-vorschlag", by = s.name, byId = s.id, target = name, kind = typ, map = BN.mapKey() })
         for apid, a in pairs(BN.players) do
@@ -4195,7 +4288,6 @@ function commands.ort(pid, arg)
         say(pid, "Nur Admins legen Orte an – du kannst einen vorschlagen: /ort vorschlag <Typ> <Name>")
         return
     end
-    local places = BN.loadPlaces()
     if sub == "vorschlaege" or sub == "vorschläge" or sub == "suggestions" then
         local _, suggestions = BN.loadPlaces()
         if #suggestions == 0 then say(pid, "Keine offenen Vorschläge.") return end
@@ -4203,36 +4295,47 @@ function commands.ort(pid, arg)
         local pos, lang = currentPosition(s), BN.langOf(pid)
         for i, p in ipairs(suggestions) do
             if i > 10 then break end
-            chat(pid, string.format("%d. %s %s (%s) von %s%s", i, BN.PLACE_TYPES[p.type].icon, p.name, p.type, p.by or "?",
-                pos and (" · " .. fmtDist(lang, dist(pos, p))) or ""))
+            chat(pid, string.format("#%s %s %s (%s) von %s%s", p.sid or "?", BN.PLACE_TYPES[p.type].icon, p.name, p.type,
+                p.by or "?", pos and (" · " .. fmtDist(lang, dist(pos, p))) or ""))
         end
         return
     end
+    -- Ab hier wird die Orte-Datei geaendert: nur, wenn sie sich lesen laesst; unbekannte Eintraege bleiben roh erhalten.
+    local raw, err = readListFile(placesFile(), "places")
+    if not raw then BN.logError("Orte", err) say(pid, broken) return end
+    local places = cleanPlaces(raw, BN.MAX_PLACES)
+    local function hasName(name)
+        for _, q in ipairs(places) do if q.name:lower() == name:lower() then return q end end
+    end
     if sub == "annehmen" or sub == "accept" or sub == "ablehnen" or sub == "reject" then
-        local nr = tonumber(words[2])
-        local _, suggestions = BN.loadPlaces()
-        local p = nr and suggestions[math.floor(nr)]
-        if not p then say(pid, "Aufruf: /ort %s <Nr> – Liste: /ort vorschlaege", sub) return end
-        table.remove(suggestions, math.floor(nr))
-        if sub == "annehmen" or sub == "accept" then
-            for _, q in ipairs(places) do
-                if q.name:lower() == p.name:lower() then
-                    savePlaces(places, suggestions)
-                    say(pid, "Den Ort %s gibt es schon – Vorschlag entfernt.", q.name)
-                    return
-                end
+        -- Feste Kennung (#12345 aus der Liste) statt Listennummer: ein anderer Admin kann die Liste inzwischen geaendert haben.
+        local want = tostring(words[2] or ""):gsub("^#", "")
+        local sraw, serr = readListFile(suggestFile(), "suggestions")
+        if not sraw then BN.logError("Ort-Vorschlaege", serr) say(pid, broken) return end
+        local list = cleanPlaces(sraw, 1000)
+        local idx
+        for i, p in ipairs(list) do if p.sid == want then idx = i end end
+        if not idx then say(pid, "Aufruf: /ort %s <Nr> – Liste: /ort vorschlaege", sub) return end
+        local p = table.remove(list, idx)
+        local accept = sub == "annehmen" or sub == "accept"
+        if accept then
+            if hasName(p.name) then
+                writeList(suggestDir(), suggestFile(), "suggestions", list)
+                say(pid, "Den Ort %s gibt es schon – Vorschlag entfernt.", p.name)
+                return
             end
             if #places >= BN.MAX_PLACES then say(pid, "Auf dieser Map gibt es schon %d Orte.", BN.MAX_PLACES) return end
-            places[#places + 1] = { type = p.type, name = p.name, x = p.x, y = p.y, z = p.z, by = p.by }
-            if not savePlaces(places, suggestions) then say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.") return end
+            raw[#raw + 1] = { type = p.type, name = p.name, x = p.x, y = p.y, z = p.z, by = p.by }
+            if not writeList(placesDir(), placesFile(), "places", raw) then say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.") return end
             say(pid, "%s %s ist jetzt ein Ort für Aufträge.", BN.PLACE_TYPES[p.type].icon, p.name)
             for opid, o in pairs(BN.players) do
                 if p.byId and o.id == p.byId then say(opid, "Dein Vorschlag %s wurde angenommen – danke!", p.name) end
             end
         else
-            savePlaces(places, suggestions)
             say(pid, "Vorschlag %s abgelehnt.", p.name)
         end
+        writeList(suggestDir(), suggestFile(), "suggestions", list)
+        modlog({ action = accept and "ort-angenommen" or "ort-abgelehnt", by = s.name, target = p.name, kind = p.type, map = BN.mapKey() })
         return
     end
     if sub == "neu" or sub == "new" then
@@ -4251,28 +4354,27 @@ function commands.ort(pid, arg)
             say(pid, "Keine Position – bitte erst mit einem Fahrzeug an den Ort fahren.")
             return
         end
-        for _, p in ipairs(places) do
-            if p.name:lower() == name:lower() then
-                say(pid, "Den Ort %s gibt es schon (löschen: /ort weg %s).", p.name, p.name)
-                return
-            end
+        local q = hasName(name)
+        if q then
+            say(pid, "Den Ort %s gibt es schon (löschen: /ort weg %s).", q.name, q.name)
+            return
         end
         if #places >= BN.MAX_PLACES then
             say(pid, "Auf dieser Map gibt es schon %d Orte.", BN.MAX_PLACES)
             return
         end
-        places[#places + 1] = { type = typ, name = name, x = pos.x, y = pos.y, z = pos.z, by = s.name }
-        if not savePlaces(places) then say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.") return end
+        raw[#raw + 1] = { type = typ, name = name, x = pos.x, y = pos.y, z = pos.z, by = s.name }
+        if not writeList(placesDir(), placesFile(), "places", raw) then say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.") return end
         say(pid, "%s %s angelegt (%s). Spieler fahren jetzt mit /auftrag hierher.", BN.PLACE_TYPES[typ].icon, name, typ)
         return
     end
     if sub == "weg" or sub == "loeschen" or sub == "löschen" or sub == "remove" then
         local name = table.concat(words, " ", 2):lower()
-        for i, p in ipairs(places) do
-            if p.name:lower() == name then
-                table.remove(places, i)
-                savePlaces(places)
-                say(pid, "Ort %s gelöscht.", p.name)
+        for i, p in ipairs(raw) do
+            if type(p) == "table" and clipText(p.name, 40):lower() == name then
+                table.remove(raw, i)
+                writeList(placesDir(), placesFile(), "places", raw)
+                say(pid, "Ort %s gelöscht.", clipText(p.name, 40))
                 return
             end
         end
@@ -4696,7 +4798,8 @@ end
 
 -- ---------------------------------------------------------------------------------------------------------------------
 -- Einsatz-Alarm: ein Ziel fuer alle auf diesem Server, 5 Minuten Zeit. Es zaehlt nur, wer beim Alarm mindestens
--- jobMinDistM entfernt war (wer schon dort steht, gewinnt nicht), und wer im Fahrzeug ankommt.
+-- jobMinDistM entfernt war (wer schon dort steht, gewinnt nicht), mit demselben Fahrzeug ohne Sprung ankommt und
+-- mindestens 70 % der Luftlinie gefahren ist (Eintraege je Konto, nicht je Verbindung).
 
 BN.ALERT_TEXT = {
     krankenhaus = "🚨 Notfall! Ein Patient muss sofort ins Krankenhaus %s",
@@ -4718,10 +4821,12 @@ function BN.alertTick()
             sayAll("Einsatz bei %s vorbei – niemand war schnell genug.", a.place.name)
             return
         end
+        -- Gewinnen kann nur, wer beim Alarm mit Konto und weit genug weg dabei war, mit demselben Fahrzeug ohne Sprung
+        -- oder Zuruecksetzen ankommt und den Weg wirklich gefahren ist (wie bei /auftrag).
         for pid, s in pairs(BN.players) do
-            local start = a.start[pid]
-            local pos = currentPosition(s)
-            if start and start >= C.jobMinDistM and pos and now - (pos.at or 0) <= 3 and dist(pos, a.place) <= C.jobRadiusM then
+            local e = a.entries[s.id]
+            local v = e and e.pid == pid and not e.out and s.vehicles[e.vid]
+            if v and now - (v.at or 0) <= 3 and dist(v, a.place) <= C.jobRadiusM and e.driven >= 0.7 * e.start then
                 BN.alert = nil
                 s.pendingBonus = s.pendingBonus + C.alertXp
                 sayAll("🏆 %s war zuerst beim Einsatz %s (%s) – +%d XP!", s.name, a.place.name, fmtClock(now - a.at), C.alertXp)
@@ -4733,18 +4838,24 @@ function BN.alertTick()
     if not BN.nextAlertAt then BN.nextAlertAt = now + math.floor(C.alertEverySec * (0.5 + math.random())) return end
     if now < BN.nextAlertAt then return end
     BN.nextAlertAt = now + math.floor(C.alertEverySec * (0.5 + math.random()))
+    -- Mitzaehlen nur Spieler mit Konto, die gerade fahren (Gaeste und Zuschauer zaehlen nicht).
     local count = 0
-    for _ in pairs(BN.players) do count = count + 1 end
+    for _, s in pairs(BN.players) do
+        if not s.guest and currentPosition(s) then count = count + 1 end
+    end
     if count < C.alertMinPlayers then return end
     local places = BN.loadPlaces()
     if #places == 0 then return end
     local place = places[BN.random(#places)]
-    local start = {}
+    local entries = {}
     for pid, s in pairs(BN.players) do
         local pos = currentPosition(s)
-        if pos then start[pid] = dist(pos, place) end
+        local d = pos and dist(pos, place)
+        if not s.guest and d and d >= C.jobMinDistM then
+            entries[s.id] = { pid = pid, vid = pos.vid, start = d, driven = 0 }
+        end
     end
-    BN.alert = { place = place, at = now, start = start }
+    BN.alert = { place = place, at = now, entries = entries }
     sayEach(function(lang)
         return tr(lang, BN.ALERT_TEXT[place.type] or ALERT_DEFAULT, place.name) .. tr(lang, " – wer zuerst da ist, bekommt +%d XP (5 min)", C.alertXp)
     end)

@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.66 / Plugin 1.53)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.66 / Plugin 1.54)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -28,7 +28,11 @@
 - [x] Rennserien `/serie` (1.51) mit Bestenliste im Spiel und auf der Statusseite (1.65).
 - [x] Ort-Vorschläge von Spielern `/ort vorschlag` (1.52, auch an Discord/Telegram), Einsatz-Alarm für alle (1.53),
       `tests/alle.sh` (alle Prüfungen, nur bei „ALLES GRÜN“ committen).
-- [ ] Siebte Sicherheitsprüfung über Einsteiger-Pfad, Serien, Vorschläge und Einsatz-Alarm.
+- [x] Siebte Sicherheitsprüfung: 9 Funde, behoben (Plugin 1.54). Einsatz-Alarm nur mit echter Fahrt (kein Teleport,
+      kein Zurücksetzen, kein zweites Fahrzeug, Gäste zählen nicht mit). Ort-Vorschläge in eigener Datei mit fester
+      Nummer, eine kaputte Orte-Datei wird nie überschrieben. Serien-XP nur für eine neue eigene Bestzeit, keine
+      doppelten Strecken und Befehlsnamen. Beim Löschen einer Strecke verschwinden ihre Serien. Kein Einsteiger-Pfad
+      für erfahrene Fahrer, deren Datei beim Beitritt nicht lesbar war.
 - [ ] Erfolge für Aufträge und Verfolgungsjagden (nach der Werkstatt-Aufgabe 07, damit es keine Konflikte gibt).
 
 ## Die nächsten 40 Punkte (Stand Werkzeug 1.48 / Plugin 1.29)
