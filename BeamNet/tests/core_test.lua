@@ -1644,6 +1644,36 @@ do
     for pid = 91, 93 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
 end
 
+-- --- Verbindungs-Spam (onPlayerAuth) -------------------------------------------------------------------------
+do
+    local auth = _G[events.onPlayerAuth]
+    local function try(name, id, ip) return auth(name, "USER", false, { beammp = id, ip = ip }) end
+    for i = 1, 6 do check(try("Hopper", "8888", "9.9.9.9") == nil, "Join-Spam: Versuch " .. i .. " erlaubt") end
+    local reason = try("Hopper", "8888", "9.9.9.9")
+    check(type(reason) == "string" and reason:find("Zu viele Verbindungsversuche – bitte in 2 Minuten", 1, true),
+        "Join-Spam: 7. Versuch in der Minute abgewiesen")
+    check(try("Hopper", "8888", "1.1.1.1") ~= nil, "Join-Spam: Konto bleibt gesperrt (andere IP hilft nicht)")
+    check(try("Andere", "7777", "9.9.9.9") ~= nil, "Join-Spam: IP bleibt gesperrt (anderes Konto hilft nicht)")
+    check(try("Fremd", "6666", "2.2.2.2") == nil, "Join-Spam: andere Spieler nicht betroffen")
+    local logged = 0
+    for line in io.lines(SHARED .. "/modlog.jsonl") do if line:find('"action":"join-spam"', 1, true) then logged = logged + 1 end end
+    eq(logged, 1, "Join-Spam: einmal im Moderationsprotokoll")
+    clock = clock + 121
+    check(try("Hopper", "8888", "9.9.9.9") == nil, "Join-Spam: nach der Sperre wieder erlaubt")
+    -- Langsames Wiederverbinden (alle 11 s) ist kein Spam.
+    local ok = true
+    for _ = 1, 12 do clock = clock + 11; if try("Langsam", "5555", "5.5.5.5") ~= nil then ok = false end end
+    check(ok, "Join-Spam: Wiederverbinden alle 11 s bleibt erlaubt")
+    -- Admins nie.
+    local savedAdmins = C.admins
+    C.admins = { "Chef" }
+    ok = true
+    for _ = 1, 10 do if try("Chef", "4444", "4.4.4.4") ~= nil then ok = false end end
+    check(ok, "Join-Spam: Admins ausgenommen")
+    C.admins = savedAdmins
+    BN.joins = {}
+end
+
 -- --- XP-Event (/event) ------------------------------------------------------------------------------------------
 do
     local savedAdmins = C.admins

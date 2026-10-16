@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.33 / Plugin 1.18)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.34 / Plugin 1.19)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -63,7 +63,9 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 31. [x] Admin-Benachrichtigung an Discord/Telegram bei Bann, Kick, Stummschaltung (auch Spam) und Verwarnung,
         aus dem Moderationsprotokoll (Werkzeug 1.27). Offen: auffällige Rekorde.
 32. [ ] Wortfilter (einstellbare Liste), mit Verwarnung statt sofortigem Kick.
-33. [ ] Schutz gegen Join-/Rejoin-Spam (zu viele Beitritte pro Minute pro IP).
+33. [x] Schutz gegen Verbindungs-Spam: Mehr als 6 Versuche pro Minute je IP oder Konto führen zu 2 Minuten Abweisung,
+        mit Meldung an Discord/Telegram. Admins sind ausgenommen, Werte einstellbar (`joinLimit`, `joinWindowSec`,
+        `joinBlockSec`) (Plugin 1.19).
 34. [x] Dritte Sicherheitsprüfung durch einen Prüf-Agenten: 8 Funde + 5 Fehler, alle behoben (Werkzeug 1.30–1.32).
 
 **E. Betrieb und Werkzeug**

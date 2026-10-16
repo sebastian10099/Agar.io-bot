@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.18"
+BN.VERSION = "1.19"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -71,6 +71,11 @@ local defaults = {
     spamMessages = 5,
     spamWindowSec = 5,
     spamMuteSec = 30,
+    -- Schutz gegen Verbindungs-Spam: mehr als joinLimit Versuche in joinWindowSec Sekunden (je IP bzw. Konto)
+    -- -> joinBlockSec Sekunden abgewiesen. Admins sind ausgenommen.
+    joinLimit = 6,
+    joinWindowSec = 60,
+    joinBlockSec = 120,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
     commandWindowSec = 10,
@@ -453,10 +458,10 @@ end
 -- Werte, die ganze Zahlen sein muessen (z. B. "+40 XP" im Chat).
 local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBestXp = true, raceRecordXp = true,
                        spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true,
-                       mapVoteSec = true }
+                       mapVoteSec = true, joinLimit = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
-                     spamWindowSec = 1, mapVoteSec = 15 }
+                     spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10 }
 
 function BN.loadOverrides()
     local data = readFile(C.sharedDir .. "/config.json")
@@ -582,6 +587,8 @@ local EN = {
         "Great to have you, %s! Your kilometres and XP count on every BeamNet server.",
     ["%s ist zum ersten Mal im BeamNet – herzlich willkommen!"] = "%s is new to BeamNet – welcome!",
     ["Regeln:"] = "Rules:",
+    ["Zu viele Verbindungsversuche – bitte in %d Minuten erneut versuchen."] =
+        "Too many connection attempts – please try again in %d minutes.",
     ["Für dieses Netzwerk sind keine Regeln eingetragen."] = "No rules have been set for this network.",
     ["Fair fahren: kein absichtliches Rammen oder Blockieren."] = "Drive fair: no deliberate ramming or blocking.",
     ["Freundlich im Chat – keine Beleidigungen, kein Spam."] = "Be friendly in chat – no insults, no spam.",
@@ -3126,9 +3133,56 @@ function BN_onChatMessage(pid, _, message)
 end
 
 -- Gesperrte Spieler gar nicht erst hereinlassen (Rueckgabe eines Textes = Ablehnung mit diesem Grund).
+-- Verbindungs-Spam: Zeitpunkte der Versuche je Schluessel (IP und Konto), gesperrt bis blockedUntil.
+BN.joins = BN.joins or {}
+
+function BN.joinAllowed(name, id, ip)
+    for _, a in ipairs(C.admins or {}) do
+        a = tostring(a)
+        if (id and a == id) or a:lower() == tostring(name or ""):lower() then return true end
+    end
+    local now = BN.now()
+    local keys = {}
+    if ip and ip ~= "" then keys[#keys + 1] = "ip:" .. tostring(ip) end
+    if id then keys[#keys + 1] = "id:" .. id end
+    if #keys == 0 then return true end
+    -- Aufraeumen, damit die Tabelle nicht waechst.
+    BN.joinsCount = (BN.joinsCount or 0) + 1
+    if BN.joinsCount % 200 == 0 then
+        for k, e in pairs(BN.joins) do
+            if (e.blockedUntil or 0) < now and (e.times[#e.times] or 0) < now - C.joinWindowSec then BN.joins[k] = nil end
+        end
+    end
+    local blocked, newlyBlocked = false, false
+    for _, k in ipairs(keys) do
+        local e = BN.joins[k] or { times = {} }
+        BN.joins[k] = e
+        if (e.blockedUntil or 0) > now then
+            blocked = true
+        else
+            local kept = {}
+            for _, t in ipairs(e.times) do if now - t < C.joinWindowSec then kept[#kept + 1] = t end end
+            kept[#kept + 1] = now
+            e.times = kept
+            if #kept > C.joinLimit then
+                e.blockedUntil, e.times = now + C.joinBlockSec, {}
+                blocked, newlyBlocked = true, true
+            end
+        end
+    end
+    if newlyBlocked then
+        print("[BeamNetCore] Zu viele Verbindungsversuche, kurz gesperrt: " .. tostring(name))
+        modlog({ action = "join-spam", target = clipText(name or "?", 40), targetId = id, seconds = C.joinBlockSec })
+    end
+    return not blocked
+end
+
 function BN_onPlayerAuth(name, role, isGuest, identifiers)
     local ids = type(identifiers) == "table" and identifiers or {}
     local id = safeId(ids.beammp)
+    if not BN.joinAllowed(name, id, ids.ip) then
+        return tr(C.language, "Zu viele Verbindungsversuche – bitte in %d Minuten erneut versuchen.", math.ceil(C.joinBlockSec / 60))
+    end
     local ban = BN.findBan(id, ids.ip)
     if ban then
         print("[BeamNetCore] Gesperrter Spieler abgewiesen: " .. tostring(name))

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.33"
+VERSION="1.34"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1532,6 +1532,10 @@ for raw in chunk[:end].splitlines():
         if isinstance(f, (int, float)) and isinstance(u, (int, float)) and 1 < f <= 5 and 0 < u < 4e9:
             fs = (f"{f:.1f}".replace(".", ",") if f != int(f) else str(int(f)))
             lines.append(f"🎉 {by} startet ein XP-Event: {fs}-fache XP bis {time.strftime('%H:%M', time.localtime(u))} Uhr – jetzt einsteigen!")
+    elif a == "join-spam":
+        sec = e.get("seconds")
+        span = f" für {int(sec) // 60} min" if isinstance(sec, (int, float)) and sec >= 60 else ""
+        lines.append(f"🚫 {who} hat sich zu oft neu verbunden und wird{span} abgewiesen ({where(e)})")
     elif a == "event-stop":
         lines.append(f"🎉 {by} hat das XP-Event beendet")
 for l in lines[:10]:

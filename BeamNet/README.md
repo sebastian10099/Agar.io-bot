@@ -253,6 +253,8 @@ Englische Befehlsnamen funktionieren ebenfalls: `/help`, `/league`, `/race [new|
 - Admins können nicht gesperrt werden und haben keinen Spamschutz.
 - **Spamschutz** für alle anderen: mehr als 5 Nachrichten in 5 Sekunden → 30 Sekunden stumm (einstellbar:
   `spamMessages`, `spamWindowSec`, `spamMuteSec` in `config.json`). Befehle funktionieren weiter.
+- **Schutz gegen Verbindungs-Spam**: wer sich in einer Minute mehr als 6-mal verbindet (je IP oder Konto), wird
+  2 Minuten abgewiesen (einstellbar: `joinLimit`, `joinWindowSec`, `joinBlockSec`). Admins sind ausgenommen.
 - Alles landet im Moderationsprotokoll (`modlog.jsonl`, lesbar mit `beamnet modlog`).
 
 ### Zeitrennen
