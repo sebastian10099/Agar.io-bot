@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.43"
+BN.VERSION = "1.44"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -600,8 +600,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /fangen · /melden · /regeln · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|speed|jobs|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /job · /places · /goal · /chase · /report · /rules · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /fangen · /duell · /melden · /regeln · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|speed|jobs|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /job · /places · /goal · /chase · /duel · /report · /rules · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -831,6 +831,25 @@ local EN = {
     ["Aufruf: /resetspeed <Name> – Spieler muss auf diesem Server online sein."] = "Usage: /resetspeed <name> – the player must be online on this server.",
     ["Höchstgeschwindigkeit von %s zurückgesetzt (war %d km/h)."] = "Top speed of %s reset (was %d km/h).",
     ["Deine Höchstgeschwindigkeit wurde von %s zurückgesetzt."] = "Your top speed was reset by %s.",
+    -- Duell
+    ["Duell auf %s beendet – nicht beide im Ziel, kein Sieger."] = "Duel on %s over – not both finished, no winner.",
+    ["⚔️ Duell auf %s: %s gewinnt (%s) gegen %s (%s)!"] = "⚔️ Duel on %s: %s wins (%s) against %s (%s)!",
+    ["Duell gewonnen: +%d Bonus-XP!"] = "Duel won: +%d bonus XP!",
+    ["Gerade läuft ein Duell – da kann man nicht mitfahren."] = "A duel is running – you can't join it.",
+    ["Keine offene Herausforderung."] = "No open challenge.",
+    ["Gerade läuft schon ein Gruppenrennen – bitte gleich noch einmal herausfordern."] = "A group race is already running – please challenge again shortly.",
+    ["Die Strecke %s gibt es nicht mehr."] = "The track %s no longer exists.",
+    ["⚔️ %s nimmt dein Duell an! Strecke %s, Start in 15 s."] = "⚔️ %s accepts your duel! Track %s, start in 15 s.",
+    ["⚔️ Duell gegen %s auf %s – Start in 15 s."] = "⚔️ Duel against %s on %s – start in 15 s.",
+    ["%s hat dein Duell abgelehnt."] = "%s declined your duel.",
+    ["Herausforderung abgelehnt."] = "Challenge declined.",
+    ["Aufruf: /duell <Name> <Strecke> · annehmen: /duell ja · ablehnen: /duell nein"] = "Usage: /duel <name> <track> · accept: /duel yes · decline: /duel no",
+    ["Gegen dich selbst geht kein Duell."] = "You can't duel yourself.",
+    ["Bitte warte noch %d s vor der nächsten Herausforderung."] = "Please wait %d s before the next challenge.",
+    ["Gerade läuft ein Gruppenrennen – danach geht's."] = "A group race is running – try again afterwards.",
+    ["⚔️ %s fordert dich zum Duell auf %s heraus! Annehmen: /duell ja · ablehnen: /duell nein (60 s)"] =
+        "⚔️ %s challenges you to a duel on %s! Accept: /duel yes · decline: /duel no (60 s)",
+    ["Herausforderung an %s gesendet."] = "Challenge sent to %s.",
     -- Tipps
     ["Tipp: /auftrag – fahr einen Patienten ins Krankenhaus oder Kinder zur Schule und sammle XP."] =
         "Tip: /job – drive a patient to hospital or children to school and earn XP.",
@@ -2121,6 +2140,22 @@ function BN.endGroup()
         local m = BN.players[pid]
         if m and m.race then m.race.group = nil end
     end
+    if g.duel then
+        -- Duell: Ergebnis nur an die beiden, XP nur fuer den Sieger (mit Konto) und nur, wenn beide im Ziel sind.
+        local function tell(text, ...) for pid in pairs(g.members) do if BN.players[pid] then say(pid, text, ...) end end end
+        if #g.results < 2 then
+            tell("Duell auf %s beendet – nicht beide im Ziel, kein Sieger.", g.name)
+            return
+        end
+        local w, l = g.results[1], g.results[2]
+        tell("⚔️ Duell auf %s: %s gewinnt (%s) gegen %s (%s)!", g.name, w.name, BN.fmtRaceTime(w.time), l.name, BN.fmtRaceTime(l.time))
+        local m = BN.players[w.pid]
+        if m and m.id and m.id == w.id then
+            m.pendingBonus = m.pendingBonus + BN.GROUP_XP[1]
+            say(m.pid, "Duell gewonnen: +%d Bonus-XP!", BN.GROUP_XP[1])
+        end
+        return
+    end
     if #g.results == 0 then
         sayAll("Gruppenrennen auf %s beendet – niemand im Ziel.", g.name)
         return
@@ -2700,7 +2735,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /fangen · /melden · /regeln · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /fangen · /duell · /melden · /regeln · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name> · /resetspeed")
     end
@@ -2860,6 +2895,75 @@ function commands.wo(pid, arg)
     if #hits > 5 then say(pid, "… und %d weitere – bitte genauer schreiben.", #hits - 5) end
 end
 commands.where = commands.wo
+
+-- /duell <Name> <Strecke>: einen Spieler auf diesem Server zu einem Zeitrennen herausfordern; er nimmt mit /duell ja an
+-- (60 s Zeit). Das Duell ist ein Gruppenrennen nur fuer die beiden (Start nach 15 s, Fehlstart wie dort).
+BN.duelInvites = BN.duelInvites or {}
+
+function commands.duell(pid, arg)
+    local s = session(pid)
+    local words = {}
+    for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
+    local sub = (words[1] or ""):lower()
+    local now = BN.now()
+    if sub == "ja" or sub == "yes" or sub == "annehmen" or sub == "accept" then
+        local inv = BN.duelInvites[pid]
+        BN.duelInvites[pid] = nil
+        local from = inv and BN.players[inv.from]
+        if not inv or not from or now - inv.at > 60 then
+            say(pid, "Keine offene Herausforderung.")
+            return
+        end
+        if BN.group then
+            say(pid, "Gerade läuft schon ein Gruppenrennen – bitte gleich noch einmal herausfordern.")
+            return
+        end
+        local track = BN.loadTracks().tracks[inv.track]
+        if type(track) ~= "table" or not track.finish then
+            say(pid, "Die Strecke %s gibt es nicht mehr.", inv.track)
+            return
+        end
+        BN.group = { name = inv.track, startAt = now + 15, by = from.name, members = {}, results = {}, done = {}, duel = true }
+        BN.joinGroup(inv.from)
+        BN.joinGroup(pid)
+        say(inv.from, "⚔️ %s nimmt dein Duell an! Strecke %s, Start in 15 s.", s.name, inv.track)
+        say(pid, "⚔️ Duell gegen %s auf %s – Start in 15 s.", from.name, inv.track)
+        return
+    end
+    if sub == "nein" or sub == "no" or sub == "ablehnen" then
+        local inv = BN.duelInvites[pid]
+        BN.duelInvites[pid] = nil
+        if inv and BN.players[inv.from] then say(inv.from, "%s hat dein Duell abgelehnt.", s.name) end
+        say(pid, "Herausforderung abgelehnt.")
+        return
+    end
+    local name = trackName(words[2])
+    local target = sub ~= "" and findPlayerByName(words[1])
+    if not target or not name then
+        say(pid, "Aufruf: /duell <Name> <Strecke> · annehmen: /duell ja · ablehnen: /duell nein")
+        return
+    end
+    if target.pid == pid then say(pid, "Gegen dich selbst geht kein Duell.") return end
+    local track = BN.loadTracks().tracks[name]
+    if type(track) ~= "table" or not track.finish then
+        say(pid, "Strecke \"%s\" gibt es auf dieser Map nicht. Liste: /rennen", name)
+        return
+    end
+    if s.mutedUntil and now < s.mutedUntil then
+        say(pid, "Du bist noch %d s stummgeschaltet.", s.mutedUntil - now)
+        return
+    end
+    if s.lastDuelAt and now - s.lastDuelAt < 60 then
+        say(pid, "Bitte warte noch %d s vor der nächsten Herausforderung.", 60 - (now - s.lastDuelAt))
+        return
+    end
+    if BN.group then say(pid, "Gerade läuft ein Gruppenrennen – danach geht's.") return end
+    s.lastDuelAt = now
+    BN.duelInvites[target.pid] = { from = pid, track = name, at = now }
+    say(target.pid, "⚔️ %s fordert dich zum Duell auf %s heraus! Annehmen: /duell ja · ablehnen: /duell nein (60 s)", s.name, name)
+    say(pid, "Herausforderung an %s gesendet.", target.name)
+end
+commands.duel = commands.duell
 
 -- Strecke der Woche: aus allen Strecken mit Ziel auf allen Maps (races/*.json), nach Map und Name sortiert, je
 -- Kalenderwoche eine – auf allen Servern dieselbe. Die Wahl steht in weekly-track.json (fuer die Statusseite).
@@ -3061,6 +3165,10 @@ function commands.rennen(pid, arg)
     if sub == "mit" or sub == "join" then
         if not BN.group or BN.now() >= BN.group.startAt then
             say(pid, "Gerade kann man keinem Gruppenrennen beitreten. Neues: /rennen gruppe <Strecke>")
+            return
+        end
+        if BN.group.duel then
+            say(pid, "Gerade läuft ein Duell – da kann man nicht mitfahren.")
             return
         end
         BN.joinGroup(pid)

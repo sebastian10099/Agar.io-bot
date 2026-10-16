@@ -1922,6 +1922,64 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Duell (/duell) ---------------------------------------------------------------------------------------------
+do
+    local savedAdmins = C.admins
+    C.admins = { "Ausrichter" }
+    for pid, name in pairs({ [109] = "Ausrichter", [110] = "Fordernd", [111] = "Gefordert", [112] = "Zuschauer" }) do
+        players[pid] = { name = name, ids = { beammp = tostring(11000 + pid) }, vehicles = {} }
+        _G[events.onPlayerJoin](pid)
+    end
+    BN.track(109, 0, { 8000, 0, 0 }, 1); say(109, "/rennen neu duellbahn")
+    BN.track(109, 0, { 9000, 0, 0 }, 2); say(109, "/rennen ziel duellbahn")
+    BN.duelInvites, BN.group = {}, nil
+    chatLog = {}
+    say(110, "/duell")
+    check(chatContains("Aufruf: /duell <Name> <Strecke>", 110), "Duell: Aufruf")
+    say(110, "/duell fordernd duellbahn")
+    check(chatContains("Gegen dich selbst geht kein Duell", 110), "Duell: nicht gegen sich selbst")
+    say(110, "/duell gefordert gibtsnicht")
+    check(chatContains("Strecke \"gibtsnicht\" gibt es auf dieser Map nicht", 110), "Duell: nur vorhandene Strecken")
+    say(110, "/duell gefordert duellbahn")
+    check(chatContains("⚔️ Fordernd fordert dich zum Duell auf duellbahn heraus!", 111), "Duell: Herausforderung kommt an")
+    check(not chatContains("fordert dich", 112), "Duell: nur der Geforderte bekommt sie")
+    say(110, "/duell gefordert duellbahn")
+    check(chatContains("Bitte warte noch %d+ s vor der nächsten Herausforderung", 110), "Duell: Abklingzeit")
+    say(112, "/duell ja")
+    check(chatContains("Keine offene Herausforderung", 112), "Duell: nur der Geforderte kann annehmen")
+    say(111, "/duell ja")
+    check(BN.group and BN.group.duel and chatContains("⚔️ Gefordert nimmt dein Duell an!", 110), "Duell: angenommen, Rennen fuer zwei")
+    say(112, "/rennen mit")
+    check(chatContains("Gerade läuft ein Duell", 112) and not BN.group.members[112], "Duell: niemand sonst faehrt mit")
+    for _, pid in ipairs({ 110, 111 }) do BN.track(pid, 0, { 8000, 0, 0 }, 100) end
+    tick(16)
+    local function race(pid, speed, tim)
+        BN.track(pid, 0, { 8000, 0, 0 }, tim); BN.track(pid, 0, { 8010, 0, 0 }, tim + 0.2)
+        local x = 8010
+        while x < 9000 do x = math.min(9000, x + speed); tim = tim + 1; BN.track(pid, 0, { x, 0, 0 }, tim) end
+    end
+    local b0 = BN.totals(BN.players[111]).bonusXp
+    chatLog = {}
+    race(110, 20, 200)
+    race(111, 50, 400)
+    tick(1)
+    check(chatContains("⚔️ Duell auf duellbahn: Gefordert gewinnt %(0:%d%d%.%d%) gegen Fordernd", 110), "Duell: Ergebnis an beide")
+    check(not chatContains("Duell auf duellbahn", 112), "Duell: Ergebnis nicht an alle")
+    check(chatContains("Duell gewonnen: %+30 Bonus%-XP", 111), "Duell: Sieger bekommt XP")
+    check(BN.totals(BN.players[111]).bonusXp - b0 >= 30 and BN.group == nil, "Duell: XP gutgeschrieben, vorbei")
+    -- Ablehnen
+    BN.players[110].lastDuelAt = nil
+    say(110, "/duell gefordert duellbahn"); say(111, "/duell nein")
+    check(chatContains("Gefordert hat dein Duell abgelehnt", 110) and BN.duelInvites[111] == nil, "Duell: ablehnen")
+    say(109, "/rennen loeschen duellbahn")
+    for _, pid in ipairs({ 109, 110, 111, 112 }) do
+        if BN.players[pid] then BN.players[pid].pendingBonus, BN.players[pid].pendingRaces = 0, 0 end
+        _G[events.onPlayerDisconnect](pid); players[pid] = nil
+        os.remove(SHARED .. "/players/" .. tostring(11000 + pid) .. ".json"); BN.savedRecently[tostring(11000 + pid)] = nil
+    end
+    C.admins = savedAdmins
+end
+
 -- --- Teams ------------------------------------------------------------------------------------------------------
 do
     os.remove(SHARED .. "/teams.json")
