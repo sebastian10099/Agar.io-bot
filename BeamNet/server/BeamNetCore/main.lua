@@ -4164,6 +4164,7 @@ function commands.ort(pid, arg)
         suggestions[#suggestions + 1] = { type = typ, name = name, x = pos.x, y = pos.y, z = pos.z, by = s.name, byId = s.id, at = now }
         if not savePlaces(places, suggestions) then say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.") return end
         say(pid, "Danke! Dein Vorschlag %s (%s) ist bei den Admins.", name, typ)
+        modlog({ action = "ort-vorschlag", by = s.name, byId = s.id, target = name, kind = typ, map = BN.mapKey() })
         for apid, a in pairs(BN.players) do
             if BN.isAdmin(a) then say(apid, "📍 %s schlägt einen Ort vor: %s %s – /ort vorschlaege", s.name, BN.PLACE_TYPES[typ].icon, name) end
         end
