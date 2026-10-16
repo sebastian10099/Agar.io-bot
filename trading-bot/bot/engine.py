@@ -14,6 +14,7 @@ from .strategy import evaluate
 from .tracker import Tracker
 
 RESEE_SECONDS = 30 * 60  # do not re-evaluate the same token within half an hour
+TICK_KEEP_DAYS = 7       # price ticks of positions closed longer ago are dropped at start
 
 
 class Engine:
@@ -95,8 +96,9 @@ class Engine:
                     "reasons": verdict["reasons"], "snapshot": p,
                 })
                 if decision == "buy":
-                    self.paper.open(p, now)
+                    pid = self.paper.open(p, now)
                     self.last_prices[p["pair"]] = p["price_usd"]
+                    self.store.tick(pid, now, p["price_usd"])
 
         for pos in self.store.open_positions():
             price = self.dex.price(pos["chain"], pos["pair"])
@@ -105,6 +107,8 @@ class Engine:
             self.last_prices[pos["pair"]] = price
             before = pos["status"]
             self.paper.update(pos, price, now)
+            if pos["opened_at"] < now:                 # the entry already wrote this poll's tick
+                self.store.tick(pos["id"], now, price)
             if pos["status"] != before:
                 counts["exits"] += 1
 
@@ -118,6 +122,7 @@ class Engine:
     def run(self) -> None:
         interval = float(self.cfg["poll_seconds"])
         self.store.log("info", f"engine started, mode={self.cfg['mode']}, every {interval:.0f}s")
+        self.store.prune_ticks(self.clock() - TICK_KEEP_DAYS * 86400)
         while not self._stop.is_set():
             started = time.time()
             try:
@@ -175,6 +180,7 @@ class Engine:
                 return {"ok": False, "error": "Kein Kurs verfügbar"}
             self.paper.close_manually(pos, price, self.clock())
             self.last_prices[pos["pair"]] = price
+            self.store.tick(pid, self.clock(), price)
             return {"ok": True, "position": self.store.position(pid)}
 
     def sell_position(self, pid: int, frac: Any) -> dict[str, Any]:
@@ -199,6 +205,7 @@ class Engine:
             else:
                 self.paper.sell_part(pos, frac, price, self.clock())
             self.last_prices[pos["pair"]] = price
+            self.store.tick(pid, self.clock(), price)
             return {"ok": True, "position": self.store.position(pid)}
 
     def reset(self, what: str, bankroll: Optional[float] = None) -> dict[str, Any]:
@@ -242,6 +249,7 @@ class Engine:
             p = {"chain": c["chain"], "token": c["token"], "pair": c["pair"], "symbol": c["symbol"], "price_usd": price}
             pid = self.paper.open(p, self.clock())
             self.last_prices[c["pair"]] = price
+            self.store.tick(pid, self.clock(), price)
             self.store.log("trade", f"MANUAL BUY {c['symbol']} via Dashboard (Bot-Urteil: {c['decision']})")
             self._wake.set()
             return {"ok": True, "position": self.store.position(pid)}
@@ -296,7 +304,8 @@ class Engine:
         if pos is None:
             return {"ok": False, "error": "Position nicht gefunden"}
         return {"ok": True, "position": pos, "trades": self.store.trades_for(pid),
-                "price": self.last_prices.get(pos["pair"])}
+                "ticks": self.store.ticks_for(pid), "price": self.last_prices.get(pos["pair"]),
+                "exits": self.cfg["exits"]}
 
     # --- state for the dashboard ---------------------------------------
     def state(self) -> dict[str, Any]:
@@ -328,6 +337,7 @@ class Engine:
             "edge_rules": self.store.edge_report("rule_decision"), "edge_ai": self.store.edge_report("ai_decision"),
             "ai": self.advisor.status(),
             "sources": self.discovery.status(),
+            "exits_by_reason": self.store.exit_breakdown(),
             "equity": self.store.equity_curve(),
             "config": settings.flat(self.cfg),
         }

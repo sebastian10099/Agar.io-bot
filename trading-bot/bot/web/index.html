@@ -121,6 +121,11 @@
   .sweep-row:last-child { border-bottom:0; }
   .sweep-row .name b { display:block; } .sweep-row .name small { color:var(--dim); }
   .sweep-vals { display:flex; flex-wrap:wrap; gap:6px; }
+  .sweep-row .name .btn { margin-top:6px; }
+  .d-chart { max-width:100%; height:auto; display:block; margin:0 0 10px; }
+  .d-chart text { font-size:11px; fill:var(--dim); }
+  .d-legend { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:12px; color:var(--dim); margin:0 0 10px; }
+  .d-legend i { display:inline-block; width:14px; height:0; border-top:2px solid; vertical-align:middle; margin-right:5px; }
   .sv { border:1px solid var(--line); border-radius:8px; padding:5px 9px; min-width:84px; font-size:12px; font-variant-numeric:tabular-nums; }
   .sv .v { display:block; color:var(--dim); font-size:11px; } .sv .r { font-weight:600; }
   .sv.cur { border-color:var(--blue); } .sv.best { background:var(--green-bg); border-color:var(--green); }
@@ -316,9 +321,15 @@
 
   <div id="tab-analysis" class="grid" role="tabpanel" aria-labelledby="tabbtn-analysis" hidden>
     <section>
+      <h2>Exits nach Grund</h2>
+      <div id="exits"></div>
+      <p class="note">Welche Ausstiegsregel verdient und welche kostet. Viele <b>stop_loss</b> mit kleinem Minus sind normal; ein <b>time_stop</b> mit Minus heißt, das Zeitfenster ist zu lang oder die Einstiege zu früh. <b>take_profit</b>-Zeilen zeigen nur den Anteil, der auf dieser Stufe verkauft wurde.</p>
+    </section>
+    <section>
       <h2>Rückblick: welcher Wert hätte besser abgeschnitten?
         <span class="spacer"></span>
         <span class="filterbar" role="group" aria-label="Horizont"><span class="status">Horizont</span><span id="sweep-h"></span>
+        <button class="btn sm" id="b-sweep-all" hidden>Alle besseren übernehmen</button>
         <button class="btn sm" id="b-sweep">Neu berechnen</button></span></h2>
       <p class="note" id="sweep-sub">Jeder Filterwert wird einzeln über ein Raster bewegt, alle anderen bleiben wie eingestellt. Gezählt werden die Kandidaten, die mit diesem Wert <b>buy</b> gewesen wären, und ihre tatsächliche Rendite danach. Zeilen mit zu wenigen Treffern sind ausgegraut – das ist Rauschen, kein Ergebnis.</p>
       <div id="sweep"></div>
@@ -600,12 +611,36 @@ async function loadSweep() {
     $('sweep-h').querySelectorAll('[data-sh]').forEach((c) => c.onclick = () => { sweepHorizon = Number(c.dataset.sh); loadSweep(); });
     if (!d.n_candidates) { $('sweep').innerHTML = `<div class="empty">Noch keine Kandidaten mit Ergebnis nach ${d.horizon_min} Minuten. Der Rückblick braucht ein paar Stunden Laufzeit.</div>`; return; }
     const fmtV = (p, v) => (p.unit === '$' ? '$' + Number(v).toLocaleString('de-DE') : Number(v).toLocaleString('de-DE') + (p.unit ? ' ' + p.unit : ''));
-    $('sweep').innerHTML = d.params.map((p) => `<div class="sweep-row"><div class="name"><b>${esc(p.label)}</b><small>jetzt ${fmtV(p, p.current)}${p.best != null && p.best !== p.current ? ` · besser: ${fmtV(p, p.best)} (${pct(p.best_avg_ret)})` : p.best != null ? ' · aktueller Wert ist der beste' : ' · zu wenige Treffer'}</small></div>
+    const better = d.params.filter((p) => p.best != null && p.best !== p.current);
+    $('sweep').innerHTML = d.params.map((p) => `<div class="sweep-row"><div class="name"><b>${esc(p.label)}</b><small>jetzt ${fmtV(p, p.current)}${p.best != null && p.best !== p.current ? ` · besser: ${fmtV(p, p.best)} (${pct(p.best_avg_ret)})` : p.best != null ? ' · aktueller Wert ist der beste' : ' · zu wenige Treffer'}</small>${p.best != null && p.best !== p.current ? `<button type="button" class="btn sm" data-adopt="${esc(p.path)}" data-value="${p.best}" aria-label="${esc(p.label)} auf ${fmtV(p, p.best)} setzen">Übernehmen</button>` : ''}</div>
       <div class="sweep-vals">${p.values.map((r) => `<span class="sv ${r.current ? 'cur' : ''} ${r.value === p.best ? 'best' : ''} ${r.n_buy < d.min_n ? 'weak' : ''}" title="${r.n_buy} Kandidaten wären buy gewesen${r.win_rate != null ? ', Trefferquote ' + Math.round(r.win_rate * 100) + '%' : ''}"><span class="v">${fmtV(p, r.value)}</span><span class="r ${cls(r.avg_ret)}">${r.avg_ret == null ? '–' : pct(r.avg_ret)}</span><span class="v">n=${r.n_buy}</span></span>`).join('')}</div></div>`).join('');
+    $('sweep').querySelectorAll('[data-adopt]').forEach((b) => b.onclick = () => adopt([[b.dataset.adopt, Number(b.dataset.value)]]));
+    $('b-sweep-all').hidden = !better.length;
+    $('b-sweep-all').onclick = () => adopt(better.map((p) => [p.path, p.best]));
     $('sweep-sub').textContent = `${d.n_candidates} Kandidaten mit Ergebnis nach ${d.horizon_min} Minuten. Jeder Filterwert wird einzeln über ein Raster bewegt, alle anderen bleiben wie eingestellt. Gezählt werden Kandidaten, die mit diesem Wert „buy“ gewesen wären, und ihre tatsächliche Rendite danach. Ausgegraut: weniger als ${d.min_n} Treffer – Rauschen, kein Ergebnis.`;
   } catch (e) { $('sweep').innerHTML = `<div class="empty">Rückblick nicht ladbar: ${esc(e.message)}</div>`; }
 }
 $('b-sweep').onclick = () => busy($('b-sweep'), loadSweep);
+// put sweep results into the form as a draft: nothing changes until "Speichern"
+function adopt(pairs) {
+  if (!schema) return;
+  for (const [path, value] of pairs) setDraft(path, value);
+  document.querySelector('nav [data-tab="control"]').click();
+  const el = $('groups').querySelector(`[data-field="${pairs[0][0]}"]`);
+  if (el) { el.scrollIntoView({ block: 'center' }); const i = el.querySelector('input,select'); if (i) i.focus(); }
+  toast(`${pairs.length === 1 ? '1 Wert' : pairs.length + ' Werte'} im Formular eingetragen – gilt erst nach „Speichern“`);
+}
+function renderExits(s) {
+  const rows = s.exits_by_reason || [];
+  $('exits').innerHTML = table(rows, [
+    {h: 'Grund', f: (r) => esc(r.reason)},
+    {h: 'n', f: (r) => r.n, num: true},
+    {h: 'Treffer', f: (r) => Math.round(100 * r.win_rate) + '%', num: true},
+    {h: 'Ø P&L', f: (r) => pct(r.avg_pct), num: true, cls: (r) => cls(r.avg_pct)},
+    {h: 'Σ P&L', f: (r) => usd(r.total_usd), num: true, cls: (r) => cls(r.total_usd)},
+    {h: 'Ø Dauer', f: (r) => dur(r.avg_minutes * 60), num: true},
+  ], 'Noch keine geschlossene Position.');
+}
 
 // ---------- browser notifications on entries and exits ----------
 let notify = false, seenOpen = null, seenClosed = null;
@@ -808,6 +843,34 @@ $('b-prof-del').onclick = () => busy($('b-prof-del'), async () => {
   const r = await api('/api/profiles/delete', {name}); if (!r.ok) throw new Error(r.error);
   profiles = r.profiles; paintProfiles(); toast(`Profil „${name}“ gelöscht`);
 });
+// Price path since entry with the exit levels drawn in: entry, stop, ladder targets, peak.
+function detailChart(d, width) {
+  const p = d.position, ticks = d.ticks || [];
+  if (ticks.length < 2) return `<p class="note">Kursverlauf: erst ab dem zweiten Poll (${ticks.length} Messpunkt${ticks.length === 1 ? '' : 'e'}).</p>`;
+  const W = Math.max(280, Math.round(width || 640)), H = 150, L = 58, R = 10, T = 8, B = 20;
+  const ex = d.exits || {};
+  const levels = [{ v: p.entry_price, c: 'var(--dim)', dash: '4 3', l: 'Einstieg' }, { v: p.entry_price * (1 + (ex.stop_loss_pct || -30) / 100), c: 'var(--red)', dash: '', l: 'Stop' }]
+    .concat((ex.take_profit_ladder || []).map(([pct]) => ({ v: p.entry_price * (1 + pct / 100), c: 'var(--green)', dash: '2 3', l: `+${pct}%` })));
+  const t0 = ticks[0].at, t1 = ticks[ticks.length - 1].at || t0 + 1;
+  const vals = ticks.map((k) => k.price).concat(levels.map((x) => x.v));
+  let lo = Math.min(...vals), hi = Math.max(...vals); if (hi === lo) hi = lo * 1.01;
+  const pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
+  const X = (at) => L + (at - t0) / (t1 - t0 || 1) * (W - L - R), Y = (v) => T + (hi - v) / (hi - lo) * (H - T - B);
+  const pts = ticks.map((k) => `${X(k.at).toFixed(1)},${Y(k.price).toFixed(1)}`);
+  const area = `M${pts[0]} L${pts.join(' L')} L${X(t1).toFixed(1)},${(H - B).toFixed(1)} L${X(t0).toFixed(1)},${(H - B).toFixed(1)} Z`;
+  const fmt = (v) => px(v);
+  const lines = levels.map((x) => `<line x1="${L}" x2="${W - R}" y1="${Y(x.v).toFixed(1)}" y2="${Y(x.v).toFixed(1)}" stroke="${x.c}" stroke-width="1"${x.dash ? ` stroke-dasharray="${x.dash}"` : ''}/><text x="${L - 4}" y="${(Y(x.v) + 4).toFixed(1)}" text-anchor="end">${fmt(x.v)}</text>`).join('');
+  const last = ticks[ticks.length - 1], peakI = ticks.reduce((m, k, i) => (k.price > ticks[m].price ? i : m), 0);
+  const gain = (last.price / p.entry_price - 1) * 100;
+  const label = `Kursverlauf seit Einstieg, ${ticks.length} Messpunkte über ${dur(t1 - t0)}, zuletzt ${fmt(last.price)} (${pct(gain)}), Hoch ${fmt(ticks[peakI].price)}`;
+  return `<svg class="d-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(label)}">
+    <path d="${area}" fill="var(--blue)" fill-opacity="0.1"/>${lines}
+    <polyline points="${pts.join(' ')}" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${X(ticks[peakI].at).toFixed(1)}" cy="${Y(ticks[peakI].price).toFixed(1)}" r="4" fill="var(--green)" stroke="var(--panel)" stroke-width="2"/>
+    <circle cx="${X(last.at).toFixed(1)}" cy="${Y(last.price).toFixed(1)}" r="4" fill="var(--blue)" stroke="var(--panel)" stroke-width="2"/>
+    <text x="${L}" y="${H - 6}">${hhmm(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${hhmm(t1)}</text>
+  </svg><div class="d-legend" aria-hidden="true"><span><i style="border-color:var(--blue)"></i>Kurs</span><span><i style="border-color:var(--dim);border-top-style:dashed"></i>Einstieg</span><span><i style="border-color:var(--red)"></i>Stop</span><span><i style="border-color:var(--green);border-top-style:dotted"></i>Leiterstufen</span><span>● Hoch</span></div>`;
+}
 async function showDetail(id) {
   const d = await api('/api/positions/' + id);
   if (!d.ok) throw new Error(d.error);
@@ -817,7 +880,7 @@ async function showDetail(id) {
   const partial = p.status === 'open' ? `<div class="formbar" style="margin:0 0 12px"><label for="d-frac" class="status">Teilverkauf, Anteil der ursprünglichen Position</label>
     <input type="range" id="d-frac" min="5" max="${Math.round(p.remaining_frac * 100)}" step="5" value="${Math.max(5, Math.round(p.remaining_frac * 50 / 5) * 5)}" aria-valuetext="">
     <b id="d-frac-v"></b><button type="button" class="btn sm danger" id="d-sell">Verkaufen</button></div>` : '';
-  $('d-body').innerHTML = partial + table(d.trades, [
+  $('d-body').innerHTML = partial + '<div id="d-chart"></div>' + table(d.trades, [
     {h: 'Zeit', f: (r) => hhmm(r.at)},
     {h: 'Seite', f: (r) => r.side === 'buy' ? '<span class="pos">Kauf</span>' : '<span class="neg">Verkauf</span>'},
     {h: 'Grund', f: (r) => esc(r.reason)},
@@ -836,6 +899,8 @@ async function showDetail(id) {
     });
   }
   $('detail').showModal();
+  // drawn after opening: the chart takes the dialog's real width, so labels are never stretched
+  $('d-chart').innerHTML = detailChart(d, $('d-body').clientWidth);
 }
 $('b-revert').onclick = () => loadForm(loaded);
 $('b-defaults').onclick = async () => {
@@ -879,7 +944,7 @@ let firstConfig = true;
 async function refresh() {
   try {
     const s = await api('/api/state'); state = s;
-    renderHeader(s); renderOverview(s); renderCandidates(s); renderLog(s); checkNotify(s);
+    renderHeader(s); renderOverview(s); renderCandidates(s); renderLog(s); renderExits(s); checkNotify(s);
     if (firstConfig && schema) { loadForm(s.config); firstConfig = false; }
   } catch (e) {
     $('conn').className = 'dot bad'; $('conn').title = 'keine Verbindung zum Bot'; $('k-poll').textContent = 'keine Verbindung';

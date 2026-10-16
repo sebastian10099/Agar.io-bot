@@ -142,6 +142,27 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok((await p.textContent('[data-field="discovery.sources"] .err')).includes('mindestens'), 'keine Quelle → Inline-Fehler');
   await p.click('#b-revert');
 
+  // --- Analyse: Exits nach Grund, Übernehmen aus dem Rückblick ---
+  await p.click('nav [data-tab="analysis"]');
+  await p.waitForFunction(() => !document.querySelector('#sweep').textContent.includes('Berechne'));
+  const exitsText = await p.textContent('#exits');
+  ok(/stop_loss|take_profit|trailing_stop|time_stop|Noch keine geschlossene/.test(exitsText), 'Exits nach Grund gerendert: ' + exitsText.trim().slice(0, 40));
+  const adoptBtn = await p.$('#sweep [data-adopt]');
+  if (adoptBtn) {
+    const path = await adoptBtn.getAttribute('data-adopt'), value = await adoptBtn.getAttribute('data-value');
+    await adoptBtn.click();
+    await p.waitForFunction(() => !document.querySelector('#tab-control').hidden);
+    ok(true, 'Übernehmen wechselt zur Steuerung');
+    ok((await p.inputValue(`[data-path="${path}"]`)) === value, `Übernehmen trägt ${path}=${value} ins Formular ein`);
+    ok(await p.$eval(`[data-field="${path}"]`, (e) => e.classList.contains('changed')), 'übernommener Wert als Änderung markiert, nicht gespeichert');
+    ok((await p.textContent('#form-status')).includes('Änderung'), 'Statuszeile zählt die Übernahme');
+    await p.click('#b-revert');
+  } else {
+    ok(!(await p.$('#b-sweep-all')) || await p.$eval('#b-sweep-all', (b) => b.hidden), 'kein besserer Wert → kein „Alle übernehmen“');
+    ok(true, 'kein besserer Wert im Rückblick (zu wenig Daten) – Übernehmen nicht prüfbar');
+  }
+  await p.click('nav [data-tab="control"]');
+
   // --- Profile: speichern, Wert ändern, laden stellt wieder her, löschen ---
   await p.locator('input[data-path="scoring.min_score"]').fill('66'); await clearToast(); await p.click('#b-save');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
@@ -279,7 +300,10 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   const openBefore = (await (await p.request.get(URL + 'api/state')).json()).open_positions.length;
   const watchRow = p.locator('#cands tbody tr:has(.d-watch) [data-buy]').first();
   ok((await watchRow.count()) === 1, 'Kaufen-Knopf an einem watch-Kandidaten');
-  ok((await p.textContent('#cands')).includes('im Bestand'), 'Token im Bestand zeigt „im Bestand“ statt Kaufen');
+  // the demo clock runs 60x, so the first position may already be closed by now: only then is nothing "im Bestand"
+  const heldNow = (await (await p.request.get(URL + 'api/state')).json()).open_positions.map((x) => x.token);
+  if (heldNow.length) ok((await p.textContent('#cands')).includes('im Bestand'), 'Token im Bestand zeigt „im Bestand“ statt Kaufen');
+  else ok(!(await p.textContent('#cands')).includes('im Bestand'), 'nichts im Bestand → überall Kaufen-Knopf');
   await watchRow.click(); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('gekauft'));
   const openAfter = (await (await p.request.get(URL + 'api/state')).json()).open_positions.length;
@@ -309,6 +333,12 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   await p.click('nav [data-tab="overview"]');
   await p.click('#open [data-detail]'); await p.waitForSelector('dialog#detail[open]');
   ok((await p.$$('#d-body tbody tr')).length >= 1 && (await p.textContent('#d-body')).includes('Kauf'), 'Details-Dialog listet den Kauf-Fill');
+  const chart = await p.$('#d-body svg.d-chart');
+  ok(!!chart || (await p.textContent('#d-body')).includes('Kursverlauf'), 'Details: Kursverlauf (Chart oder erklärter Leerzustand)');
+  if (chart) {
+    const lbl = await chart.getAttribute('aria-label');
+    ok(/Messpunkte/.test(lbl) && (await p.$$('#d-body svg.d-chart line')).length >= 2, 'Kurs-Chart mit Einstieg/Stop-Linien und Beschriftung: ' + lbl.slice(0, 50));
+  }
   await p.keyboard.press('Escape'); ok(!(await p.$('dialog#detail[open]')), 'Details-Dialog schließt per Escape');
   // --- Reset mit neuem Startkapital ---
   await p.click('nav [data-tab="control"]');

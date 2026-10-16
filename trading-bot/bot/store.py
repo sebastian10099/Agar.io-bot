@@ -70,6 +70,13 @@ CREATE TABLE IF NOT EXISTS events (
     message TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ticks (
+    position_id INTEGER NOT NULL,
+    at REAL NOT NULL,
+    price REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ticks_pos ON ticks(position_id, at);
+
 CREATE TABLE IF NOT EXISTS kv (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -228,11 +235,46 @@ class Store:
         (the edge data). Events are always kept so the reset itself is on record."""
         with self._lock:
             self._conn.execute("DELETE FROM trades")
+            self._conn.execute("DELETE FROM ticks")
             self._conn.execute("DELETE FROM positions")
             if what == "all":
                 self._conn.execute("DELETE FROM outcomes")
                 self._conn.execute("DELETE FROM candidates")
             self._conn.commit()
+
+    # --- price ticks per position (for the detail chart) ------------------
+    def tick(self, pid: int, at: float, price: float) -> None:
+        with self._lock:
+            self._conn.execute("INSERT INTO ticks(position_id, at, price) VALUES (?,?,?)", (pid, at, price))
+            self._conn.commit()
+
+    def ticks_for(self, pid: int, limit: int = 3000) -> list[dict[str, Any]]:
+        rows = self._rows("SELECT at, price FROM ticks WHERE position_id=? ORDER BY at DESC LIMIT ?", (pid, limit))
+        rows.reverse()
+        return rows
+
+    def prune_ticks(self, before: float) -> int:
+        """Drop ticks of positions closed before `before`; open ones keep theirs."""
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM ticks WHERE position_id IN (SELECT id FROM positions WHERE status='closed' AND closed_at < ?)"
+                " OR position_id NOT IN (SELECT id FROM positions)", (before,))
+            self._conn.commit()
+            return cur.rowcount
+
+    def exit_breakdown(self) -> list[dict[str, Any]]:
+        """Closed positions grouped by exit reason: which rule earns, which costs."""
+        rows = self._rows(
+            "SELECT exit_reason AS reason, COUNT(*) AS n, SUM(realized_usd) AS total_usd, "
+            "AVG(realized_usd / size_usd * 100) AS avg_pct, AVG(closed_at - opened_at) / 60 AS avg_minutes, "
+            "SUM(CASE WHEN realized_usd > 0 THEN 1 ELSE 0 END) AS wins "
+            "FROM positions WHERE status='closed' GROUP BY exit_reason ORDER BY n DESC, total_usd DESC")
+        for r in rows:
+            r["total_usd"] = round(r["total_usd"] or 0, 2)
+            r["avg_pct"] = round(r["avg_pct"] or 0, 2)
+            r["avg_minutes"] = round(r["avg_minutes"] or 0, 1)
+            r["win_rate"] = round(r["wins"] / r["n"], 3) if r["n"] else 0
+        return rows
 
     def has_open_for(self, chain: str, token: str) -> bool:
         return self._one("SELECT 1 FROM positions WHERE status='open' AND chain=? AND token=?",

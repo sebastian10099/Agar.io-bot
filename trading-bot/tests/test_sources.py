@@ -188,3 +188,67 @@ class EngineWithFeedsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TickAndExitTests(unittest.TestCase):
+    """Price ticks for the detail chart and the exit breakdown on the Analyse tab."""
+
+    def setUp(self):
+        import bot.demo as demo
+        self.cycle = demo.CYCLE_MIN
+        demo.CYCLE_MIN = 1e9
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.sqlite")
+        self.dex = FakeDex(accel=1.0)
+        self.t = [self.dex.started]
+        self.dex.now = lambda: self.t[0]
+        self.cfg = copy.deepcopy(CFG)
+        self.eng = Engine(self.cfg, self.store, self.dex, FakeRug(), clock=self.dex.now, feeds=demo_feeds(self.dex))
+
+    def tearDown(self):
+        import bot.demo as demo
+        demo.CYCLE_MIN = self.cycle
+        self.store.close()
+        self.tmp.cleanup()
+
+    def run_minutes(self, upto, step=2):
+        for m in range(1, upto, step):
+            self.t[0] = self.dex.started + m * 60
+            self.eng.poll_once()
+
+    def test_ticks_follow_the_position_and_detail_includes_them(self):
+        self.eng.poll_once()
+        pid = self.store.open_positions()[0]["id"]
+        self.assertEqual(len(self.store.ticks_for(pid)), 1)              # entry tick
+        self.run_minutes(10)
+        d = self.eng.position_detail(pid)
+        self.assertGreaterEqual(len(d["ticks"]), 5)
+        self.assertEqual([k["at"] for k in d["ticks"]], sorted(k["at"] for k in d["ticks"]))
+        self.assertEqual(d["exits"]["stop_loss_pct"], self.cfg["exits"]["stop_loss_pct"])
+        json.dumps(d)
+
+    def test_exit_breakdown_groups_closed_positions(self):
+        self.eng.poll_once()
+        self.run_minutes(80)
+        self.assertEqual(self.store.open_positions(), [])
+        rows = self.store.exit_breakdown()
+        self.assertTrue(rows)
+        total = sum(r["n"] for r in rows)
+        self.assertEqual(total, len(self.store.closed_positions()))
+        for r in rows:
+            self.assertIn(r["reason"], {"take_profit_50", "take_profit_100", "trailing_stop", "time_stop", "stop_loss", "manual"})
+            self.assertTrue(0 <= r["win_rate"] <= 1)
+            self.assertGreater(r["avg_minutes"], 0)
+        self.assertEqual(self.eng.state()["exits_by_reason"], rows)
+
+    def test_prune_keeps_open_and_recent_and_reset_clears(self):
+        self.eng.poll_once()
+        self.run_minutes(80)
+        closed = min(self.store.closed_positions(), key=lambda c: c["closed_at"])
+        self.assertTrue(self.store.ticks_for(closed["id"]))
+        self.assertEqual(self.store.prune_ticks(closed["closed_at"] - 1), 0)      # closed after the cutoff: kept
+        self.assertGreater(self.store.prune_ticks(closed["closed_at"] + 1), 0)    # older than cutoff: gone
+        self.assertEqual(self.store.ticks_for(closed["id"]), [])
+        self.eng.poll_once()
+        self.store.reset("positions")
+        self.assertEqual(self.store._one("SELECT COUNT(*) AS n FROM ticks")["n"], 0)

@@ -36,7 +36,8 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   zum Zeit-Stop) und einem Knopf zum manuellen Schließen; die **Kapitalkurve**
   (realisierter Stand nach jedem Exit, mit Fadenkreuz und Tastaturablesung);
   Edge-Report mit Balken; geschlossene Positionen. Jede Position hat einen
-  **Details**-Dialog mit ihren einzelnen Fills.
+  **Details**-Dialog mit dem **Kursverlauf seit Einstieg** (Einstieg, Stop und
+  Leiterstufen als Linien, Hoch markiert) und ihren einzelnen Fills.
 - **Steuerung** – jeder Parameter der Strategie als Formular, gruppiert nach
   Allgemein / Risiko / Filter / Strategie / Exits. Geänderte Felder werden
   markiert, Fehler stehen direkt am Feld, „Speichern“ gilt **sofort** für den
@@ -54,12 +55,16 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   als Paper-Position unabhängig vom Bot-Urteil – der Tracker behält die
   ursprüngliche Entscheidung, so lässt sich das eigene Urteil gegen die Regeln
   messen.
-- **Analyse** – der Rückblick: Jeder Filterwert wird einzeln über ein Raster
+- **Analyse** – zuerst **Exits nach Grund**: wie oft jede Ausstiegsregel
+  gegriffen hat, mit Trefferquote, Ø und Σ P&L und Ø Haltedauer – so siehst
+  du, ob der Zeit-Stop Geld kostet oder die Leiter zu früh verkauft. Darunter
+  der Rückblick: Jeder Filterwert wird einzeln über ein Raster
   bewegt (alle anderen bleiben wie eingestellt), und für jeden Wert steht da,
   wie viele der bisherigen Kandidaten damit `buy` gewesen wären und welche
   Rendite sie danach tatsächlich hatten. Zeilen mit weniger als fünf Treffern
   sind ausgegraut – Rauschen, kein Ergebnis. Umschaltbar nach Horizont
-  (5 / 15 / 60 Minuten).
+  (5 / 15 / 60 Minuten). **Übernehmen** trägt einen besseren Wert (oder alle
+  auf einmal) ins Formular ein – gespeichert wird erst mit „Speichern“.
 - **Protokoll** – was der Bot getan hat, inklusive jeder Änderung über die Seite,
   filterbar nach Trades / Polls / Info / Fehler.
 
@@ -87,7 +92,7 @@ nutzen kannst (nur von `127.0.0.1` erreichbar):
 | POST | `/api/control` `{"action": "pause"\|"resume"\|"poll"}` | Steuern |
 | POST | `/api/positions/close` `{"id": 3}` | Position zum letzten Kurs schließen |
 | POST | `/api/positions/open` `{"candidate_id": 12}` | Kandidaten manuell als Paper-Position kaufen |
-| GET | `/api/positions/3` | Position mit allen Fills |
+| GET | `/api/positions/3` | Position mit allen Fills, Kursverlauf (`ticks`) und den Exit-Parametern |
 | GET | `/api/sweep?horizon=15` | Rückblick-Analyse der Filterwerte |
 | POST | `/api/reset` `{"what": "positions"\|"all", "bankroll": 500}` | Paper-Konto zurücksetzen, optional mit neuem Startkapital |
 | GET/POST | `/api/profiles` · `/api/profiles/apply` · `/api/profiles/delete` | Parameter-Profile verwalten |
@@ -247,8 +252,7 @@ python3 -m unittest -v tests.test_bot tests.test_control tests.test_ai tests.tes
 ```
 
 Strategie-Entscheidungen, alle Exit-Regeln, der Tracker, ein kompletter
-Zyklus gegen den Demo-Markt, die Discovery-Quellen (GeckoTerminal-Normalisierung,
-Ratenbremse, Ausfall einer Quelle), die Parameter-Validierung, Live-Änderungen,
+Zyklus gegen den Demo-Markt, die Parameter-Validierung, Live-Änderungen,
 manuelles Schließen, Resets und jede API-Route sind abgedeckt.
 
 **Browser-Prüfung der Steuerseite** – klickt gegen einen laufenden Demo-Server
