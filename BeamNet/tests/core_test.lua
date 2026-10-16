@@ -2474,6 +2474,28 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Tipps im Chat ----------------------------------------------------------------------------------------------
+do
+    players[105] = { name = "Neuling", ids = { beammp = "10505" }, vehicles = {} }
+    _G[events.onPlayerJoin](105)
+    BN.lastTipAt, BN.tipIndex = nil, nil
+    chatLog = {}
+    BN.tipTick()
+    check(not chatContains("Tipp:", 105), "Tipps: nicht sofort")
+    clock = clock + C.tipEverySec
+    BN.tipTick()
+    check(chatContains("^Tipp: /auftrag", 105), "Tipps: erster Tipp nach der Wartezeit")
+    clock = clock + C.tipEverySec
+    BN.tipTick()
+    check(chatContains("^Tipp: /fangen", 105), "Tipps: der Reihe nach")
+    BN.players[105].lang = "en"
+    clock = clock + C.tipEverySec
+    BN.tipTick()
+    check(chatContains("^Tip: /goal", 105), "Tipps: in der Sprache des Spielers")
+    _G[events.onPlayerDisconnect](105); players[105] = nil
+    os.remove(SHARED .. "/players/10505.json"); BN.savedRecently["10505"] = nil
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }

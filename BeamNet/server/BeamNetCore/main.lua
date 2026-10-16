@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.40"
+BN.VERSION = "1.41"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -115,6 +115,8 @@ local defaults = {
     chaseXpCatch = 60,
     chaseXpSurvive = 100,
     chaseXpPerMin = 10,
+    -- Tipps im Chat: alle tipEverySec Sekunden der naechste Tipp an alle auf diesem Server (0 = aus).
+    tipEverySec = 900,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -504,7 +506,8 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        groupRaceDelaySec = true, maxFriends = true, friendCheckSec = true,
                        streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true,
                        communityKm = true, communityXp = true, chaseJoinSec = true, chaseHeadStartSec = true,
-                       chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true }
+                       chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true,
+                       tipEverySec = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
@@ -824,6 +827,18 @@ local EN = {
     ["Aufruf: /resetspeed <Name> – Spieler muss auf diesem Server online sein."] = "Usage: /resetspeed <name> – the player must be online on this server.",
     ["Höchstgeschwindigkeit von %s zurückgesetzt (war %d km/h)."] = "Top speed of %s reset (was %d km/h).",
     ["Deine Höchstgeschwindigkeit wurde von %s zurückgesetzt."] = "Your top speed was reset by %s.",
+    -- Tipps
+    ["Tipp: /auftrag – fahr einen Patienten ins Krankenhaus oder Kinder zur Schule und sammle XP."] =
+        "Tip: /job – drive a patient to hospital or children to school and earn XP.",
+    ["Tipp: /fangen – Verfolgungsjagd! Einer flüchtet, alle anderen jagen ihn."] = "Tip: /chase – one player runs, everyone else hunts them.",
+    ["Tipp: /ziel – das Wochenziel für alle. Wer mitfährt, bekommt Bonus-XP."] = "Tip: /goal – the weekly goal for everyone. Join in for bonus XP.",
+    ["Tipp: /freund <Name> – du bekommst Bescheid, sobald ein Freund online kommt."] = "Tip: /friend <name> – get a message when a friend comes online.",
+    ["Tipp: /rennen – Zeitrennen auf dieser Map, gemeinsam mit /rennen gruppe <Strecke>."] = "Tip: /race – time trials on this map, together with /race group <track>.",
+    ["Tipp: Jeden Tag ein Stück fahren lohnt sich – ab dem zweiten Tag in Folge gibt es Bonus-XP."] =
+        "Tip: drive a little every day – from the second day in a row you get bonus XP.",
+    ["Tipp: /aufgabe – die Tagesaufgabe mit Bonus-XP."] = "Tip: /daily – today's challenge with bonus XP.",
+    ["Tipp: /vote map <Name> – stimmt für eine andere Map ab."] = "Tip: /vote map <name> – vote for another map.",
+    ["Tipp: /team gründen <Name> – fahrt zusammen Kilometer für euer Team."] = "Tip: /team create <name> – drive kilometers together for your team.",
     -- Verfolgungsjagd
     ["Verfolgungsjagd abgesagt – %s"] = "Chase cancelled – %s",
     ["🚓 Gefangen! +%d XP"] = "🚓 Caught! +%d XP",
@@ -3927,6 +3942,32 @@ commands.chase = commands.fangen
 commands.jagd = commands.fangen
 
 -- ---------------------------------------------------------------------------------------------------------------------
+-- Tipps im Chat: der Reihe nach, damit jede Funktion einmal drankommt.
+
+BN.TIPS = {
+    "Tipp: /auftrag – fahr einen Patienten ins Krankenhaus oder Kinder zur Schule und sammle XP.",
+    "Tipp: /fangen – Verfolgungsjagd! Einer flüchtet, alle anderen jagen ihn.",
+    "Tipp: /ziel – das Wochenziel für alle. Wer mitfährt, bekommt Bonus-XP.",
+    "Tipp: /freund <Name> – du bekommst Bescheid, sobald ein Freund online kommt.",
+    "Tipp: /rennen – Zeitrennen auf dieser Map, gemeinsam mit /rennen gruppe <Strecke>.",
+    "Tipp: Jeden Tag ein Stück fahren lohnt sich – ab dem zweiten Tag in Folge gibt es Bonus-XP.",
+    "Tipp: /aufgabe – die Tagesaufgabe mit Bonus-XP.",
+    "Tipp: /vote map <Name> – stimmt für eine andere Map ab.",
+    "Tipp: /team gründen <Name> – fahrt zusammen Kilometer für euer Team.",
+}
+
+function BN.tipTick()
+    if C.tipEverySec <= 0 or next(BN.players) == nil then return end
+    local now = BN.now()
+    if not BN.lastTipAt then BN.lastTipAt = now return end
+    if now - BN.lastTipAt < C.tipEverySec then return end
+    BN.lastTipAt = now
+    BN.tipIndex = (BN.tipIndex or 0) % #BN.TIPS + 1
+    local tip = BN.TIPS[BN.tipIndex]
+    sayEach(function(lang) return tr(lang, tip) end)
+end
+
+-- ---------------------------------------------------------------------------------------------------------------------
 -- Wochenziel fuer alle: alle Fahrer zusammen communityKm km in der Kalenderwoche. Das Ziel der Woche steht in
 -- community.json (der erste Server der Woche legt es fest, alle uebernehmen es). Fortschritt = Summe der Wochen-km
 -- aller Fahrer (Bestenliste, hoechstens eine Minute alt).
@@ -4570,6 +4611,7 @@ function BN.tick()
     guarded("Freunde", BN.friendTick)
     guarded("Wochenziel", BN.communityCheck)
     guarded("Verfolgungsjagd", BN.chaseTick)
+    guarded("Tipps", BN.tipTick)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)
