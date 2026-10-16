@@ -34,7 +34,9 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 11. [x] Telegram-Bot antwortet im eingetragenen Chat auf `/online`, `/top`, `/rekord`, `/server` und `/hilfe`.
         Der Wächter holt jede Minute neue Nachrichten, beantwortet höchstens 5 pro Lauf und ignoriert fremde Chats
         (Werkzeug 1.35).
-12. [ ] Discord-Meldungen als Embeds (farbig, mit Feldern) statt reinem Text.
+12. [–] Discord-Embeds: geprüft und zurückgestellt. Reiner Text lässt sich sicher teilen und maskieren, sieht in
+        Telegram genauso aus, und Embeds haben eigene Grenzen (6000 Zeichen, 25 Felder), die Meldungen verschlucken
+        können.
 13. [x] Statusseite: Diagramm „Spieler je Stunde“ über die letzten 7 Tage, mit Tooltip je Stunde und
         Wochenspitze, ohne Skripte, hell/dunkel, fürs Handy. Steht auch in `api.json` (`peak.hours`, Werkzeug 1.23).
 14. [x] Statusseite: Die Namen unter jedem Server sind auf die Profile verlinkt (Plugin 1.15 meldet die IDs mit;
