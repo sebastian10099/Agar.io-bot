@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.61"
+BN.VERSION = "1.62"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -142,6 +142,12 @@ local defaults = {
     crowdHintSec = 900,
     crowdMinPlayers = 3,
     crowdMaxHere = 2,
+    -- Lieferpunkte: Wo Spieler mit Konto fahren, merkt sich das Plugin alle roadPointSec Sekunden einen Punkt (mindestens
+    -- roadPointSpacingM von den anderen entfernt, hoechstens roadPointsMax je Map, gemeinsam fuer alle Server). Gibt es
+    -- keine passenden Orte, liefert /auftrag zu einem dieser Punkte (roadPointsMax 0 = aus).
+    roadPointsMax = 300,
+    roadPointSpacingM = 250,
+    roadPointSec = 20,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -535,9 +541,9 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        tipEverySec = true, tutorialXp = true, tutorialDoneXp = true, seriesXp = true,
                        alertEverySec = true, alertXp = true, alertMinPlayers = true, convoyXp = true,
                        convoyXpPerHour = true, convoyRadiusM = true, crowdHintSec = true, crowdMinPlayers = true,
-                       crowdMaxHere = true }
+                       crowdMaxHere = true, roadPointsMax = true, roadPointSpacingM = true, roadPointSec = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
-local MIN_VALUES = { convoyKm = 0.5, convoyRadiusM = 20, levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
+local MIN_VALUES = { roadPointSpacingM = 50, roadPointSec = 5, convoyKm = 0.5, convoyRadiusM = 20, levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
                      filterStrikes = 1, filterMuteSec = 10, maxFriends = 1, friendCheckSec = 5,
                      streakMaxDays = 2, streakMinKm = 0.1, jobRadiusM = 5, jobMinDistM = 50,
@@ -640,6 +646,8 @@ local EN = {
     ["Tipp: /konvoi – fahrt zusammen! Wer nah beieinander fährt, bekommt Bonus-XP."] =
         "Tip: /convoy – drive together! Driving close to each other gives bonus XP.",
     ["Konvoi: zusammen fahren gibt Bonus-XP – /konvoi"] = "Convoy: driving together gives bonus XP – /convoy",
+    ["Aufträge auf jeder Map (Lieferpunkte) und Richtungshinweise unterwegs – /auftrag"] =
+        "Jobs on every map (drop-off points) and direction hints on the way – /job",
     ["Neue Erfolge für Vielfahrer: 5000 km, 50 Stunden, 50 Rennen, 5 Streckenrekorde"] =
         "New achievements for regulars: 5000 km, 50 hours, 50 races, 5 track records",
     ["7 neue Erfolge für Aufträge, Verfolgungsjagden und Konvois – /erfolge"] =
@@ -1092,6 +1100,16 @@ local EN = {
     [" (Blitzschnell! +50 %)"] = " (lightning fast! +50 %)",
     ["⌛ Zu spät – der Auftrag nach %s ist verfallen. Neuer Versuch: /auftrag"] = "⌛ Too late – the job to %s has expired. Try again: /job",
     ["Noch %s bis %s · %s übrig"] = "%s to %s · %s left",
+    ["Noch %s bis %s (%s) · %s übrig"] = "%s to %s (%s) · %s left",
+    ["Lieferpunkt %d"] = "drop-off point %d",
+    ["geradeaus"] = "straight ahead",
+    ["hinter dir"] = "behind you",
+    ["halb links"] = "half left",
+    ["halb rechts"] = "half right",
+    ["links"] = "left",
+    ["rechts"] = "right",
+    ["hinten links"] = "behind left",
+    ["hinten rechts"] = "behind right",
     ["Du hast gerade keinen Auftrag."] = "You don't have a job right now.",
     ["Auftrag abgebrochen. Neuer: /auftrag"] = "Job cancelled. New one: /job",
     ["Dein Auftrag: %s · noch %s · %s übrig"] = "Your job: %s · %s to go · %s left",
@@ -2140,6 +2158,7 @@ BN.NEWS = {
     { "1.56", "Konvoi: zusammen fahren gibt Bonus-XP – /konvoi" },
     { "1.57", "7 neue Erfolge für Aufträge, Verfolgungsjagden und Konvois – /erfolge" },
     { "1.60", "Neue Erfolge für Vielfahrer: 5000 km, 50 Stunden, 50 Rennen, 5 Streckenrekorde" },
+    { "1.62", "Aufträge auf jeder Map (Lieferpunkte) und Richtungshinweise unterwegs – /auftrag" },
 }
 
 local function versionNum(v)
@@ -4552,6 +4571,92 @@ local function jobLimit(s)
     return e
 end
 
+-- ---------------------------------------------------------------------------------------------------------------------
+-- Lieferpunkte: Punkte, an denen Spieler mit Konto wirklich gefahren sind (also erreichbar). roadpoints/<Map>.json,
+-- gemeinsam fuer alle Server dieser Map; beim Speichern werden die Punkte der anderen Server dazugenommen. Eine kaputte
+-- Datei wird nie ueberschrieben.
+
+local function roadDir() return C.sharedDir .. "/roadpoints" end
+local function roadFile() return roadDir() .. "/" .. BN.mapKey() .. ".json" end
+
+local function cleanPoints(src, max)
+    local list = {}
+    for _, p in ipairs(type(src) == "table" and src or {}) do
+        if #list >= max then break end
+        if type(p) == "table" and tonumber(p.x) and tonumber(p.y) and tonumber(p.z) then
+            list[#list + 1] = { x = tonumber(p.x), y = tonumber(p.y), z = tonumber(p.z) }
+        end
+    end
+    return list
+end
+
+local function nearPoint(list, pos, d)
+    for _, p in ipairs(list) do
+        if dist(p, pos) < d then return true end
+    end
+    return false
+end
+
+-- Lieferpunkte dieser Map (aus dem Speicher; alle 5 Minuten neu aus der Datei, solange nichts Ungespeichertes da ist).
+function BN.roadPointList()
+    local rp, now = BN.roadPoints, BN.now()
+    if not rp or rp.map ~= BN.mapKey() or (not rp.dirty and now - rp.loadedAt >= 300) then
+        local raw = readListFile(roadFile(), "points")
+        rp = { map = BN.mapKey(), list = cleanPoints(raw, C.roadPointsMax), loadedAt = now, dirty = false,
+               broken = raw == nil, savedAt = rp and rp.savedAt or now }
+        BN.roadPoints = rp
+    end
+    return rp.list
+end
+
+function BN.roadTick()
+    if C.roadPointsMax <= 0 then return end
+    local now = BN.now()
+    if now - (BN.lastRoadAt or 0) < C.roadPointSec then return end
+    BN.lastRoadAt = now
+    local list = BN.roadPointList()
+    local rp = BN.roadPoints
+    if rp.broken then return end
+    for _, s in pairs(BN.players) do
+        if #list >= C.roadPointsMax then break end
+        local v = not s.guest and (tonumber(s.tickMoved) or 0) > 0 and s.tickVid ~= nil and type(s.vehicles) == "table"
+            and s.vehicles[s.tickVid]
+        if type(v) == "table" and tonumber(v.x) and not nearPoint(list, v, C.roadPointSpacingM) then
+            list[#list + 1] = { x = math.floor(v.x + 0.5), y = math.floor(v.y + 0.5), z = math.floor(v.z + 0.5) }
+            rp.dirty = true
+        end
+    end
+    if rp.dirty and now - (rp.savedAt or 0) >= 300 then
+        rp.savedAt = now
+        local raw = readListFile(roadFile(), "points")
+        if not raw then rp.broken = true return end
+        for _, p in ipairs(cleanPoints(raw, C.roadPointsMax)) do
+            if #list < C.roadPointsMax and not nearPoint(list, p, C.roadPointSpacingM) then list[#list + 1] = p end
+        end
+        ensureDir(C.sharedDir)
+        ensureDir(roadDir())
+        if writeFileAtomic(roadFile(), json.encode({ points = list })) then rp.dirty, rp.loadedAt = false, now end
+    end
+end
+
+-- Richtung zum Ziel relativ zur Fahrtrichtung (aus den letzten Positionen des Auftragsfahrzeugs), nil ohne Fahrt.
+local function relDirection(j, pos, target)
+    if not j.hx then return nil end
+    local tx, ty = target.x - pos.x, target.y - pos.y
+    if math.sqrt(tx * tx + ty * ty) < 1 then return nil end
+    local cross = j.hx * ty - j.hy * tx            -- > 0: Ziel liegt links
+    local dot = j.hx * tx + j.hy * ty
+    local ang = math.deg((math.atan2 or math.atan)(cross, dot))
+    local a = math.abs(ang)
+    if a <= 25 then return "geradeaus" end
+    if a > 155 then return "hinter dir" end
+    local side = ang > 0 and "links" or "rechts"
+    if a <= 70 then return "halb " .. side end
+    if a <= 115 then return side end
+    return "hinten " .. side
+end
+BN.relDirection = relDirection
+
 function BN.startJob(s)
     local lang = BN.langOf(s.pid)
     local pos = currentPosition(s)
@@ -4570,6 +4675,16 @@ function BN.startJob(s)
     for _, p in ipairs(places) do
         local d = dist(pos, p)
         if d >= C.jobMinDistM and p.name ~= s.lastJobPlace then choices[#choices + 1] = { place = p, d = d } end
+    end
+    -- Ohne passende Orte: Lieferung zu einem Lieferpunkt (bis 3 km), damit es auf jeder Map Auftraege gibt.
+    if #choices == 0 and C.roadPointsMax > 0 then
+        for i, p in ipairs(BN.roadPointList()) do
+            local d = dist(pos, p)
+            local name = tr(lang, "Lieferpunkt %d", i)
+            if d >= C.jobMinDistM and d <= 3000 and name ~= s.lastJobPlace then
+                choices[#choices + 1] = { place = { type = "ort", name = name, x = p.x, y = p.y, z = p.z }, d = d }
+            end
+        end
     end
     if #choices == 0 then
         say(s.pid, "Gerade kein Auftrag frei – auf dieser Map fehlen Orte (Admins: /ort neu krankenhaus <Name>).")
@@ -4616,6 +4731,12 @@ function BN.jobTick(s)
         say(s.pid, "Sprung erkannt – der Auftrag nach %s ist abgebrochen. Neuer: /auftrag", j.place.name)
         return
     end
+    if pos and j.lastPos then
+        -- Fahrtrichtung fuer die Richtungshinweise (nur bei echter Bewegung).
+        local dx, dy = pos.x - j.lastPos.x, pos.y - j.lastPos.y
+        local m = math.sqrt(dx * dx + dy * dy)
+        if m >= 3 then j.hx, j.hy = dx / m, dy / m end
+    end
     if pos then j.lastPos, j.lastAt = pos, now end
     if pos and dist(pos, j.place) <= C.jobRadiusM then
         local driven = j.legDriven or 0
@@ -4658,7 +4779,12 @@ function BN.jobTick(s)
     end
     if pos and now - j.hintAt >= 30 then
         j.hintAt = now
-        say(s.pid, "Noch %s bis %s · %s übrig", fmtDist(lang, dist(pos, j.place)), j.place.name, fmtClock(left))
+        local dir = relDirection(j, pos, j.place)
+        if dir then
+            say(s.pid, "Noch %s bis %s (%s) · %s übrig", fmtDist(lang, dist(pos, j.place)), j.place.name, tr(lang, dir), fmtClock(left))
+        else
+            say(s.pid, "Noch %s bis %s · %s übrig", fmtDist(lang, dist(pos, j.place)), j.place.name, fmtClock(left))
+        end
     end
 end
 
@@ -5731,6 +5857,7 @@ function BN.tick()
     guarded("Einsatz", BN.alertTick)
     guarded("Konvoi", BN.convoyTick)
     guarded("Wo ist was los", BN.crowdTick)
+    guarded("Lieferpunkte", BN.roadTick)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)

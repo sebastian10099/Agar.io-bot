@@ -112,6 +112,7 @@ C.tutorialXp = 0                   -- Einsteiger-Pfad fuer die allgemeinen Tests
 C.alertEverySec = 0                -- Einsatz-Alarm fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.convoyXp = 0                     -- Konvoi-Bonus fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.crowdHintSec = 0                 -- "Wo ist was los" fuer die allgemeinen Tests aus (eigener Test weiter unten)
+C.roadPointsMax = 0                -- Lieferpunkte fuer die allgemeinen Tests aus (eigener Test weiter unten)
 check(events.BN_Tick == "BN_Tick" and timers.BN_Tick == 1000, "Takt registriert")
 eq(BN.server.name, "BeamNet | Server 1", "Servername ohne Farbcodes")
 eq(BN.server.port, 30814, "Port trotz Kommentar")
@@ -2451,7 +2452,7 @@ do
     say(96, "/auftrag")
     local bonus0 = BN.players[96].pendingBonus
     for _ = 1, 50 do move(96, 1, -20, 0, 0); tick(1) end
-    check(chatContains("Noch 4%d0 m bis St%. Marien", 96), "Auftrag: Hinweis unterwegs")
+    check(chatContains("Noch 4%d0 m bis St%. Marien %(geradeaus%)", 96), "Auftrag: Hinweis unterwegs mit Richtung")
     check(chatContains("✅ Auftrag erledigt: St%. Marien in 0:4%d – %+100 XP %(Blitzschnell! %+50 %%%)", 96), "Auftrag: erledigt, schnell = +50 %")
     tick(1)
     check(BN.hasAchievement(BN.players[96], "job1") and chatContains("Erster Auftrag", 96), "Auftrag: Erfolg Erster Auftrag")
@@ -2739,6 +2740,66 @@ do
     for _, id in ipairs({ "12323", "12424" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
     os.execute('rm -rf "' .. SHARED .. '/places"')
     C.admins = savedAdmins
+end
+
+-- --- Lieferpunkte und Richtungshinweise ---------------------------------------------------------------------
+do
+    -- Richtung relativ zur Fahrt (Fahrt nach +x).
+    local j = { hx = 1, hy = 0 }
+    local o = { x = 0, y = 0 }
+    eq(BN.relDirection(j, o, { x = 100, y = 0 }), "geradeaus", "Richtung: geradeaus")
+    eq(BN.relDirection(j, o, { x = 0, y = 100 }), "links", "Richtung: links (+y bei Fahrt nach +x)")
+    eq(BN.relDirection(j, o, { x = 0, y = -100 }), "rechts", "Richtung: rechts")
+    eq(BN.relDirection(j, o, { x = 100, y = 100 }), "halb links", "Richtung: halb links")
+    eq(BN.relDirection(j, o, { x = -100, y = -60 }), "hinten rechts", "Richtung: hinten rechts")
+    eq(BN.relDirection(j, o, { x = -100, y = 0 }), "hinter dir", "Richtung: hinter dir")
+    check(BN.relDirection({}, o, { x = 1, y = 1 }) == nil, "Richtung: ohne Fahrt keine")
+    -- Lieferpunkte sammeln: nur echte Fahrt mit Konto, Abstand und Hoechstzahl.
+    os.execute('rm -rf "' .. SHARED .. '/roadpoints" "' .. SHARED .. '/places"')
+    C.roadPointsMax, C.roadPointSec = 300, 5
+    BN.roadPoints, BN.lastRoadAt = nil, nil
+    players[160] = { name = "Kartograf", ids = { beammp = "16060" }, vehicles = { [1] = { pos = { 80000, 0, 0 }, tim = 0 } } }
+    players[161] = { name = "GastK", ids = {}, vehicles = { [1] = { pos = { 90000, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](160); _G[events.onPlayerJoin](161)
+    tick(1)
+    for _ = 1, 150 do move(160, 1, 20); move(161, 1, 20); tick(1) end      -- 3 km mit 20 m/s
+    local pts = BN.roadPointList()
+    check(#pts >= 8 and #pts <= 13, "Lieferpunkte: alle ~250 m einer (" .. #pts .. ")")
+    local guestPoint = false
+    for _, p in ipairs(pts) do if p.x >= 89000 then guestPoint = true end end
+    check(not guestPoint, "Lieferpunkte: nicht von Gaesten")
+    -- Stehen bringt keine Punkte.
+    local n0 = #pts
+    tick(30)
+    eq(#BN.roadPointList(), n0, "Lieferpunkte: im Stand keine neuen")
+    -- Gespeichert (alle 5 Minuten), gemeinsam fuer alle Server dieser Map.
+    BN.roadPoints.savedAt = clock - 301
+    for _ = 1, 6 do move(160, 1, 20); tick(1) end
+    local f = readJson(SHARED .. "/roadpoints/gridmap_v2.json")
+    check(f and type(f.points) == "table" and #f.points >= n0, "Lieferpunkte: in roadpoints/<Map>.json gespeichert")
+    -- Ohne Orte gibt es jetzt trotzdem Auftraege.
+    BN.players[160].job = nil
+    BN.jobLimits = {}
+    chatLog = {}
+    say(160, "/auftrag")
+    check(chatContains("📦 Liefere das Paket nach Lieferpunkt %d+ – ", 160) and BN.players[160].job ~= nil, "Lieferpunkte: Auftrag ohne Orte")
+    say(160, "/auftrag stop")
+    -- Kaputte Datei: nichts wird ueberschrieben.
+    local fh = io.open(SHARED .. "/roadpoints/gridmap_v2.json", "w"); fh:write("{kaputt"); fh:close()
+    BN.roadPoints = nil
+    for _ = 1, 10 do move(160, 1, 20); tick(1) end
+    BN.roadPoints.savedAt = clock - 301
+    for _ = 1, 6 do move(160, 1, 20); tick(1) end
+    fh = io.open(SHARED .. "/roadpoints/gridmap_v2.json", "r"); local body = fh:read("*a"); fh:close()
+    eq(body, "{kaputt", "Lieferpunkte: kaputte Datei bleibt unberuehrt")
+    for _, pid in ipairs({ 160, 161 }) do
+        if BN.players[pid] then BN.players[pid].pendingBonus, BN.players[pid].pendingKm = 0, 0 end
+        _G[events.onPlayerDisconnect](pid); players[pid] = nil
+    end
+    os.remove(SHARED .. "/players/16060.json"); BN.savedRecently["16060"] = nil
+    os.execute('rm -rf "' .. SHARED .. '/roadpoints"')
+    C.roadPointsMax, C.roadPointSec = 0, 20
+    BN.roadPoints, BN.lastRoadAt, BN.jobLimits = nil, nil, {}
 end
 
 -- --- Wo ist was los? ------------------------------------------------------------------------------------------
@@ -3176,8 +3237,8 @@ do
     chatLog = {}
     _G[events.onPlayerJoin](117)
     check(chatContains("✨ Neu seit deinem letzten Besuch:", 117), "Neuheiten: fuer Spieler von frueher")
-    check(chatContains("^  Neue Erfolge für Vielfahrer", 117) and chatContains("^  7 neue Erfolge", 117) and chatContains("^  Konvoi", 117), "Neuheiten: die drei neuesten")
-    check(not chatContains("Einsatz%-Alarm", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
+    check(chatContains("^  Aufträge auf jeder Map", 117) and chatContains("^  Neue Erfolge für Vielfahrer", 117) and chatContains("^  7 neue Erfolge", 117), "Neuheiten: die drei neuesten")
+    check(not chatContains("Konvoi: zusammen", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
     _G[events.onPlayerDisconnect](117)
     eq(readJson(SHARED .. "/players/11717.json").seenVersion, BN.VERSION, "Neuheiten: Version gemerkt")
     chatLog = {}
@@ -3188,7 +3249,7 @@ do
     local r = readJson(SHARED .. "/players/11717.json"); r.seenVersion = "1.43"; writeJson(SHARED .. "/players/11717.json", r)
     chatLog = {}
     _G[events.onPlayerJoin](117)
-    check(chatContains("^  Neue Erfolge für Vielfahrer", 117) and chatContains("^  7 neue Erfolge", 117) and chatContains("^  Konvoi", 117) and not chatContains("Verfolgungsjagd: /fangen", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
+    check(chatContains("^  Aufträge auf jeder Map", 117) and chatContains("^  Neue Erfolge für Vielfahrer", 117) and chatContains("^  7 neue Erfolge", 117) and not chatContains("Verfolgungsjagd: /fangen", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
     _G[events.onPlayerDisconnect](117); players[117] = nil
     -- Ganz neue Spieler bekommen die Begruessung statt Neuheiten.
     players[118] = { name = "Ganzneu", ids = { beammp = "11818" }, vehicles = {} }

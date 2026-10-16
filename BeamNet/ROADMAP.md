@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.72 / Plugin 1.61)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.73 / Plugin 1.62)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -44,6 +44,8 @@
       Discord/Telegram); `beamnet event start|stop` von der Konsole (Werkzeug 1.70). Achte Prüfung (1.71): Map-Namen
       aus ServerConfig.toml werden bereinigt (ältere Bash hätten sie in Rechenausdrücken ausgeführt), Abende kurz nach
       Mitternacht schon am Vorabend angekündigt, Zeitumstellung und Schreibfehler gemeldet, Warten auf laufende Events.
+- [x] Aufträge auf jeder Map: Lieferpunkte aus echten Fahrten, wenn Admins (noch) keine Orte angelegt haben;
+      Richtungshinweise unterwegs (Plugin 1.62).
 - [x] „Wo ist was los?“: Wer fast allein auf einem Server fährt, bekommt den vollsten anderen Server genannt
       (Plugin 1.59).
 - [x] Erfolge für Aufträge, Verfolgungsjagden und Konvois: 7 neue (Plugin 1.57, Statusseite 1.69). Die Erfolge der

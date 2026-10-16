@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.72"
+VERSION="1.73"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -750,7 +750,7 @@ check_watch() {
         done
         if [[ -n $missing ]]; then
             warn "Keine Orte für Fahraufträge (/auftrag) auf: $missing"
-            hint "Im Spiel als Admin an die Stelle fahren: /ort neu krankenhaus <Name> (auch schule, feuerwehr, tankstelle …)"
+            hint "Bis dahin liefert /auftrag zu Lieferpunkten (Plugin 1.62+). Schöner mit echten Orten – im Spiel als Admin an die Stelle fahren: /ort neu krankenhaus <Name> (auch schule, feuerwehr, tankstelle …)"
         fi
     fi
     return 0
