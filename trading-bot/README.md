@@ -153,3 +153,17 @@ python3 -m unittest -v tests.test_bot tests.test_control
 Strategie-Entscheidungen, alle Exit-Regeln, der Tracker, ein kompletter
 Zyklus gegen den Demo-Markt, die Parameter-Validierung, Live-Änderungen,
 manuelles Schließen, Resets und jede API-Route sind abgedeckt.
+
+**Browser-Prüfung der Steuerseite** – klickt gegen einen laufenden Demo-Server
+jede Funktion durch (Formular, Validierung, Persistenz, Schließen, Pause,
+Filter, Reset), prüft auf Konsolenfehler und auf Überhang am Telefon, und legt
+Screenshots in `tests/ui/shots/` ab:
+
+```bash
+python3 -m bot.main --demo --no-open --port 8797 &
+npm install playwright          # einmalig, lädt Chromium
+node tests/ui/verify.js
+```
+
+Der Demo-Markt listet seine Tokens jede simulierte Stunde neu (eine reale
+Minute im 60×-Zeitraffer), damit dauerhaft frische Kandidaten kommen.

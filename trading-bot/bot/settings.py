@@ -11,7 +11,7 @@ CHAINS = ["solana", "ethereum", "base", "bsc"]
 
 # path, type, min, max, step, label, help, group
 SCHEMA: list[dict[str, Any]] = [
-    {"path": "poll_seconds", "type": "int", "min": 5, "max": 300, "step": 1,
+    {"path": "poll_seconds", "type": "int", "min": 2, "max": 300, "step": 1,
      "label": "Abfrage-Intervall", "unit": "s", "group": "Allgemein",
      "help": "Wie oft neue Tokens geholt und offene Positionen geprüft werden."},
     {"path": "chains", "type": "chains", "label": "Chains", "group": "Allgemein",

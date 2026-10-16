@@ -139,6 +139,10 @@ class TrackerTests(unittest.TestCase):
 
 class EngineDemoTests(unittest.TestCase):
     def test_full_cycle_opens_and_closes_positions(self):
+        import bot.demo as demo
+        cycle = demo.CYCLE_MIN
+        demo.CYCLE_MIN = 1e9          # one generation only, so the book is empty at the end
+        self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
         with tempfile.TemporaryDirectory() as d:
             store = Store(Path(d) / "t.sqlite")
             dex = FakeDex(accel=1.0)
@@ -162,6 +166,24 @@ class EngineDemoTests(unittest.TestCase):
             self.assertTrue(store.edge_report())
             json.dumps(engine.state())  # dashboard payload must be serialisable
             store.close()
+
+
+class DemoRelistingTests(unittest.TestCase):
+    def test_tokens_are_relisted_every_cycle(self):
+        from bot.demo import CYCLE_MIN
+        dex = FakeDex(accel=1.0)
+        t = [dex.started]
+        dex.now = lambda: t[0]
+        first = dex.recent_token_addresses(["solana"])["solana"]
+        t[0] = dex.started + (CYCLE_MIN + 15) * 60
+        later = dex.recent_token_addresses(["solana"])["solana"]
+        self.assertEqual(len(first), len(later))
+        self.assertTrue(all(a.endswith("-g1") for a in later), later)
+        run = next(p for p in dex.pairs_for_tokens("solana", later) if p["symbol"] == "RUN")
+        self.assertLess(run["age_min"], 60)                      # fresh again
+        self.assertIsNotNone(dex.price("solana", run["pair"]))    # new generation priced
+        self.assertIsNotNone(dex.price("solana", run["pair"].split("-g")[0]))  # old one still priced
+        self.assertIsNotNone(FakeRug().summary(run["token"]))     # rug data found despite suffix
 
 
 class ServerTests(unittest.TestCase):

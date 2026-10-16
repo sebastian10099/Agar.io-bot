@@ -12,6 +12,7 @@ from typing import Any, Callable, Optional
 from .sources.dexscreener import normalize_pair
 
 FIXTURES = Path(__file__).parent.parent / "tests" / "fixtures"
+CYCLE_MIN = 60.0    # every token is re-listed as a "new launch" this often (simulated minutes)
 
 
 def _path(scenario: str, minutes: float) -> float:
@@ -25,7 +26,15 @@ def _path(scenario: str, minutes: float) -> float:
     return 1.0
 
 
+def strip_generation(address: str) -> str:
+    return address.split("-g", 1)[0]
+
+
 class FakeDex:
+    """Each fixture token is re-listed every CYCLE_MIN simulated minutes with a
+    generation suffix on its addresses, so the demo keeps producing fresh
+    launches instead of going quiet once everything has aged out."""
+
     def __init__(self, accel: float = 60.0, seed: int = 7) -> None:
         self.accel = accel
         self.started = time.time()
@@ -34,7 +43,7 @@ class FakeDex:
         self.pairs: list[dict[str, Any]] = []
         for p in raw:
             demo = p.pop("_demo")
-            p["pairCreatedAt"] = int((self.started + demo["listed_offset_min"] * 60) * 1000)
+            p["_listed_at"] = self.started + demo["listed_offset_min"] * 60
             p["_scenario"] = demo["scenario"]
             p["_listed_price"] = float(p["priceUsd"])
             self.pairs.append(p)
@@ -42,8 +51,25 @@ class FakeDex:
     def now(self) -> float:
         return self.started + (time.time() - self.started) * self.accel
 
-    def _priced(self, p: dict[str, Any]) -> dict[str, Any]:
-        now = self.now()
+    def _generations(self, now: Optional[float] = None) -> list[dict[str, Any]]:
+        """Current incarnation of every token: the latest listing at or before now."""
+        now = self.now() if now is None else now
+        out = []
+        for p in self.pairs:
+            k = int(max(0.0, now - p["_listed_at"]) // (CYCLE_MIN * 60))
+            listed = p["_listed_at"] + k * CYCLE_MIN * 60
+            if listed > now:
+                continue
+            q = dict(p)
+            q["baseToken"] = dict(p["baseToken"])
+            if k:
+                q["pairAddress"] = p["pairAddress"] + f"-g{k}"
+                q["baseToken"]["address"] = p["baseToken"]["address"] + f"-g{k}"
+            q["pairCreatedAt"] = int(listed * 1000)
+            out.append(q)
+        return out
+
+    def _priced(self, p: dict[str, Any], now: float) -> dict[str, Any]:
         minutes = (now - p["pairCreatedAt"] / 1000) / 60
         noise = 1 + self.rng.uniform(-0.03, 0.03)
         price = p["_listed_price"] * _path(p["_scenario"], max(0.0, minutes)) * noise
@@ -52,21 +78,33 @@ class FakeDex:
         return normalize_pair(q, now)
 
     def recent_token_addresses(self, chains: Any) -> dict[str, list[str]]:
-        now = self.now()
         out = {c: [] for c in chains}
-        for p in self.pairs:
-            if p["chainId"] in out and p["pairCreatedAt"] / 1000 <= now:
+        for p in self._generations():
+            if p["chainId"] in out:
                 out[p["chainId"]].append(p["baseToken"]["address"])
         return out
 
     def pairs_for_tokens(self, chain: str, addresses: list[str]) -> list[dict[str, Any]]:
-        return [self._priced(p) for p in self.pairs
+        now = self.now()
+        return [self._priced(p, now) for p in self._generations(now)
                 if p["chainId"] == chain and p["baseToken"]["address"] in addresses]
 
     def pair(self, chain: str, pair_address: str) -> Optional[dict[str, Any]]:
+        """Any generation can be looked up, so positions and outcome tracking of
+        an older listing keep getting prices after the next re-listing."""
+        now = self.now()
+        base, _, gen = pair_address.partition("-g")
         for p in self.pairs:
-            if p["chainId"] == chain and p["pairAddress"] == pair_address:
-                return self._priced(p)
+            if p["chainId"] != chain or p["pairAddress"] != base:
+                continue
+            k = int(gen) if gen else 0
+            q = dict(p)
+            q["baseToken"] = dict(p["baseToken"])
+            if k:
+                q["pairAddress"] = pair_address
+                q["baseToken"]["address"] = p["baseToken"]["address"] + f"-g{k}"
+            q["pairCreatedAt"] = int((p["_listed_at"] + k * CYCLE_MIN * 60) * 1000)
+            return self._priced(q, now)
         return None
 
     def price(self, chain: str, pair_address: str) -> Optional[float]:
@@ -79,7 +117,7 @@ class FakeRug:
         self.data = json.loads((FIXTURES / "rugcheck.json").read_text())
 
     def summary(self, mint: str) -> Optional[dict[str, Any]]:
-        d = self.data.get(mint)
+        d = self.data.get(strip_generation(mint))
         if d is None:
             return None
         risks = d.get("risks") or []

@@ -26,6 +26,7 @@ class Engine:
         self.tracker = Tracker(store, cfg, dex.price)
         self.paused = False
         self.last_poll: Optional[float] = None
+        self.last_poll_wall: Optional[float] = None   # real time, for the liveness indicator
         self.last_prices: dict[str, float] = {}
         self.poll_count = 0
         self.errors = 0
@@ -84,6 +85,7 @@ class Engine:
 
         self.tracker.fill_due(now)
         self.last_poll = now
+        self.last_poll_wall = time.time()
         self.poll_count += 1
         return counts
 
@@ -176,6 +178,7 @@ class Engine:
         return {
             "mode": self.cfg["mode"], "paused": self.paused, "now": now,
             "started_at": self.started_at, "poll_seconds": self.cfg["poll_seconds"],
+            "wall_now": time.time(), "last_poll_wall": self.last_poll_wall,
             "chains": self.cfg["chains"],
             "last_poll": self.last_poll, "polls": self.poll_count, "errors": self.errors,
             "initial": self.paper.initial, "bankroll": round(self.paper.bankroll(), 2),

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>New-Token Bot · Steuerung</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M7 21l6-7 5 4 7-9' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   :root {
     --bg:#f5f6f8; --panel:#ffffff; --line:#e3e6eb; --fg:#15181d; --dim:#6b7280; --muted:#f0f2f5;
@@ -51,16 +52,17 @@
 
   nav { display:flex; gap:2px; padding:0 20px; border-top:1px solid var(--line); overflow-x:auto; }
   nav button { background:none; border:0; border-bottom:2px solid transparent; padding:10px 12px;
-               color:var(--dim); cursor:pointer; }
+               color:var(--dim); cursor:pointer; white-space:nowrap; }
   nav button[aria-selected="true"] { color:var(--fg); border-bottom-color:var(--blue); }
   nav button .n { font-size:11px; color:var(--dim); margin-left:4px; }
 
   main { padding:16px 20px 48px; max-width:1400px; margin:0 auto; }
   .grid { display:grid; gap:16px; grid-template-columns:1fr; }
   @media (min-width:1080px) { .grid.two { grid-template-columns:1fr 1fr; } }
-  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; min-width:0; }
   section > h2 { font-size:12px; margin:0 0 10px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em;
-                 display:flex; align-items:center; gap:10px; }
+                 display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  section > h2 .note { text-transform:none; letter-spacing:0; font-weight:normal; }
   section > h2 .spacer { flex:1; }
   .note { color:var(--dim); font-size:12px; margin:8px 0 0; }
   .empty { color:var(--dim); padding:10px 0; }
@@ -70,7 +72,11 @@
   th { color:var(--dim); font-weight:500; font-size:12px; position:sticky; top:0; background:var(--panel); }
   tr:last-child td { border-bottom:0; }
   td.num, th.num { text-align:right; }
-  .scroll { max-height:420px; overflow:auto; }
+  .scroll { max-height:420px; overflow:auto; -webkit-overflow-scrolling:touch; }
+  .scroll.x { max-height:none; }
+  .scroll table { min-width:640px; }
+  #cands table { min-width:900px; }
+  #cands td:last-child { min-width:260px; white-space:normal; }
   .pos { color:var(--green); } .neg { color:var(--red); }
   .d-buy { color:var(--green); font-weight:600; } .d-watch { color:var(--amber); } .d-skip { color:var(--dim); }
   .reasons { color:var(--dim); font-size:12px; }
@@ -82,7 +88,8 @@
   .log .t { color:var(--dim); margin-right:8px; }
 
   /* control form */
-  .groups { display:grid; gap:16px; grid-template-columns:1fr; }
+  .groups { display:grid; gap:16px; grid-template-columns:1fr; align-items:start; }
+  .groups .col { display:grid; gap:16px; align-content:start; min-width:0; }
   @media (min-width:1080px) { .groups { grid-template-columns:1fr 1fr; } }
   fieldset { border:1px solid var(--line); border-radius:10px; padding:10px 14px 6px; margin:0; min-width:0; }
   legend { padding:0 6px; color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
@@ -100,6 +107,17 @@
   .field.error input { outline:2px solid var(--red); }
   .field .err { grid-column:1 / -1; color:var(--red); font-size:12px; }
   .unit { color:var(--dim); font-size:12px; min-width:22px; }
+  @media (max-width:640px) {
+    .field { grid-template-columns:1fr; }
+    .field .ctl { justify-content:flex-start; }
+    .field input[type=number], .field input[type=text] { max-width:none; flex:1; text-align:left; }
+    .chips { justify-content:flex-start; }
+    .bar { padding:10px 14px; } main { padding:12px 14px 40px; }
+    .kpi { min-width:72px; } .kpi b { font-size:15px; }
+    section > h2 .filterbar, section > h2 .note { flex-basis:100%; }
+    section > h2 .spacer { display:none; }
+  }
+  #cands td:nth-child(2), #open td:first-child { white-space:nowrap; }
   .sw { position:relative; width:38px; height:22px; border-radius:999px; background:var(--line); cursor:pointer;
         border:0; padding:0; transition:background .15s; }
   .sw[aria-checked="true"] { background:var(--blue); }
@@ -157,7 +175,7 @@
   <div id="tab-overview" class="grid">
     <section>
       <h2>Offene Positionen <span class="spacer"></span><span id="n-open" class="pill"></span></h2>
-      <div id="open"></div>
+      <div id="open" class="scroll x"></div>
     </section>
     <div class="grid two">
       <section>
@@ -175,7 +193,7 @@
   <div id="tab-control" class="grid" hidden>
     <section>
       <h2>Parameter <span class="spacer"></span><span class="note" style="margin:0">Änderungen gelten sofort und werden gespeichert.</span></h2>
-      <form id="form" autocomplete="off"><div class="groups" id="groups"></div>
+      <form id="form" autocomplete="off" novalidate><div class="groups" id="groups"></div>
         <div class="formbar">
           <button type="submit" class="btn primary" id="b-save" disabled>Speichern</button>
           <button type="button" class="btn" id="b-revert" disabled>Verwerfen</button>
@@ -340,7 +358,7 @@ function renderHeader(s) {
   $('k-daily').textContent = usd(s.daily_pnl) + (s.daily_limit_hit ? ' ⛔' : ''); $('k-daily').className = cls(s.daily_pnl);
   $('k-daily').title = s.daily_limit_hit ? 'Tages-Verlustlimit erreicht – keine neuen Einstiege' : '';
   $('k-trades').textContent = `${s.stats.closed} · ${s.stats.closed ? Math.round(100 * s.stats.wins / s.stats.closed) + '%' : '–'}`;
-  const since = s.last_poll ? s.now - s.last_poll : null;
+  const since = s.last_poll_wall ? s.wall_now - s.last_poll_wall : null;
   $('k-poll').textContent = since == null ? 'noch keiner' : 'vor ' + dur(since);
   $('conn').className = 'dot ' + (since == null ? 'warn' : since > 3 * s.poll_seconds ? 'bad' : 'ok');
   $('conn').title = s.errors ? `${s.errors} Fehler – siehe Protokoll` : 'verbunden';
@@ -359,7 +377,12 @@ function fieldHtml(f) {
   return `<div class="field" data-field="${f.path}"><div><label>${esc(f.label)}</label>${f.help ? `<small>${esc(f.help)}</small>` : ''}</div><div class="ctl">${ctl}</div><div class="err" hidden></div></div>`;
 }
 function buildForm() {
-  $('groups').innerHTML = schema.groups.map((g) => `<fieldset><legend>${g}</legend>${schema.fields.filter((f) => f.group === g).map(fieldHtml).join('')}</fieldset>`).join('');
+  // two balanced columns: the long Filter group gets its own, the short ones share the other
+  const columns = [['Filter', 'Strategie'], ['Allgemein', 'Risiko', 'Exits']];
+  const rest = schema.groups.filter((g) => !columns.flat().includes(g));
+  columns[1].push(...rest);
+  const fieldset = (g) => `<fieldset data-group="${g}"><legend>${g}</legend>${schema.fields.filter((f) => f.group === g).map(fieldHtml).join('')}</fieldset>`;
+  $('groups').innerHTML = columns.map((col) => `<div class="col">${col.filter((g) => schema.groups.includes(g)).map(fieldset).join('')}</div>`).join('');
   $('groups').querySelectorAll('.sw').forEach((b) => b.onclick = () => { setDraft(b.dataset.path, b.getAttribute('aria-checked') !== 'true'); });
   $('groups').querySelectorAll('.chips').forEach((box) => box.querySelectorAll('.chip').forEach((c) => c.onclick = () => {
     const cur = new Set(draft[box.dataset.path] || []); cur.has(c.dataset.chain) ? cur.delete(c.dataset.chain) : cur.add(c.dataset.chain);
