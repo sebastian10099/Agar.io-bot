@@ -1864,6 +1864,70 @@ do
     os.remove(SHARED .. "/weekly-track.json")
 end
 
+-- --- Rennserien (/serie) --------------------------------------------------------------------------------------
+do
+    local savedAdmins = C.admins
+    C.admins = { "Veranstalter" }
+    players[121] = { name = "Veranstalter", ids = { beammp = "12121" }, vehicles = {} }
+    players[122] = { name = "Serienfahrer", ids = { beammp = "12222" }, vehicles = {} }
+    _G[events.onPlayerJoin](121); _G[events.onPlayerJoin](122)
+    BN.track(121, 0, { 6000, 0, 0 }, 1); say(121, "/rennen neu teila")
+    BN.track(121, 0, { 7000, 0, 0 }, 2); say(121, "/rennen ziel teila")
+    BN.track(121, 0, { 7000, 0, 0 }, 3); say(121, "/rennen neu teilb")
+    BN.track(121, 0, { 8000, 0, 0 }, 4); say(121, "/rennen ziel teilb")
+    chatLog = {}
+    say(122, "/serie")
+    check(chatContains("Noch keine Serien auf dieser Map", 122), "Serie: Liste leer")
+    say(122, "/serie neu tour teila teilb")
+    check(chatContains("Serien anlegen dürfen nur Admins", 122), "Serie: nur Admins legen an")
+    say(121, "/serie neu tour teila")
+    check(chatContains("Eine Serie hat 2 bis 5 Strecken", 121), "Serie: mindestens 2 Strecken")
+    say(121, "/serie neu tour teila gibtsnicht")
+    check(chatContains("Strecke \"gibtsnicht\" gibt es auf dieser Map nicht", 121), "Serie: nur vorhandene Strecken")
+    say(121, "/serie neu tour teila teilb")
+    check(chatContains("Serie tour angelegt: teila → teilb", 121), "Serie: angelegt")
+    local function run(pid, from, to, t0)
+        BN.track(pid, 0, { from, 0, 0 }, t0); BN.track(pid, 0, { from + 10, 0, 0 }, t0 + 0.2)
+        local x, tim = from + 10, t0 + 0.2
+        while x < to do x = math.min(to, x + 25); tim = tim + 1; BN.track(pid, 0, { x, 0, 0 }, tim) end
+    end
+    local b0 = BN.players[122].pendingBonus
+    chatLog = {}
+    say(122, "/serie tour")
+    check(chatContains("Serie tour: teila → teilb", 122), "Serie: Start")
+    run(122, 6000, 7000, 100)
+    check(chatContains("Serie tour: Teil 1 von 2 geschafft %(bisher 0:%d%d%.%d%)%. Weiter: teilb", 122), "Serie: Teil 1, weiter zum naechsten")
+    check(BN.players[122].race and BN.players[122].race.name == "teilb", "Serie: naechste Strecke vorbereitet")
+    run(122, 7000, 8000, 300)
+    check(chatContains("🏁 Serie tour geschafft: 1:%d%d%.%d gesamt", 122), "Serie: geschafft mit Gesamtzeit")
+    check(chatContains("🏆 Neuer Serienrekord tour: Serienfahrer", 121), "Serie: Rekord an alle")
+    check(BN.players[122].series == nil and BN.players[122].race == nil, "Serie: danach vorbei")
+    check(BN.players[122].pendingBonus - b0 >= C.seriesXp + C.raceRecordXp, "Serie: Bonus-XP")
+    local data = BN.loadTracks()
+    check(data.series.tour.records[1].id == "12222", "Serie: Rekord gespeichert")
+    chatLog = {}
+    say(122, "/serie")
+    check(chatContains("^tour: teila → teilb · Serienfahrer 1:", 122), "Serie: Liste mit Bestzeit")
+    -- Zu langsam: nach 30 Minuten verfaellt die Serie.
+    say(122, "/serie tour")
+    run(122, 6000, 7000, 1000)
+    BN.players[122].series.startAt = clock - 1801
+    chatLog = {}
+    run(122, 7000, 8000, 1200)
+    check(chatContains("Serie tour abgebrochen – mehr als 30 Minuten", 122), "Serie: Zeitlimit")
+    say(122, "/serie tour"); say(122, "/serie stop")
+    check(chatContains("Serie abgebrochen", 122) and BN.players[122].series == nil, "Serie: abbrechen")
+    say(121, "/serie weg tour")
+    check(chatContains("Serie tour gelöscht", 121), "Serie: loeschen")
+    say(121, "/rennen loeschen teila"); say(121, "/rennen loeschen teilb")
+    for _, pid in ipairs({ 121, 122 }) do
+        if BN.players[pid] then BN.players[pid].pendingBonus, BN.players[pid].pendingRaces, BN.players[pid].pendingRecords = 0, 0, 0 end
+        _G[events.onPlayerDisconnect](pid); players[pid] = nil
+        os.remove(SHARED .. "/players/" .. tostring(12000 + pid) .. ".json"); BN.savedRecently[tostring(12000 + pid)] = nil
+    end
+    C.admins = savedAdmins
+end
+
 -- --- Gruppenrennen ---------------------------------------------------------------------------------------------
 do
     local savedAdmins = C.admins

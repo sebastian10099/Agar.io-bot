@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.50"
+BN.VERSION = "1.51"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -124,6 +124,8 @@ local defaults = {
     -- Einsteiger-Pfad (/start): Bonus-XP je Schritt und fuer alle zusammen (0 = aus).
     tutorialXp = 25,
     tutorialDoneXp = 50,
+    -- Rennserien (/serie): Bonus-XP fuer eine ganze Serie (und fuer einen Serienrekord zusaetzlich raceRecordXp).
+    seriesXp = 40,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -514,7 +516,7 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true, jobCooldownSec = true, jobXpPerHour = true,
                        communityKm = true, communityXp = true, chaseJoinSec = true, chaseHeadStartSec = true,
                        chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true, chaseXpPerDay = true, chaseCooldownSec = true,
-                       tipEverySec = true, tutorialXp = true, tutorialDoneXp = true }
+                       tipEverySec = true, tutorialXp = true, tutorialDoneXp = true, seriesXp = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
@@ -604,8 +606,28 @@ local EN = {
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
     ["BeamNet-Befehle:"] = "BeamNet commands:",
-    ["Spielen: /auftrag · /rennen · /duell <Name> <Strecke> · /fangen · /aufgabe · /ziel · /vote"] =
-        "Play: /job · /race · /duel <name> <track> · /chase · /daily · /goal · /vote",
+    ["Spielen: /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /aufgabe · /ziel · /vote"] =
+        "Play: /job · /race · /series · /duel <name> <track> · /chase · /daily · /goal · /vote",
+    -- Serien
+    ["Serie %s abgebrochen – mehr als 30 Minuten. Neuer Versuch: /serie %s"] = "Series %s cancelled – more than 30 minutes. Try again: /series %s",
+    ["Serie %s: Teil %d von %d geschafft (bisher %s). Weiter: %s"] = "Series %s: part %d of %d done (so far %s). Next: %s",
+    ["🏆 Neuer Serienrekord %s: %s in %s!"] = "🏆 New series record %s: %s in %s!",
+    ["🏁 Serie %s geschafft: %s gesamt – +%d XP"] = "🏁 Series %s done: %s total – +%d XP",
+    ["Noch keine Serien auf dieser Map. Admins: /serie neu <Name> <Strecke1> <Strecke2> …"] = "No series on this map yet. Admins: /series new <name> <track1> <track2> …",
+    ["Serien auf dieser Map – starten mit /serie <Name>:"] = "Series on this map – start with /series <name>:",
+    ["Du fährst gerade keine Serie."] = "You are not driving a series.",
+    ["Serie abgebrochen."] = "Series cancelled.",
+    ["Serien anlegen dürfen nur Admins."] = "Only admins can create series.",
+    ["Aufruf: /serie neu <Name> <Strecke1> <Strecke2> … · /serie weg <Name>"] = "Usage: /series new <name> <track1> <track2> … · /series delete <name>",
+    ["Die Serie %s gibt es nicht."] = "The series %s does not exist.",
+    ["Serie %s gelöscht."] = "Series %s deleted.",
+    ["Strecke \"%s\" gibt es auf dieser Map nicht (oder sie hat kein Ziel)."] = "Track \"%s\" does not exist on this map (or has no finish).",
+    ["Eine Serie hat 2 bis 5 Strecken."] = "A series has 2 to 5 tracks.",
+    ["Auf dieser Map gibt es schon 20 Serien."] = "This map already has 20 series.",
+    ["Serie %s angelegt: %s"] = "Series %s created: %s",
+    ["Die Serie \"%s\" gibt es auf dieser Map nicht. Liste: /serie"] = "The series \"%s\" does not exist on this map. List: /series",
+    ["Erst das Gruppenrennen beenden."] = "Finish the group race first.",
+    ["Serie %s: %s – Zeiten werden addiert, 30 Minuten Zeit."] = "Series %s: %s – times are added up, 30 minutes.",
     ["Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|woche]"] =
         "You: /stats [name] · /km · /achievements · /league · /season · /top [km|xp|speed|jobs|week]",
     ["Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event"] =
@@ -871,6 +893,7 @@ local EN = {
     ["Wochenziel für alle: /ziel – zusammen Kilometer sammeln, alle bekommen Bonus-XP"] = "Weekly goal for everyone: /goal – collect kilometers together, everyone gets bonus XP",
     ["Verfolgungsjagd: /fangen – einer flüchtet, alle jagen ihn"] = "Chase: /chase – one runs, everyone hunts them",
     ["Duell: /duell <Name> <Strecke> – Zeitrennen gegen einen Freund"] = "Duel: /duel <name> <track> – time trial against a friend",
+    ["Rennserien: /serie – mehrere Strecken nacheinander, die Zeiten zählen zusammen"] = "Race series: /series – several tracks in a row, the times add up",
     -- Einsteiger-Pfad
     ["Fahr deinen ersten Kilometer"] = "Drive your first kilometer",
     ["Erledige einen Auftrag: /auftrag"] = "Finish a job: /job",
@@ -1980,6 +2003,7 @@ BN.NEWS = {
     { "1.34", "Wochenziel für alle: /ziel – zusammen Kilometer sammeln, alle bekommen Bonus-XP" },
     { "1.38", "Verfolgungsjagd: /fangen – einer flüchtet, alle jagen ihn" },
     { "1.44", "Duell: /duell <Name> <Strecke> – Zeitrennen gegen einen Freund" },
+    { "1.51", "Rennserien: /serie – mehrere Strecken nacheinander, die Zeiten zählen zusammen" },
 }
 
 local function versionNum(v)
@@ -2400,6 +2424,7 @@ end
 function BN.joinGroup(pid)
     local g = BN.group
     local s = session(pid)
+    s.series = nil
     local track = BN.loadTracks().tracks[g.name]
     if type(track) ~= "table" or not track.finish then return false end
     g.members[pid] = true
@@ -2488,6 +2513,7 @@ local function finishRace(s, time)
     end
     r.state, r.vid, r.startT, r.leftFinish = "armed", nil, nil, false
     r.runDist, r.splits, r.bestSplits, r.recordSplits = nil, nil, nil, nil
+    if s.series and not r.group and BN.seriesNext(s, r.name, time) then return end
     say(s.pid, "Für einen neuen Versuch zurück zum Start – beenden mit /rennen stop.")
 end
 
@@ -2938,7 +2964,7 @@ commands.einsteiger = commands.start
 function commands.hilfe(pid)
     -- In Gruppen: eine einzige lange Zeile wird im BeamNG-Chat schlecht lesbar oder abgeschnitten.
     say(pid, "BeamNet-Befehle:")
-    say(pid, "Spielen: /auftrag · /rennen · /duell <Name> <Strecke> · /fangen · /aufgabe · /ziel · /vote")
+    say(pid, "Spielen: /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /aufgabe · /ziel · /vote")
     say(pid, "Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|woche]")
     say(pid, "Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event")
     say(pid, "Sonst: /start · /regeln · /melden <Name> <Grund> · /lang en")
@@ -3285,7 +3311,7 @@ function commands.rennen(pid, arg)
     if sub == "stop" or sub == "ende" then
         if s.race then
             say(pid, "Rennmodus beendet.")
-            s.race = nil
+            s.race, s.series = nil, nil
         else
             say(pid, "Du bist in keinem Rennen.")
         end
@@ -3398,15 +3424,21 @@ function commands.rennen(pid, arg)
         return
     end
     -- Lauf vorbereiten
-    local name = trackName(sub)
+    s.series = nil
+    BN.prepareRace(s, trackName(sub), words[1])
+end
+
+-- Bereitet einen Lauf auf der Strecke vor (Spieler faehrt dann zum Start). false, wenn es die Strecke nicht gibt.
+function BN.prepareRace(s, name, shown)
+    local pid = s.pid
     local track = name and BN.loadTracks().tracks[name]
     if not track then
-        say(pid, "Strecke \"%s\" gibt es auf dieser Map nicht. Liste: /rennen", tostring(words[1]))
-        return
+        say(pid, "Strecke \"%s\" gibt es auf dieser Map nicht. Liste: /rennen", tostring(shown or name))
+        return false
     end
     if not track.finish then
         say(pid, "Strecke %s hat noch kein Ziel.", name)
-        return
+        return false
     end
     s.race = { name = name, start = point(track.start), finish = point(track.finish), state = "armed" }
     local pos = currentPosition(s)
@@ -3415,7 +3447,144 @@ function commands.rennen(pid, arg)
     else
         say(pid, "Rennen %s: Fahr zum Start.", name)
     end
+    return true
 end
+
+-- ---------------------------------------------------------------------------------------------------------------------
+-- Rennserien: mehrere Strecken einer Map nacheinander; es zaehlt die Summe der Zeiten (die Anfahrt zum naechsten
+-- Start nicht), innerhalb von 30 Minuten. Serien stehen in races/<Map>.json unter "series".
+
+BN.SERIES_MAX_SEC = 1800
+
+-- Naechster Teil nach einem Zieleinlauf; true, wenn die Serie weitergeht oder gerade fertig wurde.
+function BN.seriesNext(s, trackDone, time)
+    local se = s.series
+    if not se or se.tracks[se.idx] ~= trackDone then return false end
+    local now = BN.now()
+    if now - se.startAt > BN.SERIES_MAX_SEC then
+        s.series = nil
+        say(s.pid, "Serie %s abgebrochen – mehr als 30 Minuten. Neuer Versuch: /serie %s", se.name, se.name)
+        return false
+    end
+    se.total = se.total + time
+    se.idx = se.idx + 1
+    if se.idx <= #se.tracks then
+        say(s.pid, "Serie %s: Teil %d von %d geschafft (bisher %s). Weiter: %s", se.name, se.idx - 1, #se.tracks,
+            BN.fmtRaceTime(se.total), se.tracks[se.idx])
+        if not BN.prepareRace(s, se.tracks[se.idx]) then s.series = nil end
+        return true
+    end
+    s.series, s.race = nil, nil
+    local total = se.total
+    local bonus = C.seriesXp
+    local record = false
+    if not s.guest then
+        local data = BN.loadTracks()
+        local def = type(data.series) == "table" and data.series[se.name]
+        if type(def) == "table" then
+            def.records = type(def.records) == "table" and def.records or {}
+            local prevBest = def.records[1] and tonumber(def.records[1].time)
+            local mine
+            for _, e in ipairs(def.records) do if type(e) == "table" and e.id == s.id then mine = e end end
+            if not mine then
+                mine = { id = s.id, name = s.name, time = total, at = now }
+                def.records[#def.records + 1] = mine
+            elseif total < (tonumber(mine.time) or math.huge) then
+                mine.time, mine.name, mine.at = total, s.name, now
+            end
+            table.sort(def.records, function(a, b) return (tonumber(a.time) or math.huge) < (tonumber(b.time) or math.huge) end)
+            while #def.records > 50 do table.remove(def.records) end
+            if not prevBest or total < prevBest then
+                record = true
+                bonus = bonus + C.raceRecordXp
+            end
+            saveTracks(data)
+        end
+    end
+    s.pendingBonus = s.pendingBonus + bonus
+    if record then
+        sayAll("🏆 Neuer Serienrekord %s: %s in %s!", se.name, s.name, BN.fmtRaceTime(total))
+    end
+    say(s.pid, "🏁 Serie %s geschafft: %s gesamt – +%d XP", se.name, BN.fmtRaceTime(total), bonus)
+    return true
+end
+
+function commands.serie(pid, arg)
+    local s = session(pid)
+    local words = {}
+    for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
+    local sub = (words[1] or ""):lower()
+    local data = BN.loadTracks()
+    local series = type(data.series) == "table" and data.series or {}
+    if sub == "" or sub == "liste" or sub == "list" then
+        local names = {}
+        for n, d in pairs(series) do if type(d) == "table" and type(d.tracks) == "table" then names[#names + 1] = n end end
+        table.sort(names)
+        if #names == 0 then
+            say(pid, "Noch keine Serien auf dieser Map. Admins: /serie neu <Name> <Strecke1> <Strecke2> …")
+            return
+        end
+        say(pid, "Serien auf dieser Map – starten mit /serie <Name>:")
+        for _, n in ipairs(names) do
+            local d = series[n]
+            local best = type(d.records) == "table" and type(d.records[1]) == "table" and d.records[1] or nil
+            chat(pid, string.format("%s: %s%s", n, table.concat(d.tracks, " → "),
+                best and (" · " .. tostring(best.name) .. " " .. BN.fmtRaceTime(tonumber(best.time))) or ""))
+        end
+        return
+    end
+    if sub == "stop" then
+        if not s.series then say(pid, "Du fährst gerade keine Serie.") return end
+        s.series, s.race = nil, nil
+        say(pid, "Serie abgebrochen.")
+        return
+    end
+    if sub == "neu" or sub == "new" or sub == "weg" or sub == "loeschen" or sub == "löschen" or sub == "delete" then
+        if not BN.isAdmin(s) then say(pid, "Serien anlegen dürfen nur Admins.") return end
+        local name = trackName(words[2])
+        if not name then say(pid, "Aufruf: /serie neu <Name> <Strecke1> <Strecke2> … · /serie weg <Name>") return end
+        if sub ~= "neu" and sub ~= "new" then
+            if not series[name] then say(pid, "Die Serie %s gibt es nicht.", name) return end
+            series[name] = nil
+            data.series = series
+            saveTracks(data)
+            say(pid, "Serie %s gelöscht.", name)
+            return
+        end
+        local tracks = {}
+        for i = 3, #words do
+            local t = trackName(words[i])
+            local def = t and data.tracks[t]
+            if type(def) ~= "table" or not def.finish then
+                say(pid, "Strecke \"%s\" gibt es auf dieser Map nicht (oder sie hat kein Ziel).", tostring(words[i]))
+                return
+            end
+            tracks[#tracks + 1] = t
+        end
+        if #tracks < 2 or #tracks > 5 then say(pid, "Eine Serie hat 2 bis 5 Strecken.") return end
+        local count = 0
+        for _ in pairs(series) do count = count + 1 end
+        if not series[name] and count >= 20 then say(pid, "Auf dieser Map gibt es schon 20 Serien.") return end
+        series[name] = { tracks = tracks, by = s.name, records = {} }
+        data.series = series
+        if not saveTracks(data) then say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.") return end
+        say(pid, "Serie %s angelegt: %s", name, table.concat(tracks, " → "))
+        return
+    end
+    local name = trackName(sub)
+    local def = name and series[name]
+    if type(def) ~= "table" or type(def.tracks) ~= "table" or #def.tracks < 2 then
+        say(pid, "Die Serie \"%s\" gibt es auf dieser Map nicht. Liste: /serie", tostring(words[1]))
+        return
+    end
+    if BN.group and BN.group.members[pid] then say(pid, "Erst das Gruppenrennen beenden.") return end
+    local tracks = {}
+    for i, t in ipairs(def.tracks) do if i <= 5 then tracks[i] = tostring(t) end end
+    s.series = { name = name, tracks = tracks, idx = 1, total = 0, startAt = BN.now() }
+    say(pid, "Serie %s: %s – Zeiten werden addiert, 30 Minuten Zeit.", name, table.concat(tracks, " → "))
+    if not BN.prepareRace(s, tracks[1]) then s.series = nil end
+end
+commands.series = commands.serie
 
 function commands.rekorde(pid, arg)
     local data = BN.loadTracks()
