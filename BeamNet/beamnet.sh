@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.27"
+VERSION="1.28"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1131,12 +1131,14 @@ notify() {
     local hook token chat rc=0 text=$1
     hook=$(conf_get DISCORD_WEBHOOK)
     if [[ -n $hook ]]; then
-        if [[ ! $hook =~ ^https://(discord|discordapp)\.com/api/webhooks/ ]]; then
+        if [[ ! $hook =~ ^https://(discord|discordapp)\.com/api/webhooks/[A-Za-z0-9/_-]+$ ]]; then
             echo "DISCORD_WEBHOOK in $CONF sieht nicht wie ein Discord-Webhook aus – nichts gesendet." >&2
             rc=1
         else
+            # Die Adresse (enthaelt das Geheimnis) ueber -K statt auf der Befehlszeile: die sieht jeder Benutzer mit ps.
             curl -fsS -m 10 -H "Content-Type: application/json" \
-                -d "{\"content\":\"$(json_escape "$text")\",\"allowed_mentions\":{\"parse\":[]}}" "$hook" >/dev/null \
+                -d "{\"content\":\"$(json_escape "$text")\",\"allowed_mentions\":{\"parse\":[]}}" \
+                -K <(printf 'url = "%s"\n' "$hook") >/dev/null \
                 || { echo "Discord-Meldung fehlgeschlagen" >&2; rc=1; }
         fi
     fi
@@ -1152,7 +1154,7 @@ notify() {
         else
             curl -fsS -m 10 -H "Content-Type: application/json" \
                 -d "{\"chat_id\":\"$chat\",\"text\":\"$(json_escape "${text:0:4000}")\",\"disable_web_page_preview\":true}" \
-                "https://api.telegram.org/bot$token/sendMessage" >/dev/null \
+                -K <(printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$token") >/dev/null \
                 || { echo "Telegram-Meldung fehlgeschlagen" >&2; rc=1; }
         fi
     fi

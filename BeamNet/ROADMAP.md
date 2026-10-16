@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.27 / Plugin 1.16)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.28 / Plugin 1.16)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -73,6 +73,11 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 
 Außerdem, sobald der Server-Zugang steht: `beamnet doctor` auf dem echten Server, Ausgabe prüfen, Reparaturen
 übernehmen.
+
+Erledigt (Werkzeug 1.28) – Sicherheit:
+- [x] Discord-Webhook-Adresse und Telegram-Token stehen nicht mehr auf der curl-Befehlszeile (die kann jeder Benutzer
+      auf dem Server mit `ps` lesen, auch `beammp`), sondern gehen über eine Konfigurationsdatei (`-K`) an curl.
+      Webhook-Adressen werden vollständig geprüft.
 
 Erledigt (Werkzeug 1.20):
 - [x] Wächter meldet auch per **Telegram** (Bot-Token und Chat-ID in `/etc/beamnet.conf`, Abfrage im Setup); alle

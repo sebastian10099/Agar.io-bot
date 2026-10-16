@@ -283,7 +283,14 @@ contains "$out" "Kein Benutzer openclaw" "Ohne OpenClaw keine Warnung"
 export BEAMNET_CONF="$T/beamnet.conf" BEAMNET_STATE="$T/watch" BEAMNET_SYSTEMD_DIR="$T/systemd"
 cat >"$T/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-echo "$*" >>"$FAKE/curl.log"
+# Befehlszeile (fuer andere Benutzer sichtbar) getrennt merken; -K-Dateien (Adresse mit Geheimnis) mit ins Protokoll.
+echo "$*" >>"$FAKE/curl.argv"
+line="$*"
+while (( $# )); do
+    if [[ $1 == -K ]]; then line+=" $(cat "$2")"; shift; fi
+    shift
+done
+echo "$line" >>"$FAKE/curl.log"
 [[ -f $FAKE/curl.fail ]] && exit 22
 exit 0
 EOF
@@ -317,6 +324,7 @@ out=$("$TOOL" watch 2>&1)
 contains "$out" "🟡 Server 3 \\(italy\\) automatisch neu gestartet" "watch: automatischer Neustart"
 contains "$(cat "$T/curl.log")" '\{"content":"🟡 Server 3 \(italy\) automatisch neu gestartet\.","allowed_mentions":\{"parse":\[\]\}\}' "watch: Discord-Nachricht als JSON (ohne @-Erwähnungen)"
 contains "$(cat "$T/curl.log")" "https://discord.com/api/webhooks/1/abc" "watch: an den Webhook"
+lacks "$(cat "$T/curl.argv")" "webhooks/1/abc" "watch: Webhook-Adresse nie auf der Befehlszeile (ps)"
 
 # Bewusst gestoppt: keine Meldung, kein Neustart; Start hebt die Wartung auf.
 "$TOOL" stop 2 -y >/dev/null
@@ -1151,6 +1159,7 @@ contains "$out" "Server 1 \(gridmap_v2\): Max, Sebi$" "online: Namen je Server, 
 contains "$out" "Server 3 \(utah\): Ana$" "online: zweiter Server"
 lacks "$out" "Server 2 " "online: Server ohne aktuelles Lebenszeichen fehlt"
 contains "$(cat "$T/curl.log")" "https://api.telegram.org/bot123456:ABCDEFghijklmnop_1234567890/sendMessage" "online: an Telegram"
+lacks "$(cat "$T/curl.argv")" "ABCDEFghijklmnop" "online: Telegram-Token nie auf der Befehlszeile (ps)"
 contains "$(cat "$T/curl.log")" '\{"chat_id":"-1001234567890","text":"👥 Gerade online: 3 Spieler\\n   Server 1 \(gridmap_v2\): Max, Sebi\\n   Server 3 \(utah\): Ana","disable_web_page_preview":true\}' "online: Telegram-JSON (reiner Text)"
 contains "$(cat "$T/curl.log")" "https://discord.com/api/webhooks/1/abc" "online: weiterhin an Discord"
 : >"$T/curl.log"
