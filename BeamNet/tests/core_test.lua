@@ -111,6 +111,7 @@ C.commandLimit = 100000            -- Befehls-Bremse fuer die allgemeinen Tests 
 C.tutorialXp = 0                   -- Einsteiger-Pfad fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.alertEverySec = 0                -- Einsatz-Alarm fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.convoyXp = 0                     -- Konvoi-Bonus fuer die allgemeinen Tests aus (eigener Test weiter unten)
+C.crowdHintSec = 0                 -- "Wo ist was los" fuer die allgemeinen Tests aus (eigener Test weiter unten)
 check(events.BN_Tick == "BN_Tick" and timers.BN_Tick == 1000, "Takt registriert")
 eq(BN.server.name, "BeamNet | Server 1", "Servername ohne Farbcodes")
 eq(BN.server.port, 30814, "Port trotz Kommentar")
@@ -2738,6 +2739,46 @@ do
     for _, id in ipairs({ "12323", "12424" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
     os.execute('rm -rf "' .. SHARED .. '/places"')
     C.admins = savedAdmins
+end
+
+-- --- Wo ist was los? ------------------------------------------------------------------------------------------
+do
+    local here = 0
+    for _ in pairs(BN.players) do here = here + 1 end
+    C.crowdHintSec, C.crowdMaxHere = 900, here + 1
+    players[150] = { name = "Einsam", ids = { beammp = "15050" }, vehicles = {} }
+    _G[events.onPlayerJoin](150)
+    local other = SHARED .. "/servers/30999.json"
+    writeJson(other, { name = "BeamNet | Server 9", port = 30999, map = "italy", players = here + 5, max = 40, names = {}, updated = clock })
+    BN.nextCrowdAt = nil
+    chatLog = {}
+    tick(1)
+    check(not chatContains("komm rüber", 150), "Wo ist was los: nicht sofort")
+    tick(119)
+    writeJson(other, { name = "BeamNet | Server 9", port = 30999, map = "italy", players = here + 5, max = 40, names = {}, updated = clock })
+    tick(2)
+    check(chatContains("👋 Auf BeamNet | Server 9 %(italy%) fahren gerade %d+ Spieler – komm rüber!", 150), "Wo ist was los: Hinweis auf vollen Server")
+    chatLog = {}
+    tick(60)
+    check(not chatContains("komm rüber", 150), "Wo ist was los: nicht dauernd")
+    -- Voller Server wird nicht empfohlen.
+    writeJson(other, { name = "BeamNet | Server 9", port = 30999, map = "italy", players = 40, max = 40, names = {}, updated = clock })
+    BN.nextCrowdAt = clock
+    chatLog = {}
+    tick(1)
+    check(not chatContains("komm rüber", 150), "Wo ist was los: kein voller Server")
+    -- Genug los hier: kein Hinweis.
+    C.crowdMaxHere = here
+    writeJson(other, { name = "BeamNet | Server 9", port = 30999, map = "italy", players = 30, max = 40, names = {}, updated = clock })
+    BN.nextCrowdAt = clock
+    chatLog = {}
+    tick(1)
+    check(not chatContains("komm rüber", 150) and BN.nextCrowdAt == nil, "Wo ist was los: nicht, wenn hier genug fahren")
+    os.remove(other)
+    _G[events.onPlayerDisconnect](150); players[150] = nil
+    os.remove(SHARED .. "/players/15050.json"); BN.savedRecently["15050"] = nil
+    C.crowdHintSec, C.crowdMaxHere = 0, 2
+    BN.nextCrowdAt = nil
 end
 
 -- --- Konvoi ------------------------------------------------------------------------------------------------------

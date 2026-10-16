@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.58"
+BN.VERSION = "1.59"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -137,6 +137,11 @@ local defaults = {
     convoyXp = 20,
     convoyXpPerHour = 80,
     convoyRadiusM = 150,
+    -- Wo ist was los? Faehrt hier hoechstens crowdMaxHere Spieler, kommt alle crowdHintSec Sekunden ein Hinweis auf den
+    -- vollsten anderen Server (mindestens crowdMinPlayers Spieler, nicht voll). crowdHintSec 0 = aus.
+    crowdHintSec = 900,
+    crowdMinPlayers = 3,
+    crowdMaxHere = 2,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -529,7 +534,8 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true, chaseXpPerDay = true, chaseCooldownSec = true,
                        tipEverySec = true, tutorialXp = true, tutorialDoneXp = true, seriesXp = true,
                        alertEverySec = true, alertXp = true, alertMinPlayers = true, convoyXp = true,
-                       convoyXpPerHour = true, convoyRadiusM = true }
+                       convoyXpPerHour = true, convoyRadiusM = true, crowdHintSec = true, crowdMinPlayers = true,
+                       crowdMaxHere = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { convoyKm = 0.5, convoyRadiusM = 20, levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
@@ -788,6 +794,7 @@ local EN = {
     ["… und %d weitere – bitte genauer schreiben."] = "… and %d more – please be more specific.",
     ["Port %s"] = "port %s",
     [" (voll)"] = " (full)",
+    ["👋 Auf %s (%s) fahren gerade %d Spieler – komm rüber! %s"] = "👋 %s (%s) has %d players right now – come over! %s",
     ["  ← hier"] = "  ← here",
     ["Auf %s gibt es noch keine Strecken."] = "No tracks on %s yet.",
     ["Strecken auf %s: %s"] = "Tracks on %s: %s",
@@ -3215,6 +3222,34 @@ function commands.server(pid)
     end
 end
 commands.servers = commands.server
+
+-- Wo ist was los? Wer hier (fast) allein faehrt, bekommt ab und zu den vollsten anderen Server genannt – so finden die
+-- Spieler zueinander. Zuerst 2 Minuten nach dem ersten Spieler, danach alle crowdHintSec Sekunden.
+function BN.crowdTick()
+    if C.crowdHintSec <= 0 then return end
+    local here = 0
+    for _ in pairs(BN.players) do here = here + 1 end
+    local now = BN.now()
+    if here == 0 or here > C.crowdMaxHere then BN.nextCrowdAt = nil return end
+    if not BN.nextCrowdAt then BN.nextCrowdAt = now + 120 return end
+    if now < BN.nextCrowdAt then return end
+    local best
+    for _, st in ipairs(BN.serverList()) do
+        local n, mx = tonumber(st.players) or 0, tonumber(st.max) or 0
+        if tonumber(st.port) ~= tonumber(BN.server.port) and n >= math.max(C.crowdMinPlayers, here + 2)
+            and (mx <= 0 or n < mx) and (not best or n > (tonumber(best.players) or 0)) then
+            best = st
+        end
+    end
+    if not best then BN.nextCrowdAt = now + 60 return end
+    BN.nextCrowdAt = now + C.crowdHintSec
+    local name, map = clipText(best.name or "?", 48), clipText(best.map or "?", 32)
+    sayEach(function(lang)
+        local addr = C.publicHost ~= "" and (C.publicHost .. ":" .. tostring(best.port)) or tr(lang, "Port %s", tostring(best.port))
+        return tr(lang, "👋 Auf %s (%s) fahren gerade %d Spieler – komm rüber! %s", name, map,
+            tonumber(best.players) or 0, addr)
+    end)
+end
 
 -- /wo <Name>: Auf welchem Server faehrt jemand gerade? Dieser Server live, die anderen aus ihren Lebenszeichen.
 function commands.wo(pid, arg)
@@ -5677,6 +5712,7 @@ function BN.tick()
     guarded("Bestenliste", BN.rankTick)
     guarded("Einsatz", BN.alertTick)
     guarded("Konvoi", BN.convoyTick)
+    guarded("Wo ist was los", BN.crowdTick)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)
