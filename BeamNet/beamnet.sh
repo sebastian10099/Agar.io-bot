@@ -3565,6 +3565,7 @@ COMMANDS = [
     ("/auftrag", "Fahrauftrag holen: Patient ins Krankenhaus, Kinder zur Schule, Taxi, Lieferung … mit Zeitlimit und XP (/auftrag stop bricht ab)"),
     ("/orte", "Alle Orte (Krankenhaus, Schule, Feuerwache …) auf dieser Map"),
     ("/ziel", "Wochenziel für alle: zusammen Kilometer sammeln – wer mitfährt, bekommt Bonus-XP"),
+    ("/fangen", "Verfolgungsjagd: einer flüchtet, alle anderen jagen ihn – XP fürs Fangen und fürs Entkommen (/fangen mit)"),
     ("/km", "Kilometer dieser Sitzung"), ("/rennen &lt;Strecke&gt;", "Zeitrennen starten (Strecken: /rennen)"),
     ("/rekorde", "Streckenrekorde dieser Map"), ("/vote map &lt;Name&gt;", "Abstimmung über eine andere Map"),
     ("/event", "Läuft gerade ein XP-Event?"), ("/melden &lt;Name&gt; &lt;Grund&gt;", "Meldung an die Admins"),

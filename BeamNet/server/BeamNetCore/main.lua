@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.37"
+BN.VERSION = "1.38"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -106,6 +106,15 @@ local defaults = {
     communityKm = 0,
     communityXp = 100,
     communityMinKm = 5,
+    -- Verfolgungsjagd (/fangen): Anmeldung chaseJoinSec, Vorsprung chaseHeadStartSec, Dauer hoechstens chaseMaxSec.
+    -- Gefangen bei chaseCatchM Abstand; XP fuer den Faenger, den Fluechtigen (je Minute, mehr wenn er durchkommt).
+    chaseJoinSec = 30,
+    chaseHeadStartSec = 20,
+    chaseMaxSec = 300,
+    chaseCatchM = 15,
+    chaseXpCatch = 60,
+    chaseXpSurvive = 100,
+    chaseXpPerMin = 10,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -494,12 +503,14 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        mapVoteSec = true, joinLimit = true, filterStrikes = true, weeklyTrackXp = true,
                        groupRaceDelaySec = true, maxFriends = true, friendCheckSec = true,
                        streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true,
-                       communityKm = true, communityXp = true }
+                       communityKm = true, communityXp = true, chaseJoinSec = true, chaseHeadStartSec = true,
+                       chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
                      filterStrikes = 1, filterMuteSec = 10, maxFriends = 1, friendCheckSec = 5,
-                     streakMaxDays = 2, streakMinKm = 0.1, jobRadiusM = 5, jobMinDistM = 50 }
+                     streakMaxDays = 2, streakMinKm = 0.1, jobRadiusM = 5, jobMinDistM = 50,
+                     chaseJoinSec = 5, chaseMaxSec = 30, chaseCatchM = 3 }
 
 function BN.loadOverrides()
     local data = readFile(C.sharedDir .. "/config.json")
@@ -582,8 +593,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /melden · /regeln · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|speed|jobs|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /job · /places · /goal · /report · /rules · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /fangen · /melden · /regeln · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|speed|jobs|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /job · /places · /goal · /chase · /report · /rules · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -810,6 +821,32 @@ local EN = {
     ["Nur Admins können Teams löschen."] = "Only admins can delete teams.",
     ["Team %s gelöscht."] = "Team %s deleted.",
     ["Bitte warte noch %d s, bevor du wieder ein Gruppenrennen startest."] = "Please wait %d s before starting another group race.",
+    -- Verfolgungsjagd
+    ["Verfolgungsjagd abgesagt – %s"] = "Chase cancelled – %s",
+    ["🚓 Gefangen! +%d XP"] = "🚓 Caught! +%d XP",
+    ["Du hast %d min durchgehalten: +%d XP"] = "You lasted %d min: +%d XP",
+    ["🚓 Verfolgungsjagd vorbei: %s hat %s nach %s gefangen!"] = "🚓 Chase over: %s caught %s after %s!",
+    ["🏁 Entkommen! +%d XP"] = "🏁 Escaped! +%d XP",
+    ["🏁 Verfolgungsjagd vorbei: %s ist entkommen!"] = "🏁 Chase over: %s escaped!",
+    ["Verfolgungsjagd beendet – %s"] = "Chase ended – %s",
+    ["zu wenige Mitspieler"] = "not enough players",
+    ["der Flüchtige ist weg"] = "the runner left",
+    ["keine Jäger mehr"] = "no chasers left",
+    ["von %s gestoppt"] = "stopped by %s",
+    ["🏃 Du bist der Flüchtige! %d s Vorsprung – halte %s durch."] = "🏃 You are the runner! %d s head start – survive %s.",
+    ["🚓 %s ist der Flüchtige! Los geht's in %d s – fang ihn (näher als %d m)."] =
+        "🚓 %s is the runner! Go in %d s – catch them (closer than %d m).",
+    ["Nächster Jäger: %s · noch %s"] = "Nearest chaser: %s · %s left",
+    ["Flüchtiger %s: %s entfernt · noch %s"] = "Runner %s: %s away · %s left",
+    ["Gerade läuft keine Verfolgungsjagd."] = "No chase running right now.",
+    ["Nur der Starter oder ein Admin kann die Jagd beenden."] = "Only the starter or an admin can end the chase.",
+    ["Gerade kann man keiner Verfolgungsjagd beitreten. Neue: /fangen"] = "You can't join a chase right now. New one: /chase",
+    ["%s macht bei der Verfolgungsjagd mit."] = "%s joins the chase.",
+    ["Anmeldung läuft noch %d s – mitmachen: /fangen mit"] = "Sign-up open for %d s – join: /chase join",
+    ["Verfolgungsjagd läuft: Flüchtiger ist %s."] = "Chase running: the runner is %s.",
+    ["Erst Rennen oder Auftrag beenden, dann gibt es eine Verfolgungsjagd."] = "Finish your race or job first, then start a chase.",
+    ["Bitte warte noch %d s, bevor du wieder eine Verfolgungsjagd startest."] = "Please wait %d s before starting another chase.",
+    ["🚓 Verfolgungsjagd! %s startet in %d s – mitmachen: /fangen mit"] = "🚓 Chase! %s starts in %d s – join: /chase join",
     -- Wochenziel
     ["🎉 Wochenziel geschafft: zusammen %s! Alle mit mindestens %s diese Woche bekommen +%d XP."] =
         "🎉 Weekly goal reached: %s together! Everyone with at least %s this week gets +%d XP.",
@@ -2614,7 +2651,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /melden · /regeln · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /fangen · /melden · /regeln · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name>")
     end
@@ -3703,6 +3740,169 @@ commands.job = commands.auftrag
 commands.auftraege = commands.auftrag
 
 -- ---------------------------------------------------------------------------------------------------------------------
+-- Verfolgungsjagd (/fangen): Wer mitmacht, meldet sich in chaseJoinSec an; einer wird zufaellig der Fluechtige, alle
+-- anderen jagen ihn. Nach dem Vorsprung zaehlt jeder Abstand unter chaseCatchM als gefangen (beide mit aktueller
+-- Position). Hinweise alle 15 s: den Jaegern die Entfernung zum Fluechtigen, dem Fluechtigen die zum naechsten Jaeger.
+
+local function chaseSay(text, ...)
+    local c = BN.chase
+    if not c then return end
+    for pid in pairs(c.members) do if BN.players[pid] then say(pid, text, ...) end end
+end
+
+local function freshPosition(s)
+    local pos = s and currentPosition(s)
+    if pos and BN.now() - (pos.at or 0) <= 3 then return pos end
+    return nil
+end
+
+function BN.endChase(reason)
+    local c = BN.chase
+    if not c then return end
+    BN.chase = nil
+    local runner = c.runner and BN.players[c.runner]
+    if not c.started then
+        sayAll("Verfolgungsjagd abgesagt – %s", reason or "")
+        return
+    end
+    local minutes = math.floor((BN.now() - c.huntAt) / 60)
+    if reason == "gefangen" then
+        local catcher = BN.players[c.catcher]
+        if catcher then
+            catcher.pendingBonus = catcher.pendingBonus + C.chaseXpCatch
+            say(catcher.pid, "🚓 Gefangen! +%d XP", C.chaseXpCatch)
+        end
+        if runner then
+            local xp = minutes * C.chaseXpPerMin
+            runner.pendingBonus = runner.pendingBonus + xp
+            if xp > 0 then say(runner.pid, "Du hast %d min durchgehalten: +%d XP", minutes, xp) end
+        end
+        sayAll("🚓 Verfolgungsjagd vorbei: %s hat %s nach %s gefangen!", catcher and catcher.name or "?", c.runnerName,
+            fmtClock(BN.now() - c.huntAt))
+    elseif reason == "entkommen" then
+        if runner then
+            local xp = C.chaseXpSurvive + minutes * C.chaseXpPerMin
+            runner.pendingBonus = runner.pendingBonus + xp
+            say(runner.pid, "🏁 Entkommen! +%d XP", xp)
+        end
+        sayAll("🏁 Verfolgungsjagd vorbei: %s ist entkommen!", c.runnerName)
+    else
+        sayAll("Verfolgungsjagd beendet – %s", reason or "")
+    end
+end
+
+function BN.chaseTick()
+    local c = BN.chase
+    if not c then return end
+    local now = BN.now()
+    for pid in pairs(c.members) do
+        if not BN.players[pid] then c.members[pid] = nil end
+    end
+    if not c.started then
+        if now < c.startAt then return end
+        local list = {}
+        for pid in pairs(c.members) do list[#list + 1] = pid end
+        if #list < 2 then return BN.endChase(tr(C.language, "zu wenige Mitspieler")) end
+        table.sort(list)
+        c.runner = list[BN.random(#list)]
+        c.runnerName = BN.players[c.runner].name
+        c.started, c.huntAt, c.hintAt = true, now + C.chaseHeadStartSec, now
+        for pid in pairs(c.members) do
+            if pid == c.runner then
+                say(pid, "🏃 Du bist der Flüchtige! %d s Vorsprung – halte %s durch.", C.chaseHeadStartSec, fmtClock(C.chaseMaxSec))
+            else
+                say(pid, "🚓 %s ist der Flüchtige! Los geht's in %d s – fang ihn (näher als %d m).", c.runnerName,
+                    C.chaseHeadStartSec, C.chaseCatchM)
+            end
+        end
+        return
+    end
+    if not BN.players[c.runner] then return BN.endChase(tr(C.language, "der Flüchtige ist weg")) end
+    local chasers = 0
+    for pid in pairs(c.members) do if pid ~= c.runner then chasers = chasers + 1 end end
+    if chasers == 0 then return BN.endChase(tr(C.language, "keine Jäger mehr")) end
+    if now < c.huntAt then return end
+    if now - c.huntAt >= C.chaseMaxSec then return BN.endChase("entkommen") end
+    local rpos = freshPosition(BN.players[c.runner])
+    if not rpos then return end
+    local nearest, nearestPid
+    for pid in pairs(c.members) do
+        if pid ~= c.runner then
+            local pos = freshPosition(BN.players[pid])
+            if pos then
+                local d = dist(pos, rpos)
+                if not nearest or d < nearest then nearest, nearestPid = d, pid end
+            end
+        end
+    end
+    if nearest and nearest <= C.chaseCatchM then
+        c.catcher = nearestPid
+        return BN.endChase("gefangen")
+    end
+    if now - c.hintAt >= 15 then
+        c.hintAt = now
+        local left = fmtClock(C.chaseMaxSec - (now - c.huntAt))
+        for pid in pairs(c.members) do
+            local lang = BN.langOf(pid)
+            if pid == c.runner then
+                if nearest then say(pid, "Nächster Jäger: %s · noch %s", fmtDist(lang, nearest), left) end
+            else
+                local pos = freshPosition(BN.players[pid])
+                if pos then say(pid, "Flüchtiger %s: %s entfernt · noch %s", c.runnerName, fmtDist(lang, dist(pos, rpos)), left) end
+            end
+        end
+    end
+end
+
+BN.chaseStarts = BN.chaseStarts or {}
+
+function commands.fangen(pid, arg)
+    local s = session(pid)
+    local sub = tostring(arg or ""):lower():match("^%s*(%S*)")
+    local c = BN.chase
+    if sub == "stop" then
+        if not c then say(pid, "Gerade läuft keine Verfolgungsjagd.") return end
+        if not BN.isAdmin(s) and c.by ~= pid then say(pid, "Nur der Starter oder ein Admin kann die Jagd beenden.") return end
+        return BN.endChase(tr(C.language, "von %s gestoppt", s.name))
+    end
+    if sub == "mit" or sub == "join" then
+        if not c or c.started then say(pid, "Gerade kann man keiner Verfolgungsjagd beitreten. Neue: /fangen") return end
+        c.members[pid] = true
+        chaseSay("%s macht bei der Verfolgungsjagd mit.", s.name)
+        return
+    end
+    if c then
+        if not c.started then
+            say(pid, "Anmeldung läuft noch %d s – mitmachen: /fangen mit", math.max(0, c.startAt - BN.now()))
+        else
+            say(pid, "Verfolgungsjagd läuft: Flüchtiger ist %s.", c.runnerName)
+        end
+        return
+    end
+    if s.race or s.job then
+        say(pid, "Erst Rennen oder Auftrag beenden, dann gibt es eine Verfolgungsjagd.")
+        return
+    end
+    if not BN.isAdmin(s) then
+        if s.mutedUntil and BN.now() < s.mutedUntil then
+            say(pid, "Du bist noch %d s stummgeschaltet.", s.mutedUntil - BN.now())
+            return
+        end
+        local key = s.id or ("ip:" .. tostring(s.ip or pid))
+        local last = BN.chaseStarts[key]
+        if last and BN.now() - last < 300 then
+            say(pid, "Bitte warte noch %d s, bevor du wieder eine Verfolgungsjagd startest.", 300 - (BN.now() - last))
+            return
+        end
+        BN.chaseStarts[key] = BN.now()
+    end
+    BN.chase = { by = pid, startAt = BN.now() + C.chaseJoinSec, members = { [pid] = true } }
+    sayAll("🚓 Verfolgungsjagd! %s startet in %d s – mitmachen: /fangen mit", s.name, C.chaseJoinSec)
+end
+commands.chase = commands.fangen
+commands.jagd = commands.fangen
+
+-- ---------------------------------------------------------------------------------------------------------------------
 -- Wochenziel fuer alle: alle Fahrer zusammen communityKm km in der Kalenderwoche. Das Ziel der Woche steht in
 -- community.json (der erste Server der Woche legt es fest, alle uebernehmen es). Fortschritt = Summe der Wochen-km
 -- aller Fahrer (Bestenliste, hoechstens eine Minute alt).
@@ -4345,6 +4545,7 @@ function BN.tick()
     guarded("Gruppenrennen", BN.groupTick)
     guarded("Freunde", BN.friendTick)
     guarded("Wochenziel", BN.communityCheck)
+    guarded("Verfolgungsjagd", BN.chaseTick)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)

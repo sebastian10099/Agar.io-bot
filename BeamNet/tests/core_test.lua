@@ -2378,6 +2378,71 @@ do
     os.remove(SHARED .. "/players/9494.json"); BN.savedRecently["9494"] = nil
 end
 
+-- --- Verfolgungsjagd (/fangen) --------------------------------------------------------------------------------
+do
+    players[101] = { name = "Jaeger", ids = { beammp = "10101" }, vehicles = { [1] = { pos = { 40000, 0, 0 }, tim = 0 } } }
+    players[102] = { name = "Flucht", ids = { beammp = "10202" }, vehicles = { [1] = { pos = { 40500, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](101); _G[events.onPlayerJoin](102)
+    local savedRandom = BN.random
+    BN.random = function(n) return n end
+    BN.chase, BN.chaseStarts = nil, {}
+    chatLog = {}
+    say(101, "/fangen")
+    check(chatContains("🚓 Verfolgungsjagd! Jaeger startet in 30 s – mitmachen: /fangen mit", 102), "Jagd: Anmeldung an alle")
+    say(101, "/fangen")
+    check(chatContains("Anmeldung läuft noch", 101), "Jagd: Stand waehrend der Anmeldung")
+    say(102, "/fangen mit")
+    check(chatContains("Flucht macht bei der Verfolgungsjagd mit", 101), "Jagd: mitmachen")
+    tick(31)
+    check(chatContains("🏃 Du bist der Flüchtige! 20 s Vorsprung", 102), "Jagd: Fluechtiger bekommt Bescheid")
+    check(chatContains("🚓 Flucht ist der Flüchtige!", 101), "Jagd: Jaeger bekommen Bescheid")
+    say(102, "/fangen mit")
+    check(chatContains("Gerade kann man keiner Verfolgungsjagd beitreten", 102), "Jagd: nach dem Start kein Beitritt")
+    tick(20)
+    chatLog = {}
+    tick(16)
+    check(chatContains("Flüchtiger Flucht: 500 m entfernt", 101), "Jagd: Entfernung fuer Jaeger")
+    check(chatContains("Nächster Jäger: 500 m", 102), "Jagd: Entfernung fuer Fluechtigen")
+    local b0 = BN.totals(BN.players[101]).bonusXp
+    for _ = 1, 49 do move(101, 1, 10, 0, 0); tick(1) end
+    check(chatContains("🚓 Gefangen! %+60 XP", 101), "Jagd: gefangen, XP fuer den Faenger")
+    check(chatContains("🚓 Verfolgungsjagd vorbei: Jaeger hat Flucht nach 1:%d%d gefangen!", 102), "Jagd: Ergebnis an alle")
+    eq(BN.totals(BN.players[101]).bonusXp - b0, 60, "Jagd: XP gutgeschrieben")
+    check(BN.chase == nil, "Jagd: danach beendet")
+    say(101, "/fangen")
+    check(chatContains("Bitte warte noch %d+ s, bevor du wieder eine Verfolgungsjagd startest", 101), "Jagd: Abklingzeit")
+    -- Entkommen: 5 Minuten durchhalten.
+    players[101].vehicles[1].pos = { 40000, 0, 0 }; players[102].vehicles[1].pos = { 45000, 0, 0 }
+    say(102, "/fangen"); say(101, "/fangen mit")
+    local b1 = BN.totals(BN.players[102]).bonusXp
+    tick(31 + 20 + 300)
+    check(chatContains("🏁 Entkommen! %+150 XP", 102), "Jagd: entkommen (100 + 5 min x 10)")
+    eq(BN.totals(BN.players[102]).bonusXp - b1, 150, "Jagd: XP fuer den Fluechtigen")
+    -- Allein: abgesagt; Starter kann stoppen.
+    BN.chaseStarts = {}
+    say(101, "/fangen")
+    tick(31)
+    check(chatContains("Verfolgungsjagd abgesagt – zu wenige Mitspieler", 101) and BN.chase == nil, "Jagd: allein abgesagt")
+    BN.chaseStarts = {}
+    say(101, "/fangen"); say(102, "/fangen stop")
+    check(chatContains("Nur der Starter oder ein Admin", 102) and BN.chase ~= nil, "Jagd: nur Starter/Admin stoppt")
+    say(101, "/fangen stop")
+    check(BN.chase == nil and chatContains("Verfolgungsjagd abgesagt", 102), "Jagd: Starter stoppt")
+    -- Fluechtiger geht: Jagd vorbei.
+    BN.chaseStarts = {}
+    say(101, "/fangen"); say(102, "/fangen mit"); tick(31)
+    _G[events.onPlayerDisconnect](102); players[102] = nil
+    tick(1)
+    check(BN.chase == nil and chatContains("Verfolgungsjagd beendet – der Flüchtige ist weg", 101), "Jagd: Fluechtiger weg")
+    BN.random = savedRandom
+    for _, pid in ipairs({ 101, 102 }) do
+        if BN.players[pid] then BN.players[pid].pendingBonus = 0 end
+        _G[events.onPlayerDisconnect](pid); players[pid] = nil
+        os.remove(SHARED .. "/players/" .. (pid == 101 and "10101" or "10202") .. ".json")
+    end
+    BN.savedRecently["10101"], BN.savedRecently["10202"] = nil, nil
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }
