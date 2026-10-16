@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.47"
+BN.VERSION = "1.48"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -600,8 +600,14 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /fangen · /duell · /melden · /regeln · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|speed|jobs|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /job · /places · /goal · /chase · /duel · /report · /rules · /lang",
+    ["BeamNet-Befehle:"] = "BeamNet commands:",
+    ["Spielen: /auftrag · /rennen · /duell <Name> <Strecke> · /fangen · /aufgabe · /ziel · /vote"] =
+        "Play: /job · /race · /duel <name> <track> · /chase · /daily · /goal · /vote",
+    ["Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|woche]"] =
+        "You: /stats [name] · /km · /achievements · /league · /season · /top [km|xp|speed|jobs|week]",
+    ["Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event"] =
+        "Network: /server · /where <name> · /friend <name> · /team · /places · /records · /event",
+    ["Sonst: /regeln · /melden <Name> <Grund> · /lang en"] = "Other: /rules · /report <name> <reason> · /lang de",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -2792,7 +2798,12 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /fangen · /duell · /melden · /regeln · /lang")
+    -- In Gruppen: eine einzige lange Zeile wird im BeamNG-Chat schlecht lesbar oder abgeschnitten.
+    say(pid, "BeamNet-Befehle:")
+    say(pid, "Spielen: /auftrag · /rennen · /duell <Name> <Strecke> · /fangen · /aufgabe · /ziel · /vote")
+    say(pid, "Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|woche]")
+    say(pid, "Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event")
+    say(pid, "Sonst: /regeln · /melden <Name> <Grund> · /lang en")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name> · /resetspeed")
     end
