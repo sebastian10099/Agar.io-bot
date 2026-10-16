@@ -24,7 +24,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
        bisherige Stand beiseitegelegt (Werkzeug 1.26).
 8. [x] Der doctor meldet sehr große `Server.log` (ab 200 MB) und eine fehlende Rotation. `beamnet fix` richtet
        logrotate ein: wöchentlich oder ab 100 MB, 4 Stände, copytruncate, sodass der Server weiterläuft (Werkzeug 1.42).
-9. [ ] Lasttest in der CI mit echtem BeamMP-Server und vielen simulierten Spielerdateien.
+9. [x] Lasttest in der CI mit echtem BeamMP-Server: 5000 Spielerdateien und ein frischer Index. Das Plugin muss die
+       Bestenliste über den Index lesen und daraus das Saisonarchiv bauen, ohne Fehler und mit laufendem Takt.
 10. [x] Der Wächter erkennt hängende Server: Der Dienst läuft, aber BeamNetCore meldet sich seit 3 Minuten nicht
         (`HANG_MIN`). Antwortet der Port auch nicht, folgt mit `AUTO_RESTART=1` ein Neustart. Antwortet er noch, gibt
         es nur eine Meldung, denn dann können die Spieler weiterfahren (Werkzeug 1.22).
