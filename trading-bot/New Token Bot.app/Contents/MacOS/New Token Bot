@@ -71,5 +71,11 @@ for i in $(seq 1 600); do
 done
 
 TAIL="$(tail -n 6 "$LOG" | tr '"' "'" | tr '\\' '/')"
+if grep -q "No developer tools\|Kein Python gefunden\|xcode-select" "$LOG"; then
+  # no usable Python: offer the python.org installer right away
+  CHOICE="$(/usr/bin/osascript -e "display dialog \"Auf diesem Mac fehlt ein brauchbares Python 3. Bitte Python von python.org installieren (Installer doppelklicken, danach die App erneut starten).  Details: ${TAIL}\" with title \"New Token Bot\" buttons {\"OK\", \"Python laden\"} default button 2 with icon caution" 2>/dev/null)"
+  case "$CHOICE" in *"Python laden"*) /usr/bin/open "https://www.python.org/downloads/macos/" ;; esac
+  exit 1
+fi
 say_error "Der Bot ist nicht gestartet. Letzte Zeilen aus dem Log: ${TAIL}  (Log: $LOG)"
 exit 1
