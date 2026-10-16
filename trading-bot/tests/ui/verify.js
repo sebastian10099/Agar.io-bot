@@ -223,13 +223,27 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   // shortcuts: 1-4 switch tabs, / focuses search, p pauses (not while typing)
   await p.keyboard.press('Escape'); await p.evaluate(() => document.activeElement.blur());
   await p.keyboard.press('1'); ok(!(await p.$eval('#tab-overview', (e) => e.hidden)), 'Taste 1 -> Übersicht');
-  await p.keyboard.press('4'); ok(!(await p.$eval('#tab-log', (e) => e.hidden)), 'Taste 4 -> Protokoll');
+  await p.keyboard.press('5'); ok(!(await p.$eval('#tab-log', (e) => e.hidden)), 'Taste 5 -> Protokoll');
   await p.keyboard.press('/'); ok(await p.evaluate(() => document.activeElement.id === 'q'), 'Taste / springt in die Suche');
   await p.keyboard.type('p'); ok((await p.inputValue('#q')) === 'p' && (await p.$eval('#paused', (e) => e.hidden)), 'p im Suchfeld tippt, pausiert nicht');
   await p.fill('#q', ''); await p.evaluate(() => document.activeElement.blur());
   await p.keyboard.press('p'); await p.waitForFunction(() => !document.querySelector('#paused').hidden);
   ok(true, 'Taste p pausiert');
   await p.keyboard.press('p'); await p.waitForFunction(() => document.querySelector('#paused').hidden);
+
+  // --- Analyse: Sweep laedt, Horizont-Chips, Neu berechnen ---
+  await p.click('nav [data-tab="analysis"]');
+  await p.waitForFunction(() => !document.querySelector('#sweep').textContent.includes('Berechne'));
+  const sweepText = await p.textContent('#sweep');
+  ok(/Kandidaten|Mindestalter|Rückblick/.test(sweepText + (await p.textContent('#sweep-sub'))), 'Analyse-Reiter zeigt Rückblick oder erklärten Leerzustand');
+  ok((await p.$$('#sweep-h [data-sh]')).length >= 1, 'Horizont-Chips vorhanden');
+  await p.click('#b-sweep'); await p.waitForFunction(() => !document.querySelector('#sweep').textContent.includes('Berechne'));
+  ok(true, 'Neu berechnen läuft durch');
+  await p.keyboard.press('Escape'); await p.evaluate(() => document.activeElement.blur());
+  await p.keyboard.press('4'); ok(!(await p.$eval('#tab-analysis', (e) => e.hidden)), 'Taste 4 -> Analyse');
+  // --- Benachrichtigungen: ohne Erlaubnis sauberer Hinweis ---
+  await clearToast(); await p.click('#b-notify'); await p.waitForFunction(() => document.querySelector('#toast').textContent.length > 0);
+  ok(/Benachrichtigungen/.test(await p.textContent('#toast')), 'Benachrichtigungs-Schalter meldet Ergebnis: ' + (await p.textContent('#toast')));
 
   // --- Protokoll ---
   await p.click('nav [data-tab="log"]');
@@ -306,7 +320,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   console.log('\n== Telefon 390px ==');
   [ctx, p] = await page({ viewport: { width: 390, height: 844 }, colorScheme: 'dark', isMobile: true, hasTouch: true });
   await p.goto(URL); await p.waitForSelector('#groups .field', { state: 'attached' });
-  for (const tab of ['overview', 'control', 'candidates']) {
+  for (const tab of ['overview', 'control', 'candidates', 'analysis']) {
     await p.click(`nav [data-tab="${tab}"]`);
     await p.waitForTimeout(150);
     const m = await p.evaluate(() => ({

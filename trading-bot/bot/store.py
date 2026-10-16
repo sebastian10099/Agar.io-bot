@@ -266,6 +266,18 @@ class Store:
                         "WHERE closed_at IS NOT NULL AND closed_at >= ?", (since,))
         return float(row["s"]) if row else 0.0
 
+    def sweep_samples(self, horizon_min: int) -> list[dict[str, Any]]:
+        rows = self._rows(
+            "SELECT c.snapshot, o.change_pct FROM outcomes o JOIN candidates c ON c.id = o.candidate_id "
+            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL AND o.horizon_min = ?", (horizon_min,))
+        out = []
+        for r in rows:
+            try:
+                out.append({"snapshot": json.loads(r["snapshot"] or "{}"), "change_pct": r["change_pct"]})
+            except json.JSONDecodeError:
+                continue
+        return out
+
     def equity_curve(self, limit: int = 2000) -> list[dict[str, Any]]:
         """Realized bankroll after each closed position, oldest first: the
         series behind the equity chart. Entry fees of still-open positions are

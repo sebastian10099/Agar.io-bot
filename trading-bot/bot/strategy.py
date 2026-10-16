@@ -6,6 +6,7 @@ reasons so the tracker can later tell whether the rules have an edge.
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Optional
 
 
@@ -75,7 +76,10 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
 
     # --- scoring --------------------------------------------------------
     parts: dict[str, float] = {}
-    parts["liquidity"] = _scale(liq, f["min_liquidity_usd"], f["min_liquidity_usd"] * 10, 20)
+    # absolute log band, deliberately independent of the filter floor: moving
+    # min_liquidity_usd must not change how a given token scores, or the
+    # hindsight sweep would compare apples with oranges
+    parts["liquidity"] = _scale(math.log10(max(1.0, liq)), math.log10(20_000), math.log10(500_000), 20)
     vol_ratio = p["volume_m5"] / max(1.0, liq)
     parts["activity"] = _scale(vol_ratio, 0.05, 0.5, 20)
     parts["pressure"] = _scale(ratio, f["min_buy_sell_ratio_m5"], 3.0, 20)

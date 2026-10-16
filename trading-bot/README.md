@@ -51,11 +51,19 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   als Paper-Position unabhängig vom Bot-Urteil – der Tracker behält die
   ursprüngliche Entscheidung, so lässt sich das eigene Urteil gegen die Regeln
   messen.
-- **Protokoll** – was der Bot getan hat, inklusive jeder Änderung über die Seite.
+- **Analyse** – der Rückblick: Jeder Filterwert wird einzeln über ein Raster
+  bewegt (alle anderen bleiben wie eingestellt), und für jeden Wert steht da,
+  wie viele der bisherigen Kandidaten damit `buy` gewesen wären und welche
+  Rendite sie danach tatsächlich hatten. Zeilen mit weniger als fünf Treffern
+  sind ausgegraut – Rauschen, kein Ergebnis. Umschaltbar nach Horizont
+  (5 / 15 / 60 Minuten).
+- **Protokoll** – was der Bot getan hat, inklusive jeder Änderung über die Seite,
+  filterbar nach Trades / Polls / Info / Fehler.
 
-Oben rechts: **Jetzt pollen** (sofort neue Tokens holen) und **Pause**.
-Pause stoppt nur neue Einstiege – Exits offener Positionen laufen weiter.
-Tasten: `1`–`4` Reiter, `p` Pause, `r` Pollen, `/` Suche.
+Oben rechts: **🔔** (Browser-Benachrichtigung bei jedem Einstieg und Exit,
+fragt einmal um Erlaubnis), **Jetzt pollen** (sofort neue Tokens holen) und
+**Pause**. Pause stoppt nur neue Einstiege – Exits offener Positionen laufen
+weiter. Tasten: `1`–`5` Reiter, `p` Pause, `r` Pollen, `/` Suche.
 
 Die Seite ist vollständig per Tastatur bedienbar, jedes Bedienelement hat einen
 Namen für Screenreader, Rückmeldungen werden vorgelesen, und alle Farbpaare
@@ -77,6 +85,7 @@ nutzen kannst (nur von `127.0.0.1` erreichbar):
 | POST | `/api/positions/close` `{"id": 3}` | Position zum letzten Kurs schließen |
 | POST | `/api/positions/open` `{"candidate_id": 12}` | Kandidaten manuell als Paper-Position kaufen |
 | GET | `/api/positions/3` | Position mit allen Fills |
+| GET | `/api/sweep?horizon=15` | Rückblick-Analyse der Filterwerte |
 | POST | `/api/reset` `{"what": "positions"\|"all", "bankroll": 500}` | Paper-Konto zurücksetzen, optional mit neuem Startkapital |
 | GET/POST | `/api/profiles` · `/api/profiles/apply` · `/api/profiles/delete` | Parameter-Profile verwalten |
 | GET | `/api/export/positions.csv` · `trades.csv` · `candidates.csv` | Export (Semikolon-CSV, UTF-8 mit BOM) |
@@ -188,7 +197,6 @@ Eingebaut:
 
 Als Nächstes sinnvoll, in dieser Reihenfolge:
 - **Echtzeit-Discovery** über einen Solana-RPC/Websocket (pump.fun, Raydium) statt der DexScreener-Profile — schneller, aber braucht einen RPC-Anbieter.
-- **Parameter-Sweep** auf den gesammelten Daten: welche Filterwerte hätten im Rückblick die beste `buy`-Rendite gebracht?
 - **Holder-Analyse**: Top-10-Anteil und Dev-Wallet-Verhalten direkt aus der Chain.
 - **Live-Adapter** (`bot/live.py`): Jupiter-Quote + Swap, lokal signiert — erst, wenn der Edge-Report über Wochen positiv ist, und nur mit Geld, das weg sein darf.
 
@@ -201,6 +209,7 @@ bot/
   strategy.py    Filter und Score
   paper.py       Paper-Engine mit Gebühren, Slippage und allen Exit-Regeln
   tracker.py     Vorwärtsrenditen für den Edge-Report
+  sweep.py       Rückblick: Filterwerte gegen die eigene Historie
   store.py       SQLite
   server.py      Lokales Dashboard und Steuer-API (nur 127.0.0.1)
   settings.py    Parameter-Schema: Validierung + Formular aus einer Quelle

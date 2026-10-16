@@ -53,6 +53,10 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                 self._json({"config": settings.flat(engine.cfg)})
             elif self.path == "/api/profiles":
                 self._json({"profiles": engine.profiles()})
+            elif self.path.startswith("/api/sweep"):
+                q = self.path.split("?", 1)[1] if "?" in self.path else ""
+                horizon = next((int(v) for k, _, v in (kv.partition("=") for kv in q.split("&")) if k == "horizon" and v.isdigit()), 15)
+                self._json(engine.sweep(horizon))
             elif self.path == "/api/export/trades.csv":
                 rows = engine.store.trades(100000)
                 body = _csv(rows, ["id", "position_id", "at", "side", "price", "usd", "frac", "reason"])

@@ -57,6 +57,7 @@ class Engine:
                 verdict = evaluate(p, rug, self.cfg)
                 decision = verdict["decision"]
                 p["rule_decision"] = decision
+                p["rug"] = rug
                 ai = self.advisor.judge(p, rug, verdict) if decision in ("buy", "watch") else None
                 if ai:
                     p["ai_decision"], p["ai_confidence"] = ai["decision"], round(ai["confidence"], 2)
@@ -269,6 +270,16 @@ class Engine:
         del profiles[name]
         self.store.set("profiles", profiles)
         return {"ok": True, "profiles": profiles}
+
+    def sweep(self, horizon_min: int = 15) -> dict[str, Any]:
+        from . import sweep as _sweep
+        horizons = [int(h) for h in self.cfg["tracker"]["horizons_minutes"]]
+        if horizon_min not in horizons:
+            horizon_min = horizons[min(1, len(horizons) - 1)]
+        result = _sweep.run(self.store.sweep_samples(horizon_min), self.cfg)
+        result["horizon_min"] = horizon_min
+        result["horizons"] = horizons
+        return result
 
     def position_detail(self, pid: int) -> dict[str, Any]:
         pos = self.store.position(pid)

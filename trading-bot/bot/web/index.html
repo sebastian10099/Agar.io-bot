@@ -113,6 +113,15 @@
   .tip b { font-size:14px; font-variant-numeric:tabular-nums; display:block; }
   .tip .k { color:var(--dim); }
   .tip .key { display:inline-block; width:12px; height:2px; background:var(--blue); vertical-align:middle; margin-right:6px; border-radius:1px; }
+  .sweep-row { display:grid; grid-template-columns:200px 1fr; gap:6px 14px; align-items:start; padding:10px 0; border-bottom:1px solid var(--line); }
+  .sweep-row:last-child { border-bottom:0; }
+  .sweep-row .name b { display:block; } .sweep-row .name small { color:var(--dim); }
+  .sweep-vals { display:flex; flex-wrap:wrap; gap:6px; }
+  .sv { border:1px solid var(--line); border-radius:8px; padding:5px 9px; min-width:84px; font-size:12px; font-variant-numeric:tabular-nums; }
+  .sv .v { display:block; color:var(--dim); font-size:11px; } .sv .r { font-weight:600; }
+  .sv.cur { border-color:var(--blue); } .sv.best { background:var(--green-bg); border-color:var(--green); }
+  .sv.weak { opacity:.45; }
+  @media (max-width:640px) { .sweep-row { grid-template-columns:1fr; } }
   .ebar { display:inline-block; position:relative; width:72px; height:6px; vertical-align:middle; margin-left:8px; }
   .ebar::before { content:""; position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:var(--line-strong); }
   .ebar i { position:absolute; top:0; height:6px; background:var(--blue); border-radius:0 3px 3px 0; }
@@ -198,6 +207,7 @@
       <div class="kpi"><span>Letzter Poll</span><b id="k-poll">–</b></div>
     </div>
     <div class="actions">
+      <button class="btn" id="b-notify" aria-pressed="false">🔔</button>
       <button class="btn" id="b-poll" title="Sofort neue Tokens holen (Taste r)">Jetzt pollen</button>
       <button class="btn primary" id="b-toggle" title="Taste p">Pause</button>
     </div>
@@ -206,8 +216,9 @@
     <button role="tab" id="tabbtn-overview" data-tab="overview" aria-selected="true" aria-controls="tab-overview">Übersicht</button>
     <button role="tab" id="tabbtn-control" data-tab="control" aria-selected="false" aria-controls="tab-control">Steuerung</button>
     <button role="tab" id="tabbtn-candidates" data-tab="candidates" aria-selected="false" aria-controls="tab-candidates">Kandidaten <span class="n" id="n-cands"></span></button>
+    <button role="tab" id="tabbtn-analysis" data-tab="analysis" aria-selected="false" aria-controls="tab-analysis">Analyse</button>
     <button role="tab" id="tabbtn-log" data-tab="log" aria-selected="false" aria-controls="tab-log">Protokoll</button>
-    <span class="keys" aria-hidden="true">Tasten: <kbd>1</kbd>–<kbd>4</kbd> Reiter · <kbd>p</kbd> Pause · <kbd>r</kbd> Pollen · <kbd>/</kbd> Suche</span>
+    <span class="keys" aria-hidden="true">Tasten: <kbd>1</kbd>–<kbd>5</kbd> Reiter · <kbd>p</kbd> Pause · <kbd>r</kbd> Pollen · <kbd>/</kbd> Suche</span>
   </nav>
 </header>
 
@@ -294,6 +305,16 @@
     </section>
   </div>
 
+  <div id="tab-analysis" class="grid" role="tabpanel" aria-labelledby="tabbtn-analysis" hidden>
+    <section>
+      <h2>Rückblick: welcher Wert hätte besser abgeschnitten?
+        <span class="spacer"></span>
+        <span class="filterbar" role="group" aria-label="Horizont"><span class="status">Horizont</span><span id="sweep-h"></span>
+        <button class="btn sm" id="b-sweep">Neu berechnen</button></span></h2>
+      <p class="note" id="sweep-sub">Jeder Filterwert wird einzeln über ein Raster bewegt, alle anderen bleiben wie eingestellt. Gezählt werden die Kandidaten, die mit diesem Wert <b>buy</b> gewesen wären, und ihre tatsächliche Rendite danach. Zeilen mit zu wenigen Treffern sind ausgegraut – das ist Rauschen, kein Ergebnis.</p>
+      <div id="sweep"></div>
+    </section>
+  </div>
   <div id="tab-log" class="grid" role="tabpanel" aria-labelledby="tabbtn-log" hidden>
     <section><h2>Protokoll <span class="spacer"></span><span class="filterbar" role="group" aria-label="Protokoll filtern">
       <button class="chip" data-lf="trade" aria-pressed="true">Trades</button><button class="chip" data-lf="poll" aria-pressed="true">Polls</button>
@@ -559,6 +580,47 @@ $('equity').addEventListener('focus', () => { if (eq.pts.length) showEq(eq.idx <
 $('equity').addEventListener('blur', hideEq);
 new ResizeObserver(() => { if (state) renderEquity(state); }).observe($('equity'));
 
+let sweepLoaded = false, sweepHorizon = null;
+async function loadSweep() {
+  $('sweep').innerHTML = '<div class="empty">Berechne …</div>';
+  try {
+    const d = await api('/api/sweep' + (sweepHorizon ? '?horizon=' + sweepHorizon : ''));
+    sweepLoaded = true; sweepHorizon = d.horizon_min;
+    $('sweep-h').innerHTML = (d.horizons || []).map((h) => `<button class="chip" data-sh="${h}" aria-pressed="${h === d.horizon_min}">${h} min</button>`).join('');
+    $('sweep-h').querySelectorAll('[data-sh]').forEach((c) => c.onclick = () => { sweepHorizon = Number(c.dataset.sh); loadSweep(); });
+    if (!d.n_candidates) { $('sweep').innerHTML = `<div class="empty">Noch keine Kandidaten mit Ergebnis nach ${d.horizon_min} Minuten. Der Rückblick braucht ein paar Stunden Laufzeit.</div>`; return; }
+    const fmtV = (p, v) => (p.unit === '$' ? '$' + Number(v).toLocaleString('de-DE') : Number(v).toLocaleString('de-DE') + (p.unit ? ' ' + p.unit : ''));
+    $('sweep').innerHTML = d.params.map((p) => `<div class="sweep-row"><div class="name"><b>${esc(p.label)}</b><small>jetzt ${fmtV(p, p.current)}${p.best != null && p.best !== p.current ? ` · besser: ${fmtV(p, p.best)} (${pct(p.best_avg_ret)})` : p.best != null ? ' · aktueller Wert ist der beste' : ' · zu wenige Treffer'}</small></div>
+      <div class="sweep-vals">${p.values.map((r) => `<span class="sv ${r.current ? 'cur' : ''} ${r.value === p.best ? 'best' : ''} ${r.n_buy < d.min_n ? 'weak' : ''}" title="${r.n_buy} Kandidaten wären buy gewesen${r.win_rate != null ? ', Trefferquote ' + Math.round(r.win_rate * 100) + '%' : ''}"><span class="v">${fmtV(p, r.value)}</span><span class="r ${cls(r.avg_ret)}">${r.avg_ret == null ? '–' : pct(r.avg_ret)}</span><span class="v">n=${r.n_buy}</span></span>`).join('')}</div></div>`).join('');
+    $('sweep-sub').textContent = `${d.n_candidates} Kandidaten mit Ergebnis nach ${d.horizon_min} Minuten. Jeder Filterwert wird einzeln über ein Raster bewegt, alle anderen bleiben wie eingestellt. Gezählt werden Kandidaten, die mit diesem Wert „buy“ gewesen wären, und ihre tatsächliche Rendite danach. Ausgegraut: weniger als ${d.min_n} Treffer – Rauschen, kein Ergebnis.`;
+  } catch (e) { $('sweep').innerHTML = `<div class="empty">Rückblick nicht ladbar: ${esc(e.message)}</div>`; }
+}
+$('b-sweep').onclick = () => busy($('b-sweep'), loadSweep);
+
+// ---------- browser notifications on entries and exits ----------
+let notify = false, seenOpen = null, seenClosed = null;
+try { notify = localStorage.getItem('notify') === '1'; } catch {}
+function paintNotify() { $('b-notify').setAttribute('aria-pressed', String(notify)); $('b-notify').textContent = notify ? '🔔 an' : '🔔'; $('b-notify').title = notify ? 'Benachrichtigungen bei Einstieg und Exit: an' : 'Benachrichtigungen bei Einstieg und Exit einschalten'; }
+$('b-notify').onclick = async () => {
+  if (!('Notification' in window)) { toast('Dieser Browser unterstützt keine Benachrichtigungen', true); return; }
+  if (!notify) {
+    let perm = Notification.permission;
+    if (perm !== 'granted') { try { perm = await Notification.requestPermission(); } catch { perm = 'denied'; } }
+    if (perm !== 'granted') { toast('Benachrichtigungen wurden nicht erlaubt', true); return; }
+  }
+  notify = !notify; try { localStorage.setItem('notify', notify ? '1' : '0'); } catch {}
+  paintNotify(); toast(notify ? 'Benachrichtigungen an' : 'Benachrichtigungen aus');
+};
+function checkNotify(s) {
+  const open = new Set(s.open_positions.map((p) => p.id)), closed = new Set(s.closed.map((p) => p.id));
+  if (seenOpen && notify && 'Notification' in window && Notification.permission === 'granted') {
+    for (const p of s.open_positions) if (!seenOpen.has(p.id)) new Notification(`Einstieg ${p.symbol}`, { body: `${usd(p.size_usd)} @ ${px(p.entry_price)}` });
+    for (const p of s.closed) if (!seenClosed.has(p.id)) new Notification(`Exit ${p.symbol} · ${p.exit_reason}`, { body: `P&L ${usd(p.realized_usd)}` });
+  }
+  seenOpen = open; seenClosed = closed;
+}
+paintNotify();
+
 const logFilter = {trade: true, poll: true, info: true, error: true};
 function renderLog(s) {
   const rows = s.events.filter((e) => logFilter[e.level] !== false);
@@ -780,7 +842,8 @@ $('b-toggle').onclick = () => busy($('b-toggle'), async () => {
 $('b-poll').onclick = () => busy($('b-poll'), async () => { await api('/api/control', {action: 'poll'}); toast('Poll angestoßen'); setTimeout(refresh, 1500); });
 document.querySelectorAll('nav [role=tab]').forEach((b) => b.onclick = () => {
   document.querySelectorAll('nav [role=tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
-  ['overview', 'control', 'candidates', 'log'].forEach((t) => $('tab-' + t).hidden = t !== b.dataset.tab);
+  ['overview', 'control', 'candidates', 'analysis', 'log'].forEach((t) => $('tab-' + t).hidden = t !== b.dataset.tab);
+  if (b.dataset.tab === 'analysis' && !sweepLoaded) loadSweep();
   try { localStorage.setItem('tab', b.dataset.tab); } catch {}
 });
 document.querySelectorAll('.filterbar .chip[data-f]').forEach((c) => c.onclick = () => {
@@ -793,7 +856,7 @@ let firstConfig = true;
 async function refresh() {
   try {
     const s = await api('/api/state'); state = s;
-    renderHeader(s); renderOverview(s); renderCandidates(s); renderLog(s);
+    renderHeader(s); renderOverview(s); renderCandidates(s); renderLog(s); checkNotify(s);
     if (firstConfig && schema) { loadForm(s.config); firstConfig = false; }
   } catch (e) {
     $('conn').className = 'dot bad'; $('conn').title = 'keine Verbindung zum Bot'; $('k-poll').textContent = 'keine Verbindung';
@@ -810,10 +873,10 @@ async function refresh() {
   document.addEventListener('keydown', (ev) => {
     const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) || document.querySelector('dialog[open]');
     if (typing || ev.metaKey || ev.ctrlKey || ev.altKey) return;
-    const tabs = ['overview', 'control', 'candidates', 'log'];
+    const tabs = ['overview', 'control', 'candidates', 'analysis', 'log'];
     if (ev.key === 'p') $('b-toggle').click();
     else if (ev.key === 'r') $('b-poll').click();
-    else if (ev.key >= '1' && ev.key <= '4') document.querySelector(`nav [data-tab="${tabs[Number(ev.key) - 1]}"]`).click();
+    else if (ev.key >= '1' && ev.key <= '5') document.querySelector(`nav [data-tab="${tabs[Number(ev.key) - 1]}"]`).click();
     else if (ev.key === '/') { document.querySelector('nav [data-tab="candidates"]').click(); $('q').focus(); ev.preventDefault(); }
     else return;
   });

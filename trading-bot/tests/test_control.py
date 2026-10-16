@@ -255,6 +255,46 @@ class AiModeTests(unittest.TestCase):
         self.assertEqual(set(errors), {"ai.mode", "ai.model", "ai.max_calls_per_hour"})
 
 
+class SweepTests(unittest.TestCase):
+    def test_sweep_finds_stricter_liquidity_when_thin_tokens_lose(self):
+        from bot import sweep
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite")
+            dex = FakeDex(accel=1.0)
+            t = [dex.started]
+            dex.now = lambda: t[0]
+            eng = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=dex.now)
+            # twelve polls, 31 min apart: every re-listed generation is caught young once,
+            # so the rule-eligible tokens appear often enough to clear MIN_N
+            for i in range(12):
+                eng.poll_once()
+                t[0] += 31 * 60      # past the re-see window: same tokens, fresh candidates
+            self.assertGreaterEqual(len(store.candidates()), 12)
+            # thin-liquidity tokens lose, rich ones win - the sweep should prefer a higher floor
+            for c in store.candidates():
+                liq = c["snapshot"]["liquidity_usd"]
+                store.fill_outcome(c["id"], 15, 1.0, 25.0 if liq >= 60000 else -20.0)
+            result = eng.sweep(15)
+            self.assertEqual(result["horizon_min"], 15)
+            self.assertGreater(result["n_candidates"], 0)
+            liq = next(p for p in result["params"] if p["path"] == "filters.min_liquidity_usd")
+            self.assertIsNotNone(liq["best"])
+            # 40k and 60k admit the same (winning) tokens; the tie breaks toward the smaller change
+            self.assertEqual(liq["best"], 40000)
+            self.assertGreater(liq["best_avg_ret"], liq["current_avg_ret"])
+            self.assertTrue(any(r["current"] for r in liq["values"]))
+            self.assertIn("filters.max_price_change_m5_pct", [p["path"] for p in result["params"]])
+            # unknown horizon falls back to a tracked one
+            self.assertIn(eng.sweep(999)["horizon_min"], result["horizons"])
+            store.close()
+
+    def test_sweep_empty(self):
+        from bot import sweep
+        r = sweep.run([], copy.deepcopy(CFG))
+        self.assertEqual(r["n_candidates"], 0)
+        self.assertEqual(r["params"], [])
+
+
 class ControlApiTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -313,6 +353,12 @@ class ControlApiTests(unittest.TestCase):
         status, state = self.call("GET", "/api/state")
         self.assertIn("paper.fee_pct", state["config"])
         self.assertIn("started_at", state)
+
+    def test_sweep_route(self):
+        status, r = self.call("GET", "/api/sweep?horizon=15")
+        self.assertEqual(status, 200)
+        self.assertEqual(r["horizon_min"], 15)
+        self.assertIn("params", r)
 
     def test_profiles_and_export_routes(self):
         status, r = self.call("POST", "/api/profiles", {"name": "Test"})
