@@ -2185,6 +2185,82 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Fahrauftraege (/auftrag, /ort) ----------------------------------------------------------------------------
+do
+    os.execute('rm -rf "' .. SHARED .. '/places"')
+    local savedAdmins = C.admins
+    C.admins = { "Planer" }
+    players[95] = { name = "Planer", ids = { beammp = "9595" }, vehicles = {} }
+    players[96] = { name = "Fahrer", ids = { beammp = "9696" }, vehicles = { [1] = { pos = { 21000, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](95); _G[events.onPlayerJoin](96)
+    tick(1)
+    chatLog = {}
+    say(96, "/orte")
+    check(chatContains("Noch keine Orte auf dieser Map", 96), "Auftrag: ohne Orte Hinweis")
+    say(96, "/auftrag")
+    check(chatContains("Gerade kein Auftrag frei", 96), "Auftrag: ohne Orte kein Auftrag")
+    say(96, "/ort neu krankenhaus Heimlich")
+    check(chatContains("Nur Admins legen Orte an", 96), "Ort: nur Admins")
+    BN.track(95, 0, { 20000, 0, 0 }, 1)
+    say(95, "/ort neu krankenhaus St. Marien")
+    check(chatContains("🚑 St%. Marien angelegt %(krankenhaus%)", 95), "Ort: angelegt")
+    say(95, "/ort neu mond Basis")
+    check(chatContains("Aufruf: /ort neu <Typ> <Name> – Typen: bahnhof, feuerwehr", 95), "Ort: nur bekannte Typen")
+    say(95, "/ort neu hospital st. marien")
+    check(chatContains("Den Ort St%. Marien gibt es schon", 95), "Ort: Name nur einmal (englischer Typ geht)")
+    local pf = readJson(SHARED .. "/places/gridmap_v2.json")
+    check(pf and #pf.places == 1 and pf.places[1].x == 20000, "Ort: in places/<Map>.json gespeichert")
+    -- Zu nah: kein Auftrag.
+    players[96].vehicles[1].pos = { 20100, 0, 0 }; tick(1)
+    say(96, "/auftrag")
+    check(chatContains("Gerade kein Auftrag frei", 96), "Auftrag: Ziel zu nah")
+    players[96].vehicles[1].pos = { 21000, 0, 0 }; tick(1)
+    chatLog = {}
+    say(96, "/auftrag")
+    check(chatContains("🚑 Notfall! Bring den Patienten ins Krankenhaus St%. Marien – 1,0 km, 2:13 min Zeit", 96), "Auftrag: Notfall mit Entfernung und Zeit")
+    say(96, "/auftrag")
+    check(chatContains("Dein Auftrag: St%. Marien · noch 1,0 km", 96), "Auftrag: Stand abfragen")
+    -- Hinspringen zaehlt nicht.
+    players[96].vehicles[1].pos = { 20005, 0, 0 }; tick(1)
+    check(chatContains("ohne die Strecke zu fahren zählt der Auftrag nicht", 96) and BN.players[96].job ~= nil, "Auftrag: Springen zaehlt nicht")
+    say(96, "/auftrag stop")
+    check(chatContains("Auftrag abgebrochen", 96) and BN.players[96].job == nil, "Auftrag: abbrechen")
+    players[96].vehicles[1].pos = { 21000, 0, 0 }; tick(1)
+    say(96, "/auftrag")
+    local bonus0 = BN.players[96].pendingBonus
+    for _ = 1, 50 do move(96, 1, -20, 0, 0); tick(1) end
+    check(chatContains("Noch 4%d0 m bis St%. Marien", 96), "Auftrag: Hinweis unterwegs")
+    check(chatContains("✅ Auftrag erledigt: St%. Marien in 0:4%d – %+100 XP %(Blitzschnell! %+50 %%%)", 96), "Auftrag: erledigt, schnell = +50 %")
+    eq(BN.players[96].pendingBonus - bonus0, 100, "Auftrag: XP gutgeschrieben")
+    eq(BN.players[96].pendingJobs, 1, "Auftrag: gezaehlt")
+    -- Nicht zweimal hintereinander dasselbe Ziel; zweiter Ort, Zeit abgelaufen.
+    say(96, "/auftrag")
+    check(chatContains("Gerade kein Auftrag frei", 96), "Auftrag: nicht zweimal dasselbe Ziel")
+    BN.track(95, 0, { 23000, 0, 0 }, 50)
+    say(95, "/ort neu schule Grundschule")
+    chatLog = {}
+    say(96, "/auftrag")
+    check(chatContains("🚌 Schulbus: Bring die Kinder zur Schule Grundschule – 3,0 km, 7:25 min Zeit", 96), "Auftrag: Schulbus")
+    tick(446)
+    check(chatContains("⌛ Zu spät – der Auftrag nach Grundschule ist verfallen", 96) and BN.players[96].job == nil, "Auftrag: Zeit abgelaufen")
+    say(96, "/rennen gruppe x")
+    chatLog = {}
+    say(96, "/stats")
+    check(chatContains("Aufträge erledigt: 1", 96), "Auftrag: in /stats")
+    _G[events.onPlayerDisconnect](96)
+    eq(readJson(SHARED .. "/players/9696.json").jobsDone, 1, "Auftrag: gespeichert")
+    -- Manipulierte Datei: unbekannte Typen und Unsinn fallen weg, lange Namen werden gekuerzt.
+    writeJson(SHARED .. "/places/gridmap_v2.json", { places = { 5, { type = "x", x = 1, y = 1, z = 1 }, { type = "schule", name = string.rep("A", 99), x = 1, y = 2, z = 3 }, { type = "schule", name = "ohne", x = "a" } } })
+    local list = BN.loadPlaces()
+    check(#list == 1 and #list[1].name <= 43, "Ort: manipulierte Datei wird bereinigt")
+    say(95, "/ort weg " .. list[1].name)
+    eq(#BN.loadPlaces(), 0, "Ort: loeschen")
+    _G[events.onPlayerDisconnect](95)
+    players[95], players[96] = nil, nil
+    os.execute('rm -rf "' .. SHARED .. '/places"')
+    C.admins = savedAdmins
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }

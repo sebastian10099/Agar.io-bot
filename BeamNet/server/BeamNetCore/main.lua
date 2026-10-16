@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.32"
+BN.VERSION = "1.33"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -95,6 +95,12 @@ local defaults = {
     streakXp = 10,
     streakMaxDays = 7,
     streakMinKm = 1,
+    -- Fahrauftraege (/auftrag): Ziele sind Orte, die Admins mit /ort neu <Typ> <Name> anlegen (Krankenhaus, Schule ...).
+    -- XP = jobXp + jobXpPerKm je km Luftlinie (Notfaelle das 1,5-Fache), +50 % fuer schnelle Fahrer, hoechstens 250.
+    jobXp = 20,
+    jobXpPerKm = 25,
+    jobRadiusM = 25,
+    jobMinDistM = 300,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -375,6 +381,7 @@ end
 local function playersDir() return C.sharedDir .. "/players" end
 local function serversDir() return C.sharedDir .. "/servers" end
 local function racesDir() return C.sharedDir .. "/races" end
+local function placesDir() return C.sharedDir .. "/places" end
 local function bansFile() return C.sharedDir .. "/bans.json" end
 local function mutesFile() return C.sharedDir .. "/mutes.json" end
 local function announcementsFile() return C.sharedDir .. "/announcements.json" end
@@ -481,12 +488,12 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true,
                        mapVoteSec = true, joinLimit = true, filterStrikes = true, weeklyTrackXp = true,
                        groupRaceDelaySec = true, maxFriends = true, friendCheckSec = true,
-                       streakXp = true, streakMaxDays = true }
+                       streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
                      filterStrikes = 1, filterMuteSec = 10, maxFriends = 1, friendCheckSec = 5,
-                     streakMaxDays = 2, streakMinKm = 0.1 }
+                     streakMaxDays = 2, streakMinKm = 0.1, jobRadiusM = 5, jobMinDistM = 50 }
 
 function BN.loadOverrides()
     local data = readFile(C.sharedDir .. "/config.json")
@@ -569,8 +576,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /melden · /regeln · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|speed|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /report · /rules · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /melden · /regeln · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|speed|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /job · /places · /report · /rules · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -593,8 +600,8 @@ local EN = {
     ["Abstimmung für %s abgelehnt (%d:%d)."] = "Vote for %s failed (%d:%d).",
     ["Der Map-Wechsel auf %s hat nicht geklappt – bitte einem Admin melden."] =
         "The switch to %s did not work – please tell an admin.",
-    ["Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage"] =
-        "Admin: /kick · /ban <name> [30m|2h|7d] [reason] · /unban · /bans · /warn · /mute · /announce",
+    ["Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name>"] =
+        "Admin: /kick · /ban <name> [30m|2h|7d] [reason] · /unban · /bans · /warn · /mute · /announce · /place new <type> <name>",
     ["Du bist %s gefahren (diese Woche %s)."] = "You have driven %s (this week %s).",
     ["Kein Spieler online mit dem Namen \"%s\"."] = "No player online named \"%s\".",
     ["%s: Level %d · Liga %s · %d XP · %s · %s Fahrzeit · Spitze %.0f km/h"] = "%s: level %d · %s league · %d XP · %s · %s driving · top speed %.0f km/h",
@@ -796,6 +803,46 @@ local EN = {
     ["Nur Admins können Teams löschen."] = "Only admins can delete teams.",
     ["Team %s gelöscht."] = "Team %s deleted.",
     ["Bitte warte noch %d s, bevor du wieder ein Gruppenrennen startest."] = "Please wait %d s before starting another group race.",
+    -- Auftraege
+    ["Notfall! Bring den Patienten ins Krankenhaus %s"] = "Emergency! Take the patient to %s hospital",
+    ["Schulbus: Bring die Kinder zur Schule %s"] = "School bus: take the children to %s school",
+    ["Alarm! Bring die Ausrüstung zur Feuerwache %s"] = "Alarm! Take the equipment to %s fire station",
+    ["Bring den Verdächtigen zur Polizei %s"] = "Take the suspect to %s police station",
+    ["Liefere Benzin an die Tankstelle %s"] = "Deliver fuel to %s gas station",
+    ["Bring die Ersatzteile zur Werkstatt %s"] = "Take the spare parts to %s garage",
+    ["Liefere die Ware an den Supermarkt %s"] = "Deliver the goods to %s supermarket",
+    ["Taxi: Bring den Fahrgast zum Bahnhof %s"] = "Taxi: take the passenger to %s station",
+    ["Taxi: Der Fahrgast muss zum Flughafen %s"] = "Taxi: the passenger needs to get to %s airport",
+    ["Bring die Fracht zum Hafen %s"] = "Take the cargo to %s harbor",
+    ["Taxi: Bring den Gast zum Hotel %s"] = "Taxi: take the guest to %s hotel",
+    ["Liefere das Paket nach %s"] = "Deliver the parcel to %s",
+    ["Nur Admins legen Orte an. Alle Orte: /orte"] = "Only admins create places. All places: /places",
+    ["Aufruf: /ort neu <Typ> <Name> – Typen: %s"] = "Usage: /place new <type> <name> – types: %s",
+    ["Keine Position – bitte erst mit einem Fahrzeug an den Ort fahren."] = "No position – please drive to the place with a vehicle first.",
+    ["Den Ort %s gibt es schon (löschen: /ort weg %s)."] = "The place %s already exists (delete: /place remove %s).",
+    ["Auf dieser Map gibt es schon %d Orte."] = "This map already has %d places.",
+    ["Speichern fehlgeschlagen – bitte beamnet doctor prüfen."] = "Saving failed – please check beamnet doctor.",
+    ["%s %s angelegt (%s). Spieler fahren jetzt mit /auftrag hierher."] = "%s %s created (%s). Players now drive here with /job.",
+    ["Ort %s gelöscht."] = "Place %s deleted.",
+    ["Den Ort „%s“ gibt es auf dieser Map nicht."] = "There is no place \"%s\" on this map.",
+    ["Aufruf: /ort neu <Typ> <Name> · /ort weg <Name> · /orte"] = "Usage: /place new <type> <name> · /place remove <name> · /places",
+    ["Noch keine Orte auf dieser Map. Admins legen sie an: /ort neu krankenhaus <Name>"] =
+        "No places on this map yet. Admins create them: /place new hospital <name>",
+    ["Orte auf dieser Map (%d) – Auftrag holen: /auftrag"] = "Places on this map (%d) – get a job: /job",
+    ["… und %d weitere"] = "… and %d more",
+    ["Steig erst in ein Fahrzeug, dann gibt es einen Auftrag."] = "Get into a vehicle first, then you get a job.",
+    ["Gerade kein Auftrag frei – auf dieser Map fehlen Orte (Admins: /ort neu krankenhaus <Name>)."] =
+        "No job available – this map has no places yet (admins: /place new hospital <name>).",
+    ["Angekommen – aber ohne die Strecke zu fahren zählt der Auftrag nicht."] = "Arrived – but the job only counts if you actually drive there.",
+    ["✅ Auftrag erledigt: %s in %s – +%d XP%s. Nächster: /auftrag"] = "✅ Job done: %s in %s – +%d XP%s. Next: /job",
+    [" (Blitzschnell! +50 %)"] = " (lightning fast! +50 %)",
+    ["⌛ Zu spät – der Auftrag nach %s ist verfallen. Neuer Versuch: /auftrag"] = "⌛ Too late – the job to %s has expired. Try again: /job",
+    ["Noch %s bis %s · %s übrig"] = "%s to %s · %s left",
+    ["Du hast gerade keinen Auftrag."] = "You don't have a job right now.",
+    ["Auftrag abgebrochen. Neuer: /auftrag"] = "Job cancelled. New one: /job",
+    ["Dein Auftrag: %s · noch %s · %s übrig"] = "Your job: %s · %s to go · %s left",
+    ["Erst das Rennen beenden (/rennen stop), dann gibt es einen Auftrag."] = "Finish the race first (/race stop), then you get a job.",
+    ["Aufträge erledigt: %d"] = "Jobs done: %d",
     -- Freunde
     ["hier"] = "here",
     [" · und %d weitere"] = " · and %d more",
@@ -880,7 +927,7 @@ local function normalizeRecord(rec, id, name)
     rec.id = id or rec.id
     rec.name = name or rec.name
     for _, k in ipairs({ "km", "seconds", "weekKm", "topSpeedKmh", "bonusXp", "racesFinished", "recordsSet",
-                         "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm", "streak", "bestStreak" }) do
+                         "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm", "streak", "bestStreak", "jobsDone" }) do
         rec[k] = tonumber(rec[k]) or 0
     end
     for _, k in ipairs({ "maps", "achievements", "dayMaps", "mapKm" }) do
@@ -1027,7 +1074,7 @@ function BN.normalizeSession(s)
     if type(s.vehicles) ~= "table" then s.vehicles = {} end
     if type(s.moved) ~= "table" then s.moved = {} end
     for _, k in ipairs({ "pendingKm", "pendingSeconds", "pendingTop", "pendingBonus", "pendingRaces", "pendingRecords",
-                         "sessionKm" }) do
+                         "sessionKm", "pendingJobs" }) do
         s[k] = tonumber(s[k]) or 0
     end
     if type(s.unlocked) ~= "table" then s.unlocked = {} end
@@ -1123,7 +1170,8 @@ function BN.savePlayer(s)
     if not s or s.guest then return true end
     flushMoved(s)
     if s.pendingKm == 0 and s.pendingSeconds == 0 and s.pendingTop == 0 and s.pendingBonus == 0 and not s.dirty
-        and s.pendingRaces == 0 and s.pendingRecords == 0 and next(s.unlocked) == nil and not s.challengeReward then
+        and s.pendingRaces == 0 and s.pendingRecords == 0 and next(s.unlocked) == nil and not s.challengeReward
+        and s.pendingJobs == 0 then
         return true
     end
     ensureDir(C.sharedDir)
@@ -1167,6 +1215,7 @@ function BN.savePlayer(s)
     rec.bonusXp = rec.bonusXp + s.pendingBonus
     rec.racesFinished = rec.racesFinished + s.pendingRaces
     rec.recordsSet = rec.recordsSet + s.pendingRecords
+    rec.jobsDone = rec.jobsDone + s.pendingJobs
     -- Tages-Serie: der erste Tag zaehlt, Bonus-XP gibt es ab dem zweiten Tag in Folge.
     if C.streakXp > 0 and rec.dayKm >= C.streakMinKm and rec.streakDay ~= rec.day then
         rec.streak = rec.streakDay == rec.day - 1 and rec.streak + 1 or 1
@@ -1213,6 +1262,7 @@ function BN.savePlayer(s)
     BN.savedRecently[s.id] = { at = BN.now(), rec = BN.slimRecord(rec) }
     s.pendingKm, s.pendingSeconds, s.pendingTop, s.pendingBonus, s.dirty = 0, 0, 0, 0, false
     s.pendingRaces, s.pendingRecords, s.unlocked, s.challengeReward = 0, 0, {}, nil
+    s.pendingJobs = 0
     s.langChanged = nil
     s.friendsChanged = nil
     s.pendingWeeklyTrack = nil
@@ -2523,9 +2573,9 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /melden · /regeln · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /melden · /regeln · /lang")
     if BN.isAdmin(BN.players[pid]) then
-        say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
+        say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name>")
     end
 end
 commands.help = commands.hilfe
@@ -2559,6 +2609,8 @@ function commands.stats(pid, arg)
         local titles, parts = BN.titlesFor(s.id), {}
         for i = 1, math.min(3, #titles) do parts[#parts + 1] = BN.titleText(titles[i], lang) end
         if #parts > 0 then say(pid, "Titel: %s", table.concat(parts, " · ")) end
+        local jobs = (tonumber(s.record.jobsDone) or 0) + (s.pendingJobs or 0)
+        if jobs > 0 then say(pid, "Aufträge erledigt: %d", jobs) end
         local streak = BN.streakOf(s.record)
         if streak >= 2 or (tonumber(s.record.bestStreak) or 0) >= 2 then
             say(pid, "Serie: %d Tage in Folge (beste: %d)", streak, math.max(streak, tonumber(s.record.bestStreak) or 0))
@@ -3324,6 +3376,244 @@ end
 commands.report = commands.melden
 
 -- ---------------------------------------------------------------------------------------------------------------------
+-- Fahrauftraege: Admins legen Orte an (/ort neu <Typ> <Name> an der eigenen Position, je Map in places/<Map>.json).
+-- Spieler holen sich mit /auftrag einen Auftrag zu einem zufaelligen Ort (mindestens jobMinDistM entfernt), z. B.
+-- "Bring den Patienten ins Krankenhaus". Zeitlimit aus der Entfernung; gezaehlt wird nur, wer wirklich faehrt
+-- (mindestens 70 % der Luftlinie als gefahrene Strecke – Sprunge und Zuruecksetzen zaehlen nicht).
+
+BN.PLACE_TYPES = {
+    krankenhaus = { icon = "🚑", text = "Notfall! Bring den Patienten ins Krankenhaus %s", urgent = true },
+    schule = { icon = "🚌", text = "Schulbus: Bring die Kinder zur Schule %s" },
+    feuerwehr = { icon = "🚒", text = "Alarm! Bring die Ausrüstung zur Feuerwache %s", urgent = true },
+    polizei = { icon = "🚓", text = "Bring den Verdächtigen zur Polizei %s", urgent = true },
+    tankstelle = { icon = "⛽", text = "Liefere Benzin an die Tankstelle %s" },
+    werkstatt = { icon = "🔧", text = "Bring die Ersatzteile zur Werkstatt %s" },
+    supermarkt = { icon = "🛒", text = "Liefere die Ware an den Supermarkt %s" },
+    bahnhof = { icon = "🚕", text = "Taxi: Bring den Fahrgast zum Bahnhof %s" },
+    flughafen = { icon = "✈️", text = "Taxi: Der Fahrgast muss zum Flughafen %s" },
+    hafen = { icon = "⚓", text = "Bring die Fracht zum Hafen %s" },
+    hotel = { icon = "🏨", text = "Taxi: Bring den Gast zum Hotel %s" },
+    ort = { icon = "📦", text = "Liefere das Paket nach %s" },
+}
+local PLACE_ALIASES = { hospital = "krankenhaus", school = "schule", fire = "feuerwehr", police = "polizei",
+                        gas = "tankstelle", garage = "werkstatt", shop = "supermarkt", station = "bahnhof",
+                        airport = "flughafen", harbor = "hafen", port = "hafen", place = "ort" }
+BN.MAX_PLACES = 100
+
+local function placesFile()
+    local map = tostring(BN.server.map or "unbekannt"):gsub("[^%w_-]", "_")
+    return placesDir() .. "/" .. map .. ".json"
+end
+
+function BN.loadPlaces()
+    local data = json.decode(readFile(placesFile()) or "")
+    local list = {}
+    if type(data) == "table" and type(data.places) == "table" then
+        for _, p in ipairs(data.places) do
+            if type(p) == "table" and BN.PLACE_TYPES[p.type] and tonumber(p.x) and tonumber(p.y) and tonumber(p.z) then
+                list[#list + 1] = { type = p.type, name = clipText(p.name, 40), x = tonumber(p.x), y = tonumber(p.y),
+                                    z = tonumber(p.z), by = p.by }
+            end
+        end
+    end
+    return list
+end
+
+local function savePlaces(list)
+    ensureDir(C.sharedDir)
+    ensureDir(placesDir())
+    return writeFileAtomic(placesFile(), json.encode({ places = list }))
+end
+
+local function fmtDist(lang, m)
+    if m >= 1000 then
+        local text = string.format("%.1f km", m / 1000)
+        return lang == "en" and text or (text:gsub("%.", ","))
+    end
+    return string.format("%d m", math.floor(m / 10 + 0.5) * 10)
+end
+
+local function fmtClock(sec)
+    sec = math.max(0, math.floor(sec + 0.5))
+    return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
+end
+
+local function drivenKm(s)
+    return (tonumber(s.record.km) or 0) + (s.pendingKm or 0)
+end
+
+function commands.ort(pid, arg)
+    local s = session(pid)
+    local words = {}
+    for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
+    local sub = (words[1] or ""):lower()
+    if sub == "" or sub == "liste" or sub == "list" then return commands.orte(pid) end
+    if not BN.isAdmin(s) then
+        say(pid, "Nur Admins legen Orte an. Alle Orte: /orte")
+        return
+    end
+    local places = BN.loadPlaces()
+    if sub == "neu" or sub == "new" then
+        local typ = (words[2] or ""):lower()
+        typ = PLACE_ALIASES[typ] or typ
+        local name = clipText(table.concat(words, " ", 3), 40)
+        if not BN.PLACE_TYPES[typ] or #name < 2 then
+            local types = {}
+            for k in pairs(BN.PLACE_TYPES) do types[#types + 1] = k end
+            table.sort(types)
+            say(pid, "Aufruf: /ort neu <Typ> <Name> – Typen: %s", table.concat(types, ", "))
+            return
+        end
+        local pos = currentPosition(s)
+        if not pos then
+            say(pid, "Keine Position – bitte erst mit einem Fahrzeug an den Ort fahren.")
+            return
+        end
+        for _, p in ipairs(places) do
+            if p.name:lower() == name:lower() then
+                say(pid, "Den Ort %s gibt es schon (löschen: /ort weg %s).", p.name, p.name)
+                return
+            end
+        end
+        if #places >= BN.MAX_PLACES then
+            say(pid, "Auf dieser Map gibt es schon %d Orte.", BN.MAX_PLACES)
+            return
+        end
+        places[#places + 1] = { type = typ, name = name, x = pos.x, y = pos.y, z = pos.z, by = s.name }
+        if not savePlaces(places) then say(pid, "Speichern fehlgeschlagen – bitte beamnet doctor prüfen.") return end
+        say(pid, "%s %s angelegt (%s). Spieler fahren jetzt mit /auftrag hierher.", BN.PLACE_TYPES[typ].icon, name, typ)
+        return
+    end
+    if sub == "weg" or sub == "loeschen" or sub == "löschen" or sub == "remove" then
+        local name = table.concat(words, " ", 2):lower()
+        for i, p in ipairs(places) do
+            if p.name:lower() == name then
+                table.remove(places, i)
+                savePlaces(places)
+                say(pid, "Ort %s gelöscht.", p.name)
+                return
+            end
+        end
+        say(pid, "Den Ort „%s“ gibt es auf dieser Map nicht.", table.concat(words, " ", 2))
+        return
+    end
+    say(pid, "Aufruf: /ort neu <Typ> <Name> · /ort weg <Name> · /orte")
+end
+commands.place = commands.ort
+
+function commands.orte(pid)
+    local places = BN.loadPlaces()
+    if #places == 0 then
+        say(pid, "Noch keine Orte auf dieser Map. Admins legen sie an: /ort neu krankenhaus <Name>")
+        return
+    end
+    local s, lang = session(pid), BN.langOf(pid)
+    local pos = currentPosition(s)
+    say(pid, "Orte auf dieser Map (%d) – Auftrag holen: /auftrag", #places)
+    table.sort(places, function(a, b) return a.name:lower() < b.name:lower() end)
+    for i = 1, math.min(10, #places) do
+        local p = places[i]
+        local d = pos and (" · " .. fmtDist(lang, dist(pos, p))) or ""
+        chat(pid, string.format("%s %s (%s)%s", BN.PLACE_TYPES[p.type].icon, p.name, p.type, d))
+    end
+    if #places > 10 then say(pid, "… und %d weitere", #places - 10) end
+end
+commands.places = commands.orte
+
+function BN.startJob(s)
+    local lang = BN.langOf(s.pid)
+    local pos = currentPosition(s)
+    if not pos then
+        say(s.pid, "Steig erst in ein Fahrzeug, dann gibt es einen Auftrag.")
+        return false
+    end
+    local choices = {}
+    for _, p in ipairs(BN.loadPlaces()) do
+        local d = dist(pos, p)
+        if d >= C.jobMinDistM and p.name ~= s.lastJobPlace then choices[#choices + 1] = { place = p, d = d } end
+    end
+    if #choices == 0 then
+        say(s.pid, "Gerade kein Auftrag frei – auf dieser Map fehlen Orte (Admins: /ort neu krankenhaus <Name>).")
+        return false
+    end
+    local pick = choices[math.random(1, #choices)]
+    local kind = BN.PLACE_TYPES[pick.place.type]
+    local speed = kind.urgent and 18 or 12
+    local limit = math.floor(45 + 1.6 * pick.d / speed)
+    local xp = C.jobXp + pick.d / 1000 * C.jobXpPerKm
+    if kind.urgent then xp = xp * 1.5 end
+    s.job = { place = pick.place, startAt = BN.now(), limit = limit, xp = math.floor(xp), straight = pick.d,
+              startKm = drivenKm(s), hintAt = BN.now() }
+    chat(s.pid, string.format("%s %s – %s, %s min Zeit (/auftrag stop bricht ab)", kind.icon,
+        tr(lang, kind.text, pick.place.name), fmtDist(lang, pick.d), fmtClock(limit)))
+    return true
+end
+
+function BN.jobTick(s)
+    local j = s.job
+    local now = BN.now()
+    local lang = BN.langOf(s.pid)
+    local pos = currentPosition(s)
+    local left = j.limit - (now - j.startAt)
+    if pos and dist(pos, j.place) <= C.jobRadiusM then
+        local driven = (drivenKm(s) - j.startKm) * 1000
+        if driven < 0.7 * j.straight then
+            -- Ohne echte Fahrt (Sprung, Zuruecksetzen in die Naehe) zaehlt das Ankommen nicht.
+            if not j.warned then
+                j.warned = true
+                say(s.pid, "Angekommen – aber ohne die Strecke zu fahren zählt der Auftrag nicht.")
+            end
+            return
+        end
+        local xp = j.xp
+        local fast = (now - j.startAt) <= j.limit * 0.6
+        if fast then xp = math.floor(xp * 1.5) end
+        xp = math.min(xp, 250)
+        s.job = nil
+        s.lastJobPlace = j.place.name
+        s.pendingBonus = s.pendingBonus + xp
+        s.pendingJobs = (s.pendingJobs or 0) + 1
+        say(s.pid, "✅ Auftrag erledigt: %s in %s – +%d XP%s. Nächster: /auftrag", j.place.name, fmtClock(now - j.startAt), xp,
+            fast and tr(lang, " (Blitzschnell! +50 %)") or "")
+        return
+    end
+    if left <= 0 then
+        s.job = nil
+        say(s.pid, "⌛ Zu spät – der Auftrag nach %s ist verfallen. Neuer Versuch: /auftrag", j.place.name)
+        return
+    end
+    if pos and now - j.hintAt >= 30 then
+        j.hintAt = now
+        say(s.pid, "Noch %s bis %s · %s übrig", fmtDist(lang, dist(pos, j.place)), j.place.name, fmtClock(left))
+    end
+end
+
+function commands.auftrag(pid, arg)
+    local s = session(pid)
+    local sub = tostring(arg or ""):lower():match("^%s*(%S*)")
+    local lang = BN.langOf(pid)
+    if sub == "stop" or sub == "abbrechen" or sub == "cancel" then
+        if not s.job then say(pid, "Du hast gerade keinen Auftrag.") return end
+        s.job = nil
+        say(pid, "Auftrag abgebrochen. Neuer: /auftrag")
+        return
+    end
+    if s.job then
+        local pos = currentPosition(s)
+        say(pid, "Dein Auftrag: %s · noch %s · %s übrig", s.job.place.name,
+            pos and fmtDist(lang, dist(pos, s.job.place)) or "?", fmtClock(s.job.limit - (BN.now() - s.job.startAt)))
+        return
+    end
+    if s.race then
+        say(pid, "Erst das Rennen beenden (/rennen stop), dann gibt es einen Auftrag.")
+        return
+    end
+    BN.startJob(s)
+end
+commands.job = commands.auftrag
+commands.auftraege = commands.auftrag
+
+-- ---------------------------------------------------------------------------------------------------------------------
 -- Freundesliste: /freund <Name> fuegt hinzu, /freund weg <Name> entfernt, /freund zeigt, wer gerade wo faehrt.
 -- Gespeichert wird die BeamMP-ID (Name nur zur Anzeige). Kommt ein Freund irgendwo im Netzwerk online, bekommt man
 -- hier eine Nachricht (dieser Server live, die anderen ueber ihre Lebenszeichen, also mit bis zu einer Minute Verzug).
@@ -3851,6 +4141,7 @@ local function tickPlayer(pid)
     if s.lastMoveAt and BN.now() - s.lastMoveAt < MOVING_WINDOW_SEC then
         s.pendingSeconds = s.pendingSeconds + C.tickMs / 1000
     end
+    if s.job then BN.jobTick(s) end
     checkProgress(s)
 end
 

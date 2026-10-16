@@ -8,7 +8,7 @@ Zwei Teile, beide getestet:
    Profilen, Diagrammen und Hilfeseite erzeugt. Plugin-Updates gehen zuerst auf einen Testserver.
 2. **`BeamNetCore`** – ein Server-Plugin: Kilometer, Fahrzeit, XP und Level, Ligen, Bestenlisten, Saisons mit Titeln,
    Erfolge, Tagesaufgaben, **Zeitrennen** mit Zwischenzeiten, **Gruppenrennen** und **Strecke der Woche**,
-   **XP-Events**, **Teams**, Map-Abstimmung, `/wo`, **Freundesliste**, **Moderation** (Banns auf allen Servern, `/melden`, Wortfilter,
+   **XP-Events**, **Teams**, Map-Abstimmung, `/wo`, **Freundesliste**, **Fahraufträge** (Krankenhaus, Schule, Taxi …), automatische **Spielerplätze** nach Beliebtheit, **Moderation** (Banns auf allen Servern, `/melden`, Wortfilter,
    Spam- und Verbindungsschutz) und eine Liste aller Server im Chat – gemeinsam für alle Server, auch mit 30+ Spielern
    gleichzeitig (getestet mit 64 Spielern und 5000 Spielerdateien).
 
@@ -205,6 +205,8 @@ beamnet restart all
 | `/regeln` | Regeln des Netzwerks (englisch `/rules`). Eigene Regeln: `"rules": ["…", "…"]` in `config.json` (höchstens 10 Zeilen). Neue Spieler bekommen beim ersten Besuch eine Begrüßung mit den Regeln und werden den anderen vorgestellt (`"welcomeNew": false` schaltet ab) |
 | `/wo <Name>` | Auf welchem Server fährt ein Freund gerade? (Teil des Namens reicht; englisch `/where`) |
 | Tages-Serie | Wer an aufeinanderfolgenden Tagen mindestens 1 km fährt, bekommt ab dem zweiten Tag Bonus-XP (10 je Serientag, höchstens 60 ab Tag 7). `/stats` zeigt die Serie, beim Betreten kommt eine Erinnerung. Einstellbar: `streakXp`, `streakMaxDays`, `streakMinKm` (0 = aus) |
+| `/auftrag` | **Fahraufträge:** z. B. „🚑 Notfall! Bring den Patienten ins Krankenhaus St. Marien – 1,2 km, 2:30 min“, „🚌 Bring die Kinder zur Schule“, Taxi zum Bahnhof, Benzin zur Tankstelle … Ziel ist ein zufälliger Ort der Map (mindestens 300 m entfernt), das Zeitlimit richtet sich nach der Entfernung (Notfälle knapper, dafür 1,5-fache XP). XP: 20 + 25 je km Luftlinie, +50 % für schnelle Fahrer, höchstens 250. Wer nicht wirklich fährt (Springen, Zurücksetzen), bekommt nichts. `/auftrag stop` bricht ab, `/stats` zeigt die erledigten Aufträge (englisch `/job`) |
+| `/orte` · `/ort neu <Typ> <Name>` | Orte der Map anzeigen; Admins legen an ihrer Position neue an: `krankenhaus`, `schule`, `feuerwehr`, `polizei`, `tankstelle`, `werkstatt`, `supermarkt`, `bahnhof`, `flughafen`, `hafen`, `hotel`, `ort` (höchstens 100 je Map, `/ort weg <Name>` löscht; englisch `/place new hospital …`) |
 | `/freund <Name>` | Freundesliste (bis 20): Du bekommst eine Nachricht, sobald ein Freund auf irgendeinem BeamNet-Server online kommt; beim Betreten siehst du, welche Freunde wo fahren. `/freund` zeigt die Liste, `/freund weg <Name>` entfernt (englisch `/friend`, `/friend remove`) |
 | `/melden <Name> <Grund>` | Meldung an die Admins: sofort im Chat an Admins auf dem Server, über den Wächter an Discord/Telegram (höchstens alle 2 Minuten; englisch `/report`) |
 | `/km` | Eigene Kilometer |
