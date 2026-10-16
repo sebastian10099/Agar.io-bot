@@ -1320,6 +1320,22 @@ BEAMNET_HOUR=05 "$TOOL" watch >/dev/null 2>&1
     && pass || fail "backup: aelteste Sicherungen entfernt (14 bleiben)"
 rm -f "$B"/daten-2000-*.tgz; mv "$T/heute.tgz" "$B/daten-$today.tgz"
 contains "$("$TOOL" restore 2>&1)" "^  $today  " "restore: listet die Sicherungen"
+# Probe-Wiederherstellung: gute Sicherung ok, kaputte Spielerdatei und unsicherer Eintrag fallen auf.
+contains "$("$TOOL" restore check 2>&1)" "Sicherung vom $today ist in Ordnung: [0-9]+ Dateien, [0-9]+ Spieler" "restore check: neueste Sicherung ok"
+python3 - "$T/kaputt.tgz" "$T/boese.tgz" <<'PY'
+import io, sys, tarfile
+def add(tar, name, data):
+    info = tarfile.TarInfo(name); info.size = len(data); tar.addfile(info, io.BytesIO(data))
+with tarfile.open(sys.argv[1], "w:gz") as t:
+    add(t, "players/1.json", b'{"id":"1"}'); add(t, "players/2.json", b"{kaputt")
+with tarfile.open(sys.argv[2], "w:gz") as t:
+    add(t, "../etc/passwd", b"x")
+PY
+cp "$T/kaputt.tgz" "$B/daten-2000-02-01.tgz"; cp "$T/boese.tgz" "$B/daten-2000-02-02.tgz"
+contains "$("$TOOL" restore check 2000-02-01 2>&1)" "NICHT in Ordnung: .*1 Spielerdatei\\(en\\) im Archiv sind kaputt" "restore check: kaputte Spielerdatei erkannt"
+contains "$("$TOOL" restore check 2000-02-02 2>&1)" "NICHT in Ordnung: .*unsicherer Pfad" "restore check: unsicherer Eintrag erkannt"
+contains "$("$TOOL" restore check 2000-13-99x 2>&1)" "Aufruf: beamnet restore check" "restore check: Datum geprüft"
+rm -f "$B/daten-2000-02-01.tgz" "$B/daten-2000-02-02.tgz"
 # Wiederherstellen: Stand von heute zurueck, neuer Spieler weg, alter Stand beiseitegelegt, Server neu gestartet.
 echo '{"id":"501","name":"Gesichert","km":9999}' >"$S/players/501.json"
 echo '{"id":"503","name":"Neu"}' >"$S/players/503.json"

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.59"
+VERSION="1.60"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -372,9 +372,39 @@ def restore(archive, target):
             os.close(top)
     print(count)
 
+def check(archive):
+    """Probe-Wiederherstellung ohne zu schreiben: jeder Eintrag sicher, jede Spielerdatei gueltiges JSON."""
+    import json
+    files = players = broken = 0
+    with tarfile.open(archive, "r:gz") as tar:
+        total = 0
+        for m in tar:
+            parts = safe_parts(m.name)
+            if not (m.isreg() or m.isdir()):
+                raise ValueError("unerlaubter Eintrag im Archiv: " + m.name)
+            total += m.size
+            if total > 4 * 1024 * 1024 * 1024:
+                raise ValueError("Archiv zu gross")
+            if not m.isreg():
+                continue
+            files += 1
+            data = tar.extractfile(m).read()
+            if len(parts) == 2 and parts[0] == "players" and parts[1].endswith(".json"):
+                players += 1
+                try:
+                    if not isinstance(json.loads(data.decode("utf-8")), dict):
+                        raise ValueError
+                except Exception:
+                    broken += 1
+    if broken:
+        raise ValueError(f"{broken} Spielerdatei(en) im Archiv sind kaputt")
+    print(f"{files} {players}")
+
 try:
     if sys.argv[1] == "save":
         save(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "check":
+        check(sys.argv[2])
     elif sys.argv[1] == "restore":
         restore(sys.argv[2], sys.argv[3])
     else:
@@ -1266,8 +1296,25 @@ cmd_restore() {
             printf '  %s  %s\n' "$(basename "$file" .tgz | sed 's/^daten-//')" "$(du -h "$file" | cut -f1)"
         done
         [[ -n $f ]] || echo "  (noch keine – der Wächter legt sie täglich ab $(backup_hour) Uhr an: beamnet watch install)"
-        echo "Zurücksetzen: beamnet restore <JJJJ-MM-TT>"
+        echo "Zurücksetzen: beamnet restore <JJJJ-MM-TT> · prüfen: beamnet restore check [JJJJ-MM-TT]"
         return 0
+    fi
+    if [[ $want == check || $want == pruefen || $want == prüfen ]]; then
+        local day=${2:-} out files players
+        if [[ -z $day ]]; then
+            file=$(find "$BACKUP_DIR" -maxdepth 1 -name 'daten-*.tgz' -printf '%f\n' 2>/dev/null | sort -r | head -n1)
+            [[ -n $file ]] || die "Noch keine Datensicherung."
+            day=${file#daten-}; day=${day%.tgz}
+        fi
+        [[ $day =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "Aufruf: beamnet restore check [JJJJ-MM-TT]"
+        file="$BACKUP_DIR/daten-$day.tgz"
+        [[ -f $file && ! -L $file ]] || die "Keine Datensicherung vom $day."
+        if out=$(data_tool check "$file" 2>&1); then
+            read -r files players <<<"$out"
+            ok "Sicherung vom $day ist in Ordnung: $files Dateien, $players Spieler."
+            return 0
+        fi
+        die "Sicherung vom $day ist NICHT in Ordnung: ${out##*$'\n'}"
     fi
     [[ $want =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "Aufruf: beamnet restore [JJJJ-MM-TT]"
     file="$BACKUP_DIR/daten-$want.tgz"
@@ -1334,6 +1381,16 @@ watch_backup() {
     find "$BACKUP_DIR" -maxdepth 1 -name 'daten-*.tgz' -printf '%f\n' 2>/dev/null | sort -r | tail -n +$(( 10#$keep + 1 )) \
         | while read -r f; do rm -f "$BACKUP_DIR/$f"; done
     find "$STATE_DIR" -maxdepth 1 -name 'backup-failed-*' -mtime +3 -delete 2>/dev/null
+    # Einmal je Woche die neue Sicherung probeweise wiederherstellen (ohne zu schreiben) – eine kaputte Sicherung
+    # faellt so auf, bevor man sie braucht.
+    local wk out
+    wk=$(date +%G-W%V)
+    if [[ $(cat "$STATE_DIR/backup-checked" 2>/dev/null) != "$wk" ]]; then
+        echo "$wk" >"$STATE_DIR/backup-checked"
+        if ! out=$(data_tool check "$BACKUP_DIR/daten-$today.tgz" 2>&1); then
+            bout+=("⚠️ Die Datensicherung vom $today lässt sich nicht sauber wiederherstellen: ${out##*$'\n'}")
+        fi
+    fi
     return 0
 }
 
@@ -3950,7 +4007,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet plugin-enable <name>   … und wieder einschalten
   beamnet players [json]         Wer gerade fährt, je Server mit Namen (mit Plugin BeamNetCore)
   beamnet backup                 Sichert Konfigurationen, Plugins und Dienste nach $BACKUP_DIR
-  beamnet restore [JJJJ-MM-TT]   Tägliche Datensicherungen (vom Wächter) anzeigen oder einen Stand zurückholen
+  beamnet restore [JJJJ-MM-TT|check]   Tägliche Datensicherungen anzeigen, prüfen oder einen Stand zurückholen
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, Moderation) auf allen Servern
   beamnet bans · unban <Name> · modlog [n]   Banns ansehen/aufheben, Moderationsprotokoll
   beamnet ansage [HH:MM] <Text>  Ansage auf allen Servern, sofort oder zur Uhrzeit (ohne Text: geplante zeigen)
