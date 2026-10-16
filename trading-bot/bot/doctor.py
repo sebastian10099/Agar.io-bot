@@ -108,8 +108,10 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
         src = credential_source()
         mode = (cfg.get("ai") or {}).get("mode", "off")
         if mode != "off" and src == "none":
-            raise RuntimeError(f"KI-Modus „{mode}“ an, aber kein Anthropic-Schlüssel (Umgebung, Schlüsselbund)")
-        return f"Schlüssel: {src} · Modus {mode}" + ("" if src != "none" else " · python3 -m bot.ai prüft einen echten Aufruf")
+            raise RuntimeError(f"KI-Modus „{mode}“ an, aber kein Zugang (kein Schlüssel, kein Profil) – „Mit Claude anmelden“ auf der Steuerseite")
+        from .ai import ant_path
+        return f"Schlüssel: {src} · Modus {mode}" + ("" if src != "none" else
+            (" · anmelden: Knopf „Mit Claude anmelden“ oder „ant auth login“" if ant_path() else " · ohne Schlüssel; Anmeldung braucht die ant-CLI (brew install anthropics/tap/ant)"))
     out.append(_check("Claude-Zugang", ai_key))
     return out
 

@@ -357,7 +357,7 @@ class DoctorTests(unittest.TestCase):
         self.assertNotIn("Datenverzeichnis", by)
         import os
         if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-            self.assertFalse(by["Claude-Zugang"]["ok"]); self.assertIn("kein Anthropic-Schlüssel", by["Claude-Zugang"]["detail"])
+            self.assertFalse(by["Claude-Zugang"]["ok"]); self.assertIn("kein Zugang", by["Claude-Zugang"]["detail"])
 
     def test_parser_check_catches_missing_fields(self):
         from bot.doctor import _parsed

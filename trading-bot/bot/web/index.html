@@ -297,11 +297,15 @@
       <h2>KI-Modus <span class="spacer"></span><span id="ai-pill" class="pill"></span></h2>
       <p class="note" id="ai-status" style="margin:0 0 10px"></p>
       <div class="formbar" style="margin-top:0">
-        <label for="ai-key" class="status">Anthropic-Schlüssel</label>
+        <button class="btn primary" id="b-ai-login" title="Öffnet den Browser zur Anmeldung mit deinem Claude-Konto – kein Schlüssel nötig">Mit Claude anmelden</button>
+        <span class="status" id="ai-login-status"></span>
+      </div>
+      <div class="formbar" style="margin-top:0">
+        <label for="ai-key" class="status">oder Anthropic-Schlüssel</label>
         <input type="password" id="ai-key" autocomplete="off" placeholder="sk-ant-…" style="width:260px;background:var(--muted);border:1px solid var(--line-strong);border-radius:7px;padding:6px 8px">
         <button class="btn" id="b-ai-key">Im Schlüsselbund speichern</button>
       </div>
-      <p class="note">Nur auf macOS; sonst <code>ANTHROPIC_API_KEY</code> in der Umgebung setzen. Die KI sieht nur Kandidaten, die die harten Filter bestanden haben. Im Edge-Report (Übersicht) vergleichst du <b>Regeln</b> gegen <b>KI</b> auf denselben Tokens – erst wenn die KI dort über Wochen vorn liegt, lohnt „Entscheiden“.</p>
+      <p class="note"><b>Anmelden</b> braucht einmalig die Anthropic-CLI (<code>brew install anthropics/tap/ant</code>); danach nutzt der Bot dein Claude-Konto ohne Schlüssel. Schlüsselbund nur auf macOS; sonst <code>ANTHROPIC_API_KEY</code> in der Umgebung setzen. Die KI sieht nur Kandidaten, die die harten Filter bestanden haben. Im Edge-Report (Übersicht) vergleichst du <b>Regeln</b> gegen <b>KI</b> auf denselben Tokens – erst wenn die KI dort über Wochen vorn liegt, lohnt „Entscheiden“.</p>
     </section>
     <section>
       <h2>Quellen <span class="spacer"></span><span id="src-pill" class="pill"></span> <button class="btn sm" id="b-doctor" title="Erreichbarkeit und Parser aller Quellen prüfen">Selbsttest</button></h2>
@@ -897,6 +901,22 @@ function paintProfiles() {
 }
 async function loadProfiles() { try { profiles = (await api('/api/profiles')).profiles || {}; paintProfiles(); } catch (e) { toast('Profile nicht ladbar: ' + e.message, true); } }
 $('profile').onchange = () => { $('b-prof-load').disabled = $('b-prof-del').disabled = !$('profile').value; };
+$('b-ai-login').onclick = () => busy($('b-ai-login'), async () => {
+  const resp = await fetch('/api/ai/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+  const r = await resp.json().catch(() => ({ ok: false, error: 'HTTP ' + resp.status }));
+  if (!r.ok) {
+    $('ai-login-status').innerHTML = esc(r.error) + (r.install ? ` <code style="user-select:all">${esc(r.install)}</code>` : '');
+    throw new Error(r.error);
+  }
+  $('ai-login-status').textContent = r.detail;
+  if (r.already) { refresh(); return; }
+  toast('Browser geöffnet – dort anmelden');
+  for (let i = 0; i < 90; i++) {           // up to 3 minutes: the profile appears when the browser login finishes
+    await new Promise((res) => setTimeout(res, 2000));
+    const s = await api('/api/state'); if (s.ai && s.ai.key_source === 'profile') { $('ai-login-status').textContent = 'Angemeldet – Profil erkannt.'; toast('Mit Claude angemeldet'); refresh(); return; }
+  }
+  $('ai-login-status').textContent = 'Noch kein Profil gefunden. Browser-Anmeldung abgeschlossen? Dann Seite neu laden.';
+});
 $('b-ai-key').onclick = () => busy($('b-ai-key'), async () => {
   const key = $('ai-key').value.trim(); if (!key) { toast('Schlüssel fehlt', true); return; }
   const r = await api('/api/ai/key', {key}); if (!r.ok) throw new Error(r.error);

@@ -25,6 +25,7 @@ const HOME_DIR = process.env.HOME_DIR || (process.platform === 'darwin'
 fs.mkdirSync(SHOTS, { recursive: true });
 const problems = [];
 let expectOffline = false;   // true while the check deliberately cuts /api/state
+let expectFail = false;      // true while a 4xx answer is the expected outcome
 let page_;
 const clearToast = () => page_.evaluate(() => { const t = document.querySelector('#toast'); if (t) { t.textContent = ''; t.className = 'toast'; } });
 const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { console.log('  ✗ ' + msg); problems.push(msg); } };
@@ -35,7 +36,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
     const ctx = await browser.newContext(opts);
     const p = await ctx.newPage();
     page_ = p;
-    p.on('console', (m) => { if (m.type() === 'error' && !/status of 422/.test(m.text()) && !(expectOffline && /ERR_FAILED/.test(m.text()))) problems.push('console: ' + m.text()); });
+    p.on('console', (m) => { if (m.type() === 'error' && !/status of 422/.test(m.text()) && !(expectOffline && /ERR_FAILED/.test(m.text())) && !(expectFail && /status of 4\d\d/.test(m.text()))) problems.push('console: ' + m.text()); });
     p.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
     p.on('requestfailed', (r) => { if (!(expectOffline && /api\/state/.test(r.url()))) problems.push('requestfailed: ' + r.url()); });
     p.on('response', (r) => { if (r.status() >= 500) problems.push('HTTP ' + r.status() + ' ' + r.url()); });
@@ -122,6 +123,11 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok(true, 'KI-Pill zeigt „beraten“');
   const aiText = await p.textContent('#ai-status');
   ok(/Bereit|Nicht verfügbar/.test(aiText), 'KI-Status beschreibt Verfügbarkeit: ' + aiText.slice(0, 50));
+  await clearToast(); expectFail = true; await p.click('#b-ai-login');
+  await p.waitForFunction(() => document.querySelector('#ai-login-status').textContent.length > 0);
+  expectFail = false;
+  const loginTxt = await p.textContent('#ai-login-status');
+  ok(/Browser geöffnet|Schon angemeldet|fehlt|brew install/.test(loginTxt + (await p.textContent('#toast'))), 'Anmelden-Knopf antwortet (Browser, Profil oder Installationshinweis): ' + loginTxt.slice(0, 60));
   await p.selectOption('select[data-path="ai.mode"]', 'off'); await clearToast(); await p.click('#b-save');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
 

@@ -170,6 +170,14 @@ Alter (5–30 min ideal), Socials und RugCheck. Ab 60 Punkten `buy`, darunter `w
 
 ## KI-Modus: Claude als zweiter Blick – oder als Entscheider
 
+**Zugang ohne Schlüssel:** Knopf „Mit Claude anmelden“ auf der Steuerseite.
+Er startet `ant auth login` (Anthropic-CLI, einmalig `brew install
+anthropics/tap/ant`), der Browser geht auf, du meldest dich mit deinem
+Claude-Konto an, und der Bot nutzt ab dann dieses Profil – kein Schlüssel zum
+Einfügen. Die Reihenfolge, die der Bot prüft: Umgebungsvariable, Schlüsselbund,
+Profil. Ob dein Konto API-Aufrufe abdeckt, entscheidet die Anthropic Console;
+`python3 -m bot.ai` macht einen echten Testaufruf und sagt es dir.
+
 Im Reiter *Steuerung* unter **KI** lässt sich Claude zuschalten. Die harten
 Sicherheitsfilter (RugCheck-Gefahrenflags, Liquidität, Altersfenster) bleiben
 immer davor: Das Modell sieht nur Kandidaten, die sie bestanden haben, und

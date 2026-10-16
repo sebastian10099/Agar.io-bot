@@ -104,3 +104,25 @@ class AdvisorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LoginTests(unittest.TestCase):
+    def test_profile_detection_and_login_paths(self):
+        import os, tempfile
+        from unittest import mock
+        from bot import ai
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"ANTHROPIC_CONFIG_DIR": d}, clear=False):
+            os.environ.pop("ANTHROPIC_API_KEY", None); os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
+            with mock.patch.object(ai, "keychain_key", return_value=""):
+                self.assertFalse(ai.has_profile())
+                self.assertEqual(ai.credential_source(), "none")
+                with mock.patch.object(ai, "ant_path", return_value=""):
+                    r = ai.start_login()
+                    self.assertFalse(r["ok"]); self.assertIn("brew install", r["install"])
+                calls = []
+                with mock.patch.object(ai, "ant_path", return_value="/opt/homebrew/bin/ant"):
+                    r = ai.start_login(runner=calls.append)
+                    self.assertTrue(r["ok"]); self.assertFalse(r["already"]); self.assertEqual(calls, [["/opt/homebrew/bin/ant", "auth", "login"]])
+                os.makedirs(os.path.join(d, "credentials")); open(os.path.join(d, "credentials", "default.json"), "w").write("{}")
+                self.assertTrue(ai.has_profile()); self.assertEqual(ai.credential_source(), "profile")
+                self.assertTrue(ai.start_login(runner=calls.append)["already"]); self.assertEqual(len(calls), 1)

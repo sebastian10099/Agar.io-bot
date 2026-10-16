@@ -72,16 +72,62 @@ def keychain_key() -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def profile_dir() -> str:
+    return os.environ.get("ANTHROPIC_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".config", "anthropic")
+
+
+def has_profile() -> bool:
+    """An `ant auth login` profile: credentials/<profile>.json under the config dir.
+    A bare Anthropic() client picks it up by itself, no key to paste."""
+    cred = os.path.join(profile_dir(), "credentials")
+    try:
+        return any(n.endswith(".json") for n in os.listdir(cred))
+    except OSError:
+        return False
+
+
 def credential_source() -> str:
     """Where a credential would come from, in the SDK's own resolution order."""
     if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
         return "env"
     if keychain_key():
         return "keychain"
-    profile_dir = os.path.join(os.path.expanduser("~"), ".config", "anthropic")
-    if os.path.isdir(profile_dir) and os.listdir(profile_dir):
+    if has_profile():
         return "profile"
     return "none"
+
+
+ANT_INSTALL = "brew install anthropics/tap/ant && xattr -d com.apple.quarantine \"$(brew --prefix)/bin/ant\""
+
+
+def ant_path() -> str:
+    import shutil
+    found = shutil.which("ant")
+    if found:
+        return found
+    for candidate in ("/opt/homebrew/bin/ant", "/usr/local/bin/ant"):   # launchd/.command shells have a short PATH
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return ""
+
+
+def start_login(runner=None) -> dict[str, Any]:
+    """Launch `ant auth login`, which opens the browser; the profile appears on
+    disk when the login completes. Returns right away so the page can poll."""
+    if has_profile():
+        return {"ok": True, "already": True, "detail": "Schon angemeldet – Profil vorhanden."}
+    exe = ant_path()
+    if not exe:
+        return {"ok": False, "error": "Die Anthropic-CLI „ant“ fehlt. Im Terminal einmal installieren:", "install": ANT_INSTALL}
+    try:
+        if runner is not None:
+            runner([exe, "auth", "login"])
+        else:
+            subprocess.Popen([exe, "auth", "login"], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as error:
+        return {"ok": False, "error": f"„ant auth login“ ließ sich nicht starten: {error}"}
+    return {"ok": True, "already": False, "detail": "Browser geöffnet – dort mit deinem Claude-Konto anmelden. Die Seite merkt es von selbst."}
 
 
 def store_key(value: str) -> dict[str, Any]:

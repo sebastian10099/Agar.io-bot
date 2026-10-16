@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from . import settings
-from .ai import store_key
+from .ai import start_login, store_key
 
 WEB = Path(__file__).parent / "web"
 
@@ -115,6 +115,13 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                     engine.advisor._client = None
                     engine.advisor._client_error = None
                     engine.store.log("info", "dashboard: Anthropic-Schlüssel im Schlüsselbund gespeichert")
+                self._json(result, 200 if result["ok"] else 400)
+            elif self.path == "/api/ai/login":
+                result = start_login()
+                if result["ok"]:
+                    engine.advisor._client = None
+                    engine.advisor._client_error = None
+                    engine.store.log("info", "dashboard: Claude-Anmeldung " + ("schon vorhanden" if result.get("already") else "gestartet (ant auth login)"))
                 self._json(result, 200 if result["ok"] else 400)
             elif self.path == "/api/profiles":
                 result = engine.save_profile(str(body.get("name") or ""), body.get("config"))
