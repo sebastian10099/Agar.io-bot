@@ -115,8 +115,13 @@ class FakeDex:
 class FakeRug:
     def __init__(self) -> None:
         self.data = json.loads((FIXTURES / "rugcheck.json").read_text())
+        self.calls = 0
+
+    def health(self) -> dict[str, Any]:
+        return {"calls": self.calls, "fails": 0, "last_error": "", "ok": True if self.calls else None}
 
     def summary(self, mint: str) -> Optional[dict[str, Any]]:
+        self.calls += 1
         d = self.data.get(strip_generation(mint))
         if d is None:
             return None

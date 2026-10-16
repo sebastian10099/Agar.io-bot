@@ -313,6 +313,11 @@ class Engine:
         result["horizons"] = horizons
         return result
 
+    def _can_update(self) -> bool:
+        from pathlib import Path as _P
+        from . import updater
+        return updater.available(_P(__file__).resolve().parent.parent)
+
     def doctor(self) -> dict[str, Any]:
         """Self-test against this engine's own sources (fakes in the demo)."""
         from . import doctor as _doctor
@@ -352,7 +357,7 @@ class Engine:
                 "age_min": round((now - pos["opened_at"]) / 60, 1),
             })
         return {
-            "app": APP_ID, "mode": self.cfg["mode"], "demo": self.demo, "paused": self.paused, "now": now,
+            "app": APP_ID, "can_update": self._can_update(), "mode": self.cfg["mode"], "demo": self.demo, "paused": self.paused, "now": now,
             "started_at": self.started_at, "poll_seconds": self.cfg["poll_seconds"],
             "wall_now": time.time(), "last_poll_wall": self.last_poll_wall,
             "chains": self.cfg["chains"],
@@ -371,6 +376,8 @@ class Engine:
             "ai": self.advisor.status(),
             "sources": self.discovery.status(),
             "exits_by_reason": self.store.exit_breakdown(),
+            "skip_reasons": self.store.skip_reasons(),
+            "rugcheck": self.rug.health() if hasattr(self.rug, "health") else {"calls": 0, "fails": 0, "last_error": "", "ok": None},
             "equity": self.store.equity_curve(),
             "config": settings.flat(self.cfg),
         }

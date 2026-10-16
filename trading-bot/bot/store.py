@@ -173,6 +173,52 @@ class Store:
                     c["outcomes"][str(o["horizon_min"])] = None if o["change_pct"] is None else round(o["change_pct"], 2)
         return rows
 
+    # which filter throws candidates out, and how often (last `limit` candidates)
+    REASON_RULES = [
+        ("too new", "zu neu (Mindestalter)", "filters.min_age_minutes"),
+        ("too old", "zu alt (Höchstalter)", "filters.max_age_minutes"),
+        ("age unknown", "Alter unbekannt (Quelle liefert kein Listing-Datum)", None),
+        ("liquidity $", "Liquidität zu klein", "filters.min_liquidity_usd"),
+        ("too large for a new token", "Liquidität zu groß", "filters.max_liquidity_usd"),
+        ("5m volume", "5-Minuten-Volumen zu klein", "filters.min_volume_m5_usd"),
+        ("5m buys", "zu wenige Käufe in 5 min", "filters.min_buys_m5"),
+        ("buy/sell", "Käufe/Verkäufe zu niedrig", "filters.min_buy_sell_ratio_m5"),
+        ("parabolic", "zu spät, parabolisch", "filters.max_price_change_m5_pct"),
+        ("falling", "fallend", "filters.min_price_change_m5_pct"),
+        ("FDV", "FDV zu hoch", "filters.max_fdv_usd"),
+        ("no price", "kein Kurs", None),
+        ("rugcheck unavailable", "RugCheck nicht erreichbar", "filters.allow_rugcheck_unknown"),
+        ("rugcheck danger", "RugCheck: Gefahr", "filters.require_rugcheck"),
+        ("rugcheck score", "RugCheck-Score zu hoch", "filters.max_rugcheck_score"),
+        ("score ", "Score unter Schwelle (watch)", "scoring.min_score"),
+        ("not opened", "Kauf blockiert (Limit, Pause, Bestand)", "max_open_positions"),
+    ]
+
+    def skip_reasons(self, limit: int = 200) -> dict[str, Any]:
+        rows = self._rows("SELECT decision, reasons FROM candidates ORDER BY id DESC LIMIT ?", (limit,))
+        counts: dict[str, int] = {}
+        decisions = {"buy": 0, "watch": 0, "skip": 0}
+        for r in rows:
+            decisions[r["decision"]] = decisions.get(r["decision"], 0) + 1
+            try:
+                reasons = json.loads(r["reasons"] or "[]")
+            except json.JSONDecodeError:
+                reasons = []
+            seen: set[str] = set()
+            for reason in reasons:
+                for needle, label, _ in self.REASON_RULES:
+                    if needle in reason and label not in seen:
+                        if needle == "score " and not reason.startswith("score "):
+                            continue
+                        seen.add(label)
+                        counts[label] = counts.get(label, 0) + 1
+                        break
+        n = len(rows)
+        by_label = {label: path for _, label, path in self.REASON_RULES}
+        out = [{"label": label, "n": c, "share": round(c / n, 3) if n else 0, "path": by_label.get(label)}
+               for label, c in sorted(counts.items(), key=lambda kv: -kv[1])]
+        return {"n": n, "decisions": decisions, "reasons": out}
+
     def outcomes_for(self, cid: int) -> list[dict[str, Any]]:
         """Every horizon of one candidate, filled or still pending (due_at tells when)."""
         rows = self._rows("SELECT horizon_min, due_at, price_usd, change_pct, filled_at FROM outcomes "

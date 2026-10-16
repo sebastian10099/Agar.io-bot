@@ -470,3 +470,73 @@ class PortTests(unittest.TestCase):
         finally:
             taken.close()
             for s in made: s.close()
+
+
+class UpdaterTests(unittest.TestCase):
+    def test_update_requires_get_sh_and_macos(self):
+        from bot import updater
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            proj = Path(d)
+            r = updater.start_update(proj, 8765, runner=lambda cmd, env: None)
+            self.assertFalse(r["ok"]); self.assertIn("get.sh", r["error"])
+            (proj / "get.sh").write_text("#!/bin/bash\n")
+            with mock.patch.dict(os.environ, {"NEW_TOKEN_BOT_ALLOW_UPDATE": "0"}), mock.patch.object(updater.sys, "platform", "linux"):
+                self.assertFalse(updater.available(proj))
+                self.assertFalse(updater.start_update(proj, 8765, runner=lambda c, e: None)["ok"])
+            calls = []
+            with mock.patch.dict(os.environ, {"NEW_TOKEN_BOT_ALLOW_UPDATE": "1"}):
+                self.assertTrue(updater.available(proj))
+                r = updater.start_update(proj, 8770, runner=lambda cmd, env: calls.append((cmd, env)))
+                self.assertTrue(r["ok"], r)
+                cmd, env = calls[0]
+                self.assertEqual(cmd[:2], ["/bin/bash", "-c"]); self.assertIn("get.sh", cmd[2]); self.assertIn("New Token Bot.app", cmd[2])
+                self.assertEqual((env["PROJECT"], env["PORT"]), (str(proj), "8770"))
+
+    def test_update_route_without_get_sh_is_400_and_state_flag(self):
+        from bot.server import make_server
+        import http.client, threading
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex()
+            eng = Engine(CFG, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            self.assertIn("can_update", eng.state())
+            server = make_server(eng, "127.0.0.1", 0)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            try:
+                c = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+                c.request("POST", "/api/update", body="{}", headers={"Content-Type": "application/json"})
+                r = c.getresponse(); body = json.loads(r.read())
+                # the test tree has get.sh, but this is not macOS: refused, engine keeps running
+                self.assertEqual(r.status, 400); self.assertFalse(body["ok"]); self.assertFalse(eng._stop.is_set())
+            finally:
+                c.close(); server.shutdown(); server.server_close(); store.close()
+
+
+class WhyTests(unittest.TestCase):
+    def test_skip_reasons_and_rugcheck_health(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            rug = FakeRug()
+            eng = Engine(CFG, store, dex, rug, clock=dex.now, feeds=demo_feeds(dex))
+            eng.poll_once()
+            w = store.skip_reasons()
+            self.assertEqual(w["n"], 7); self.assertEqual(w["decisions"]["buy"], 1)
+            labels = {r["label"]: r for r in w["reasons"]}
+            self.assertIn("zu neu (Mindestalter)", labels)
+            self.assertIn("RugCheck: Gefahr", labels)
+            self.assertIn("Score unter Schwelle (watch)", labels)
+            self.assertEqual(labels["zu neu (Mindestalter)"]["path"], "filters.min_age_minutes")
+            self.assertTrue(all(0 < r["share"] <= 1 for r in w["reasons"]))
+            s = eng.state()
+            self.assertEqual(s["skip_reasons"], w)
+            self.assertEqual(s["rugcheck"]["ok"], True); self.assertGreater(s["rugcheck"]["calls"], 0)
+            store.close()
+
+    def test_real_rugcheck_client_counts_failures(self):
+        from bot.sources.rugcheck import RugCheck
+        rc = RugCheck(fetch=lambda url, **kw: (_ for _ in ()).throw(OSError("429 Too Many Requests")))
+        self.assertIsNone(rc.summary("Mint1")); self.assertIsNone(rc.summary("Mint2"))
+        h = rc.health(); self.assertEqual((h["calls"], h["fails"], h["ok"]), (2, 2, False)); self.assertIn("429", h["last_error"])
+        rc2 = RugCheck(fetch=lambda url, **kw: {"score_normalised": 10, "risks": []})
+        self.assertEqual(rc2.summary("Mint1")["score"], 10); self.assertEqual(rc2.health()["ok"], True)
+        rc2.summary("Mint1"); self.assertEqual(rc2.health()["calls"], 1)      # cached, not counted

@@ -44,6 +44,7 @@
   @media (max-width:640px) { .gloss { grid-template-columns:1fr; } .gloss dd { margin-bottom:4px; } }
   dialog#help { max-width:min(640px, 92vw); width:100%; }
   .dlg-h { margin:12px 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); }
+  .flash { outline:2px solid var(--blue); outline-offset:2px; border-radius:8px; }
   .sources { list-style:none; margin:0 0 10px; padding:0; display:grid; gap:6px; }
   .sources li { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
   .sources .dot { flex:none; position:relative; top:-1px; }
@@ -322,6 +323,7 @@
         <button class="btn danger" id="b-reset-pos">Positionen zurücksetzen</button>
         <button class="btn danger" id="b-reset-all">Alles zurücksetzen (inkl. Edge-Daten)</button>
         <button class="btn" id="b-diag" title="Zustand, Quellen, Konfiguration und Protokoll als Text – zum Einfügen in eine Nachricht">Diagnose kopieren</button>
+        <button class="btn" id="b-update" hidden title="Neue Version laden, Bot neu starten">Aktualisieren &amp; neu starten</button>
       </div>
       <p class="note">Aktuell <b id="k-initial">–</b> Startkapital · läuft seit <b id="k-uptime">–</b> · Polls <b id="k-polls">–</b> · Ø Poll-Dauer <b id="k-pollms">–</b> · Fehler <b id="k-errors">–</b></p>
       <p class="note">Export (CSV, Semikolon, für Excel/Numbers): <a href="/api/export/positions.csv" download="positionen.csv">Positionen</a> · <a href="/api/export/trades.csv" download="trades.csv">Fills</a> · <a href="/api/export/candidates.csv" download="kandidaten.csv">Kandidaten mit Kennzahlen</a></p>
@@ -344,6 +346,11 @@
   </div>
 
   <div id="tab-analysis" class="grid" role="tabpanel" aria-labelledby="tabbtn-analysis" hidden>
+    <section>
+      <h2>Warum fällt was durch? <span class="spacer"></span><span class="note" id="why-sub" style="margin:0"></span></h2>
+      <div id="why"></div>
+      <p class="note">Jeder Grund zählt einmal pro Kandidat (letzte 200). Steht ein Grund bei fast allen, ist er der Flaschenhals: <b>Zum Parameter</b> springt ins Formular. <b>RugCheck nicht erreichbar</b> heißt: die Prüfung antwortet nicht – siehe Quellen-Karte und Selbsttest; solange „RugCheck-Ausfall tolerieren“ aus ist, wird dann nichts gekauft.</p>
+    </section>
     <section>
       <h2>Exits nach Grund</h2>
       <div id="exits"></div>
@@ -714,6 +721,22 @@ function adopt(pairs) {
   if (el) { el.scrollIntoView({ block: 'center' }); const i = el.querySelector('input,select'); if (i) i.focus(); }
   toast(`${pairs.length === 1 ? '1 Wert' : pairs.length + ' Werte'} im Formular eingetragen – gilt erst nach „Speichern“`);
 }
+function renderWhy(s) {
+  const w = s.skip_reasons || { n: 0, decisions: {}, reasons: [] };
+  const d = w.decisions || {};
+  $('why-sub').textContent = w.n ? `${w.n} Kandidaten: ${d.buy || 0} buy · ${d.watch || 0} watch · ${d.skip || 0} skip` : '';
+  $('why').innerHTML = table(w.reasons, [
+    {h: 'Grund', f: (r) => esc(r.label)},
+    {h: 'Kandidaten', f: (r) => r.n, num: true},
+    {h: 'Anteil', f: (r) => `<span class="ebar" aria-hidden="true"><i style="left:0;width:${Math.round(r.share * 100)}%"></i></span> ${Math.round(r.share * 100)}%`, num: true},
+    {h: '<span class="sr">Aktion</span>', f: (r) => r.path ? `<button type="button" class="btn sm" data-goto="${esc(r.path)}">Zum Parameter</button>` : '', num: true},
+  ], 'Noch keine Kandidaten bewertet.');
+  $('why').querySelectorAll('[data-goto]').forEach((b) => b.onclick = () => {
+    document.querySelector('nav [data-tab="control"]').click();
+    const el = $('groups').querySelector(`[data-field="${b.dataset.goto}"]`);
+    if (el) { el.scrollIntoView({ block: 'center' }); const i = el.querySelector('input,select,button'); if (i) i.focus(); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); }
+  });
+}
 function renderExits(s) {
   const rows = s.exits_by_reason || [];
   $('exits').innerHTML = table(rows, [
@@ -768,6 +791,7 @@ function paintPollClock() {
 }
 setInterval(() => { if (!document.hidden) paintPollClock(); }, 1000);
 function renderHeader(s) {
+  $('b-update').hidden = !s.can_update;
   $('mode').textContent = s.demo ? s.mode + ' · Demo' : s.mode; $('mode').title = s.demo ? 'Demo-Markt: simulierte Tokens, keine echten Kursseiten' : '';
   $('paused').hidden = !s.paused;
   $('b-toggle').textContent = s.paused ? 'Fortsetzen' : 'Pause';
@@ -933,6 +957,9 @@ function diagnosisText(s) {
   for (const r of s.sources || []) L.push(`  ${r.enabled ? (r.ok ? 'OK ' : r.ok === false ? 'ERR' : '...') : 'aus'}  ${r.label}  gemeldet ${r.found} · eigene ${r.unique} · Abfragen ${r.calls}${r.error ? ' · ' + r.error : ''}`);
   const a = s.ai || {}; L.push('', `KI: Modus ${a.mode} · ${a.available ? 'bereit' : 'nicht verfügbar'} · Modell ${a.model} · Schlüssel ${a.key_source} · ${a.calls_total} Aufrufe · $${(a.cost_total_usd || 0).toFixed(3)}${a.reason ? ' · ' + a.reason : ''}`);
   if (lastDoctor) { L.push('', `Selbsttest ${hhmm(lastDoctor.at)}:`); for (const c of lastDoctor.checks) L.push(`  ${c.ok ? 'OK ' : 'ERR'}  ${c.name}  ${c.ms} ms  ${c.detail}`); }
+  const w = s.skip_reasons || {}; L.push('', `Warum fällt was durch (${w.n || 0} Kandidaten, ${JSON.stringify(w.decisions || {})}):`);
+  for (const r of w.reasons || []) L.push(`  ${String(r.n).padStart(4)}  ${Math.round(r.share * 100)}%  ${r.label}`);
+  const rc = s.rugcheck || {}; L.push(`RugCheck: ${rc.calls || 0} Abfragen, ${rc.fails || 0} ohne Antwort${rc.last_error ? ', zuletzt: ' + rc.last_error : ''}`);
   L.push('', 'Edge (Bot):'); for (const r of s.edge || []) L.push(`  ${r.horizon_min} min ${r.decision}: n=${r.n} Ø ${pct(r.avg_change_pct)} Treffer ${Math.round(r.win_rate * 100)}%`);
   L.push('', 'Konfiguration:', JSON.stringify(s.config));
   L.push('', 'Protokoll (zuletzt):'); for (const e of (s.events || []).slice(0, 30)) L.push(`  ${hhmm(e.at)} ${e.level} ${e.message}`);
@@ -967,7 +994,12 @@ function renderSources(s) {
     const st = !r.enabled ? ['off', 'aus'] : !r.available ? ['bad', 'nicht verfügbar'] : r.ok === false ? ['bad', 'gestört'] : r.ok ? ['ok', 'liefert'] : ['warn', 'noch kein Poll'];
     const detail = r.enabled && r.ok ? `${r.found} gemeldet · ${r.unique} eigene · ${r.calls} Abfragen` : r.enabled && r.error ? esc(r.error) : '';
     return `<li><span class="dot ${st[0]}" role="img" aria-label="${st[1]}"></span><b>${esc(r.label)}</b> <span class="reasons">${st[1]}${detail ? ' · ' + detail : ''}</span></li>`;
-  }).join('');
+  }).join('') + (() => {
+    const rc = s.rugcheck || {}; const solana = (s.chains || []).includes('solana');
+    const st = !solana ? ['off', 'nur für Solana'] : rc.ok === false ? ['bad', 'gestört'] : rc.ok ? ['ok', 'antwortet'] : ['warn', 'noch keine Abfrage'];
+    const detail = rc.calls ? `${rc.calls} Abfragen · ${rc.fails} ohne Antwort${rc.last_error ? ' · zuletzt: ' + esc(rc.last_error) : ''}` : '';
+    return `<li><span class="dot ${st[0]}" role="img" aria-label="${st[1]}"></span><b>RugCheck – Sicherheitsprüfung</b> <span class="reasons">${st[1]}${detail ? ' · ' + detail : ''}</span></li>`;
+  })();
 }
 function renderAi(s) {
   const a = s.ai || {}; const modeLabel = {off: 'aus', advise: 'beraten', decide: 'entscheiden'}[a.mode] || a.mode;
@@ -1079,6 +1111,12 @@ $('b-toggle').onclick = () => busy($('b-toggle'), async () => {
   toast(r.paused ? 'Pausiert – keine neuen Einstiege, Exits laufen weiter' : 'Fortgesetzt'); refresh();
 });
 let quitting = false;
+$('b-update').onclick = () => busy($('b-update'), async () => {
+  if (!await confirmDialog('Jetzt aktualisieren?', 'Die neueste Version wird geladen, der Bot beendet sich kurz und die App startet ihn neu. Offene Paper-Positionen bleiben erhalten. Dauert etwa eine Minute.')) return;
+  const r = await api('/api/update', {}); quitting = true;
+  $('offline').hidden = false; $('offline').innerHTML = '<b>Aktualisierung läuft.</b> ' + esc(r.detail || '') + ' Diese Seite kannst du schließen; die App öffnet die neue.';
+  toast('Aktualisierung gestartet');
+});
 $('b-quit').onclick = () => busy($('b-quit'), async () => {
   if (!await confirmDialog('Bot beenden?', 'Offene Paper-Positionen bleiben gespeichert und laufen beim nächsten Start weiter. Zum Neustart die App „New Token Bot“ öffnen.')) return;
   await api('/api/quit', {}); quitting = true;
@@ -1102,7 +1140,7 @@ let firstConfig = true;
 async function refresh() {
   try {
     const s = await api('/api/state'); state = s;
-    renderHeader(s); renderOverview(s); renderCandidates(s); renderLog(s); renderExits(s); checkNotify(s);
+    renderHeader(s); renderOverview(s); renderCandidates(s); renderLog(s); renderExits(s); renderWhy(s); checkNotify(s);
     if (firstConfig && schema) { loadForm(s.config); firstConfig = false; }
     if (!$('offline').hidden) { $('offline').hidden = true; offlineSince = null; toast('Verbindung wieder da'); }
   } catch (e) {

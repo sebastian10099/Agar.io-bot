@@ -29,6 +29,11 @@ nutzt denselben), weicht er automatisch auf den nächsten freien aus und
 nennt die Adresse im Log. Die App erkennt den eigenen Bot an einer
 Kennung in `/api/state` und öffnet nie die Seite eines fremden Programms.
 
+**Aktualisieren** geht direkt von der Steuerseite: Knopf „Aktualisieren &
+neu starten“ auf der Paper-Konto-Karte (erscheint, wenn das Programm über
+`get.sh` installiert wurde). Er lädt die neueste Version, der Bot beendet
+sich, die App startet ihn neu; Protokoll in `update.log` im Datenordner.
+
 **Die App** (`New Token Bot.app`) startet den Bot im Hintergrund, öffnet die
 Steuerseite im Browser und beendet sich über den Knopf **Beenden** oben
 rechts. Läuft der Bot schon, öffnet ein Doppelklick nur die Seite. Das Log
@@ -96,7 +101,10 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   als Paper-Position unabhängig vom Bot-Urteil – der Tracker behält die
   ursprüngliche Entscheidung, so lässt sich das eigene Urteil gegen die Regeln
   messen.
-- **Analyse** – zuerst **Exits nach Grund**: wie oft jede Ausstiegsregel
+- **Analyse** – ganz oben **Warum fällt was durch?**: welcher Filter wie viele
+  der letzten 200 Kandidaten aussortiert hat, mit Sprung zum Parameter. Steht
+  „RugCheck nicht erreichbar“ bei fast allen, antwortet die Prüfung nicht –
+  Quellen-Karte und Selbsttest zeigen es. Dann **Exits nach Grund**: wie oft jede Ausstiegsregel
   gegriffen hat, mit Trefferquote, Ø und Σ P&L und Ø Haltedauer – so siehst
   du, ob der Zeit-Stop Geld kostet oder die Leiter zu früh verkauft. Darunter
   der Rückblick: Jeder Filterwert wird einzeln über ein Raster
@@ -138,6 +146,7 @@ nutzen kannst (nur von `127.0.0.1` erreichbar):
 | GET | `/api/sweep?horizon=15` | Rückblick-Analyse der Filterwerte |
 | POST | `/api/doctor` `{}` | Selbsttest aller Quellen, Parser und Zugänge |
 | POST | `/api/quit` `{}` | Bot und Dashboard beenden |
+| POST | `/api/update` `{}` | Neue Version per get.sh laden, Bot beenden, App neu starten (nur macOS, Installation über get.sh) |
 | POST | `/api/reset` `{"what": "positions"\|"all", "bankroll": 500}` | Paper-Konto zurücksetzen, optional mit neuem Startkapital |
 | GET/POST | `/api/profiles` · `/api/profiles/apply` · `/api/profiles/delete` | Parameter-Profile verwalten |
 | GET | `/api/export/positions.csv` · `trades.csv` · `candidates.csv` | Export (Semikolon-CSV, UTF-8 mit BOM) |

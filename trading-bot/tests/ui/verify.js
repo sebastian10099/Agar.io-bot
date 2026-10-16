@@ -133,7 +133,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
 
   // --- Quellen: Status-Liste, Multi-Chips, Quelle am Kandidaten ---
   const srcRows = await p.$$eval('#sources li', (l) => l.map((x) => ({ text: x.textContent, dot: x.querySelector('.dot').className })));
-  ok(srcRows.length === 2 && srcRows.every((r) => r.dot.includes('ok')), 'Quellen-Liste: beide Feeds liefern (' + srcRows.map((r) => r.text.slice(0, 14)).join(', ') + ')');
+  ok(srcRows.length === 3 && srcRows.every((r) => r.dot.includes('ok')), 'Quellen-Liste: beide Feeds liefern, RugCheck antwortet (' + srcRows.map((r) => r.text.slice(0, 14)).join(', ') + ')');
   ok(srcRows.some((r) => /\d+ gemeldet · \d+ eigene · \d+ Abfragen/.test(r.text)), 'Quellen zeigen Zähler');
   ok((await p.textContent('#src-pill')) === '2 aktiv', 'Quellen-Pill: 2 aktiv');
   await clearToast(); await p.click('#b-doctor');
@@ -147,6 +147,9 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   const diag = await p.inputValue('#d-diag');
   ok(/Quellen:/.test(diag) && /Konfiguration:/.test(diag) && /Selbsttest/.test(diag) && /Protokoll/.test(diag) && diag.includes('"poll_seconds"'), 'Diagnosetext enthält Quellen, Selbsttest, Konfiguration, Protokoll (' + diag.length + ' Zeichen)');
   await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.querySelector('dialog#detail[open]'));
+  // --- Aktualisieren: Knopf nur bei get.sh-Installation auf macOS; hier nur Sichtbarkeit laut Zustand ---
+  const canUpd = (await (await p.request.get(URL + 'api/state')).json()).can_update;
+  ok((await p.$eval('#b-update', (b) => b.hidden)) === !canUpd, 'Aktualisieren-Knopf folgt can_update (' + canUpd + ')');
   // --- Edge-Report nach Quelle ---
   await p.click('nav [data-tab="overview"]'); await p.click('[data-edge="source"]');
   ok((await p.textContent('#edge')).includes('Quelle') || (await p.textContent('#edge')).includes('Noch keine'), 'Edge-Report nach Quelle schaltet um');
@@ -172,6 +175,13 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   await p.waitForFunction(() => !document.querySelector('#sweep').textContent.includes('Berechne'));
   const exitsText = await p.textContent('#exits');
   ok(/stop_loss|take_profit|trailing_stop|time_stop|Noch keine geschlossene/.test(exitsText), 'Exits nach Grund gerendert: ' + exitsText.trim().slice(0, 40));
+  const whyText = await p.textContent('#why');
+  ok(/zu neu|RugCheck|Score unter Schwelle/.test(whyText) && /%/.test(whyText), 'Warum fällt was durch: Gründe mit Anteil (' + whyText.trim().slice(0, 30) + '…)');
+  await p.locator('#why [data-goto]').first().click();
+  await p.waitForFunction(() => !document.querySelector('#tab-control').hidden);
+  ok(await p.$eval('.field.flash', (e) => !!e), '„Zum Parameter“ springt ins Formular und hebt das Feld hervor');
+  await p.click('nav [data-tab="analysis"]');
+  ok((await p.textContent('#sources')).includes('RugCheck'), 'Quellen-Karte zeigt RugCheck-Status');
   const adoptBtn = await p.$('#sweep [data-adopt]');
   if (adoptBtn) {
     const path = await adoptBtn.getAttribute('data-adopt'), value = await adoptBtn.getAttribute('data-value');

@@ -139,6 +139,14 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             elif self.path == "/api/positions/open":
                 result = engine.open_from_candidate(int(body.get("candidate_id") or 0))
                 self._json(result, 200 if result["ok"] else 409)
+            elif self.path == "/api/update":
+                from pathlib import Path as _P
+                from . import updater
+                result = updater.start_update(_P(__file__).resolve().parent.parent, self.server.server_address[1])
+                if result["ok"]:
+                    engine.store.log("info", "dashboard: Aktualisierung gestartet – Bot beendet sich für den Neustart")
+                    threading.Timer(1.5, engine.stop).start()
+                self._json(result, 200 if result["ok"] else 400)
             elif self.path == "/api/quit":
                 engine.store.log("info", "dashboard: Bot beendet")
                 self._json({"ok": True})
