@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.44 / Plugin 1.25)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.45 / Plugin 1.25)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -84,7 +84,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
         zurück und das Update bricht ab (Werkzeug 1.38).
 36. [x] Update zuerst auf einem Server: dem laufenden mit den wenigsten Spielern. Die übrigen folgen erst, wenn er sich
         mit der neuen Version meldet (bis 60 s) (Werkzeug 1.38).
-37. [ ] `metrics.txt` (Prometheus-Format) für Grafana: Spieler, km/h, Fehler und Neustarts je Server.
+37. [x] `metrics.txt` im Prometheus-Format auf der Statusseite: Spieler und Plätze je Server, gesamt, Rekord,
+        registrierte Fahrer, Kilometer (Werkzeug 1.45).
 38. [x] Die CI läuft bei jedem Push auf jeden Branch mit BeamNet-Änderungen, also auch auf `lokal/*` der Werkstatt.
         Ich sehe das Ergebnis vor der Durchsicht.
 39. [ ] Englische Kurzanleitung `README.en.md` – als Aufgabe 08 für die lokale KI vorbereitet. 🤖

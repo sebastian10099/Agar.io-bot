@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.44"
+VERSION="1.45"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3288,6 +3288,32 @@ help_page = f"""<!doctype html>
 </main></body></html>
 """
 write(os.path.join(os.path.dirname(out), "hilfe.html"), help_page)
+
+# Kennzahlen im Prometheus-Textformat (fuer Grafana o. Ae.: http://<server>:<port>/metrics.txt abfragen).
+def metric_label(v):
+    return re.sub(r'["\\\n]', "_", str(v))[:64]
+metrics = [
+    "# HELP beamnet_players Spieler je Server (laut BeamNetCore-Lebenszeichen)",
+    "# TYPE beamnet_players gauge",
+]
+for srv in servers:
+    metrics.append(f'beamnet_players{{port="{int(num(srv.get("port")))}",map="{metric_label(srv.get("map", "?"))}"}} {int(num(srv.get("players")))}')
+metrics += ["# HELP beamnet_players_max Plaetze je Server", "# TYPE beamnet_players_max gauge"]
+for srv in servers:
+    metrics.append(f'beamnet_players_max{{port="{int(num(srv.get("port")))}"}} {int(num(srv.get("max")))}')
+metrics += [
+    "# HELP beamnet_players_online Spieler im ganzen Netzwerk", "# TYPE beamnet_players_online gauge",
+    f"beamnet_players_online {online}",
+    "# HELP beamnet_servers_online Server mit aktuellem Lebenszeichen", "# TYPE beamnet_servers_online gauge",
+    f"beamnet_servers_online {len(servers)}",
+    "# HELP beamnet_players_record Meiste Spieler gleichzeitig (Rekord)", "# TYPE beamnet_players_record gauge",
+    f"beamnet_players_record {int(num(peak.get('allTime'))) if isinstance(peak, dict) else 0}",
+    "# HELP beamnet_drivers_registered Fahrer mit Spielerdatei", "# TYPE beamnet_drivers_registered gauge",
+    f"beamnet_drivers_registered {len(players)}",
+    "# HELP beamnet_km_total Gefahrene Kilometer aller Fahrer", "# TYPE beamnet_km_total counter",
+    f"beamnet_km_total {sum(num(r.get('km')) for r in players):.1f}",
+]
+write(os.path.join(os.path.dirname(out), "metrics.txt"), "\n".join(metrics) + "\n")
 PY
 }
 

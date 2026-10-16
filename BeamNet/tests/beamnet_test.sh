@@ -571,6 +571,13 @@ lacks "$(cat "$T/web/p/1.html")" "&lt;b&gt;|Saison[^<]* <b>" "Profilseite: kaput
 rm -rf "$T/root/shared/beamnet/seasons"
 "$TOOL" web run >/dev/null 2>&1
 page=$(cat "$T/web/index.html")
+# Kennzahlen fuer Prometheus/Grafana.
+m=$(cat "$T/web/metrics.txt")
+contains "$m" '^beamnet_players\{port="30814",map="gridmap_v2"\} 2$' "metrics: Spieler je Server"
+contains "$m" '^beamnet_players_max\{port="30814"\} 8$' "metrics: Plaetze je Server"
+contains "$m" '^beamnet_players_online 2$' "metrics: Spieler gesamt"
+contains "$m" '^beamnet_drivers_registered [0-9]+$' "metrics: Fahrer"
+contains "$m" '^# TYPE beamnet_km_total counter$' "metrics: Prometheus-Format"
 # Hilfeseite: Befehle, Regeln (eigene aus config.json, maskiert), Ligen, Erfolge; verlinkt von der Statusseite.
 contains "$page" '<a href="hilfe.html">Hilfe, Befehle &amp; Regeln</a>' "Hilfeseite: verlinkt"
 help=$(cat "$T/web/hilfe.html")
