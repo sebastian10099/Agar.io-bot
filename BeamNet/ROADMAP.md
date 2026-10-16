@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.64 / Plugin 1.50)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.65 / Plugin 1.51)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -25,6 +25,7 @@
       (Plugin 1.47, Werkzeug 1.64).
 - [x] `/hilfe` in Gruppen (1.48), „Neu seit deinem letzten Besuch“ (1.49), Einsteiger-Pfad `/start` (1.50),
       `beamnet doctor` meldet Maps ohne Orte für Aufträge.
+- [x] Rennserien `/serie` (1.51) mit Bestenliste im Spiel und auf der Statusseite (1.65).
 - [ ] Erfolge für Aufträge und Verfolgungsjagden (nach der Werkstatt-Aufgabe 07, damit es keine Konflikte gibt).
 
 ## Die nächsten 40 Punkte (Stand Werkzeug 1.48 / Plugin 1.29)
