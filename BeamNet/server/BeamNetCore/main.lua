@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.56"
+BN.VERSION = "1.57"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -634,6 +634,8 @@ local EN = {
     ["Tipp: /konvoi – fahrt zusammen! Wer nah beieinander fährt, bekommt Bonus-XP."] =
         "Tip: /convoy – drive together! Driving close to each other gives bonus XP.",
     ["Konvoi: zusammen fahren gibt Bonus-XP – /konvoi"] = "Convoy: driving together gives bonus XP – /convoy",
+    ["7 neue Erfolge für Aufträge, Verfolgungsjagden und Konvois – /erfolge"] =
+        "7 new achievements for jobs, chases and convoys – /achievements",
     -- Serien
     ["Serie %s abgebrochen – mehr als 30 Minuten. Neuer Versuch: /serie %s"] = "Series %s cancelled – more than 30 minutes. Try again: /series %s",
     ["Serie %s: Teil %d von %d geschafft (bisher %s). Weiter: %s"] = "Series %s: part %d of %d done (so far %s). Next: %s",
@@ -877,6 +879,13 @@ local EN = {
     ["Streckenrekord"] = "Track record",
     ["Weltenbummler (3 Maps)"] = "Globetrotter (3 maps)",
     ["Kenner aller Welten (8 Maps)"] = "World expert (8 maps)",
+    ["Erster Auftrag"] = "First job",
+    ["25 Aufträge"] = "25 jobs",
+    ["Profi-Fahrer (100 Aufträge)"] = "Pro driver (100 jobs)",
+    ["Erste Jagd gewonnen"] = "First chase won",
+    ["Jagd-Legende (10 Jagden gewonnen)"] = "Chase legend (10 chases won)",
+    ["Konvoi-Fahrer (10 km)"] = "Convoy driver (10 km)",
+    ["Kolonnenführer (100 km im Konvoi)"] = "Convoy leader (100 km in convoys)",
     ["Bann konnte nicht gespeichert werden (%s) – bitte beamnet doctor prüfen."] = "Could not save the ban (%s) – please check beamnet doctor.",
     ["Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server. English: /lang en"] =
         "Welcome to %s (%s)! Level %d · %s league · %s driven. /help for commands, /server for all servers. Deutsch: /lang de",
@@ -1160,7 +1169,7 @@ local function normalizeRecord(rec, id, name)
     rec.name = name or rec.name
     for _, k in ipairs({ "km", "seconds", "weekKm", "topSpeedKmh", "bonusXp", "racesFinished", "recordsSet",
                          "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm", "streak", "bestStreak", "jobsDone", "dayJobs", "weekJobs",
-                         "convoyKm" }) do
+                         "convoyKm", "chaseWins" }) do
         rec[k] = tonumber(rec[k]) or 0
     end
     for _, k in ipairs({ "maps", "achievements", "dayMaps", "mapKm" }) do
@@ -1310,7 +1319,7 @@ function BN.normalizeSession(s)
     if type(s.vehicles) ~= "table" then s.vehicles = {} end
     if type(s.moved) ~= "table" then s.moved = {} end
     for _, k in ipairs({ "pendingKm", "pendingSeconds", "pendingTop", "pendingBonus", "pendingRaces", "pendingRecords",
-                         "sessionKm", "pendingJobs", "pendingEventXp" }) do
+                         "sessionKm", "pendingJobs", "pendingEventXp", "pendingChaseWins", "pendingConvoyKm" }) do
         s[k] = tonumber(s[k]) or 0
     end
     if type(s.unlocked) ~= "table" then s.unlocked = {} end
@@ -1415,7 +1424,7 @@ function BN.savePlayer(s)
     flushMoved(s)
     if s.pendingKm == 0 and s.pendingSeconds == 0 and s.pendingTop == 0 and s.pendingBonus == 0 and not s.dirty
         and s.pendingRaces == 0 and s.pendingRecords == 0 and next(s.unlocked) == nil and not s.challengeReward
-        and s.pendingJobs == 0 then
+        and s.pendingJobs == 0 and (s.pendingChaseWins or 0) == 0 then
         return true
     end
     ensureDir(C.sharedDir)
@@ -1459,6 +1468,7 @@ function BN.savePlayer(s)
     rec.recordsSet = rec.recordsSet + s.pendingRecords
     rec.jobsDone = rec.jobsDone + s.pendingJobs
     rec.convoyKm = rec.convoyKm + (s.pendingConvoyKm or 0)
+    rec.chaseWins = rec.chaseWins + (s.pendingChaseWins or 0)
     rec.dayJobs = rec.dayJobs + s.pendingJobs
     rec.weekJobs = rec.weekJobs + s.pendingJobs
     -- Tages-Serie: der erste Tag zaehlt, Bonus-XP gibt es ab dem zweiten Tag in Folge.
@@ -1531,6 +1541,7 @@ function BN.savePlayer(s)
     s.pendingRaces, s.pendingRecords, s.unlocked, s.challengeReward = 0, 0, {}, nil
     s.pendingJobs = 0
     s.pendingConvoyKm = 0
+    s.pendingChaseWins = 0
     s.langChanged = nil
     s.friendsChanged = nil
     s.resetTop = nil
@@ -1559,7 +1570,9 @@ function BN.totals(s)
     return { km = km, seconds = seconds, weekKm = weekKm, xp = xp, bonusXp = bonus, level = BN.levelFor(xp),
              league = BN.leagueFor(xp), topSpeedKmh = math.max(rec.topSpeedKmh, s.pendingTop),
              races = rec.racesFinished + s.pendingRaces, records = rec.recordsSet + s.pendingRecords,
-             maps = maps, day = BN.dayTotals(s), monthXp = BN.monthXpOf(s, xp, retro) }
+             maps = maps, day = BN.dayTotals(s), monthXp = BN.monthXpOf(s, xp, retro),
+             jobs = rec.jobsDone + (s.pendingJobs or 0), chaseWins = rec.chaseWins + (s.pendingChaseWins or 0),
+             convoyKm = rec.convoyKm + (s.pendingConvoyKm or 0) }
 end
 
 -- In dieser Saison gesammelte XP einer Sitzung (gespeichert + noch nicht gespeichert, ohne nachtraegliche Erfolge).
@@ -1645,6 +1658,13 @@ BN.ACHIEVEMENTS = {
     { id = "maps3", name = "Weltenbummler (3 Maps)", xp = 30, value = function(t) return t.maps end, goal = 3 },
     { id = "maps8", name = "Kenner aller Welten (8 Maps)", xp = 80, value = function(t) return t.maps end, goal = 8 },
     { id = "level10", name = "Level 10", xp = 0, value = function(t) return t.level end, goal = 10 },
+    { id = "job1", name = "Erster Auftrag", xp = 10, value = function(t) return t.jobs end, goal = 1 },
+    { id = "job25", name = "25 Aufträge", xp = 60, value = function(t) return t.jobs end, goal = 25 },
+    { id = "job100", name = "Profi-Fahrer (100 Aufträge)", xp = 150, value = function(t) return t.jobs end, goal = 100 },
+    { id = "chase1", name = "Erste Jagd gewonnen", xp = 20, value = function(t) return t.chaseWins end, goal = 1 },
+    { id = "chase10", name = "Jagd-Legende (10 Jagden gewonnen)", xp = 80, value = function(t) return t.chaseWins end, goal = 10 },
+    { id = "convoy10", name = "Konvoi-Fahrer (10 km)", xp = 30, value = function(t) return t.convoyKm end, goal = 10 },
+    { id = "convoy100", name = "Kolonnenführer (100 km im Konvoi)", xp = 100, value = function(t) return t.convoyKm end, goal = 100 },
 }
 
 function BN.hasAchievement(s, id)
@@ -2091,6 +2111,7 @@ BN.NEWS = {
     { "1.52", "Orte vorschlagen: /ort vorschlag krankenhaus <Name> – für neue Fahraufträge" },
     { "1.53", "Einsatz-Alarm: ab und zu ein Ziel für alle – wer zuerst da ist, bekommt Bonus-XP" },
     { "1.56", "Konvoi: zusammen fahren gibt Bonus-XP – /konvoi" },
+    { "1.57", "7 neue Erfolge für Aufträge, Verfolgungsjagden und Konvois – /erfolge" },
 }
 
 local function versionNum(v)
@@ -4664,6 +4685,7 @@ function BN.endChase(reason)
         local earned = c.rewarded and huntSec >= 60 and runnerM >= 300
         if catcher then
             if earned then
+                if not catcher.guest then catcher.pendingChaseWins = (catcher.pendingChaseWins or 0) + 1 end
                 say(catcher.pid, "🚓 Gefangen! +%d XP", chaseReward(catcher, C.chaseXpCatch))
             else
                 say(catcher.pid, "🚓 Gefangen! (keine XP: zu kurz, zu wenig gefahren oder zu wenige Spieler mit Konto)")
@@ -4678,6 +4700,7 @@ function BN.endChase(reason)
     elseif reason == "entkommen" then
         if runner then
             if c.rewarded and runnerM >= 1000 then
+                if not runner.guest then runner.pendingChaseWins = (runner.pendingChaseWins or 0) + 1 end
                 say(runner.pid, "🏁 Entkommen! +%d XP", chaseReward(runner, C.chaseXpSurvive + minutes * C.chaseXpPerMin))
             else
                 say(runner.pid, "🏁 Entkommen! (keine XP: zu wenig gefahren oder zu wenige Spieler mit Konto)")

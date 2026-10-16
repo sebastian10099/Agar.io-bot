@@ -931,7 +931,7 @@ do
     end
     check(not BN.hasAchievement(v, "race1") and not BN.hasAchievement(v, "maps8"), "Nicht verdiente Erfolge fehlen")
     say(10, "/erfolge")
-    check(chatContains("Erfolge von Veteran: 9 von 13", 10), "/erfolge zaehlt")
+    check(chatContains("Erfolge von Veteran: 9 von 20", 10), "/erfolge zaehlt")
     check(chatContains("Als Nächstes: Erstes Rennen 0/1", 10), "/erfolge zeigt Fortschritt")
     BN.savePlayer(v)
     local saved = readJson(SHARED .. "/players/4242.json")
@@ -956,7 +956,7 @@ do
     -- Englisch.
     say(10, "/lang en")
     say(10, "/achievements")
-    check(chatContains("Achievements of Veteran: 9 of 13", 10) and chatContains("Next: First race 0/1", 10), "/achievements auf Englisch")
+    check(chatContains("Achievements of Veteran: 9 of 20", 10) and chatContains("Next: First race 0/1", 10), "/achievements auf Englisch")
     -- Abschaltbar.
     C.achievements = false
     players[11] = { name = "Ohne", ids = { beammp = "1111" }, vehicles = {} }
@@ -2452,6 +2452,8 @@ do
     for _ = 1, 50 do move(96, 1, -20, 0, 0); tick(1) end
     check(chatContains("Noch 4%d0 m bis St%. Marien", 96), "Auftrag: Hinweis unterwegs")
     check(chatContains("✅ Auftrag erledigt: St%. Marien in 0:4%d – %+100 XP %(Blitzschnell! %+50 %%%)", 96), "Auftrag: erledigt, schnell = +50 %")
+    tick(1)
+    check(BN.hasAchievement(BN.players[96], "job1") and chatContains("Erster Auftrag", 96), "Auftrag: Erfolg Erster Auftrag")
     eq(BN.players[96].pendingBonus - bonus0, 100, "Auftrag: XP gutgeschrieben")
     eq(BN.players[96].pendingJobs, 1, "Auftrag: gezaehlt")
     -- Kurze Pause zwischen zwei Auftraegen.
@@ -2777,6 +2779,7 @@ do
     -- Gespeichert: Konvoi-Kilometer in der Spielerdatei.
     BN.savePlayer(BN.players[140])
     check((readJson(SHARED .. "/players/14040.json").convoyKm or 0) >= 15, "Konvoi: Kilometer gespeichert")
+    check(BN.hasAchievement(BN.players[140], "convoy10"), "Konvoi: Erfolg Konvoi-Fahrer (10 km)")
     for pid = 140, 143 do
         BN.players[pid].pendingBonus = 0
         _G[events.onPlayerDisconnect](pid); players[pid] = nil
@@ -2933,7 +2936,8 @@ do
     tick(31 + 20)
     for _ = 1, 300 do move(102, 1, 5, 0, 0); tick(1) end
     check(chatContains("🏁 Entkommen! %+150 XP", 102), "Jagd: entkommen (100 + 5 min x 10)")
-    eq(BN.totals(BN.players[102]).bonusXp - b1, 150, "Jagd: XP fuer den Fluechtigen")
+    eq(BN.totals(BN.players[102]).bonusXp - b1, 150 + 20, "Jagd: XP fuer den Fluechtigen (+20 fuer den Erfolg)")
+    check(BN.hasAchievement(BN.players[102], "chase1") and BN.players[102].pendingChaseWins >= 1, "Jagd: Erfolg Erste Jagd gewonnen")
     -- Stehenbleiben bringt nichts: entkommen ohne Fahrt = keine XP.
     BN.chaseStarts, BN.chaseEndedAt = {}, nil
     say(101, "/fangen"); say(102, "/fangen mit")
@@ -3122,8 +3126,8 @@ do
     chatLog = {}
     _G[events.onPlayerJoin](117)
     check(chatContains("✨ Neu seit deinem letzten Besuch:", 117), "Neuheiten: fuer Spieler von frueher")
-    check(chatContains("^  Konvoi", 117) and chatContains("^  Einsatz%-Alarm", 117) and chatContains("^  Orte vorschlagen", 117), "Neuheiten: die drei neuesten")
-    check(not chatContains("Rennserien: /serie", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
+    check(chatContains("^  7 neue Erfolge", 117) and chatContains("^  Konvoi", 117) and chatContains("^  Einsatz%-Alarm", 117), "Neuheiten: die drei neuesten")
+    check(not chatContains("Orte vorschlagen", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
     _G[events.onPlayerDisconnect](117)
     eq(readJson(SHARED .. "/players/11717.json").seenVersion, BN.VERSION, "Neuheiten: Version gemerkt")
     chatLog = {}
@@ -3134,7 +3138,7 @@ do
     local r = readJson(SHARED .. "/players/11717.json"); r.seenVersion = "1.43"; writeJson(SHARED .. "/players/11717.json", r)
     chatLog = {}
     _G[events.onPlayerJoin](117)
-    check(chatContains("^  Konvoi", 117) and chatContains("^  Einsatz", 117) and chatContains("^  Orte vorschlagen", 117) and not chatContains("Verfolgungsjagd", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
+    check(chatContains("^  7 neue Erfolge", 117) and chatContains("^  Konvoi", 117) and chatContains("^  Einsatz", 117) and not chatContains("Verfolgungsjagd: /fangen", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
     _G[events.onPlayerDisconnect](117); players[117] = nil
     -- Ganz neue Spieler bekommen die Begruessung statt Neuheiten.
     players[118] = { name = "Ganzneu", ids = { beammp = "11818" }, vehicles = {} }
