@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.40"
+VERSION="1.41"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1854,6 +1854,7 @@ watch_run() {
         echo "$state" >"$STATE_DIR/state-$nr"
     done
     watch_rotation msgs
+    watch_load msgs
     watch_index
     watch_backup msgs
     watch_peak msgs
@@ -1866,6 +1867,53 @@ watch_run() {
         printf '%s\n' "${msgs[@]}"
         notify "$(printf '%s\n' "${msgs[@]}")"
     fi
+    return 0
+}
+
+# Last je Server aus der systemd-Abrechnung: CPU (% eines Kerns, gemessen zwischen zwei Laeufen) und RAM. Warnung,
+# wenn ein Server LOAD_MINUTES Laeufe lang ueber CPU_WARN % liegt oder mehr als MEM_WARN_MB belegt – jeweils einmal,
+# Entwarnung, sobald es wieder passt. Werte "-" schalten die Pruefung ab.
+watch_load() {
+    local -n lout=$1
+    local nr u cpu mem now pcpu pat pct high cpu_warn mem_warn minutes name
+    cpu_warn=$(conf_get CPU_WARN); [[ $cpu_warn =~ ^[0-9]{1,3}$ || $cpu_warn == - ]] || cpu_warn=90
+    mem_warn=$(conf_get MEM_WARN_MB); [[ $mem_warn =~ ^[0-9]{1,6}$ || $mem_warn == - ]] || mem_warn=1500
+    minutes=$(conf_get LOAD_MINUTES); [[ $minutes =~ ^[0-9]{1,2}$ ]] && (( 10#$minutes > 0 )) || minutes=5
+    now=$(date +%s)
+    for nr in $(servers); do
+        unit_active "$nr" || { rm -f "$STATE_DIR/cpu-$nr" "$STATE_DIR/cpuhigh-$nr"; continue; }
+        u=$(unit "$nr")
+        name="Server $nr ($(map_short "$(cfg "$nr" Map)"))"
+        cpu=$(systemctl show -p CPUUsageNSec --value "$u" 2>/dev/null)
+        mem=$(systemctl show -p MemoryCurrent --value "$u" 2>/dev/null)
+        if [[ $cpu_warn != - && $cpu =~ ^[0-9]+$ ]]; then
+            read -r pcpu pat < <(cat "$STATE_DIR/cpu-$nr" 2>/dev/null; echo)
+            echo "$cpu $now" >"$STATE_DIR/cpu-$nr"
+            if [[ $pcpu =~ ^[0-9]+$ && $pat =~ ^[0-9]+$ ]] && (( now - pat >= 20 && cpu >= pcpu )); then
+                pct=$(( (cpu - pcpu) / ((now - pat) * 10000000) ))
+                high=$(cat "$STATE_DIR/cpuhigh-$nr" 2>/dev/null); [[ $high =~ ^[0-9]+$ ]] || high=0
+                if (( pct >= 10#$cpu_warn )); then
+                    high=$(( high + 1 ))
+                    (( high == 10#$minutes )) && lout+=("🔥 $name ist seit $minutes Minuten ausgelastet (CPU ${pct} %) – Spieler merken Ruckler. beamnet logs $nr")
+                else
+                    (( high >= 10#$minutes )) && lout+=("✅ $name ist nicht mehr ausgelastet (CPU ${pct} %).")
+                    high=0
+                fi
+                echo "$high" >"$STATE_DIR/cpuhigh-$nr"
+            fi
+        fi
+        if [[ $mem_warn != - && $mem =~ ^[0-9]+$ ]]; then
+            if (( mem / 1048576 > 10#$mem_warn )); then
+                if [[ ! -f $STATE_DIR/memhigh-$nr ]]; then
+                    : >"$STATE_DIR/memhigh-$nr"
+                    lout+=("🧠 $name belegt $(( mem / 1048576 )) MB RAM (Grenze $mem_warn MB) – ein Neustart in einer ruhigen Minute hilft meist.")
+                fi
+            elif [[ -f $STATE_DIR/memhigh-$nr ]] && (( mem / 1048576 < 10#$mem_warn * 9 / 10 )); then
+                rm -f "$STATE_DIR/memhigh-$nr"
+                lout+=("✅ $name belegt wieder $(( mem / 1048576 )) MB RAM.")
+            fi
+        fi
+    done
     return 0
 }
 
@@ -2343,6 +2391,10 @@ MODLOG_NOTIFY=1
 DATA_BACKUP=1
 BACKUP_HOUR=4
 BACKUP_KEEP=14
+# Last-Warnung: CPU ueber CPU_WARN % (eines Kerns) fuer LOAD_MINUTES Minuten, RAM ueber MEM_WARN_MB. "-" = aus.
+CPU_WARN=90
+MEM_WARN_MB=1500
+LOAD_MINUTES=5
 # Haengt ein Server (Dienst laeuft, aber seit HANG_MIN Minuten kein Lebenszeichen von BeamNetCore)? Antwortet er auch
 # auf seinem Port nicht mehr, startet ihn der Waechter mit AUTO_RESTART=1 neu; sonst nur Meldung. 0 = aus.
 HANG_MIN=3

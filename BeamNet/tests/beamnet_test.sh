@@ -25,7 +25,15 @@ cat >"$T/bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
 S="$FAKE/state"
 cmd=$1; shift
-[[ $cmd == show ]] && { unit=${*: -1}; cat "$S/$unit.pid" 2>/dev/null || echo 0; exit 0; }
+if [[ $cmd == show ]]; then
+    unit=${*: -1}
+    case "$*" in
+        *CPUUsageNSec*) cat "$S/$unit.cpu" 2>/dev/null || echo "[not set]" ;;
+        *MemoryCurrent*) cat "$S/$unit.mem" 2>/dev/null || echo "[not set]" ;;
+        *) cat "$S/$unit.pid" 2>/dev/null || echo 0 ;;
+    esac
+    exit 0
+fi
 unit=${1:-}
 echo "$cmd $unit" >>"$FAKE/actions"
 case $cmd in
@@ -1019,6 +1027,37 @@ same=1; for nr in 1 2 3 4 5 6; do cmp -s "$T/root/$nr/Resources/Server/BeamNetCo
 rm -f "$S"/servers/*.json
 out=$(BEAMNET_CANARY=1 BEAMNET_CANARY_WAIT=0 "$TOOL" -y install-core 2>&1)
 lacks "$out" "Teste BeamNetCore" "canary: ohne Lebenszeichen kein Testserver"
+
+# --- Last-Warnung (watch_load) ------------------------------------------------------------------------------------------
+touch "$T/state/beammp-1.service.active"
+rm -f "$T"/watch/cpu-* "$T"/watch/cpuhigh-* "$T"/watch/memhigh-*
+busy() {   # busy <prozent>: Server 1 hat seit dem letzten Lauf (vor 60 s) so viel CPU verbraucht
+    echo "0 $(( $(date +%s) - 60 ))" >"$T/watch/cpu-1"
+    echo "$(( $1 * 600000000 ))" >"$T/state/beammp-1.service.cpu"
+}
+for i in 1 2 3 4; do busy 95; out=$("$TOOL" watch 2>&1); done
+lacks "$out" "ausgelastet" "load: noch keine Warnung nach 4 Minuten"
+busy 95; out=$("$TOOL" watch 2>&1)
+contains "$out" "🔥 Server 1 \\(.*\\) ist seit 5 Minuten ausgelastet \\(CPU 9[0-9] %\\)" "load: Warnung nach 5 Minuten"
+busy 97; out=$("$TOOL" watch 2>&1)
+lacks "$out" "ausgelastet" "load: Warnung nur einmal"
+busy 30; out=$("$TOOL" watch 2>&1)
+contains "$out" "✅ Server 1 \\(.*\\) ist nicht mehr ausgelastet \\(CPU [23][0-9] %\\)" "load: Entwarnung"
+busy 30; out=$("$TOOL" watch 2>&1)
+lacks "$out" "ausgelastet" "load: Entwarnung nur einmal"
+echo $(( 2000 * 1048576 )) >"$T/state/beammp-1.service.mem"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🧠 Server 1 \\(.*\\) belegt 2000 MB RAM \\(Grenze 1500 MB\\)" "load: RAM-Warnung"
+lacks "$("$TOOL" watch 2>&1)" "🧠" "load: RAM-Warnung nur einmal"
+echo $(( 400 * 1048576 )) >"$T/state/beammp-1.service.mem"
+contains "$("$TOOL" watch 2>&1)" "✅ Server 1 \\(.*\\) belegt wieder 400 MB RAM" "load: RAM-Entwarnung"
+echo '[not set]' >"$T/state/beammp-1.service.mem"
+sed -i 's/^CPU_WARN=.*/CPU_WARN=-/' "$T/beamnet.conf"
+rm -f "$T/watch/cpuhigh-1"
+for i in 1 2 3 4 5 6; do busy 99; out=$("$TOOL" watch 2>&1); done
+lacks "$out" "ausgelastet" "load: CPU_WARN=- schaltet ab"
+sed -i 's/^CPU_WARN=.*/CPU_WARN=90/' "$T/beamnet.conf"
+rm -f "$T"/state/beammp-1.service.cpu "$T"/state/beammp-1.service.mem "$T"/watch/cpu-* "$T"/watch/cpuhigh-*
 
 # --- Ansagen von der Konsole (beamnet ansage) --------------------------------------------------------------------------
 A="$T/root/shared/beamnet/announcements.json"

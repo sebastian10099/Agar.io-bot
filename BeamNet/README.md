@@ -106,6 +106,9 @@ beamnet watch test         # Testnachricht an Discord/Telegram
 - Er sichert **täglich die Spielerdaten** (Kilometer, XP, Rekorde, Banns, Protokoll) nach
   `/root/beamnet-backups/daten-<Datum>.tgz`, ab 4 Uhr (`BACKUP_HOUR`), 14 Tage lang (`BACKUP_KEEP`). Zurückholen:
   `beamnet restore` zeigt die Stände, `beamnet restore 2026-10-15` setzt zurück.
+- Er überwacht die **Last** je Server: Liegt einer 5 Minuten lang über 90 % eines CPU-Kerns oder belegt er mehr als
+  1500 MB RAM, kommt eine Warnung an Discord/Telegram (einmal, mit Entwarnung). Einstellbar: `CPU_WARN`,
+  `MEM_WARN_MB`, `LOAD_MINUTES` (`-` schaltet ab).
 - Er erkennt **hängende Server**: Der Dienst läuft, aber BeamNetCore meldet sich seit 3 Minuten nicht (`HANG_MIN`,
   0 = aus). Antwortet der Server auch auf seinem Port nicht mehr, startet er ihn mit `AUTO_RESTART=1` neu. Antwortet er
   noch, meldet er nur, dass das Plugin steht; die Spieler können dann weiterfahren und werden nicht rausgeworfen.

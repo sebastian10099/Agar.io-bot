@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.40 / Plugin 1.22)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.41 / Plugin 1.22)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -14,7 +14,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
        höchstens ein paar Dateien je Takt statt 64 auf einmal (Plugin 1.14).
 4. [–] Lebenszeichen seltener schreiben: geprüft und verworfen. 12 Server schreiben je 4 kleine Dateien pro Minute,
        das ist vernachlässigbar, und Wächter, `/server` und Hänge-Erkennung brauchen ein frisches Lebenszeichen.
-5. [ ] Wächter misst CPU und RAM je Server (systemd) und warnt bei Dauerlast über 90 %.
+5. [x] Der Wächter misst CPU und RAM je Server (systemd-Abrechnung) und warnt einmal bei Dauerlast (5 min über 90 %)
+       oder hohem RAM, mit Entwarnung (Werkzeug 1.41).
 6. [ ] „Server voll“-Hilfe: Ein voller Server lässt niemanden mehr herein, das Plugin sieht diese Spieler also nicht.
        Machbar ist: `/server` und Statusseite markieren freie Server mit derselben Map, und bei 90 % Auslastung des
        ganzen Netzwerks geht eine Meldung an Discord/Telegram („Server 7 hat noch Platz“).
