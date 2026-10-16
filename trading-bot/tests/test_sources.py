@@ -103,6 +103,7 @@ class DiscoveryTests(unittest.TestCase):
         found = d.recent(["solana", "base"])
         self.assertEqual(found["solana"]["X"]["source"], "a")
         self.assertEqual(found["solana"]["Y"]["source"], "a")                  # first feed wins
+        self.assertEqual(found["solana"]["Y"]["snapshot"], {"pair": "PY"})      # ...but borrows the numbers it lacks
         self.assertEqual(found["solana"]["Z"], {"source": "b", "snapshot": {"pair": "PZ"}})
         self.assertEqual(found["base"], {})
         st = {r["name"]: r for r in d.status()}
@@ -565,4 +566,43 @@ class ReseeTests(unittest.TestCase):
             self.assertEqual((len(seen("NEW")), len(seen("HONEY")), len(seen("DUMP"))), (2, 1, 1))
             t[0] = dex.started + 330; eng.poll_once()         # 5.5 min: DUMP (watch) again, HONEY still not
             self.assertEqual((len(seen("HONEY")), len(seen("DUMP"))), (1, 2))
+            store.close()
+
+
+class PresetTests(unittest.TestCase):
+    def test_presets_are_listed_valid_and_read_only(self):
+        from bot import settings
+        from bot.engine import presets
+        self.assertEqual(set(presets()), {"★ Locker – mehr Kandidaten (Paper)", "★ Standard", "★ Streng – nur die besten"})
+        for name, flat in presets().items():
+            clean, errors = settings.validate(flat)
+            self.assertEqual(errors, {}, name)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex()
+            cfg = copy.deepcopy(CFG)
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            self.assertIn("★ Standard", eng.profiles())
+            r = eng.apply_profile("★ Locker – mehr Kandidaten (Paper)")
+            self.assertTrue(r["ok"], r); self.assertEqual(cfg["filters"]["min_liquidity_usd"], 8000); self.assertTrue(cfg["filters"]["allow_rugcheck_unknown"])
+            self.assertFalse(eng.delete_profile("★ Standard")["ok"])
+            self.assertFalse(eng.save_profile("★ Standard")["ok"])
+            self.assertTrue(eng.save_profile("Meins")["ok"]); self.assertIn("Meins", eng.profiles()); self.assertIn("★ Standard", eng.profiles())
+            self.assertTrue(eng.delete_profile("Meins")["ok"]); self.assertNotIn("Meins", eng.profiles())
+            store.close()
+
+    def test_age_falls_back_to_the_feed(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            orig = dex.pairs_for_tokens
+            def ageless(chain, addrs):
+                out = orig(chain, addrs)
+                for p in out: p["age_min"] = None          # DexScreener without pairCreatedAt
+                return out
+            dex.pairs_for_tokens = ageless
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["dexscreener", "geckoterminal"]
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            eng.poll_once()
+            run = next(c for c in store.candidates() if c["symbol"] == "RUN")
+            self.assertIsNotNone(run["snapshot"]["age_min"]); self.assertTrue(run["snapshot"].get("age_from_feed"))
+            self.assertEqual(run["decision"], "buy")      # instead of "age unknown"
             store.close()

@@ -161,7 +161,7 @@ class EngineControlTests(unittest.TestCase):
         self.assertFalse(self.engine.save_profile("")["ok"])
         self.assertFalse(self.engine.save_profile("Kaputt", {"poll_seconds": 0})["ok"])
         self.assertTrue(self.engine.delete_profile("Streng")["ok"])
-        self.assertEqual(self.engine.profiles(), {})
+        self.assertTrue(all(n.startswith("★") for n in self.engine.profiles()))   # only the built-in presets remain
         self.assertFalse(self.engine.delete_profile("Streng")["ok"])
 
     def test_paused_engine_does_not_open(self):

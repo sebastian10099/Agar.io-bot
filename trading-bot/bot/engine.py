@@ -18,6 +18,22 @@ RESEE_TOO_NEW = 2 * 60       # "too new" is a timing issue, not a verdict: look 
 RESEE_WATCH = 5 * 60         # a watch passed every filter; its numbers move fast, so re-check every five minutes
 
 
+_PRESETS: Optional[dict[str, dict[str, Any]]] = None
+
+
+def presets() -> dict[str, dict[str, Any]]:
+    """Shipped parameter sets (bot/presets.json): Locker / Standard / Streng."""
+    global _PRESETS
+    if _PRESETS is None:
+        import json as _json
+        from pathlib import Path as _P
+        try:
+            _PRESETS = _json.loads((_P(__file__).parent / "presets.json").read_text())
+        except (OSError, ValueError):
+            _PRESETS = {}
+    return _PRESETS
+
+
 def resee_after(last: Optional[dict[str, Any]]) -> float:
     """How long after its last evaluation a token may be looked at again."""
     if last is None:
@@ -84,6 +100,11 @@ class Engine:
                 snap = info.get("snapshot")
                 if token not in indexed and snap and snap.get("pair"):
                     pairs.append(dict(snap, via_feed=True))   # not on DexScreener yet: judge the feed's own numbers
+            for p in pairs:                                    # DexScreener sometimes lacks the listing time; the feed knows it
+                snap = (tokens.get(p["token"]) or {}).get("snapshot")
+                if p.get("age_min") is None and snap and snap.get("age_min") is not None:
+                    p["age_min"] = snap["age_min"]
+                    p["age_from_feed"] = True
             for p in pairs:
                 p["source"] = (tokens.get(p["token"]) or {}).get("source")
                 counts["seen"] += 1
@@ -283,12 +304,15 @@ class Engine:
 
     # --- named parameter profiles --------------------------------------
     def profiles(self) -> dict[str, dict[str, Any]]:
-        return self.store.get("profiles", {}) or {}
+        """Built-in presets (★, read-only, only the filter block) first, then the user's own."""
+        return {**presets(), **(self.store.get("profiles", {}) or {})}
 
     def save_profile(self, name: str, flat: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         name = (name or "").strip()
         if not name or len(name) > 40:
             return {"ok": False, "error": "Name fehlt oder ist länger als 40 Zeichen"}
+        if name in presets():
+            return {"ok": False, "error": "Voreinstellungen (★) können nicht überschrieben werden – anderen Namen wählen"}
         flat = flat if flat is not None else settings.flat(self.cfg)
         clean, errors = settings.validate(flat)
         if errors:
@@ -309,12 +333,14 @@ class Engine:
         return result
 
     def delete_profile(self, name: str) -> dict[str, Any]:
-        profiles = self.profiles()
-        if name not in profiles:
+        if name in presets():
+            return {"ok": False, "error": "Voreinstellungen (★) lassen sich nicht löschen"}
+        own = self.store.get("profiles", {}) or {}
+        if name not in own:
             return {"ok": False, "error": "Profil nicht gefunden"}
-        del profiles[name]
-        self.store.set("profiles", profiles)
-        return {"ok": True, "profiles": profiles}
+        del own[name]
+        self.store.set("profiles", own)
+        return {"ok": True, "profiles": self.profiles()}
 
     def sweep(self, horizon_min: int = 15) -> dict[str, Any]:
         from . import sweep as _sweep

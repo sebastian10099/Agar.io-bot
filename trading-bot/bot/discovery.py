@@ -69,6 +69,8 @@ class Discovery:
                     mine.add((chain, token))
                     if token not in out[chain]:              # first feed in the configured order owns the token
                         out[chain][token] = {"source": name, "snapshot": item.get("snapshot")}
+                    elif out[chain][token]["snapshot"] is None and item.get("snapshot"):
+                        out[chain][token]["snapshot"] = item["snapshot"]   # keep the owner, borrow the numbers
             st.update(calls=st["calls"] + 1, found=len(mine), at=time.time())
             self._note(name, st, ok=True, error="")
         for name, mine in reported.items():                   # "unique": no other feed saw it this poll

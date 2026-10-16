@@ -922,10 +922,10 @@ function paintProfiles() {
   sel.replaceChildren(new Option('– keins gewählt –', ''));
   Object.keys(profiles).sort((a, b) => a.localeCompare(b, 'de')).forEach((n) => sel.append(new Option(n, n)));
   sel.value = profiles[cur] ? cur : '';
-  $('b-prof-load').disabled = $('b-prof-del').disabled = !sel.value;
+  $('b-prof-load').disabled = !sel.value; $('b-prof-del').disabled = !sel.value || sel.value.startsWith('★');
 }
 async function loadProfiles() { try { profiles = (await api('/api/profiles')).profiles || {}; paintProfiles(); } catch (e) { toast('Profile nicht ladbar: ' + e.message, true); } }
-$('profile').onchange = () => { $('b-prof-load').disabled = $('b-prof-del').disabled = !$('profile').value; };
+$('profile').onchange = () => { const v = $('profile').value; $('b-prof-load').disabled = !v; $('b-prof-del').disabled = !v || v.startsWith('★'); };
 $('b-ai-login').onclick = () => busy($('b-ai-login'), async () => {
   const resp = await fetch('/api/ai/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
   const r = await resp.json().catch(() => ({ ok: false, error: 'HTTP ' + resp.status }));

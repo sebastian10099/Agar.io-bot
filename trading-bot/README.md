@@ -73,7 +73,9 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   markiert, Fehler stehen direkt am Feld, „Speichern“ gilt **sofort** für den
   laufenden Bot und landet in `~/Library/Application Support/NewTokenBot/config.json`.
   Dazu: **Profile** (Parametersätze unter Namen speichern, laden, löschen – zum
-  Vergleichen von Strategien), Standardwerte laden, Paper-Konto zurücksetzen
+  Vergleichen von Strategien; mitgeliefert sind die Voreinstellungen
+  **★ Locker**, **★ Standard** und **★ Streng** – „Locker“ ist der schnelle
+  Weg, wenn kaum ein Kandidat durchkommt), Standardwerte laden, Paper-Konto zurücksetzen
   (nur Positionen, oder alles inklusive Edge-Daten), wahlweise mit neuem
   Startkapital, und CSV-Export von Positionen, Fills und Kandidaten. Bricht
   die Verbindung zum Bot ab, erscheint ein Banner mit „Erneut versuchen“.
