@@ -3254,6 +3254,27 @@ for path in sorted(glob.glob(os.path.join(shared, "races", "*.json"))):
         if isinstance(recs, list) and recs and isinstance(recs[0], dict):
             races.append((os.path.basename(path)[:-5], name, recs[0]))
 
+# Orte fuer Fahrauftraege (places/<Map>.json, vom Plugin): je Map die Anzahl je Typ.
+PLACE_ICONS = {"krankenhaus": "🚑", "schule": "🚌", "feuerwehr": "🚒", "polizei": "🚓", "tankstelle": "⛽",
+               "werkstatt": "🔧", "supermarkt": "🛒", "bahnhof": "🚕", "flughafen": "✈️", "hafen": "⚓", "hotel": "🏨",
+               "ort": "📦"}
+place_rows = []
+pl_dir = os.path.join(shared, "places")
+if os.path.isdir(pl_dir) and not os.path.islink(pl_dir):
+    for path in sorted(glob.glob(os.path.join(pl_dir, "*.json"))):
+        data = load(path)
+        places = data.get("places") if isinstance(data, dict) else None
+        if not isinstance(places, list):
+            continue
+        counts = {}
+        for p in places[:100]:
+            if isinstance(p, dict) and p.get("type") in PLACE_ICONS:
+                counts[p["type"]] = counts.get(p["type"], 0) + 1
+        if counts:
+            kinds = " ".join(f"{PLACE_ICONS[k]} {n}" for k, n in sorted(counts.items(), key=lambda x: (-x[1], x[0])))
+            place_rows.append(f"<tr><td>{E(map_name(os.path.basename(path)[:-5]))}</td><td>{kinds}</td>"
+                              f"<td class=n>{sum(counts.values())}</td></tr>")
+
 ID_OK = __import__("re").compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
@@ -3465,6 +3486,7 @@ page = f"""<!doctype html>
 <section><h2>Beliebteste Maps</h2>{table(["Map", "Kilometer#", "Fahrer#"], popular_rows, "Noch keine Kilometer je Map.")}</section>
 <section><h2>Schnellste Fahrer</h2>{table(["#", "Name", "Spitze#"], speed_rows, "Noch keine Geschwindigkeiten.")}</section>
 <section><h2>Meiste Aufträge</h2>{table(["#", "Name", "Aufträge#"], job_rows, "Noch keine Aufträge – im Spiel: /auftrag")}</section>
+<section><h2>Orte für Aufträge</h2>{table(["Map", "Orte", "Anzahl#"], place_rows, "Noch keine Orte – Admins legen sie im Spiel an: /ort neu krankenhaus &lt;Name&gt;")}</section>
 <section><h2>Teams</h2>{table(["#", "Team", "Fahrer#", "Kilometer#"], team_rows, "Noch keine Teams – im Spiel: /team gründen &lt;Name&gt;")}</section>
 </div>
 <footer><a href="hilfe.html">Hilfe, Befehle &amp; Regeln</a> · Chat-Befehle im Spiel: /hilfe · /stats · /top · /wo · /event · /regeln · /lang en · <a href="api.json">api.json</a></footer>

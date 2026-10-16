@@ -638,6 +638,14 @@ echo '{"week":"2000-W01","goal":600}' >"$T/root/shared/beamnet/community.json"
 "$TOOL" web run >/dev/null 2>&1
 lacks "$(cat "$T/web/index.html")" "Wochenziel für alle" "Statusseite: altes Wochenziel nicht gezeigt"
 rm -f "$T/root/shared/beamnet/players/63.json" "$T/root/shared/beamnet/players/64.json" "$T/root/shared/beamnet/community.json"
+# Orte fuer Auftraege je Map (kaputte Eintraege und unbekannte Typen ignoriert).
+mkdir -p "$T/root/shared/beamnet/places"
+echo '{"places":[{"type":"krankenhaus","name":"A","x":1,"y":1,"z":1},{"type":"schule","name":"B"},{"type":"krankenhaus","name":"C"},{"type":"<b>"},5]}' >"$T/root/shared/beamnet/places/italy.json"
+echo 'kaputt' >"$T/root/shared/beamnet/places/utah.json"
+"$TOOL" web run >/dev/null 2>&1
+page=$(cat "$T/web/index.html")
+contains "$page" "<h2>Orte für Aufträge</h2>.*<td>Italy</td><td>🚑 2 🚌 1</td><td class=n>3</td>" "Statusseite: Orte für Aufträge (unbekannte Typen und Unsinn nicht mitgezählt)"
+rm -rf "$T/root/shared/beamnet/places"
 "$TOOL" web run >/dev/null 2>&1
 page=$(cat "$T/web/index.html")
 # Kilometer je Woche auf der Profilseite (Verlauf + laufende Woche; kaputte Eintraege ignoriert).
