@@ -68,7 +68,7 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 26. [ ] Neue Erfolge (5000 km, 50 Stunden, 50 Rennen, 5 Rekorde) – als Aufgabe 07 für die lokale KI vorbereitet. 🤖
 27. [x] Saison-Titel: Die Top 3 jeder Saison tragen „Saisonsieger / Saison-Zweiter / Saison-Dritter <Monat>“ in
         `/stats` und auf ihrer Profilseite (Plugin 1.25, Werkzeug 1.44).
-28. [ ] Tagesaufgaben je Map, z. B. „fahre 10 km auf Utah“. 🤖
+28. [ ] Tagesaufgabe „X km auf einer Map“ – als Aufgabe 09 für die lokale KI vorbereitet. 🤖
 
 **D. Moderation und Sicherheit**
 29. [~] Zeitlich begrenzter Bann gibt es schon (`/ban <Name> 2h`, auch `m`/`d`). Feinschliff (`2H`, `1w`, riesige

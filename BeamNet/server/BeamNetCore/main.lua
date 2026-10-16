@@ -936,9 +936,8 @@ local function applyDay(rec)
 end
 BN.applyDay = applyDay
 
--- Neue Woche: die Kilometer der alten Woche bleiben als lastWeek/lastWeekKm erhalten (fuer die Wochensieger).
--- Wochenwechsel: Kilometer der alten Woche nach lastWeek und in den Verlauf weeks (hoechstens 12 Wochen, fuer das
--- Diagramm auf der Profilseite; nur Wochen mit Kilometern).
+-- Wochenwechsel: Kilometer der alten Woche bleiben als lastWeek/lastWeekKm erhalten (fuer die Wochensieger) und kommen
+-- in den Verlauf weeks (hoechstens 12 Wochen, fuer das Diagramm auf der Profilseite; nur Wochen mit Kilometern).
 local function applyWeek(rec)
     local wk = weekKey(BN.now())
     if rec.week ~= wk then
