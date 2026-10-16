@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.35"
+BN.VERSION = "1.36"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -820,6 +820,12 @@ local EN = {
         "Your share: %s – from %s you're in (+%d XP when the goal is reached).",
     ["Wochenziel für alle: %s von %s – fahr mit! (/ziel)"] = "Weekly goal for everyone: %s of %s – join in! (/goal)",
     -- Auftraege
+    ["Notfall bei %s! Hol den Patienten ab und bring ihn ins Krankenhaus %s"] = "Emergency at %s! Pick up the patient and take them to %s hospital",
+    ["Schulbus: Hol die Kinder bei %s ab und bring sie zur Schule %s"] = "School bus: pick up the children at %s and take them to %s school",
+    ["Taxi: Ein Fahrgast wartet bei %s und muss zum Bahnhof %s"] = "Taxi: a passenger is waiting at %s and needs to get to %s station",
+    ["Taxi: Ein Fahrgast wartet bei %s und muss zum Flughafen %s"] = "Taxi: a passenger is waiting at %s and needs to get to %s airport",
+    ["Taxi: Ein Gast wartet bei %s und möchte zum Hotel %s"] = "Taxi: a guest is waiting at %s and wants to go to %s hotel",
+    ["Eingestiegen! Weiter nach %s – %s, noch %s"] = "Picked up! Now on to %s – %s, %s left",
     ["Notfall! Bring den Patienten ins Krankenhaus %s"] = "Emergency! Take the patient to %s hospital",
     ["Schulbus: Bring die Kinder zur Schule %s"] = "School bus: take the children to %s school",
     ["Alarm! Bring die Ausrüstung zur Feuerwache %s"] = "Alarm! Take the equipment to %s fire station",
@@ -3426,17 +3432,22 @@ commands.report = commands.melden
 -- (mindestens 70 % der Luftlinie als gefahrene Strecke – Sprunge und Zuruecksetzen zaehlen nicht).
 
 BN.PLACE_TYPES = {
-    krankenhaus = { icon = "🚑", text = "Notfall! Bring den Patienten ins Krankenhaus %s", urgent = true },
-    schule = { icon = "🚌", text = "Schulbus: Bring die Kinder zur Schule %s" },
+    krankenhaus = { icon = "🚑", text = "Notfall! Bring den Patienten ins Krankenhaus %s", urgent = true,
+                    pickup = "Notfall bei %s! Hol den Patienten ab und bring ihn ins Krankenhaus %s" },
+    schule = { icon = "🚌", text = "Schulbus: Bring die Kinder zur Schule %s",
+               pickup = "Schulbus: Hol die Kinder bei %s ab und bring sie zur Schule %s" },
     feuerwehr = { icon = "🚒", text = "Alarm! Bring die Ausrüstung zur Feuerwache %s", urgent = true },
     polizei = { icon = "🚓", text = "Bring den Verdächtigen zur Polizei %s", urgent = true },
     tankstelle = { icon = "⛽", text = "Liefere Benzin an die Tankstelle %s" },
     werkstatt = { icon = "🔧", text = "Bring die Ersatzteile zur Werkstatt %s" },
     supermarkt = { icon = "🛒", text = "Liefere die Ware an den Supermarkt %s" },
-    bahnhof = { icon = "🚕", text = "Taxi: Bring den Fahrgast zum Bahnhof %s" },
-    flughafen = { icon = "✈️", text = "Taxi: Der Fahrgast muss zum Flughafen %s" },
+    bahnhof = { icon = "🚕", text = "Taxi: Bring den Fahrgast zum Bahnhof %s",
+                pickup = "Taxi: Ein Fahrgast wartet bei %s und muss zum Bahnhof %s" },
+    flughafen = { icon = "✈️", text = "Taxi: Der Fahrgast muss zum Flughafen %s",
+                  pickup = "Taxi: Ein Fahrgast wartet bei %s und muss zum Flughafen %s" },
     hafen = { icon = "⚓", text = "Bring die Fracht zum Hafen %s" },
-    hotel = { icon = "🏨", text = "Taxi: Bring den Gast zum Hotel %s" },
+    hotel = { icon = "🏨", text = "Taxi: Bring den Gast zum Hotel %s",
+              pickup = "Taxi: Ein Gast wartet bei %s und möchte zum Hotel %s" },
     ort = { icon = "📦", text = "Liefere das Paket nach %s" },
 }
 local PLACE_ALIASES = { hospital = "krankenhaus", school = "schule", fire = "feuerwehr", police = "polizei",
@@ -3564,6 +3575,9 @@ function commands.orte(pid)
 end
 commands.places = commands.orte
 
+-- Zufall (in den Tests ersetzbar).
+BN.random = BN.random or function(n) return math.random(1, n) end
+
 function BN.startJob(s)
     local lang = BN.langOf(s.pid)
     local pos = currentPosition(s)
@@ -3571,8 +3585,9 @@ function BN.startJob(s)
         say(s.pid, "Steig erst in ein Fahrzeug, dann gibt es einen Auftrag.")
         return false
     end
+    local places = BN.loadPlaces()
     local choices = {}
-    for _, p in ipairs(BN.loadPlaces()) do
+    for _, p in ipairs(places) do
         local d = dist(pos, p)
         if d >= C.jobMinDistM and p.name ~= s.lastJobPlace then choices[#choices + 1] = { place = p, d = d } end
     end
@@ -3580,16 +3595,29 @@ function BN.startJob(s)
         say(s.pid, "Gerade kein Auftrag frei – auf dieser Map fehlen Orte (Admins: /ort neu krankenhaus <Name>).")
         return false
     end
-    local pick = choices[math.random(1, #choices)]
-    local kind = BN.PLACE_TYPES[pick.place.type]
+    local pick = choices[BN.random(#choices)]
+    local dest = pick.place
+    local kind = BN.PLACE_TYPES[dest.type]
+    -- Mit Abholung (Patient, Kinder, Fahrgast): erst zu einem anderen Ort, dann ans Ziel – wenn es einen passenden gibt.
+    local pickup
+    if kind.pickup then
+        local stops = {}
+        for _, p in ipairs(places) do
+            if p ~= dest and dist(pos, p) >= C.jobMinDistM and dist(p, dest) >= C.jobMinDistM then stops[#stops + 1] = p end
+        end
+        if #stops > 0 then pickup = stops[BN.random(#stops)] end
+    end
+    local total = pickup and (dist(pos, pickup) + dist(pickup, dest)) or pick.d
     local speed = kind.urgent and 18 or 12
-    local limit = math.floor(45 + 1.6 * pick.d / speed)
-    local xp = C.jobXp + pick.d / 1000 * C.jobXpPerKm
+    local limit = math.floor(45 + 1.6 * total / speed + (pickup and 20 or 0))
+    local xp = C.jobXp + total / 1000 * C.jobXpPerKm
     if kind.urgent then xp = xp * 1.5 end
-    s.job = { place = pick.place, startAt = BN.now(), limit = limit, xp = math.floor(xp), straight = pick.d,
-              startKm = drivenKm(s), hintAt = BN.now() }
-    chat(s.pid, string.format("%s %s – %s, %s min Zeit (/auftrag stop bricht ab)", kind.icon,
-        tr(lang, kind.text, pick.place.name), fmtDist(lang, pick.d), fmtClock(limit)))
+    local first = pickup or dest
+    s.job = { place = first, dest = pickup and dest or nil, startAt = BN.now(), limit = limit, xp = math.floor(xp),
+              legStraight = dist(pos, first), legStartKm = drivenKm(s), hintAt = BN.now(), finalName = dest.name }
+    local text = pickup and tr(lang, kind.pickup, pickup.name, dest.name) or tr(lang, kind.text, dest.name)
+    chat(s.pid, string.format("%s %s – %s, %s min Zeit (/auftrag stop bricht ab)", kind.icon, text,
+        fmtDist(lang, total), fmtClock(limit)))
     return true
 end
 
@@ -3600,13 +3628,20 @@ function BN.jobTick(s)
     local pos = currentPosition(s)
     local left = j.limit - (now - j.startAt)
     if pos and dist(pos, j.place) <= C.jobRadiusM then
-        local driven = (drivenKm(s) - j.startKm) * 1000
-        if driven < 0.7 * j.straight then
+        local driven = (drivenKm(s) - j.legStartKm) * 1000
+        if driven < 0.7 * j.legStraight then
             -- Ohne echte Fahrt (Sprung, Zuruecksetzen in die Naehe) zaehlt das Ankommen nicht.
             if not j.warned then
                 j.warned = true
                 say(s.pid, "Angekommen – aber ohne die Strecke zu fahren zählt der Auftrag nicht.")
             end
+            return
+        end
+        if j.dest then
+            -- Abgeholt: weiter zum Ziel.
+            j.place, j.dest, j.warned = j.dest, nil, nil
+            j.legStraight, j.legStartKm, j.hintAt = dist(pos, j.place), drivenKm(s), now
+            say(s.pid, "Eingestiegen! Weiter nach %s – %s, noch %s", j.place.name, fmtDist(lang, j.legStraight), fmtClock(left))
             return
         end
         local xp = j.xp

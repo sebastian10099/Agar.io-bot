@@ -2258,12 +2258,30 @@ do
     check(chatContains("🚌 Schulbus: Bring die Kinder zur Schule Grundschule – 3,0 km, 7:25 min Zeit", 96), "Auftrag: Schulbus")
     tick(446)
     check(chatContains("⌛ Zu spät – der Auftrag nach Grundschule ist verfallen", 96) and BN.players[96].job == nil, "Auftrag: Zeit abgelaufen")
+    -- Mit Abholung: erst den Patienten an der Grundschule holen, dann ins Krankenhaus.
+    BN.track(95, 0, { 26000, 0, 0 }, 60)
+    say(95, "/ort neu ort Unfallstelle")
+    local savedRandom = BN.random
+    BN.random = function() return 1 end
+    BN.players[96].lastJobPlace = nil
+    players[96].vehicles[1].pos = { 30000, 0, 0 }; tick(1)
+    chatLog = {}
+    say(96, "/auftrag")
+    check(chatContains("🚑 Notfall bei Grundschule! Hol den Patienten ab und bring ihn ins Krankenhaus St%. Marien – 10,0 km, 15:53 min Zeit", 96), "Auftrag: mit Abholung")
+    say(96, "/auftrag")
+    check(chatContains("Dein Auftrag: Grundschule", 96), "Auftrag: erst zur Abholung")
+    for _ = 1, 175 do move(96, 1, -40, 0, 0); tick(1) end
+    check(chatContains("Eingestiegen! Weiter nach St%. Marien – 3,0 km", 96), "Auftrag: abgeholt, weiter zum Ziel")
+    for _ = 1, 75 do move(96, 1, -40, 0, 0); tick(1) end
+    check(chatContains("✅ Auftrag erledigt: St%. Marien in 4:1%d – %+250 XP", 96), "Auftrag: mit Abholung erledigt (XP gedeckelt)")
+    eq(BN.players[96].pendingJobs + (BN.players[96].record.jobsDone or 0), 2, "Auftrag: zweiter Auftrag gezaehlt")
+    BN.random = savedRandom
     say(96, "/rennen gruppe x")
     chatLog = {}
     say(96, "/stats")
-    check(chatContains("Aufträge erledigt: 1", 96), "Auftrag: in /stats")
+    check(chatContains("Aufträge erledigt: 2", 96), "Auftrag: in /stats")
     _G[events.onPlayerDisconnect](96)
-    eq(readJson(SHARED .. "/players/9696.json").jobsDone, 1, "Auftrag: gespeichert")
+    eq(readJson(SHARED .. "/players/9696.json").jobsDone, 2, "Auftrag: gespeichert")
     -- Manipulierte Datei: unbekannte Typen und Unsinn fallen weg, lange Namen werden gekuerzt.
     writeJson(SHARED .. "/places/gridmap_v2.json", { places = { 5, { type = "x", x = 1, y = 1, z = 1 }, { type = "schule", name = string.rep("A", 99), x = 1, y = 2, z = 3 }, { type = "schule", name = "ohne", x = "a" } } })
     local list = BN.loadPlaces()
