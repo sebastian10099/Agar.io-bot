@@ -93,6 +93,28 @@
   .bar-pnl { height:4px; background:var(--muted); border-radius:2px; overflow:hidden; margin-top:4px; }
   .bar-pnl i { display:block; height:100%; }
 
+  .chart-card { position:relative; }
+  .chart { width:100%; height:220px; outline:none; }
+  .chart:focus-visible { outline:2px solid var(--focus); outline-offset:4px; border-radius:6px; }
+  .chart svg { display:block; width:100%; height:100%; overflow:visible; }
+  .chart .grid-line { stroke:var(--line); stroke-width:1; }
+  .chart .axis-text { fill:var(--dim); font-size:11px; font-variant-numeric:tabular-nums; }
+  .chart .area { fill:var(--blue); fill-opacity:.1; }
+  .chart .line { fill:none; stroke:var(--blue); stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+  .chart .pt { fill:var(--blue); stroke:var(--panel); stroke-width:2; }
+  .chart .end-label { fill:var(--fg); font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .chart .hair { stroke:var(--line-strong); stroke-width:1; }
+  .chart .hit { fill:transparent; }
+  .chart .zero { stroke:var(--line-strong); stroke-width:1; }
+  .tip { position:absolute; z-index:3; pointer-events:none; background:var(--panel); border:1px solid var(--line-strong); border-radius:8px;
+         padding:8px 10px; font-size:12px; box-shadow:0 4px 16px rgba(0,0,0,.18); min-width:150px; }
+  .tip b { font-size:14px; font-variant-numeric:tabular-nums; display:block; }
+  .tip .k { color:var(--dim); }
+  .tip .key { display:inline-block; width:12px; height:2px; background:var(--blue); vertical-align:middle; margin-right:6px; border-radius:1px; }
+  .ebar { display:inline-block; position:relative; width:72px; height:6px; vertical-align:middle; margin-left:8px; }
+  .ebar::before { content:""; position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:var(--line-strong); }
+  .ebar i { position:absolute; top:0; height:6px; background:var(--blue); border-radius:0 3px 3px 0; }
+  .ebar i.neg { border-radius:3px 0 0 3px; }
   .log { font:12px/1.55 ui-monospace, Menlo, monospace; max-height:60vh; overflow:auto; white-space:pre-wrap; }
   .log div { padding:1px 0; } .log .error { color:var(--red); } .log .trade { color:var(--blue); }
   .log .t { color:var(--dim); margin-right:8px; }
@@ -140,9 +162,9 @@
   .formbar { display:flex; gap:8px; align-items:center; margin-top:14px; flex-wrap:wrap; }
   .formbar .status { color:var(--dim); font-size:12px; }
 
-  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); opacity:0;
+  .toast { position:fixed; left:50%; bottom:max(24px, env(safe-area-inset-bottom, 0px)); transform:translateX(-50%) translateY(20px); opacity:0;
            background:var(--fg); color:var(--bg); padding:10px 16px; border-radius:10px; font-size:13px;
-           transition:all .2s; pointer-events:none; z-index:10; max-width:90vw; }
+           transition:opacity .2s, transform .2s; pointer-events:none; z-index:10; max-width:90vw; }
   .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
   .toast.err { background:var(--red); color:#fff; }
 
@@ -188,6 +210,12 @@
     <section>
       <h2>Offene Positionen <span class="spacer"></span><span id="n-open" class="pill"></span></h2>
       <div id="open" class="scroll x"></div>
+    </section>
+    <section class="chart-card">
+      <h2>Kapitalkurve <span class="spacer"></span><span class="note" id="eq-sub" style="margin:0"></span></h2>
+      <div id="equity" class="chart" tabindex="0" role="img" aria-label="Realisierte Bankroll nach jedem Exit"></div>
+      <div id="eq-tip" class="tip" hidden role="status" aria-live="polite"></div>
+      <p class="note">Realisierter Stand nach jedem Exit. Jeder Punkt ist eine Zeile in „Geschlossene Positionen“. Pfeiltasten oder Zeiger zum Ablesen.</p>
     </section>
     <div class="grid two">
       <section>
@@ -342,13 +370,16 @@ function renderOverview(s) {
   }));
 
   const edge = s.edge.slice().sort((a, b) => a.horizon_min - b.horizon_min || ['buy','watch','skip'].indexOf(a.decision) - ['buy','watch','skip'].indexOf(b.decision));
+  const maxAbs = Math.max(1, ...edge.map((r) => Math.abs(r.avg_change_pct || 0)));
+  const ebar = (v) => { const w = Math.min(50, Math.abs(v || 0) / maxAbs * 50); return `<span class="ebar" aria-hidden="true"><i class="${v < 0 ? 'neg' : ''}" style="${v < 0 ? `right:50%;width:${w}%` : `left:50%;width:${w}%`}"></i></span>`; };
   $('edge').innerHTML = table(edge, [
     {h: 'Horizont', f: (r) => r.horizon_min + ' min', num: true},
     {h: 'Entscheidung', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
     {h: 'n', f: (r) => r.n, num: true},
-    {h: 'Ø Rendite', f: (r) => pct(r.avg_change_pct), num: true, cls: (r) => cls(r.avg_change_pct)},
+    {h: 'Ø Rendite', f: (r) => `<span class="${cls(r.avg_change_pct)}">${pct(r.avg_change_pct)}</span>${ebar(r.avg_change_pct)}`, num: true},
     {h: 'Treffer', f: (r) => Math.round(100 * r.win_rate) + '%', num: true},
   ], 'Noch keine Ergebnisse – die ersten kommen 5 Minuten nach dem ersten Kandidaten.');
+  renderEquity(s);
 
   $('closed').innerHTML = table(s.closed, [
     {h: 'Zeit', f: (r) => hhmm(r.closed_at)},
@@ -385,6 +416,85 @@ function renderCandidates(s) {
     renderCandidates(state);
   });
 }
+
+// ---------- equity curve (single series, SVG) ----------
+const eq = { pts: [], idx: -1, geo: null };
+const svgEl = (name, attrs = {}) => { const el = document.createElementNS('http://www.w3.org/2000/svg', name); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
+function niceTicks(lo, hi, n = 4) {
+  const span = hi - lo || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => span / s <= n) || mag * 10;
+  const start = Math.ceil(lo / step) * step, out = [];
+  for (let v = start; v <= hi + 1e-9; v += step) out.push(Math.round(v * 1e6) / 1e6);
+  return out;
+}
+// Tick labels take their precision from the step, so a $0.05 step reads $1.000,05, not $1K three times.
+const tickFmt = (step) => { const d = step >= 1000 ? 0 : Math.max(0, -Math.floor(Math.log10(step))); return (v) => step >= 1000 && Math.abs(v) >= 1000 ? '$' + (v / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : '$' + v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }); };
+function renderEquity(s) {
+  const host = $('equity');
+  const series = (s.equity || []).map((p) => ({ at: p.at, value: s.initial + p.cum_realized, symbol: p.symbol, reason: p.exit_reason, pnl: p.realized_usd }));
+  const unreal = s.unrealized || 0;
+  $('eq-sub').textContent = series.length ? `${series.length} Exits · realisiert ${usd(series[series.length - 1].value - s.initial)} · offen ${usd(unreal)}` : '';
+  if (!series.length) { host.innerHTML = '<div class="empty">Noch keine geschlossene Position – die Kurve beginnt mit dem ersten Exit.</div>'; eq.pts = []; return; }
+  // keep the start of the account as the first point so the curve has a baseline
+  const pts = [{ at: Math.min(s.started_at, series[0].at) , value: s.initial, start: true }, ...series];
+  const W = Math.max(280, host.clientWidth || 600), H = 220, m = { l: 48, r: 64, t: 12, b: 26 };
+  const x0 = pts[0].at, x1 = pts[pts.length - 1].at, xs = x1 - x0 || 1;
+  const vals = pts.map((p) => p.value), lo = Math.min(...vals, s.initial), hi = Math.max(...vals, s.initial), pad = (hi - lo || s.initial * 0.01) * 0.15;
+  const yLo = lo - pad, yHi = hi + pad;
+  const ticks = niceTicks(yLo, yHi), fmt = tickFmt(ticks.length > 1 ? ticks[1] - ticks[0] : 1);
+  m.l = Math.max(48, Math.ceil(Math.max(...ticks.map((v) => fmt(v).length)) * 6.6 + 10));
+  const X = (p) => m.l + (p.at - x0) / xs * (W - m.l - m.r), Y = (v) => m.t + (yHi - v) / (yHi - yLo) * (H - m.t - m.b);
+  const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, 'aria-hidden': 'true' });
+  for (const v of ticks) {
+    svg.append(svgEl('line', { class: 'grid-line', x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v) }));
+    const tx = svgEl('text', { class: 'axis-text', x: m.l - 6, y: Y(v) + 4, 'text-anchor': 'end' }); tx.textContent = fmt(v); svg.append(tx);
+  }
+  svg.append(svgEl('line', { class: 'zero', x1: m.l, x2: W - m.r, y1: Y(s.initial), y2: Y(s.initial) }));
+  const tStart = svgEl('text', { class: 'axis-text', x: m.l, y: H - 8 }); tStart.textContent = hhmm(x0); svg.append(tStart);
+  const tEnd = svgEl('text', { class: 'axis-text', x: W - m.r, y: H - 8, 'text-anchor': 'end' }); tEnd.textContent = hhmm(x1); svg.append(tEnd);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + X(p).toFixed(1) + ' ' + Y(p.value).toFixed(1)).join(' ');
+  svg.append(svgEl('path', { class: 'area', d: d + ` L${X(pts[pts.length - 1]).toFixed(1)} ${Y(s.initial).toFixed(1)} L${X(pts[0]).toFixed(1)} ${Y(s.initial).toFixed(1)} Z` }));
+  svg.append(svgEl('path', { class: 'line', d }));
+  const last = pts[pts.length - 1];
+  svg.append(svgEl('circle', { class: 'pt', cx: X(last), cy: Y(last.value), r: 4.5 }));
+  const lbl = svgEl('text', { class: 'end-label', x: X(last) + 9, y: Y(last.value) + 4 }); lbl.textContent = usd(last.value); svg.append(lbl);
+  const hair = svgEl('line', { class: 'hair', x1: 0, x2: 0, y1: m.t, y2: H - m.b, visibility: 'hidden' }); svg.append(hair);
+  const dot = svgEl('circle', { class: 'pt', r: 4.5, visibility: 'hidden' }); svg.append(dot);
+  const hit = svgEl('rect', { class: 'hit', x: m.l, y: 0, width: W - m.l - m.r, height: H }); svg.append(hit);
+  host.innerHTML = ''; host.append(svg);
+  eq.pts = pts; eq.geo = { X, Y, W, H, m, svg, hair, dot };
+  const nearest = (px) => { let best = 0, bd = Infinity; pts.forEach((p, i) => { const dd = Math.abs(X(p) - px); if (dd < bd) { bd = dd; best = i; } }); return best; };
+  const toPx = (ev) => { const r = svg.getBoundingClientRect(); return (ev.clientX - r.left) / r.width * W; };
+  hit.addEventListener('pointermove', (ev) => showEq(nearest(toPx(ev))));
+  hit.addEventListener('pointerleave', hideEq);
+  if (eq.idx >= 0 && document.activeElement === host) showEq(Math.min(eq.idx, pts.length - 1));
+}
+function showEq(i) {
+  const p = eq.pts[i]; if (!p || !eq.geo) return;
+  const { X, Y, hair, dot, W, svg } = eq.geo; eq.idx = i;
+  hair.setAttribute('x1', X(p)); hair.setAttribute('x2', X(p)); hair.setAttribute('visibility', 'visible');
+  dot.setAttribute('cx', X(p)); dot.setAttribute('cy', Y(p.value)); dot.setAttribute('visibility', 'visible');
+  const tip = $('eq-tip'); tip.replaceChildren();
+  const v = document.createElement('b'); v.textContent = usd(p.value); tip.append(v);
+  const row = document.createElement('div'); const key = document.createElement('span'); key.className = 'key'; row.append(key);
+  row.append(document.createTextNode(p.start ? 'Start · ' + usd(p.value) : `${p.symbol} · ${p.reason} · ${(p.pnl >= 0 ? '+' : '') + usd(p.pnl)}`)); tip.append(row);
+  const when = document.createElement('div'); when.className = 'k'; when.textContent = new Date(p.at * 1000).toLocaleString('de-DE'); tip.append(when);
+  tip.hidden = false;
+  const r = svg.getBoundingClientRect(), host = $('equity').getBoundingClientRect();
+  const left = (X(p) / W) * r.width + (r.left - host.left);
+  tip.style.left = Math.min(left + 12, host.width - tip.offsetWidth - 8) + 'px';
+  tip.style.top = (Y(p.value) / eq.geo.H) * r.height + (r.top - host.top) - tip.offsetHeight - 10 + 'px';
+}
+function hideEq() { if (!eq.geo) return; eq.geo.hair.setAttribute('visibility', 'hidden'); eq.geo.dot.setAttribute('visibility', 'hidden'); $('eq-tip').hidden = true; }
+$('equity').addEventListener('keydown', (ev) => {
+  if (!eq.pts.length) return;
+  if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') { ev.preventDefault(); showEq(Math.max(0, Math.min(eq.pts.length - 1, (eq.idx < 0 ? eq.pts.length - 1 : eq.idx) + (ev.key === 'ArrowRight' ? 1 : -1)))); }
+  else if (ev.key === 'Home') { ev.preventDefault(); showEq(0); } else if (ev.key === 'End') { ev.preventDefault(); showEq(eq.pts.length - 1); }
+  else if (ev.key === 'Escape') hideEq();
+});
+$('equity').addEventListener('focus', () => { if (eq.pts.length) showEq(eq.idx < 0 ? eq.pts.length - 1 : eq.idx); });
+$('equity').addEventListener('blur', hideEq);
+new ResizeObserver(() => { if (state) renderEquity(state); }).observe($('equity'));
 
 function renderLog(s) {
   $('log').innerHTML = s.events.map((e) => `<div class="${esc(e.level)}"><span class="t">${hhmm(e.at)}</span>${esc(e.message)}</div>`).join('');

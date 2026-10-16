@@ -239,6 +239,18 @@ class Store:
                         "WHERE closed_at IS NOT NULL AND closed_at >= ?", (since,))
         return float(row["s"]) if row else 0.0
 
+    def equity_curve(self, limit: int = 2000) -> list[dict[str, Any]]:
+        """Realized bankroll after each closed position, oldest first: the
+        series behind the equity chart. Entry fees of still-open positions are
+        not in here; the dashboard adds the live unrealized value as a last point."""
+        rows = self._rows("SELECT closed_at AS at, realized_usd, symbol, exit_reason FROM positions "
+                          "WHERE status='closed' ORDER BY closed_at ASC LIMIT ?", (limit,))
+        total = 0.0
+        for r in rows:
+            total += float(r["realized_usd"] or 0)
+            r["cum_realized"] = round(total, 4)
+        return rows
+
     def stats(self) -> dict[str, Any]:
         closed = self._one("SELECT COUNT(*) AS n, COALESCE(SUM(realized_usd),0) AS pnl, "
                            "SUM(CASE WHEN realized_usd>0 THEN 1 ELSE 0 END) AS wins "

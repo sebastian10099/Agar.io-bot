@@ -129,6 +129,26 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok(true, 'Position manuell geschlossen, aus der Tabelle verschwunden');
   ok((await p.textContent('#closed')).includes('manual'), 'in geschlossenen mit Grund manual');
 
+  // --- Kapitalkurve: ein Exit ist jetzt da -> ein Datenpunkt + Startpunkt ---
+  await p.waitForFunction(() => document.querySelector('#equity svg'));
+  const eqPts = await p.$$eval('#equity svg circle.pt', (c) => c.length);
+  ok(eqPts >= 1, 'Kapitalkurve gezeichnet (Endmarker vorhanden)');
+  ok((await p.$$('#equity svg path.line')).length === 1 && (await p.$$('#equity svg path.area')).length === 1, 'eine Linie, eine Flächenfüllung');
+  ok((await p.$$eval('#equity svg text.end-label', (t) => t.map((x) => x.textContent))).some((x) => x.includes('$')), 'Endwert direkt beschriftet');
+  const eqBox = await p.$eval('#equity svg', (e) => e.getBoundingClientRect());
+  await p.mouse.move(eqBox.x + eqBox.width * 0.6, eqBox.y + eqBox.height * 0.5);
+  await p.waitForFunction(() => !document.querySelector('#eq-tip').hidden);
+  ok((await p.textContent('#eq-tip')).includes('$'), 'Fadenkreuz-Tooltip zeigt Wert: ' + (await p.textContent('#eq-tip')).replace(/\s+/g, ' ').slice(0, 60));
+  await p.mouse.move(5, 5); await p.waitForFunction(() => document.querySelector('#eq-tip').hidden);
+  await p.focus('#equity'); await p.waitForFunction(() => !document.querySelector('#eq-tip').hidden);
+  await p.keyboard.press('ArrowLeft'); const tipA = await p.textContent('#eq-tip');
+  await p.keyboard.press('ArrowRight'); const tipB = await p.textContent('#eq-tip');
+  ok(tipA !== tipB, 'Pfeiltasten bewegen die Ablesung');
+  await p.keyboard.press('Escape'); ok(await p.$eval('#eq-tip', (e) => e.hidden), 'Escape blendet die Ablesung aus');
+  await p.evaluate(() => document.activeElement.blur());
+  ok((await p.$$('#edge .ebar')).length >= 1 || (await p.$$('#edge tbody tr')).length === 0, 'Edge-Balken in der Tabelle');
+  await p.screenshot({ path: SHOTS + '/13-equity.png', clip: { x: 0, y: 0, width: 1400, height: 700 } });
+
   // --- Pause ---
   await p.click('#b-toggle');
   await p.waitForFunction(() => !document.querySelector('#paused').hidden);

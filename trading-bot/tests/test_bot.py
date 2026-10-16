@@ -121,6 +121,24 @@ class PaperTests(unittest.TestCase):
         self.assertEqual(self.paper.can_open("solana", "x"), "daily loss limit hit")
 
 
+class EquityCurveTests(unittest.TestCase):
+    def test_cumulative_realized_in_time_order(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite")
+            paper = Paper(store, CFG)
+            p = fixture("RUN")
+            for i, (mult, t) in enumerate(((1.6, 100.0), (0.6, 200.0), (1.2, 300.0))):
+                pid = paper.open(p, t)
+                pos = store.position(pid)
+                paper.close_manually(pos, pos["entry_price"] * mult, t + 10)
+            curve = store.equity_curve()
+            self.assertEqual([r["at"] for r in curve], [110.0, 210.0, 310.0])
+            self.assertGreater(curve[0]["cum_realized"], 0)
+            self.assertLess(curve[1]["cum_realized"], curve[0]["cum_realized"])
+            self.assertAlmostEqual(curve[-1]["cum_realized"], store.realized_all(), places=3)
+            store.close()
+
+
 class TrackerTests(unittest.TestCase):
     def test_fill_due_computes_forward_change(self):
         with tempfile.TemporaryDirectory() as d:

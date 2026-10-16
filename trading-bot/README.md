@@ -31,8 +31,11 @@ meldet: Der python.org-Build bringt keine Zertifikate mit. Einmalig
 
 Das Dashboard ist zugleich die Steuerung. Vier Reiter:
 
-- **Übersicht** – offene Positionen mit Live-Gain, Hoch, Rest-Anteil und einem
-  Knopf zum manuellen Schließen; Edge-Report; geschlossene Positionen.
+- **Übersicht** – offene Positionen mit Live-Gain, Hoch, Rest-Anteil, den
+  **Zielkursen** (Stop, nächste Leiterstufe, Trailing sobald scharf, Restzeit bis
+  zum Zeit-Stop) und einem Knopf zum manuellen Schließen; die **Kapitalkurve**
+  (realisierter Stand nach jedem Exit, mit Fadenkreuz und Tastaturablesung);
+  Edge-Report mit Balken; geschlossene Positionen.
 - **Steuerung** – jeder Parameter der Strategie als Formular, gruppiert nach
   Allgemein / Risiko / Filter / Strategie / Exits. Geänderte Felder werden
   markiert, Fehler stehen direkt am Feld, „Speichern“ gilt **sofort** für den
@@ -40,11 +43,18 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   Dazu: Standardwerte laden, Paper-Konto zurücksetzen (nur Positionen, oder
   alles inklusive Edge-Daten).
 - **Kandidaten** – alle bewerteten Tokens mit Score, Kennzahlen und den
-  Gründen für die Entscheidung; filterbar nach buy/watch/skip und Suchtext.
+  Gründen für die Entscheidung; filterbar nach buy/watch/skip und Suchtext,
+  sortierbar per Klick auf die Spaltenköpfe.
 - **Protokoll** – was der Bot getan hat, inklusive jeder Änderung über die Seite.
 
 Oben rechts: **Jetzt pollen** (sofort neue Tokens holen) und **Pause**.
 Pause stoppt nur neue Einstiege – Exits offener Positionen laufen weiter.
+Tasten: `1`–`4` Reiter, `p` Pause, `r` Pollen, `/` Suche.
+
+Die Seite ist vollständig per Tastatur bedienbar, jedes Bedienelement hat einen
+Namen für Screenreader, Rückmeldungen werden vorgelesen, und alle Farbpaare
+erfüllen WCAG AA in beiden Themes – nachgemessen, nicht geschätzt
+(`tests/ui/verify.js` prüft Tastaturbedienung und Beschriftungen mit).
 Der Punkt links im Titel zeigt, ob der Bot lebt (grün), noch nie gepollt hat
 (gelb) oder länger als drei Intervalle nichts gemeldet hat (rot).
 

@@ -188,5 +188,6 @@ class Engine:
             "stats": self.store.stats(), "open_positions": open_positions,
             "closed": self.store.closed_positions(50), "candidates": self.store.candidates(80),
             "edge": self.store.edge_report(), "events": self.store.events(60),
+            "equity": self.store.equity_curve(),
             "config": settings.flat(self.cfg),
         }
