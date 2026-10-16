@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.42"
+VERSION="1.43"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1906,6 +1906,7 @@ watch_run() {
     watch_index
     watch_backup msgs
     watch_peak msgs
+    watch_capacity msgs
     watch_online msgs
     watch_weekly msgs
     watch_season msgs
@@ -2040,6 +2041,36 @@ PY
 )
     # Nur einen vollstaendigen Index schreiben (bei einem Fehler bleibt der alte; das Plugin erkennt veraltete).
     [[ $idx == "# beamnet-index 2 "* ]] && printf '%s\n' "$idx" | safe put "$SHARED/players-index.tsv" 644
+    return 0
+}
+
+# Netzwerk fast voll: ab CAPACITY_WARN % (Standard 90) aller Plaetze einmal melden, mit den Servern, die noch Platz
+# haben; Entwarnung unter 80 %. CAPACITY_WARN=- schaltet ab.
+watch_capacity() {
+    local -n cout=$1
+    local warn nr pl used=0 total=0 free="" pct
+    warn=$(conf_get CAPACITY_WARN)
+    [[ $warn == - ]] && return 0
+    [[ $warn =~ ^[0-9]{1,3}$ ]] && (( 10#$warn > 0 )) || warn=90
+    for nr in $(servers); do
+        pl=$(players_of "$(cfg "$nr" Port)")
+        [[ $pl =~ ^([0-9]+)/([0-9]+)$ ]] || continue
+        used=$(( used + BASH_REMATCH[1] ))
+        total=$(( total + BASH_REMATCH[2] ))
+        (( BASH_REMATCH[2] > BASH_REMATCH[1] )) && free+="Server $nr ($(map_short "$(cfg "$nr" Map)")): $(( BASH_REMATCH[2] - BASH_REMATCH[1] )) frei · "
+    done
+    (( total > 0 )) || return 0
+    pct=$(( used * 100 / total ))
+    if (( pct >= 10#$warn )); then
+        if [[ ! -f $STATE_DIR/capacity-high ]]; then
+            : >"$STATE_DIR/capacity-high"
+            if [[ -n $free ]]; then free="Noch Platz: ${free% · }"; else free="Alle Server sind voll – Zeit für einen weiteren Server?"; fi
+            cout+=("📈 Netzwerk fast voll: $used von $total Plätzen belegt ($pct %). $free")
+        fi
+    elif [[ -f $STATE_DIR/capacity-high ]] && (( pct < 80 )); then
+        rm -f "$STATE_DIR/capacity-high"
+        cout+=("✅ Wieder Platz im Netzwerk: $used von $total Plätzen belegt.")
+    fi
     return 0
 }
 
@@ -2442,6 +2473,8 @@ BACKUP_KEEP=14
 # Last-Warnung: CPU ueber CPU_WARN % (eines Kerns) fuer LOAD_MINUTES Minuten, RAM ueber MEM_WARN_MB. "-" = aus.
 CPU_WARN=90
 MEM_WARN_MB=1500
+# Netzwerk fast voll: Meldung ab diesem Anteil belegter Plaetze (Prozent), mit freien Servern. - = aus.
+CAPACITY_WARN=90
 LOAD_MINUTES=5
 # Haengt ein Server (Dienst laeuft, aber seit HANG_MIN Minuten kein Lebenszeichen von BeamNetCore)? Antwortet er auch
 # auf seinem Port nicht mehr, startet ihn der Waechter mit AUTO_RESTART=1 neu; sonst nur Meldung. 0 = aus.

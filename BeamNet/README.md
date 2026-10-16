@@ -106,6 +106,9 @@ beamnet watch test         # Testnachricht an Discord/Telegram
 - Er sichert **täglich die Spielerdaten** (Kilometer, XP, Rekorde, Banns, Protokoll) nach
   `/root/beamnet-backups/daten-<Datum>.tgz`, ab 4 Uhr (`BACKUP_HOUR`), 14 Tage lang (`BACKUP_KEEP`). Zurückholen:
   `beamnet restore` zeigt die Stände, `beamnet restore 2026-10-15` setzt zurück.
+- **Netzwerk fast voll:** Sind 90 % aller Plätze belegt (`CAPACITY_WARN`), kommt eine Meldung mit den Servern, die
+  noch Platz haben, oder bei allen voll der Hinweis auf einen weiteren Server; Entwarnung unter 80 %. Im Spiel zeigt
+  `/server` volle Server mit „(voll)“.
 - Er überwacht die **Last** je Server: Liegt einer 5 Minuten lang über 90 % eines CPU-Kerns oder belegt er mehr als
   1500 MB RAM, kommt eine Warnung an Discord/Telegram (einmal, mit Entwarnung). Einstellbar: `CPU_WARN`,
   `MEM_WARN_MB`, `LOAD_MINUTES` (`-` schaltet ab).

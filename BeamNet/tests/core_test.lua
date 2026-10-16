@@ -291,6 +291,14 @@ _G[events.onChatMessage](1, "Sebi", "/server")
 check(chatContains("BeamNet | Server 1 · gridmap_v2 · 2/8 · Port 30814  ← hier", 1), "/server eigener Server")
 check(chatContains("BeamNet | Server 2 · west_coast_usa · 3/8 · Port 30815", 1), "/server zweiter Server")
 check(not chatContains("Server 3 · italy", 1), "/server ohne veraltete Server")
+do
+    local fv = io.open(SHARED .. "/servers/30817.json", "w")
+    fv:write(json.encode({ name = "BeamNet | Server 4", port = 30817, map = "utah", players = 8, max = 8, updated = clock }))
+    fv:close()
+    _G[events.onChatMessage](1, "Sebi", "/server")
+    check(chatContains("BeamNet | Server 4 · utah · 8/8 %(voll%) · Port 30817", 1), "/server markiert volle Server")
+    os.remove(SHARED .. "/servers/30817.json")
+end
 
 -- /wo <Name>: dieser Server live, die anderen aus ihren Lebenszeichen, veraltete nicht.
 do

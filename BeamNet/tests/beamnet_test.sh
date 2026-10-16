@@ -1072,6 +1072,23 @@ lacks "$out" "ausgelastet" "load: CPU_WARN=- schaltet ab"
 sed -i 's/^CPU_WARN=.*/CPU_WARN=90/' "$T/beamnet.conf"
 rm -f "$T"/state/beammp-1.service.cpu "$T"/state/beammp-1.service.mem "$T"/watch/cpu-* "$T"/watch/cpuhigh-*
 
+# --- Netzwerk fast voll (watch_capacity) ------------------------------------------------------------------------------
+S="$T/root/shared/beamnet"
+rm -f "$S"/servers/*.json "$T/watch/capacity-high"
+cap() { echo "{\"port\":$((30813 + $1)),\"players\":$2,\"max\":$3,\"updated\":$(date +%s)}" >"$S/servers/$((30813 + $1)).json"; }
+cap 1 8 8; cap 2 7 8; cap 3 6 8
+out=$("$TOOL" watch 2>&1)
+lacks "$out" "fast voll" "capacity: unter 90 % keine Meldung"
+cap 3 8 8
+out=$("$TOOL" watch 2>&1)
+contains "$out" "📈 Netzwerk fast voll: 23 von 24 Plätzen belegt \\(95 %\\)\\. Noch Platz: Server 2 \\([a-z_]+\\): 1 frei$" "capacity: Meldung mit freien Servern"
+lacks "$("$TOOL" watch 2>&1)" "fast voll" "capacity: nur einmal"
+cap 1 2 8; cap 2 2 8; cap 3 2 8
+contains "$("$TOOL" watch 2>&1)" "✅ Wieder Platz im Netzwerk: 6 von 24 Plätzen belegt" "capacity: Entwarnung"
+cap 1 8 8; cap 2 8 8; cap 3 8 8
+contains "$("$TOOL" watch 2>&1)" "Alle Server sind voll – Zeit für einen weiteren Server\\?" "capacity: alle voll"
+rm -f "$S"/servers/*.json "$T/watch/capacity-high"
+
 # --- Ansagen von der Konsole (beamnet ansage) --------------------------------------------------------------------------
 A="$T/root/shared/beamnet/announcements.json"
 rm -f "$A"
