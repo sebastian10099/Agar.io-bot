@@ -203,6 +203,7 @@ beamnet restart all
 | `/team` | **Teams**: `/team gründen <Name>`, `/team beitreten <Name>`, `/team verlassen`, `/team liste` (Rangliste nach Kilometern aller Mitglieder). Höchstens 20 Mitglieder, netzweit; auch auf der Statusseite |
 | `/regeln` | Regeln des Netzwerks (englisch `/rules`). Eigene Regeln: `"rules": ["…", "…"]` in `config.json` (höchstens 10 Zeilen). Neue Spieler bekommen beim ersten Besuch eine Begrüßung mit den Regeln und werden den anderen vorgestellt (`"welcomeNew": false` schaltet ab) |
 | `/wo <Name>` | Auf welchem Server fährt ein Freund gerade? (Teil des Namens reicht; englisch `/where`) |
+| Tages-Serie | Wer an aufeinanderfolgenden Tagen mindestens 1 km fährt, bekommt ab dem zweiten Tag Bonus-XP (10 je Serientag, höchstens 60 ab Tag 7). `/stats` zeigt die Serie, beim Betreten kommt eine Erinnerung. Einstellbar: `streakXp`, `streakMaxDays`, `streakMinKm` (0 = aus) |
 | `/freund <Name>` | Freundesliste (bis 20): Du bekommst eine Nachricht, sobald ein Freund auf irgendeinem BeamNet-Server online kommt; beim Betreten siehst du, welche Freunde wo fahren. `/freund` zeigt die Liste, `/freund weg <Name>` entfernt (englisch `/friend`, `/friend remove`) |
 | `/melden <Name> <Grund>` | Meldung an die Admins: sofort im Chat an Admins auf dem Server, über den Wächter an Discord/Telegram (höchstens alle 2 Minuten; englisch `/report`) |
 | `/km` | Eigene Kilometer |

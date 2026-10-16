@@ -3302,6 +3302,7 @@ COMMANDS = [
     ("/km", "Kilometer dieser Sitzung"), ("/rennen &lt;Strecke&gt;", "Zeitrennen starten (Strecken: /rennen)"),
     ("/rekorde", "Streckenrekorde dieser Map"), ("/vote map &lt;Name&gt;", "Abstimmung über eine andere Map"),
     ("/event", "Läuft gerade ein XP-Event?"), ("/melden &lt;Name&gt; &lt;Grund&gt;", "Meldung an die Admins"),
+    ("/stats", "zeigt auch deine Tages-Serie: jeden Tag ab 1 km fahren gibt ab dem 2. Tag Bonus-XP"),
     ("/regeln", "Die Regeln"), ("/lang en", "English (zurück: /lang de)"),
 ]
 cmd_rows = [f"<tr><td><b>{c}</b></td><td>{d}</td></tr>" for c, d in COMMANDS]

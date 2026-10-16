@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.30"
+BN.VERSION = "1.31"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -90,6 +90,11 @@ local defaults = {
     -- Freundesliste (/freund): hoechstens maxFriends Eintraege; alle friendCheckSec Sekunden wird geprueft, wer neu
     -- im Netzwerk ist (andere Server ueber ihre Lebenszeichen).
     maxFriends = 20,
+    -- Tages-Serie: Wer an aufeinanderfolgenden Tagen mindestens streakMinKm faehrt, bekommt ab dem zweiten Tag
+    -- streakXp Bonus-XP je Serientag (hoechstens streakMaxDays Tage gezaehlt; 0 = aus).
+    streakXp = 10,
+    streakMaxDays = 7,
+    streakMinKm = 1,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -475,11 +480,13 @@ end
 local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBestXp = true, raceRecordXp = true,
                        spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true,
                        mapVoteSec = true, joinLimit = true, filterStrikes = true, weeklyTrackXp = true,
-                       groupRaceDelaySec = true, maxFriends = true, friendCheckSec = true }
+                       groupRaceDelaySec = true, maxFriends = true, friendCheckSec = true,
+                       streakXp = true, streakMaxDays = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
-                     filterStrikes = 1, filterMuteSec = 10, maxFriends = 1, friendCheckSec = 5 }
+                     filterStrikes = 1, filterMuteSec = 10, maxFriends = 1, friendCheckSec = 5,
+                     streakMaxDays = 2, streakMinKm = 0.1 }
 
 function BN.loadOverrides()
     local data = readFile(C.sharedDir .. "/config.json")
@@ -808,6 +815,11 @@ local EN = {
     ["%s ist jetzt in deiner Freundesliste – du bekommst Bescheid, wenn er online kommt."] =
         "%s is now on your friend list – you get a message when they come online.",
     ["Freunde online: %s"] = "Friends online: %s",
+    ["🔥 %d Tage in Folge gefahren – +%d Bonus-XP! Morgen wieder fahren hält die Serie."] =
+        "🔥 %d days in a row – +%d bonus XP! Drive again tomorrow to keep the streak.",
+    ["Serie: %d Tage in Folge (beste: %d)"] = "Streak: %d days in a row (best: %d)",
+    ["🔥 Deine Serie: %d Tage – fahr heute %s, dann gibt es +%d Bonus-XP."] =
+        "🔥 Your streak: %d days – drive %s today for +%d bonus XP.",
     -- Ligen (Standardnamen)
     ["Silber"] = "Silver", ["Platin"] = "Platinum", ["Diamant"] = "Diamond", ["Legende"] = "Legend",
 }
@@ -862,7 +874,7 @@ local function normalizeRecord(rec, id, name)
     rec.id = id or rec.id
     rec.name = name or rec.name
     for _, k in ipairs({ "km", "seconds", "weekKm", "topSpeedKmh", "bonusXp", "racesFinished", "recordsSet",
-                         "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm" }) do
+                         "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm", "streak", "bestStreak" }) do
         rec[k] = tonumber(rec[k]) or 0
     end
     for _, k in ipairs({ "maps", "achievements", "dayMaps", "mapKm" }) do
@@ -871,6 +883,7 @@ local function normalizeRecord(rec, id, name)
     for m, v in pairs(rec.mapKm) do rec.mapKm[m] = tonumber(v) or nil end
     rec.day = tonumber(rec.day)
     rec.lastChallengeDay = tonumber(rec.lastChallengeDay)
+    rec.streakDay = tonumber(rec.streakDay)
     -- Bis 1.8 gab es nur dayDone (bezogen auf rec.day).
     if rec.lastChallengeDay == nil and rec.dayDone == true and rec.day then rec.lastChallengeDay = rec.day end
     rec.dayDone = rec.day ~= nil and rec.lastChallengeDay == rec.day
@@ -1028,6 +1041,13 @@ function BN.normalizeSession(s)
     return s
 end
 
+-- Laufende Tages-Serie: zaehlt nur, wenn zuletzt heute oder gestern gefahren wurde.
+function BN.streakOf(rec)
+    local day = tonumber(rec and rec.streakDay)
+    if not day or day < dayNumber() - 1 then return 0 end
+    return tonumber(rec.streak) or 0
+end
+
 -- Neue Sitzung (Join oder Plugin-Neustart mit Spielern online).
 function BN.addPlayer(pid)
     local name = (MP and MP.GetPlayerName and MP.GetPlayerName(pid)) or ("Spieler " .. tostring(pid))
@@ -1141,6 +1161,17 @@ function BN.savePlayer(s)
     rec.bonusXp = rec.bonusXp + s.pendingBonus
     rec.racesFinished = rec.racesFinished + s.pendingRaces
     rec.recordsSet = rec.recordsSet + s.pendingRecords
+    -- Tages-Serie: der erste Tag zaehlt, Bonus-XP gibt es ab dem zweiten Tag in Folge.
+    if C.streakXp > 0 and rec.dayKm >= C.streakMinKm and rec.streakDay ~= rec.day then
+        rec.streak = rec.streakDay == rec.day - 1 and rec.streak + 1 or 1
+        rec.streakDay = rec.day
+        rec.bestStreak = math.max(rec.bestStreak, rec.streak)
+        if rec.streak >= 2 then
+            local bonus = C.streakXp * (math.min(rec.streak, C.streakMaxDays) - 1)
+            rec.bonusXp = rec.bonusXp + bonus
+            if not s.leaving then say(s.pid, "🔥 %d Tage in Folge gefahren – +%d Bonus-XP! Morgen wieder fahren hält die Serie.", rec.streak, bonus) end
+        end
+    end
     local retroXp = 0
     for id, u in pairs(s.unlocked) do
         if not rec.achievements[id] then
@@ -2497,6 +2528,10 @@ function commands.stats(pid, arg)
         local titles, parts = BN.titlesFor(s.id), {}
         for i = 1, math.min(3, #titles) do parts[#parts + 1] = BN.titleText(titles[i], lang) end
         if #parts > 0 then say(pid, "Titel: %s", table.concat(parts, " · ")) end
+        local streak = BN.streakOf(s.record)
+        if streak >= 2 or (tonumber(s.record.bestStreak) or 0) >= 2 then
+            say(pid, "Serie: %d Tage in Folge (beste: %d)", streak, math.max(streak, tonumber(s.record.bestStreak) or 0))
+        end
     end
 end
 
@@ -3734,6 +3769,7 @@ function BN.tick()
     -- Sitzungen von Spielern entfernen, die ohne Abmeldung verschwunden sind.
     for pid, s in pairs(BN.players) do
         if online[pid] == nil then
+            s.leaving = true
             guarded("Speichern", BN.savePlayer, s)
             BN.players[pid] = nil
             guarded("Abstimmung", BN.voteForget, pid)
@@ -3818,6 +3854,11 @@ function BN_onPlayerJoin(pid)
     end
     local ev = BN.activeEvent()
     if ev then say(pid, "XP-Event läuft: %s-fache XP bis %s Uhr.", fmtFactor(ev.factor), os.date("%H:%M", ev["until"])) end
+    local streak = BN.streakOf(s.record)
+    if C.streakXp > 0 and streak >= 1 and s.record.streakDay == dayNumber() - 1 then
+        say(pid, "🔥 Deine Serie: %d Tage – fahr heute %s, dann gibt es +%d Bonus-XP.", streak, fmtKm(C.streakMinKm),
+            C.streakXp * (math.min(streak + 1, C.streakMaxDays) - 1))
+    end
     if #(s.record.friends or {}) > 0 then
         local text, n = BN.friendsOnlineText(s, BN.langOf(pid))
         if n > 0 then say(pid, "Freunde online: %s", text) end
@@ -3834,7 +3875,10 @@ end
 
 function BN_onPlayerDisconnect(pid)
     local s = BN.players[pid]
-    if s then guarded("Speichern", BN.savePlayer, s) end
+    if s then
+        s.leaving = true
+        guarded("Speichern", BN.savePlayer, s)
+    end
     BN.players[pid] = nil
     guarded("Abstimmung", BN.voteForget, pid)
     BN.writeStatus()

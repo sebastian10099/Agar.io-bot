@@ -2031,6 +2031,65 @@ do
     os.remove(SHARED .. "/servers/30815.json")
 end
 
+-- --- Tages-Serie ------------------------------------------------------------------------------------------------
+do
+    local savedClock = clock
+    players[88] = { name = "Serie", ids = { beammp = "8888" }, vehicles = {} }
+    _G[events.onPlayerJoin](88)
+    local s = BN.players[88]
+    local function driveDay(km)
+        s.pendingKm = km
+        check(BN.savePlayer(s), "Serie: speichern")
+        return readJson(SHARED .. "/players/8888.json")
+    end
+    chatLog = {}
+    local rec = driveDay(2)
+    check(rec.streak == 1 and rec.streakDay == BN.dayNumber(), "Serie: erster Tag zaehlt")
+    check(not chatContains("Tage in Folge", 88), "Serie: am ersten Tag noch kein Bonus")
+    local bonus0 = rec.bonusXp
+    clock = clock + 86400
+    rec = driveDay(0.5)
+    check(rec.streak == 1, "Serie: unter der Mindeststrecke zaehlt der Tag noch nicht")
+    rec = driveDay(0.6)
+    check(rec.streak == 2, "Serie: zweiter Tag in Folge")
+    eq(rec.bonusXp - bonus0, 10, "Serie: +10 Bonus-XP am zweiten Tag")
+    check(chatContains("🔥 2 Tage in Folge gefahren – %+10 Bonus%-XP", 88), "Serie: Meldung")
+    rec = driveDay(3)
+    eq(rec.bonusXp - bonus0, 10, "Serie: nur einmal am Tag")
+    for _ = 3, 9 do
+        clock = clock + 86400
+        rec = driveDay(1)
+    end
+    eq(rec.streak, 9, "Serie: 9 Tage")
+    -- Tag 2..9: 10, 20, 30, 40, 50, 60, 60, 60 (ab Tag 7 gedeckelt)
+    eq(rec.bonusXp - bonus0, 330, "Serie: Bonus waechst bis zur Obergrenze")
+    eq(rec.bestStreak, 9, "Serie: beste Serie")
+    -- Erinnerung beim Betreten am naechsten Tag.
+    _G[events.onPlayerDisconnect](88)
+    clock = clock + 86400
+    chatLog = {}
+    _G[events.onPlayerJoin](88)
+    s = BN.players[88]
+    check(chatContains("🔥 Deine Serie: 9 Tage – fahr heute 1%.0 km, dann gibt es %+60 Bonus%-XP", 88), "Serie: Erinnerung beim Betreten")
+    -- Einen Tag ausgelassen: neue Serie, /stats zeigt die beste.
+    clock = clock + 86400
+    rec = driveDay(1)
+    eq(rec.streak, 1, "Serie: nach einer Luecke neu")
+    chatLog = {}
+    say(88, "/stats")
+    check(chatContains("Serie: 1 Tage in Folge %(beste: 9%)", 88), "Serie: in /stats")
+    -- Wer geht, bekommt keine Chatnachricht mehr (Speichern beim Abmelden).
+    clock = clock + 86400
+    s.pendingKm = 5
+    chatLog = {}
+    _G[events.onPlayerDisconnect](88)
+    rec = readJson(SHARED .. "/players/8888.json")
+    check(rec.streak == 2 and not chatContains("Tage in Folge", 88), "Serie: beim Abmelden gezaehlt, ohne Nachricht")
+    eq(BN.streakOf({ streak = 5, streakDay = BN.dayNumber() - 2 }), 0, "Serie: nach zwei Tagen Pause vorbei")
+    players[88] = nil
+    clock = savedClock
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }
