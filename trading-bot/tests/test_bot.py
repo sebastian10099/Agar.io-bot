@@ -61,9 +61,17 @@ class StrategyTests(unittest.TestCase):
         v = evaluate(p, RUG.summary(p["token"]), CFG)
         self.assertEqual(v["decision"], "watch", v)
 
-    def test_unknown_rugcheck_blocks_when_required(self):
-        v = evaluate(fixture("RUN"), None, CFG)
-        self.assertEqual(v["decision"], "skip")
+    def test_unknown_rugcheck_means_watch_only(self):
+        p = fixture("RUN")
+        v = evaluate(p, None, CFG)
+        self.assertEqual(v["decision"], "watch")
+        self.assertTrue(v["watch_only"]); self.assertGreater(v["score"], 0)
+        self.assertTrue(any("rugcheck unavailable" in r for r in v["reasons"]))
+        cfg = json.loads(json.dumps(CFG)); cfg["filters"]["allow_rugcheck_unknown"] = True
+        v = evaluate(p, None, cfg)
+        self.assertFalse(v["watch_only"])                      # tolerated: the score alone decides (rugcheck part is neutral)
+        self.assertNotIn("rugcheck unavailable", " ".join(v["reasons"]))
+
 
 
 class PaperTests(unittest.TestCase):

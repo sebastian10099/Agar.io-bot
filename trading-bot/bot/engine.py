@@ -127,6 +127,8 @@ class Engine:
                         if want == "buy" and ai["confidence"] < float(self.cfg["ai"].get("min_confidence", 0.6)):
                             want = "watch"
                             verdict["reasons"].append("KI-Vertrauen unter Schwelle")
+                        if want == "buy" and verdict.get("watch_only"):
+                            want = "watch"                      # no RugCheck answer: the model may not override the safety rule
                         decision = want
                 if decision == "buy" and not self.paused:
                     blocked = self.paper.can_open(chain, p["token"])

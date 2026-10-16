@@ -199,7 +199,7 @@ class Store:
         ("falling", "fallend", "filters.min_price_change_m5_pct"),
         ("FDV", "FDV zu hoch", "filters.max_fdv_usd"),
         ("no price", "kein Kurs", None),
-        ("rugcheck unavailable", "RugCheck nicht erreichbar", "filters.allow_rugcheck_unknown"),
+        ("rugcheck unavailable", "RugCheck nicht erreichbar (nur beobachtet)", "filters.allow_rugcheck_unknown"),
         ("rugcheck danger", "RugCheck: Gefahr", "filters.require_rugcheck"),
         ("rugcheck score", "RugCheck-Score zu hoch", "filters.max_rugcheck_score"),
         ("score ", "Score unter Schwelle (watch)", "scoring.min_score"),

@@ -61,10 +61,13 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
     if p["price_usd"] <= 0:
         reasons.append("no price")
 
+    watch_only = False
     if f["require_rugcheck"] and p.get("chain") == "solana":
         if rug is None:
             if not f["allow_rugcheck_unknown"]:
-                reasons.append("rugcheck unavailable")
+                # no safety check possible: never buy, but keep scoring and tracking the
+                # token so the outage does not also blind the edge report
+                watch_only = True
         else:
             if rug["danger"]:
                 reasons.append("rugcheck danger: " + ", ".join(rug["danger"][:3]))
@@ -99,4 +102,7 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
     notes = [f"{k} {v:.0f}" for k, v in parts.items()]
     if decision == "watch":
         notes.insert(0, f"score {score} < {cfg['scoring']['min_score']}")
-    return {"decision": decision, "score": score, "reasons": notes}
+    if watch_only:
+        decision = "watch"
+        notes.insert(0, "rugcheck unavailable - watch only, no buy without the safety check")
+    return {"decision": decision, "score": score, "reasons": notes, "watch_only": watch_only}

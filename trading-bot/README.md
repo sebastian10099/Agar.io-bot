@@ -195,7 +195,7 @@ und 30, nur weil er den Token in Minute 1 schon gesehen hat.
 - Käufe/Verkäufe ≥ 1.2 — es muss mehr rein- als rausgehen
 - 5-Minuten-Kursänderung zwischen 0 % und +150 % — nichts Fallendes, nichts Parabolisches
 - FDV ≤ 20 M $
-- RugCheck: keine `danger`-Einstufung (Freeze-Authority, Holder-Konzentration, …), Score ≤ 2000. Ist RugCheck nicht erreichbar, wird **nicht** gekauft.
+- RugCheck: keine `danger`-Einstufung (Freeze-Authority, Holder-Konzentration, …), Score ≤ 2000. Ist RugCheck nicht erreichbar, wird der Token bewertet und verfolgt (`watch`), aber **nicht** gekauft – auch nicht von der KI.
 
 **Score** aus Liquidität, Aktivität (Volumen/Liquidität), Kaufdruck, Momentum,
 Alter (5–30 min ideal), Socials und RugCheck. Ab 60 Punkten `buy`, darunter `watch`.

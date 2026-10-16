@@ -409,3 +409,22 @@ class ControlApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WatchOnlyTests(unittest.TestCase):
+    def test_ai_decide_cannot_buy_without_rugcheck(self):
+        class NoRug:
+            def summary(self, mint): return None
+            def health(self): return {"calls": 1, "fails": 1, "last_error": "down", "ok": False}
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0)
+            cfg = copy.deepcopy(CFG); cfg["ai"]["mode"] = "decide"
+            adv = FakeAdvisor({"RUN": {"decision": "buy", "confidence": 0.95, "reasons": ["top"], "risk_flags": []}})
+            eng = Engine(cfg, store, dex, NoRug(), clock=dex.now, advisor=adv)
+            counts = eng.poll_once()
+            self.assertEqual(counts["buy"], 0)
+            run = next(c for c in store.candidates() if c["symbol"] == "RUN")
+            self.assertEqual(run["decision"], "watch"); self.assertEqual(run["snapshot"]["ai_decision"], "buy")
+            self.assertTrue(any("rugcheck unavailable" in r for r in run["reasons"]))
+            self.assertEqual(store.open_positions(), [])
+            store.close()
