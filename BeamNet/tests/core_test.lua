@@ -109,6 +109,7 @@ local C = BN.config
 check(events.onChatMessage == "BN_onChatMessage", "onChatMessage registriert")
 C.commandLimit = 100000            -- Befehls-Bremse fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.tutorialXp = 0                   -- Einsteiger-Pfad fuer die allgemeinen Tests aus (eigener Test weiter unten)
+C.alertEverySec = 0                -- Einsatz-Alarm fuer die allgemeinen Tests aus (eigener Test weiter unten)
 check(events.BN_Tick == "BN_Tick" and timers.BN_Tick == 1000, "Takt registriert")
 eq(BN.server.name, "BeamNet | Server 1", "Servername ohne Farbcodes")
 eq(BN.server.port, 30814, "Port trotz Kommentar")
@@ -2650,6 +2651,56 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Einsatz-Alarm ------------------------------------------------------------------------------------------------
+do
+    os.execute('rm -rf "' .. SHARED .. '/places"')
+    os.execute('mkdir -p "' .. SHARED .. '/places"')
+    writeJson(SHARED .. "/places/gridmap_v2.json", { places = { { type = "feuerwehr", name = "Wache", x = 60000, y = 0, z = 0 } } })
+    C.alertEverySec = 600
+    local savedRandom = BN.random
+    BN.random = function() return 1 end
+    players[126] = { name = "Schnell", ids = { beammp = "12626" }, vehicles = { [1] = { pos = { 61000, 0, 0 }, tim = 0 } } }
+    players[127] = { name = "Dort", ids = { beammp = "12727" }, vehicles = { [1] = { pos = { 60010, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](126); _G[events.onPlayerJoin](127)
+    tick(1)
+    BN.alert, BN.nextAlertAt = nil, clock
+    chatLog = {}
+    BN.alertTick()
+    check(chatContains("🚨 Großeinsatz! Die Feuerwache Wache braucht Verstärkung – wer zuerst da ist, bekommt %+50 XP", 126), "Einsatz: Alarm an alle")
+    tick(2)
+    check(BN.alert ~= nil and not chatContains("war zuerst", 127), "Einsatz: wer schon dort war, gewinnt nicht")
+    local b0 = BN.totals(BN.players[126]).bonusXp
+    for _ = 1, 50 do move(126, 1, -20, 0, 0); tick(1) end
+    check(chatContains("🏆 Schnell war zuerst beim Einsatz Wache", 127), "Einsatz: Sieger an alle")
+    eq(BN.totals(BN.players[126]).bonusXp - b0, 50, "Einsatz: XP fuer den Sieger")
+    check(BN.alert == nil, "Einsatz: danach vorbei")
+    -- Niemand kommt: nach 5 Minuten vorbei.
+    players[126].vehicles[1].pos = { 61000, 0, 0 }; tick(1)
+    BN.nextAlertAt = clock
+    BN.alertTick()
+    chatLog = {}
+    tick(301)
+    check(chatContains("Einsatz bei Wache vorbei – niemand war schnell genug", 126), "Einsatz: verfaellt")
+    -- Zu wenige Spieler auf dem Server: kein Alarm.
+    _G[events.onPlayerDisconnect](127); players[127] = nil
+    local online = 0
+    for _ in pairs(BN.players) do online = online + 1 end
+    local savedMin = C.alertMinPlayers
+    C.alertMinPlayers = online + 1
+    BN.alert, BN.nextAlertAt = nil, clock
+    chatLog = {}
+    BN.alertTick()
+    check(BN.alert == nil and not chatContains("🚨", 126), "Einsatz: nicht bei zu wenigen Spielern")
+    C.alertMinPlayers = savedMin
+    BN.random = savedRandom
+    C.alertEverySec = 0
+    BN.alert, BN.nextAlertAt = nil, nil
+    if BN.players[126] then BN.players[126].pendingBonus, BN.players[126].pendingKm = 0, 0 end
+    _G[events.onPlayerDisconnect](126); players[126] = nil
+    for _, id in ipairs({ "12626", "12727" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+    os.execute('rm -rf "' .. SHARED .. '/places"')
+end
+
 -- --- Verfolgungsjagd (/fangen) --------------------------------------------------------------------------------
 do
     players[101] = { name = "Jaeger", ids = { beammp = "10101" }, vehicles = { [1] = { pos = { 40000, 0, 0 }, tim = 0 } } }
@@ -2883,8 +2934,8 @@ do
     chatLog = {}
     _G[events.onPlayerJoin](117)
     check(chatContains("✨ Neu seit deinem letzten Besuch:", 117), "Neuheiten: fuer Spieler von frueher")
-    check(chatContains("^  Orte vorschlagen", 117) and chatContains("^  Rennserien: /serie", 117) and chatContains("^  Duell: /duell", 117), "Neuheiten: die drei neuesten")
-    check(not chatContains("Verfolgungsjagd: /fangen", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
+    check(chatContains("^  Einsatz%-Alarm", 117) and chatContains("^  Orte vorschlagen", 117) and chatContains("^  Rennserien: /serie", 117), "Neuheiten: die drei neuesten")
+    check(not chatContains("Duell: /duell", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
     _G[events.onPlayerDisconnect](117)
     eq(readJson(SHARED .. "/players/11717.json").seenVersion, BN.VERSION, "Neuheiten: Version gemerkt")
     chatLog = {}
@@ -2895,7 +2946,7 @@ do
     local r = readJson(SHARED .. "/players/11717.json"); r.seenVersion = "1.43"; writeJson(SHARED .. "/players/11717.json", r)
     chatLog = {}
     _G[events.onPlayerJoin](117)
-    check(chatContains("^  Duell", 117) and chatContains("^  Rennserien", 117) and chatContains("^  Orte vorschlagen", 117) and not chatContains("Verfolgungsjagd", 117), "Neuheiten: nur was seitdem neu ist")
+    check(chatContains("^  Einsatz", 117) and chatContains("^  Rennserien", 117) and chatContains("^  Orte vorschlagen", 117) and not chatContains("Verfolgungsjagd", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
     _G[events.onPlayerDisconnect](117); players[117] = nil
     -- Ganz neue Spieler bekommen die Begruessung statt Neuheiten.
     players[118] = { name = "Ganzneu", ids = { beammp = "11818" }, vehicles = {} }

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.52"
+BN.VERSION = "1.53"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -126,6 +126,11 @@ local defaults = {
     tutorialDoneXp = 50,
     -- Rennserien (/serie): Bonus-XP fuer eine ganze Serie (und fuer einen Serienrekord zusaetzlich raceRecordXp).
     seriesXp = 40,
+    -- Einsatz-Alarm: etwa alle alertEverySec Sekunden (mit Zufall) ein Ziel fuer alle; wer zuerst da ist, bekommt
+    -- alertXp. Nur mit mindestens alertMinPlayers Spielern und Orten auf der Map (0 = aus).
+    alertEverySec = 1800,
+    alertXp = 50,
+    alertMinPlayers = 2,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -516,7 +521,8 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true, jobCooldownSec = true, jobXpPerHour = true,
                        communityKm = true, communityXp = true, chaseJoinSec = true, chaseHeadStartSec = true,
                        chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true, chaseXpPerDay = true, chaseCooldownSec = true,
-                       tipEverySec = true, tutorialXp = true, tutorialDoneXp = true, seriesXp = true }
+                       tipEverySec = true, tutorialXp = true, tutorialDoneXp = true, seriesXp = true,
+                       alertEverySec = true, alertXp = true, alertMinPlayers = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
@@ -895,6 +901,7 @@ local EN = {
     ["Duell: /duell <Name> <Strecke> – Zeitrennen gegen einen Freund"] = "Duel: /duel <name> <track> – time trial against a friend",
     ["Rennserien: /serie – mehrere Strecken nacheinander, die Zeiten zählen zusammen"] = "Race series: /series – several tracks in a row, the times add up",
     ["Orte vorschlagen: /ort vorschlag krankenhaus <Name> – für neue Fahraufträge"] = "Suggest places: /place suggest hospital <name> – for new driving jobs",
+    ["Einsatz-Alarm: ab und zu ein Ziel für alle – wer zuerst da ist, bekommt Bonus-XP"] = "Call-outs: now and then a target for everyone – first one there gets bonus XP",
     -- Einsteiger-Pfad
     ["Fahr deinen ersten Kilometer"] = "Drive your first kilometer",
     ["Erledige einen Auftrag: /auftrag"] = "Finish a job: /job",
@@ -909,6 +916,17 @@ local EN = {
     ["Einsteiger-Pfad: %d von %d geschafft (je +%d XP, alle zusammen +%d XP extra)"] =
         "Starter path: %d of %d done (+%d XP each, +%d XP extra for all)",
     ["Einsteiger-Pfad %d/%d: %s (/start)"] = "Starter path %d/%d: %s (/start)",
+    -- Einsatz-Alarm
+    ["🚨 Notfall! Ein Patient muss sofort ins Krankenhaus %s"] = "🚨 Emergency! A patient has to get to %s hospital right now",
+    ["🚨 Schulbus kaputt – die Kinder warten an der Schule %s"] = "🚨 School bus broke down – the children are waiting at %s school",
+    ["🚨 Großeinsatz! Die Feuerwache %s braucht Verstärkung"] = "🚨 Major incident! %s fire station needs backup",
+    ["🚨 Verfolgung! Die Polizei %s braucht Hilfe"] = "🚨 Pursuit! %s police need help",
+    ["🚨 Brand an der Tankstelle %s!"] = "🚨 Fire at %s gas station!",
+    ["🚨 Abschleppen! Ein Auto ist liegen geblieben bei der Werkstatt %s"] = "🚨 Tow job! A car broke down at %s garage",
+    ["🚨 Einsatz bei %s!"] = "🚨 Call-out at %s!",
+    [" – wer zuerst da ist, bekommt +%d XP (5 min)"] = " – first one there gets +%d XP (5 min)",
+    ["Einsatz bei %s vorbei – niemand war schnell genug."] = "Call-out at %s over – nobody was fast enough.",
+    ["🏆 %s war zuerst beim Einsatz %s (%s) – +%d XP!"] = "🏆 %s was first at the call-out %s (%s) – +%d XP!",
     -- Tipps
     ["Tipp: /auftrag – fahr einen Patienten ins Krankenhaus oder Kinder zur Schule und sammle XP."] =
         "Tip: /job – drive a patient to hospital or children to school and earn XP.",
@@ -2020,6 +2038,7 @@ BN.NEWS = {
     { "1.44", "Duell: /duell <Name> <Strecke> – Zeitrennen gegen einen Freund" },
     { "1.51", "Rennserien: /serie – mehrere Strecken nacheinander, die Zeiten zählen zusammen" },
     { "1.52", "Orte vorschlagen: /ort vorschlag krankenhaus <Name> – für neue Fahraufträge" },
+    { "1.53", "Einsatz-Alarm: ab und zu ein Ziel für alle – wer zuerst da ist, bekommt Bonus-XP" },
 }
 
 local function versionNum(v)
@@ -4676,6 +4695,62 @@ function BN.tipTick()
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------
+-- Einsatz-Alarm: ein Ziel fuer alle auf diesem Server, 5 Minuten Zeit. Es zaehlt nur, wer beim Alarm mindestens
+-- jobMinDistM entfernt war (wer schon dort steht, gewinnt nicht), und wer im Fahrzeug ankommt.
+
+BN.ALERT_TEXT = {
+    krankenhaus = "🚨 Notfall! Ein Patient muss sofort ins Krankenhaus %s",
+    schule = "🚨 Schulbus kaputt – die Kinder warten an der Schule %s",
+    feuerwehr = "🚨 Großeinsatz! Die Feuerwache %s braucht Verstärkung",
+    polizei = "🚨 Verfolgung! Die Polizei %s braucht Hilfe",
+    tankstelle = "🚨 Brand an der Tankstelle %s!",
+    werkstatt = "🚨 Abschleppen! Ein Auto ist liegen geblieben bei der Werkstatt %s",
+}
+local ALERT_DEFAULT = "🚨 Einsatz bei %s!"
+
+function BN.alertTick()
+    if C.alertEverySec <= 0 or C.alertXp <= 0 then return end
+    local now = BN.now()
+    local a = BN.alert
+    if a then
+        if now - a.at > 300 then
+            BN.alert = nil
+            sayAll("Einsatz bei %s vorbei – niemand war schnell genug.", a.place.name)
+            return
+        end
+        for pid, s in pairs(BN.players) do
+            local start = a.start[pid]
+            local pos = currentPosition(s)
+            if start and start >= C.jobMinDistM and pos and now - (pos.at or 0) <= 3 and dist(pos, a.place) <= C.jobRadiusM then
+                BN.alert = nil
+                s.pendingBonus = s.pendingBonus + C.alertXp
+                sayAll("🏆 %s war zuerst beim Einsatz %s (%s) – +%d XP!", s.name, a.place.name, fmtClock(now - a.at), C.alertXp)
+                return
+            end
+        end
+        return
+    end
+    if not BN.nextAlertAt then BN.nextAlertAt = now + math.floor(C.alertEverySec * (0.5 + math.random())) return end
+    if now < BN.nextAlertAt then return end
+    BN.nextAlertAt = now + math.floor(C.alertEverySec * (0.5 + math.random()))
+    local count = 0
+    for _ in pairs(BN.players) do count = count + 1 end
+    if count < C.alertMinPlayers then return end
+    local places = BN.loadPlaces()
+    if #places == 0 then return end
+    local place = places[BN.random(#places)]
+    local start = {}
+    for pid, s in pairs(BN.players) do
+        local pos = currentPosition(s)
+        if pos then start[pid] = dist(pos, place) end
+    end
+    BN.alert = { place = place, at = now, start = start }
+    sayEach(function(lang)
+        return tr(lang, BN.ALERT_TEXT[place.type] or ALERT_DEFAULT, place.name) .. tr(lang, " – wer zuerst da ist, bekommt +%d XP (5 min)", C.alertXp)
+    end)
+end
+
+-- ---------------------------------------------------------------------------------------------------------------------
 -- Wochenziel fuer alle: alle Fahrer zusammen communityKm km in der Kalenderwoche. Das Ziel der Woche steht in
 -- community.json (der erste Server der Woche legt es fest, alle uebernehmen es). Fortschritt = Summe der Wochen-km
 -- aller Fahrer (Bestenliste, hoechstens eine Minute alt).
@@ -5323,6 +5398,7 @@ function BN.tick()
     guarded("Verfolgungsjagd", BN.chaseTick)
     guarded("Tipps", BN.tipTick)
     guarded("Bestenliste", BN.rankTick)
+    guarded("Einsatz", BN.alertTick)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)
