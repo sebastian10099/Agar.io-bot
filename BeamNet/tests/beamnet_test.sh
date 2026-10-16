@@ -1617,6 +1617,25 @@ lacks "$log" "getMe" "telegram: Bot-Name nur einmal am Tag abgefragt"
 : >"$T/curl.log"; "$TOOL" watch >/dev/null 2>&1
 contains "$(cat "$T/curl.log")" "getUpdates\\?offset=18" "telegram: naechster Abruf ab dem Offset"
 lacks "$(cat "$T/curl.argv")" "ABCDEFghijklmnop" "telegram: Token auch beim Abruf nie auf der Befehlszeile"
+# /ansage aus Telegram: nur fuer Konten aus TELEGRAM_ADMINS.
+cat >"$T/tg-updates.json" <<'JSON'
+{"ok":true,"result":[
+ {"update_id":30,"message":{"chat":{"id":-1001234567890},"from":{"id":42},"text":"/ansage Heute 20 Uhr Gruppenrennen!\tTab"}},
+ {"update_id":31,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"text":"/ansage Fremder Text"}},
+ {"update_id":32,"message":{"chat":{"id":-1001234567890},"from":{"id":42,"is_bot":true},"text":"/ansage Bot"}}
+]}
+JSON
+sed -i 's/^TELEGRAM_ADMINS=.*/TELEGRAM_ADMINS=42/' "$T/beamnet.conf"
+rm -f "$T/watch/telegram-offset" "$T/root/shared/beamnet/announcements.json"
+: >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+log=$(cat "$T/curl.log")
+contains "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" '"text": "Heute 20 Uhr Gruppenrennen! Tab"' "telegram /ansage: Admin schickt eine Ansage an alle Server"
+contains "$log" '"text":"📢 Ansage an alle Server: Heute 20 Uhr Gruppenrennen! Tab"' "telegram /ansage: Bestätigung"
+contains "$log" '"text":"Ansagen nur für Admins' "telegram /ansage: Fremde werden abgewiesen"
+lacks "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" "Fremder Text|\"Bot\"" "telegram /ansage: nur von Admins, nicht von Bots"
+sed -i 's/^TELEGRAM_ADMINS=.*/TELEGRAM_ADMINS=/' "$T/beamnet.conf"
+rm -f "$T/root/shared/beamnet/announcements.json"
 sed -i 's/^TELEGRAM_COMMANDS=.*/TELEGRAM_COMMANDS=0/' "$T/beamnet.conf"
 : >"$T/curl.log"; "$TOOL" watch >/dev/null 2>&1
 lacks "$(cat "$T/curl.log")" "getUpdates" "telegram: TELEGRAM_COMMANDS=0 schaltet ab"

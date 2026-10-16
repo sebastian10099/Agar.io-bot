@@ -104,7 +104,9 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   Nachrichten aus anderen Chats und Befehle an andere Bots (`/online@AndererBot`) ignoriert er, höchstens 5 Antworten
   je Minute (weitere folgen in der nächsten). An mit `TELEGRAM_COMMANDS=1` (neue Installationen: schon an; ältere
   Konfigurationen ohne den Eintrag: aus, damit andere Programme mit demselben Bot-Token weiter ihre Nachrichten
-  bekommen). Abschalten: `TELEGRAM_COMMANDS=0`. Tipp: in @BotFather mit
+  bekommen). Abschalten: `TELEGRAM_COMMANDS=0`. **Ansagen aus Telegram:** Konten aus `TELEGRAM_ADMINS=123456,789012`
+  (Telegram-Zahlen-IDs, z. B. über @userinfobot) dürfen `/ansage [HH:MM] <Text>` schreiben – die Ansage geht an alle
+  Server; andere bekommen einen Hinweis, Bots werden ignoriert. Tipp: in @BotFather mit
   `/setcommands` die Befehle hinterlegen, dann schlägt Telegram sie vor.
 - **Wer ist online:** alle 60 Minuten (`ONLINE_REPORT=…`, 0 = aus) die Spieler je Server **mit Namen**, z. B.
   „👥 Gerade online: 14 Spieler · Server 1 (italy): Ana, Max, Sebi · Server 3 (utah): …“ – nur, wenn jemand fährt und

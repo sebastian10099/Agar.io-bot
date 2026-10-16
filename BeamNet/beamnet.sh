@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.60"
+VERSION="1.61"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2496,7 +2496,7 @@ watch_online() {
 # /server, /hilfe beantworten (hoechstens 5 je Lauf; Antwort also innerhalb einer Minute). Nachrichten aus anderen
 # Chats werden ignoriert. TELEGRAM_COMMANDS=0 schaltet ab.
 watch_telegram() {
-    local token chat offset raw cmd reply n=0 total nr pl
+    local token chat offset raw cmd arg reply n=0 total nr pl
     # Nur, wenn ausdruecklich eingeschaltet: getUpdates "verbraucht" die Nachrichten – ein anderes Programm mit
     # demselben Bot-Token bekaeme sie sonst nicht mehr (aeltere Konfigurationen ohne den Schluessel: aus).
     [[ $(conf_get TELEGRAM_COMMANDS) == 1 ]] || return 0
@@ -2516,7 +2516,10 @@ watch_telegram() {
     fi
     botname=$(head -c 64 "$STATE_DIR/telegram-bot" 2>/dev/null | tr -cd 'A-Za-z0-9_')
     raw=$(curl -fsS -m 10 -K <(printf 'url = "https://api.telegram.org/bot%s/getUpdates?offset=%s&timeout=0&allowed_updates=%%5B%%22message%%22%%5D"\n' "$token" "$offset") 2>/dev/null) || return 0
-    while IFS=$'\t' read -r offset cmd; do
+    local admins
+    admins=$(conf_get TELEGRAM_ADMINS | tr -d ' ')
+    [[ $admins =~ ^[0-9]{1,15}(,[0-9]{1,15}){0,19}$ ]] || admins=""
+    while IFS=$'\t' read -r offset cmd arg; do
         [[ $offset =~ ^[0-9]+$ ]] || continue
         # Hoechstens 5 Antworten je Lauf; weitere Befehle bleiben fuer den naechsten Lauf (Offset nicht weiter).
         if [[ -n $cmd ]] && (( n >= 5 )); then break; fi
@@ -2540,6 +2543,17 @@ watch_telegram() {
                 done
                 ;;
             top) reply=$(telegram_top) ;;
+            ansage)
+                # Nur Telegram-Konten aus TELEGRAM_ADMINS (der Parser prueft den Absender); Text wie bei beamnet ansage.
+                if [[ -z $arg ]]; then
+                    reply="Aufruf: /ansage [HH:MM] <Text>"
+                elif (YES=1 cmd_ansage "$arg") >/dev/null 2>&1; then
+                    reply="📢 Ansage an alle Server: ${arg:0:300}"
+                else
+                    reply="Ansage fehlgeschlagen – bitte beamnet doctor prüfen."
+                fi
+                ;;
+            nichtadmin) reply="Ansagen nur für Admins (TELEGRAM_ADMINS in /etc/beamnet.conf)." ;;
             rekord)
                 reply=$(python3 -I - "$SHARED/peak.json" <<'PY' 2>/dev/null
 import json, os, stat, sys, time
@@ -2557,10 +2571,10 @@ print(f"🏆 Rekord: {best} Spieler gleichzeitig ({when}) · heute bisher: {toda
 PY
 )
                 ;;
-            *) reply="BeamNet-Bot: /online · /top · /rekord · /server" ;;
+            *) reply="BeamNet-Bot: /online · /top · /rekord · /server${admins:+ · /ansage (Admins)}" ;;
         esac
         NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$reply" || true
-    done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" <<<"$raw" 2>/dev/null)
+    done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" "$admins" <<<"$raw" 2>/dev/null)
     return 0
 }
 
@@ -2569,6 +2583,7 @@ read -r -d '' TG_PARSE_PY <<'PY'
 import json, re, sys
 chat = sys.argv[1]
 bot = (sys.argv[2] if len(sys.argv) > 2 else "").lower()
+admins = set(a for a in (sys.argv[3] if len(sys.argv) > 3 else "").split(",") if a.isdigit())
 try:
     data = json.loads(sys.stdin.read())
 except Exception:
@@ -2584,11 +2599,20 @@ for u in data["result"][:100]:
     same = str(c.get("id")) == chat or (chat.startswith("@") and ("@" + str(c.get("username", ""))).lower() == chat.lower())
     text = m.get("text") if isinstance(m.get("text"), str) else ""
     hit = re.match(r"^/([a-z]+)(@[A-Za-z0-9_]+)?(\s|$)", text.strip().lower())
+    arg = ""
     if same and hit and not (bot and hit.group(2) and hit.group(2)[1:] != bot):
         word = hit.group(1)
         cmd = {"online": "online", "wer": "online", "top": "top", "bestenliste": "top", "rekord": "rekord",
                "record": "rekord", "server": "server", "servers": "server"}.get(word, "hilfe" if word in ("hilfe", "help", "start") else "")
-    print(f"{nxt}\t{cmd}")
+        if word in ("ansage", "announce"):
+            sender = m.get("from") if isinstance(m.get("from"), dict) else {}
+            if str(sender.get("id")) in admins and not sender.get("is_bot"):
+                cmd = "ansage"
+                # Text nach dem Befehl (Original-Schreibweise), ohne Steuerzeichen und Tabulatoren, hoechstens 300 Zeichen
+                arg = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", text.strip().split(None, 1)[1] if len(text.strip().split(None, 1)) > 1 else "").split())[:300]
+            else:
+                cmd = "nichtadmin"
+    print(f"{nxt}\t{cmd}\t{arg}")
 PY
 
 
@@ -2855,6 +2879,8 @@ TELEGRAM_TOKEN=
 TELEGRAM_CHAT=
 # Der Bot beantwortet im eingetragenen Chat /online, /top, /rekord und /server (innerhalb einer Minute). 0 = aus.
 TELEGRAM_COMMANDS=1
+# Telegram-Konten (Zahlen-IDs, mit Komma), die im Chat /ansage [HH:MM] <Text> an alle Server schicken duerfen.
+TELEGRAM_ADMINS=
 # "Wer ist online" (Spieler je Server mit Namen) alle N Minuten an Discord/Telegram, wenn jemand faehrt und sich die
 # Runde geaendert hat. 0 = aus.
 ONLINE_REPORT=60
