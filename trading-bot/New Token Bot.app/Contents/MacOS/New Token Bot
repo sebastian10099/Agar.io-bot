@@ -15,8 +15,7 @@ if [ -f "$BUNDLE/Contents/Resources/project.path" ]; then
 else
   PROJECT="$(cd "$BUNDLE/.." && pwd)"
 fi
-PORT="${NEW_TOKEN_BOT_PORT:-8765}"
-URL="http://127.0.0.1:$PORT/"
+FIRST_PORT="${NEW_TOKEN_BOT_PORT:-8765}"
 DATA="$HOME/Library/Application Support/NewTokenBot"
 LOG="$DATA/bot.log"
 mkdir -p "$DATA"
@@ -25,12 +24,27 @@ say_error() {
   /usr/bin/osascript -e "display dialog \"$1\" with title \"New Token Bot\" buttons {\"OK\"} default button 1 with icon stop" >/dev/null 2>&1
 }
 
-alive() { /usr/bin/curl -s -m 2 -o /dev/null "$URL/api/state"; }
+# Only OUR bot counts as running: /api/state must carry the marker. Another
+# program on the same port (Local Studio uses 8765 too) is skipped, and the
+# bot starts on the next free port instead.
+ours() { /usr/bin/curl -s -m 2 "http://127.0.0.1:$1/api/state" 2>/dev/null | /usr/bin/grep -q '"app": "new-token-bot"'; }
+free_port() {
+  /usr/bin/curl -s -m 2 -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null
+  [ $? -eq 7 ]      # 7 = connection refused = nobody listens
+}
 
-if alive; then
-  /usr/bin/open "$URL"
-  exit 0
+PORT=""
+for p in $(seq "$FIRST_PORT" $((FIRST_PORT + 9))); do
+  if ours "$p"; then /usr/bin/open "http://127.0.0.1:$p/"; exit 0; fi
+done
+for p in $(seq "$FIRST_PORT" $((FIRST_PORT + 9))); do
+  if free_port "$p"; then PORT="$p"; break; fi
+done
+if [ -z "$PORT" ]; then
+  say_error "Kein freier Port zwischen $FIRST_PORT und $((FIRST_PORT + 9)). Andere Programme beenden und erneut versuchen."
+  exit 1
 fi
+URL="http://127.0.0.1:$PORT/"
 
 if [ ! -f "$PROJECT/launch.sh" ]; then
   say_error "Projektordner nicht gefunden: $PROJECT. Bitte install-app.sh im Ordner trading-bot erneut ausfuehren."
@@ -46,7 +60,7 @@ nohup /bin/bash ./launch.sh --no-open --port "$PORT" ${NEW_TOKEN_BOT_ARGS:-} >> 
 
 for _ in $(seq 1 40); do
   sleep 0.5
-  alive && { /usr/bin/open "$URL"; exit 0; }
+  ours "$PORT" && { /usr/bin/open "$URL"; exit 0; }
   if ! kill -0 $! 2>/dev/null; then break; fi
 done
 

@@ -443,3 +443,30 @@ class AppBundleTests(unittest.TestCase):
                 self.assertIn("beendet", store.events(3)[0]["message"])
             finally:
                 c.close(); server.shutdown(); server.server_close(); store.close()
+
+
+class PortTests(unittest.TestCase):
+    def test_state_carries_the_app_marker(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex()
+            eng = Engine(CFG, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            self.assertEqual(eng.state()["app"], "new-token-bot")
+            store.close()
+
+    def test_bind_server_skips_occupied_ports(self):
+        from bot.main import bind_server
+        import socket
+        taken = socket.socket(); taken.bind(("127.0.0.1", 0)); taken.listen(1)
+        port = taken.getsockname()[1]
+        made = []
+        def factory(engine, host, p):
+            s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+            s.bind((host, p)); made.append(s); return s      # raises OSError on the taken port
+        try:
+            server, chosen = bind_server(None, "127.0.0.1", port, tries=3, factory=factory)
+            self.assertIsNotNone(server); self.assertIn(chosen, (port + 1, port + 2))
+            server2, _ = bind_server(None, "127.0.0.1", port, tries=1, factory=factory)
+            self.assertIsNone(server2)
+        finally:
+            taken.close()
+            for s in made: s.close()

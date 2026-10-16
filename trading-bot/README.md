@@ -24,6 +24,11 @@ aufgerufen): prüft HTTPS mit dem gewählten Python und installiert bei
 es fehlt – beides per `pip install --user`, ohne dass du ein Terminal brauchst.
 Klappt HTTPS mit keinem Python, steht die Abhilfe im Log und im Dialog.
 
+**Port-Konflikte:** Der Bot nimmt Port 8765; ist der belegt (Local Studio
+nutzt denselben), weicht er automatisch auf den nächsten freien aus und
+nennt die Adresse im Log. Die App erkennt den eigenen Bot an einer
+Kennung in `/api/state` und öffnet nie die Seite eines fremden Programms.
+
 **Die App** (`New Token Bot.app`) startet den Bot im Hintergrund, öffnet die
 Steuerseite im Browser und beendet sich über den Knopf **Beenden** oben
 rechts. Läuft der Bot schon, öffnet ein Doppelklick nur die Seite. Das Log

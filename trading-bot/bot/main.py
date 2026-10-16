@@ -67,6 +67,21 @@ def persist_to(home: Path):
     return save
 
 
+PORT_TRIES = 10
+
+
+def bind_server(engine: Engine, host: str, port: int, tries: int = PORT_TRIES, factory=None):
+    """Bind the dashboard on `port` or the next free one. Another program on
+    the port (Local Studio and friends like 8765 too) must not stop the bot."""
+    factory = factory or make_server
+    for candidate in range(port, port + tries):
+        try:
+            return factory(engine, host, candidate), candidate
+        except OSError as error:
+            print(f"Port {candidate} belegt ({error.strerror or error}), versuche {candidate + 1}")
+    return None, port
+
+
 def build(cfg: dict[str, Any], home: Path, demo: bool) -> Engine:
     store = Store(home / ("demo.sqlite" if demo else "bot.sqlite"))
     if demo:
@@ -111,7 +126,10 @@ def main(argv: list[str] = None) -> int:
 
     host = cfg["dashboard"]["host"]
     port = args.port or int(cfg["dashboard"]["port"])
-    server = make_server(engine, host, port)
+    server, port = bind_server(engine, host, port)
+    if server is None:
+        print(f"Kein freier Port zwischen {port} und {port + PORT_TRIES - 1} auf {host}.")
+        return 3
     threading.Thread(target=server.serve_forever, daemon=True, name="dashboard").start()
     thread = threading.Thread(target=engine.run, daemon=True, name="engine")
     thread.start()

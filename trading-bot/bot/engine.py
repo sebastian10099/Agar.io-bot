@@ -15,6 +15,7 @@ from .tracker import Tracker
 
 RESEE_SECONDS = 30 * 60  # do not re-evaluate the same token within half an hour
 VERSION = "0.9"
+APP_ID = "new-token-bot"      # marker in /api/state so starters can tell this bot from whatever else listens on the port
 TICK_KEEP_DAYS = 7       # price ticks of positions closed longer ago are dropped at start
 
 
@@ -351,7 +352,7 @@ class Engine:
                 "age_min": round((now - pos["opened_at"]) / 60, 1),
             })
         return {
-            "mode": self.cfg["mode"], "demo": self.demo, "paused": self.paused, "now": now,
+            "app": APP_ID, "mode": self.cfg["mode"], "demo": self.demo, "paused": self.paused, "now": now,
             "started_at": self.started_at, "poll_seconds": self.cfg["poll_seconds"],
             "wall_now": time.time(), "last_poll_wall": self.last_poll_wall,
             "chains": self.cfg["chains"],
