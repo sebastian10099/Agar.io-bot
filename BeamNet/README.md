@@ -201,6 +201,7 @@ beamnet restart all
 | `/km` | Eigene Kilometer |
 | `/rennen` | Strecken dieser Map mit Rekord |
 | `/rennen` | Strecken dieser Map mit Rekord, dazu die **Strecke der Woche** (jede Woche eine andere aus dem ganzen Netzwerk; der erste gültige Lauf der Woche bringt 50 Bonus-XP, `weeklyTrackXp`) |
+| `/rennen gruppe <Name>` | **Gruppenrennen**: In 30 Sekunden geht es los. Alle auf dem Server werden eingeladen und machen mit `/rennen mit` mit. Countdown, Fehlstart-Erkennung, Zieleinlauf an alle, Ergebnisliste und Bonus-XP für die Plätze 1–3 (30/20/10) |
 | `/rennen <Name>` | Auf Zeit fahren: zum Start fahren, die Zeit läuft ab dem Verlassen des Startbereichs. Alle 500 m eine Zwischenzeit mit dem Abstand zur eigenen Bestzeit und zum Streckenrekord |
 | `/rennen stop` | Rennmodus beenden |
 | `/rekorde [Name]` | Top 5 einer Strecke bzw. die Rekorde aller Strecken der Map |

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.26"
+BN.VERSION = "1.27"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -84,6 +84,9 @@ local defaults = {
     filterMuteSec = 300,
     -- Strecke der Woche: Bonus-XP fuer den ersten gueltigen Lauf je Woche (0 = aus).
     weeklyTrackXp = 50,
+    -- Gruppenrennen (/rennen gruppe <Strecke>): Start nach groupRaceDelaySec, Ende spaetestens nach groupRaceMaxSec.
+    groupRaceDelaySec = 30,
+    groupRaceMaxSec = 900,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
     commandWindowSec = 10,
@@ -466,7 +469,8 @@ end
 -- Werte, die ganze Zahlen sein muessen (z. B. "+40 XP" im Chat).
 local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBestXp = true, raceRecordXp = true,
                        spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true,
-                       mapVoteSec = true, joinLimit = true, filterStrikes = true, weeklyTrackXp = true }
+                       mapVoteSec = true, joinLimit = true, filterStrikes = true, weeklyTrackXp = true,
+                       groupRaceDelaySec = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
@@ -603,6 +607,22 @@ local EN = {
         "Great to have you, %s! Your kilometres and XP count on every BeamNet server.",
     ["%s ist zum ersten Mal im BeamNet – herzlich willkommen!"] = "%s is new to BeamNet – welcome!",
     ["Regeln:"] = "Rules:",
+    ["Gruppenrennen auf %s beendet – niemand im Ziel."] = "Group race on %s over – nobody finished.",
+    ["Gruppenrennen auf %s – Ergebnis: %s"] = "Group race on %s – result: %s",
+    ["Platz %d im Gruppenrennen: +%d Bonus-XP!"] = "Place %d in the group race: +%d bonus XP!",
+    ["Gruppenrennen %s: Start in %d s"] = "Group race %s: start in %d s",
+    ["LOS! Gruppenrennen auf %s – die Zeit läuft ab dem Verlassen des Startbereichs."] =
+        "GO! Group race on %s – your time starts when you leave the start area.",
+    ["Du fährst mit! Fahr zum Start von %s – Start in %d s."] = "You're in! Drive to the start of %s – start in %d s.",
+    ["Gruppenrennen: %s im Ziel – %s (vorläufig Platz %d)"] = "Group race: %s finished – %s (provisional place %d)",
+    ["Fehlstart! Zurück in den Startbereich – Start in %d s."] = "False start! Back to the start area – start in %d s.",
+    ["Aufruf: /rennen gruppe <Strecke> – die Strecke braucht ein Ziel. Liste: /rennen"] =
+        "Usage: /race group <track> – the track needs a finish. List: /race",
+    ["Es läuft schon ein Gruppenrennen auf %s – mitmachen: /rennen mit"] = "A group race on %s is already on – join: /race join",
+    ["Gruppenrennen auf %s in %d s, gestartet von %s! Mitmachen: /rennen mit"] =
+        "Group race on %s in %d s, started by %s! Join: /race join",
+    ["Gerade kann man keinem Gruppenrennen beitreten. Neues: /rennen gruppe <Strecke>"] =
+        "There is no group race to join right now. New one: /race group <track>",
     ["Strecke der Woche: %s auf %s – %d Bonus-XP für den ersten Lauf der Woche"] =
         "Track of the week: %s on %s – %d bonus XP for your first run this week",
     ["Strecke der Woche geschafft: +%d Bonus-XP!"] = "Track of the week done: +%d bonus XP!",
@@ -647,8 +667,8 @@ local EN = {
     ["%s (ohne Ziel)"] = "%s (no finish)",
     ["%s (Rekord %s · %s)"] = "%s (record %s · %s)",
     ["%s (noch keine Zeit)"] = "%s (no time yet)",
-    ["Starten: /rennen <Name> · beenden: /rennen stop · Rekorde: /rekorde <Name>"] =
-        "Start: /race <name> · quit: /race stop · records: /records <name>",
+    ["Starten: /rennen <Name> · gemeinsam: /rennen gruppe <Name> · beenden: /rennen stop · Rekorde: /rekorde <Name>"] =
+        "Start: /race <name> · together: /race group <name> · quit: /race stop · records: /records <name>",
     ["Admin: am Start /rennen neu <Name>, am Ziel /rennen ziel <Name>, entfernen /rennen loeschen <Name>"] =
         "Admin: at the start /race new <name>, at the finish /race finish <name>, remove /race delete <name>",
     ["Rennmodus beendet."] = "Race mode ended.",
@@ -1797,9 +1817,96 @@ local function raceSplits(s, prev, cur, t0, t1, finishT)
     end
 end
 
+-- Gruppenrennen: alle Teilnehmer fahren dieselbe Strecke ab einem gemeinsamen Startsignal. Gemessen wird wie
+-- sonst ab dem Verlassen des Startbereichs – wer ihn vor dem Signal verlaesst, hat einen Fehlstart und muss zurueck.
+-- Gewertet wird der erste gueltige Lauf je Teilnehmer; Plaetze 1–3 bekommen Bonus-XP (ab 2 Teilnehmern im Ziel).
+BN.GROUP_XP = { 30, 20, 10 }
+
+local function groupSay(text, ...)
+    local g = BN.group
+    if not g then return end
+    for pid in pairs(g.members) do if BN.players[pid] then say(pid, text, ...) end end
+end
+
+function BN.endGroup()
+    local g = BN.group
+    if not g then return end
+    BN.group = nil
+    table.sort(g.results, function(a, b) return a.time < b.time end)
+    for pid in pairs(g.members) do
+        local m = BN.players[pid]
+        if m and m.race then m.race.group = nil end
+    end
+    if #g.results == 0 then
+        sayAll("Gruppenrennen auf %s beendet – niemand im Ziel.", g.name)
+        return
+    end
+    local parts = {}
+    for i, e in ipairs(g.results) do
+        if i <= 10 then parts[#parts + 1] = string.format("%d. %s %s", i, e.name, BN.fmtRaceTime(e.time)) end
+    end
+    sayAll("Gruppenrennen auf %s – Ergebnis: %s", g.name, table.concat(parts, " · "))
+    if #g.results >= 2 then
+        for i = 1, math.min(3, #g.results) do
+            local m = BN.players[g.results[i].pid]
+            if m and m.id == g.results[i].id then
+                m.pendingBonus = m.pendingBonus + BN.GROUP_XP[i]
+                say(m.pid, "Platz %d im Gruppenrennen: +%d Bonus-XP!", i, BN.GROUP_XP[i])
+            end
+        end
+    end
+end
+
+function BN.groupTick()
+    local g = BN.group
+    if not g then return end
+    local now = BN.now()
+    local left = g.startAt - now
+    if left > 0 then
+        if (left == 10 or left <= 3) and g.lastCount ~= left then
+            g.lastCount = left
+            groupSay("Gruppenrennen %s: Start in %d s", g.name, left)
+        end
+        return
+    end
+    if not g.started then
+        g.started = true
+        groupSay("LOS! Gruppenrennen auf %s – die Zeit läuft ab dem Verlassen des Startbereichs.", g.name)
+        return
+    end
+    local waiting = 0
+    for pid in pairs(g.members) do
+        local m = BN.players[pid]
+        if m and m.race and m.race.group and not g.done[pid] then waiting = waiting + 1 end
+    end
+    if waiting == 0 or now - g.startAt > C.groupRaceMaxSec then BN.endGroup() end
+end
+
+function BN.joinGroup(pid)
+    local g = BN.group
+    local s = session(pid)
+    local track = BN.loadTracks().tracks[g.name]
+    if type(track) ~= "table" or not track.finish then return false end
+    g.members[pid] = true
+    s.race = { name = g.name, start = point(track.start), finish = point(track.finish), state = "armed", group = true }
+    say(pid, "Du fährst mit! Fahr zum Start von %s – Start in %d s.", g.name, math.max(0, g.startAt - BN.now()))
+    return true
+end
+
+local function groupFinish(s, time)
+    local g, r = BN.group, s.race
+    if not (g and r and r.group and g.started and g.members[s.pid] and not g.done[s.pid]) then return end
+    g.done[s.pid] = true
+    g.results[#g.results + 1] = { pid = s.pid, id = s.id, name = s.name, time = time }
+    local place = 1
+    for _, e in ipairs(g.results) do if e.time < time then place = place + 1 end end
+    groupSay("Gruppenrennen: %s im Ziel – %s (vorläufig Platz %d)", s.name, BN.fmtRaceTime(time), place)
+end
+
 local function finishRace(s, time)
     local r = s.race
     say(s.pid, "Ziel! %s: %s", r.name, BN.fmtRaceTime(time))
+    groupFinish(s, time)
     if not s.guest then
         local data = BN.loadTracks()
         local track = data.tracks[r.name]
@@ -1891,6 +1998,11 @@ function BN.raceUpdate(s, vid, prev, cur, jump)
     if r.useTim then t0, t1 = prev.tim, cur.tim else t0, t1 = prev.at, cur.at end
     if not (t0 and t1) or t1 < t0 then return end
     if r.state == "ready" then
+        if dist(cur, r.start) > radius and r.group and BN.group and BN.now() < BN.group.startAt then
+            r.state, r.vid = "armed", nil
+            say(s.pid, "Fehlstart! Zurück in den Startbereich – Start in %d s.", BN.group.startAt - BN.now())
+            return
+        end
         if dist(cur, r.start) > radius then
             r.startT = crossTime(prev, cur, t0, t1, r.start, radius)
             r.state = "running"
@@ -2490,7 +2602,7 @@ local function listTracks(pid, s)
         say(pid, "Strecken auf %s: %s", tostring(BN.server.map), table.concat(parts, ", "))
         local w = BN.trackOfWeek()
         if w then say(pid, "Strecke der Woche: %s auf %s – %d Bonus-XP für den ersten Lauf der Woche", w.name, w.map, C.weeklyTrackXp) end
-        say(pid, "Starten: /rennen <Name> · beenden: /rennen stop · Rekorde: /rekorde <Name>")
+        say(pid, "Starten: /rennen <Name> · gemeinsam: /rennen gruppe <Name> · beenden: /rennen stop · Rekorde: /rekorde <Name>")
     end
     if BN.isAdmin(s) then
         say(pid, "Admin: am Start /rennen neu <Name>, am Ziel /rennen ziel <Name>, entfernen /rennen loeschen <Name>")
@@ -2579,6 +2691,30 @@ function commands.rennen(pid, arg)
                 say(pid, "Streckenlänge unbekannt – der erste gültige Lauf legt sie fest.")
             end
         end
+        return
+    end
+    if sub == "gruppe" or sub == "group" then
+        local name = trackName(words[2])
+        local track = name and BN.loadTracks().tracks[name]
+        if not track or not track.finish then
+            say(pid, "Aufruf: /rennen gruppe <Strecke> – die Strecke braucht ein Ziel. Liste: /rennen")
+            return
+        end
+        if BN.group then
+            say(pid, "Es läuft schon ein Gruppenrennen auf %s – mitmachen: /rennen mit", BN.group.name)
+            return
+        end
+        BN.group = { name = name, startAt = BN.now() + C.groupRaceDelaySec, by = s.name, members = {}, results = {}, done = {} }
+        sayAll("Gruppenrennen auf %s in %d s, gestartet von %s! Mitmachen: /rennen mit", name, C.groupRaceDelaySec, s.name)
+        BN.joinGroup(pid)
+        return
+    end
+    if sub == "mit" or sub == "join" then
+        if not BN.group or BN.now() >= BN.group.startAt then
+            say(pid, "Gerade kann man keinem Gruppenrennen beitreten. Neues: /rennen gruppe <Strecke>")
+            return
+        end
+        BN.joinGroup(pid)
         return
     end
     -- Lauf vorbereiten
@@ -3247,6 +3383,7 @@ function BN.tick()
     BN.currentWeek = wk
     guarded("Abstimmung", BN.voteCheck)
     guarded("Map-Wechsel", BN.mapChangeCheck)
+    guarded("Gruppenrennen", BN.groupTick)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)

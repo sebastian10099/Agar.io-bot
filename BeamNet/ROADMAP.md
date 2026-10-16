@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.46 / Plugin 1.26)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.46 / Plugin 1.27)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -53,7 +53,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 **C. Rennen und Spielspaß**
 21. [x] Zwischenzeiten auch gegen den Streckenrekord: „Zwischenzeit 2: 0:51.3 (−0.4 s, Rekord +1.2 s)“; ohne eigene
         Bestzeit nur der Rekord-Abstand (Plugin 1.24).
-22. [ ] Gemeinsame Rennen: `/rennen start <Strecke>` mit Countdown für alle Teilnehmer und Ergebnisliste.
+22. [x] Gruppenrennen: `/rennen gruppe <Strecke>` und `/rennen mit`, mit Countdown, Fehlstart, Zieleinlauf für alle,
+        Ergebnisliste und Bonus-XP für die Top 3 (Plugin 1.27).
 23. [x] Strecke der Woche: wechselt automatisch und ist auf allen Servern dieselbe. Der erste gültige Lauf der Woche
         bringt 50 Bonus-XP; sie steht in `/rennen`, beim Betreten der Map und auf der Statusseite (Plugin 1.26,
         Werkzeug 1.46). Später: Bonus für die Top 3.

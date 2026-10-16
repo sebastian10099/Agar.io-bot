@@ -1848,6 +1848,65 @@ do
     BN.weeklyCache = {}
 end
 
+-- --- Gruppenrennen ---------------------------------------------------------------------------------------------
+do
+    local savedAdmins = C.admins
+    C.admins = { "Leiter" }
+    for pid, name in pairs({ [85] = "Leiter", [86] = "Zweiter", [87] = "Fruehstarter" }) do
+        players[pid] = { name = name, ids = { beammp = tostring(8500 + pid) }, vehicles = {} }
+        _G[events.onPlayerJoin](pid)
+    end
+    BN.track(85, 0, { 6000, 0, 0 }, 1); say(85, "/rennen neu gruppe")
+    BN.track(85, 0, { 7000, 0, 0 }, 2); say(85, "/rennen ziel gruppe")
+    chatLog = {}
+    say(85, "/rennen gruppe gruppe")
+    check(chatContains("Gruppenrennen auf gruppe in 30 s, gestartet von Leiter! Mitmachen: /rennen mit", 86), "Gruppenrennen: allen angekuendigt")
+    say(85, "/rennen gruppe gruppe")
+    check(chatContains("Es läuft schon ein Gruppenrennen auf gruppe", 85), "Gruppenrennen: nur eins gleichzeitig")
+    say(86, "/rennen mit"); say(87, "/rennen mit")
+    check(chatContains("Du fährst mit! Fahr zum Start von gruppe", 86), "Gruppenrennen: mitmachen")
+    local t = 100
+    for _, pid in ipairs({ 85, 86, 87 }) do BN.track(pid, 0, { 6000, 0, 0 }, t) end
+    -- Fruehstart vor dem Signal
+    BN.track(87, 0, { 6030, 0, 0 }, t + 1)
+    check(chatContains("Fehlstart! Zurück in den Startbereich", 87), "Gruppenrennen: Fehlstart erkannt")
+    eq(BN.players[87].race.state, "armed", "Gruppenrennen: nach Fehlstart zurueck zum Start")
+    -- Countdown und Signal
+    chatLog = {}
+    tick(27)
+    check(chatContains("Gruppenrennen gruppe: Start in 3 s", 86) and chatContains("Start in 10 s", 86), "Gruppenrennen: Countdown")
+    tick(3)
+    check(chatContains("Start in 1 s", 86), "Gruppenrennen: Countdown bis 1")
+    check(chatContains("LOS! Gruppenrennen auf gruppe", 85), "Gruppenrennen: Startsignal")
+    -- Leiter faehrt schnell (50 m/s), Zweiter langsamer (20 m/s)
+    local function race(pid, speed, tim)
+        BN.track(pid, 0, { 6000, 0, 0 }, tim); BN.track(pid, 0, { 6010, 0, 0 }, tim + 0.2)
+        local x = 6010
+        while x < 7000 do x = math.min(7000, x + speed); tim = tim + 1; BN.track(pid, 0, { x, 0, 0 }, tim) end
+    end
+    race(86, 20, 200)
+    check(chatContains("Gruppenrennen: Zweiter im Ziel – 0:4%d%.%d %(vorläufig Platz 1%)", 85), "Gruppenrennen: Zieleinlauf an alle")
+    race(85, 50, 400)
+    check(chatContains("Gruppenrennen: Leiter im Ziel – 0:%d%d%.%d %(vorläufig Platz 1%)", 86), "Gruppenrennen: schnellerer Fahrer vorne")
+    local bonusBefore = BN.players[85].pendingBonus
+    chatLog = {}
+    say(87, "/rennen stop")
+    tick(1)
+    check(chatContains("Gruppenrennen auf gruppe – Ergebnis: 1%. Leiter 0:%d%d%.%d · 2%. Zweiter 0:4%d%.%d", 87), "Gruppenrennen: Ergebnis an alle")
+    check(chatContains("Platz 1 im Gruppenrennen: %+30 Bonus%-XP!", 85) and chatContains("Platz 2 im Gruppenrennen: %+20 Bonus%-XP!", 86), "Gruppenrennen: Bonus fuer die Plaetze")
+    eq(BN.players[85].pendingBonus - bonusBefore, 30, "Gruppenrennen: Bonus gutgeschrieben")
+    check(BN.group == nil, "Gruppenrennen: danach beendet")
+    say(86, "/rennen mit")
+    check(chatContains("Gerade kann man keinem Gruppenrennen beitreten", 86), "Gruppenrennen: nach dem Ende kein Beitritt")
+    -- Ohne Teilnehmer im Ziel endet es nach der Hoechstdauer.
+    say(85, "/rennen gruppe gruppe")
+    tick(31 + C.groupRaceMaxSec)
+    check(BN.group == nil and chatContains("niemand im Ziel", 85), "Gruppenrennen: Ende nach Hoechstdauer")
+    say(85, "/rennen loeschen gruppe")
+    for _, pid in ipairs({ 85, 86, 87 }) do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    C.admins = savedAdmins
+end
+
 -- --- XP-Event (/event) ------------------------------------------------------------------------------------------
 do
     local savedAdmins = C.admins
