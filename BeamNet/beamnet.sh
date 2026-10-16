@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.17"
+VERSION="1.18"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1216,9 +1216,12 @@ if records:
 print(" · ".join(parts))
 PY
 )
-    : >"$STATE_DIR/daily-$today"
+    # Erst als erledigt merken, wenn es etwas zu melden gab – wer nach DAILY_HOUR losfaehrt, kommt noch in die Meldung.
+    if [[ -n $line ]]; then
+        : >"$STATE_DIR/daily-$today"
+        dout+=("📊 Heute im Netzwerk: $line")
+    fi
     find "$STATE_DIR" -maxdepth 1 -name 'daily-*' -mtime +7 -delete 2>/dev/null
-    [[ -n $line ]] && dout+=("📊 Heute im Netzwerk: $line")
     return 0
 }
 
@@ -1670,7 +1673,7 @@ def link(r, prefix=""):
     """Name als Link auf die Profilseite (nur bei unbedenklicher ID)."""
     name = E(str(r.get("name", "?")))
     rid = str(r.get("id", ""))
-    return f'<a href="{prefix}p/{rid}.html">{name}</a>' if ID_OK.match(rid) else name
+    return f'<a href="{prefix}p/{rid}.html">{name}</a>' if ID_OK.fullmatch(rid) else name
 
 
 top = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{level_of(xp_of(r))}</td>"
@@ -1774,7 +1777,7 @@ write(out, page)
 # Nur ausgewaehlte Felder, damit nie etwas wie IP-Adressen aus den Rohdaten durchrutscht; IDs nur, wenn sie ID_OK sind.
 def api_id(r):
     rid = str(r.get("id", ""))
-    return rid if ID_OK.match(rid) else None
+    return rid if ID_OK.fullmatch(rid) else None
 
 
 api = {
@@ -1826,7 +1829,7 @@ def hours(sec):
 written = set()
 for rank, r in enumerate(ranked, 1):
     rid = str(r.get("id"))
-    if not ID_OK.match(rid):
+    if not ID_OK.fullmatch(rid):
         continue
     xp = xp_of(r)
     lvl = level_of(xp)
@@ -1889,7 +1892,8 @@ Description=BeamNet-Statusseite (Webserver, nur lesend)
 After=network.target
 
 [Service]
-ExecStart=$py -m http.server $port --bind 0.0.0.0 --directory $WEB_DIR
+# Kleiner Webserver mit "Access-Control-Allow-Origin: *", damit andere Seiten api.json abrufen koennen.
+ExecStart=$py -c 'import functools,http.server,sys; H=type("H",(http.server.SimpleHTTPRequestHandler,),{"end_headers":lambda s:(s.send_header("Access-Control-Allow-Origin","*"),http.server.SimpleHTTPRequestHandler.end_headers(s))[1]}); http.server.ThreadingHTTPServer((sys.argv[1],int(sys.argv[2])),functools.partial(H,directory=sys.argv[3])).serve_forever()' 0.0.0.0 $port $WEB_DIR
 DynamicUser=yes
 ProtectSystem=strict
 ProtectHome=yes

@@ -523,6 +523,12 @@ touch "$T/web/p/alt.html"
 [[ ! -e $T/web/p/alt.html ]] && pass || fail "Profilseite: alte Seiten werden entfernt"
 [[ -z $(find "$T/web" -name '*böse*') ]] && pass || fail "Profilseite: unsichere ID ohne Seite"
 lacks "$(cat "$T/web/index.html")" "böse.html" "Profilseite: kein Link fuer unsichere ID"
+# ID mit Zeilenumbruch am Ende ("$" passt in Python auch davor): keine Seite, kein Link.
+echo '{"id":"77\n","name":"Umbruch","km":1}' >"$T/root/shared/beamnet/players/77.json"
+"$TOOL" web run >/dev/null 2>&1
+[[ -z $(find "$T/web/p" -name '77*') ]] && pass || fail "Profilseite: ID mit Zeilenumbruch ohne Seite"
+lacks "$(cat "$T/web/index.html")" "p/77" "Profilseite: kein Link fuer ID mit Zeilenumbruch"
+rm -f "$T/root/shared/beamnet/players/77.json"
 rm -f "$T/root/shared/beamnet/players/5.json"
 contains "$page" "</html>" "Statusseite: vollstaendig"
 echo "WEB_TITLE=Sebis Netz" >>"$T/beamnet.conf"
@@ -567,7 +573,8 @@ out=$("$TOOL" web install 99 2>&1)
 contains "$out" "Port muss zwischen 1024 und 65535" "web install: Port geprueft"
 out=$("$TOOL" web install 8088 2>&1)
 contains "$out" "Statusseite läuft auf Port 8088" "web install"
-contains "$(cat "$T/systemd/beamnet-web.service")" "http.server 8088 --bind 0.0.0.0 --directory $T/web" "web install: Webserver"
+contains "$(cat "$T/systemd/beamnet-web.service")" "serve_forever\\(\\)' 0\\.0\\.0\\.0 8088 $T/web$" "web install: Webserver"
+contains "$(cat "$T/systemd/beamnet-web.service")" "Access-Control-Allow-Origin" "web install: api.json fuer andere Seiten abrufbar"
 contains "$(cat "$T/systemd/beamnet-web.service")" "^DynamicUser=yes" "web install: abgeschottet"
 contains "$(cat "$T/systemd/beamnet-web-update.service")" "beamnet.sh web run$" "web install: Erneuern"
 contains "$(cat "$T/actions")" "enable --now" "web install: aktiviert"
@@ -649,7 +656,7 @@ contains "$("$TOOL" admin list)" "Admins: Sebi, Max" "setup: Admins"
 contains "$(cat "$T/beamnet.conf")" "^DISCORD_WEBHOOK=https://discord.com/api/webhooks/123/abc_DEF-9$" "setup: Webhook"
 contains "$(cat "$T/beamnet.conf")" "^AUTO_RESTART=1$" "setup: automatischer Neustart"
 [[ $(grep -c '^DISCORD_WEBHOOK=' "$T/beamnet.conf") == 1 ]] && pass || fail "setup: Webhook nur einmal in der Datei"
-contains "$(cat "$T/systemd/beamnet-web.service")" "http.server 8090" "setup: Statusseite auf Port 8090"
+contains "$(cat "$T/systemd/beamnet-web.service")" "' 0\\.0\\.0\\.0 8090 " "setup: Statusseite auf Port 8090"
 contains "$(cat "$T/actions")" "restart beammp-6.service" "setup: Neustart"
 contains "$out" "Zum Teilen mit mir: beamnet report" "setup: Abschluss"
 # Ungueltiger Webhook wird nicht gespeichert.
@@ -779,6 +786,7 @@ contains "$(cat "$T/beamnet.conf")" "^DAILY_HOUR=22$" "watch install: Tageszusam
 cp "$T/beamnet.conf" "$T/conf.keep"
 P="$T/root/shared/beamnet/players"
 mkdir -p "$P" "$T/root/shared/beamnet/races"
+cp -p "$T/root/shared/beamnet/races/italy.json" "$T/italy.keep" 2>/dev/null
 mv "$P" "$T/players.keep"; mkdir -p "$P"
 today=$(( $(date +%s) / 86400 )); todaydate=$(date +%Y-%m-%d)
 rm -f "$T/watch/daily-$todaydate"
@@ -819,6 +827,7 @@ rm -f "$T/watch/daily-$todaydate" "$P"/1.json
 : >"$T/curl.log"
 out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
 lacks "$out" "Heute im Netzwerk" "daily: ohne Fahrer keine Meldung"
+[[ ! -f $T/watch/daily-$todaydate ]] && pass || fail "daily: ohne Fahrer nicht als erledigt markiert (spaetere Fahrer zaehlen noch)"
 [[ ! -s $T/curl.log ]] && pass || fail "daily: ohne Fahrer nichts an Discord"
 # DAILY_SUMMARY=0 schaltet ab.
 rm -f "$T/watch/daily-$todaydate"
@@ -832,6 +841,7 @@ sed -i '/^DAILY_SUMMARY=/d; s|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=|' "$T/beamnet
 out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
 lacks "$out" "Heute im Netzwerk" "daily: ohne Webhook keine Zusammenfassung"
 rm -rf "$P" "$T/fremd.json" "$T/root/shared/beamnet/races/italy.json" "$T/watch/daily-$todaydate"
+[[ -f $T/italy.keep ]] && mv "$T/italy.keep" "$T/root/shared/beamnet/races/italy.json"
 mv "$T/players.keep" "$P"
 mv "$T/conf.keep" "$T/beamnet.conf"
 

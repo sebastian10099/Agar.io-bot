@@ -1,5 +1,9 @@
 # BeamNet – Roadmap
 
+Erledigt (Werkzeug 1.18):
+- [x] Discord-Tageszusammenfassung zählt einen Tag erst als erledigt, wenn es etwas zu melden gab.
+- [x] Statusseite: `api.json` auch von anderen Webseiten abrufbar (CORS); strengere Prüfung der Spieler-IDs.
+
 Erledigt (Plugin 1.12) – Gesamtprüfung des Plugins, von einem Agenten-Team umgesetzt:
 - [x] Rundkurs-Rekorde nicht mehr erschummelbar: ein Lauf braucht eine Mindest-Fahrstrecke (80 % der Streckenlänge;
       die Länge kommt aus der Admin-Fahrt zwischen `/rennen neu` und `/rennen ziel`, sonst vom ersten gültigen Lauf,
