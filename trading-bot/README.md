@@ -35,7 +35,9 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   **Zielkursen** (Stop, nächste Leiterstufe, Trailing sobald scharf, Restzeit bis
   zum Zeit-Stop) und einem Knopf zum manuellen Schließen; die **Kapitalkurve**
   (realisierter Stand nach jedem Exit, mit Fadenkreuz und Tastaturablesung);
-  Edge-Report mit Balken; geschlossene Positionen. Jede Position hat einen
+  Edge-Report mit Balken, umschaltbar nach Bot / Regeln / KI / **Quelle**
+  (liefert GeckoTerminal im Schnitt bessere Tokens als DexScreener?);
+  geschlossene Positionen. Jede Position hat einen
   **Details**-Dialog mit dem **Kursverlauf seit Einstieg** (Einstieg, Stop und
   Leiterstufen als Linien, Hoch markiert) und ihren einzelnen Fills.
 - **Steuerung** – jeder Parameter der Strategie als Formular, gruppiert nach
@@ -47,6 +49,9 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   (nur Positionen, oder alles inklusive Edge-Daten), wahlweise mit neuem
   Startkapital, und CSV-Export von Positionen, Fills und Kandidaten. Bricht
   die Verbindung zum Bot ab, erscheint ein Banner mit „Erneut versuchen“.
+  **Diagnose kopieren** legt Zustand, Quellen, Selbsttest, Konfiguration und
+  die letzten Protokollzeilen als Text in die Zwischenablage – zum Einfügen,
+  wenn du Hilfe brauchst.
   Die Karte **Quellen** zeigt für jede Discovery-Quelle, ob sie liefert, wie
   viele Tokens sie im letzten Poll gemeldet hat und wie viele davon nur sie
   gesehen hat – so siehst du, welche Quelle wirklich etwas bringt. Der

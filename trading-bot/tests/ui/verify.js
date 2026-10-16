@@ -136,6 +136,18 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok(docRows.length >= 7 && docRows.filter((r) => r.ok).length >= 6 && !docRows.some((r) => r.bad), 'Selbsttest: ' + docRows.filter((r) => r.ok).length + ' Prüfungen bestanden, keine rot');
   ok(docRows.some((r) => /GeckoTerminal.*Parser/.test(r.text)) && docRows.some((r) => /RugCheck/.test(r.text)), 'Selbsttest prüft GeckoTerminal-Parser und RugCheck');
   ok((await p.textContent('#toast')).includes('ohne Befund'), 'Toast: Selbsttest ohne Befund');
+  // --- Diagnose kopieren: Dialog mit Text (Zwischenablage je nach Browser) ---
+  await clearToast(); await p.click('#b-diag'); await p.waitForSelector('dialog#detail[open]');
+  const diag = await p.inputValue('#d-diag');
+  ok(/Quellen:/.test(diag) && /Konfiguration:/.test(diag) && /Selbsttest/.test(diag) && /Protokoll/.test(diag) && diag.includes('"poll_seconds"'), 'Diagnosetext enthält Quellen, Selbsttest, Konfiguration, Protokoll (' + diag.length + ' Zeichen)');
+  await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.querySelector('dialog#detail[open]'));
+  // --- Edge-Report nach Quelle ---
+  await p.click('nav [data-tab="overview"]'); await p.click('[data-edge="source"]');
+  ok((await p.textContent('#edge')).includes('Quelle') || (await p.textContent('#edge')).includes('Noch keine'), 'Edge-Report nach Quelle schaltet um');
+  ok((await p.textContent('#edge-note')).includes('je Quelle'), 'Erklärung wechselt mit');
+  await p.click('[data-edge="decision"]');
+  ok(/nächster in \d+ s|noch keiner|vor/.test(await p.textContent('#k-poll')), 'Letzter Poll mit Countdown: ' + (await p.textContent('#k-poll')));
+  await p.click('nav [data-tab="control"]');
   await p.click('.chips[data-path="discovery.sources"] .chip[data-chain="geckoterminal"]');
   ok((await p.getAttribute('.chips[data-path="discovery.sources"] .chip[data-chain="geckoterminal"]', 'aria-pressed')) === 'false', 'Quellen-Chip abwählbar');
   await clearToast(); await p.click('#b-save'); await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));

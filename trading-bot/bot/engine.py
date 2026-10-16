@@ -14,6 +14,7 @@ from .strategy import evaluate
 from .tracker import Tracker
 
 RESEE_SECONDS = 30 * 60  # do not re-evaluate the same token within half an hour
+VERSION = "0.9"
 TICK_KEEP_DAYS = 7       # price ticks of positions closed longer ago are dropped at start
 
 
@@ -363,6 +364,8 @@ class Engine:
             "closed": self.store.closed_positions(50), "candidates": self.store.candidates(80),
             "edge": self.store.edge_report(), "events": self.store.events(60),
             "edge_rules": self.store.edge_report("rule_decision"), "edge_ai": self.store.edge_report("ai_decision"),
+            "edge_source": self.store.edge_report("source"),
+            "version": VERSION,
             "ai": self.advisor.status(),
             "sources": self.discovery.status(),
             "exits_by_reason": self.store.exit_breakdown(),

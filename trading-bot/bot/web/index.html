@@ -256,9 +256,9 @@
     <div class="grid two">
       <section>
         <h2>Edge-Report <span class="spacer"></span><span class="filterbar" role="group" aria-label="Edge-Report nach">
-          <button class="chip" data-edge="decision" aria-pressed="true">Bot</button><button class="chip" data-edge="rule_decision" aria-pressed="false">Regeln</button><button class="chip" data-edge="ai_decision" aria-pressed="false">KI</button></span></h2>
+          <button class="chip" data-edge="decision" aria-pressed="true">Bot</button><button class="chip" data-edge="rule_decision" aria-pressed="false">Regeln</button><button class="chip" data-edge="ai_decision" aria-pressed="false">KI</button><button class="chip" data-edge="source" aria-pressed="false">Quelle</button></span></h2>
         <div id="edge"></div>
-        <p class="note">Vorwärtsrendite nach Entscheidung. Hat <b>buy</b> keinen klaren Vorsprung vor <b>watch</b> und <b>skip</b>, hat die Strategie keine Kante – unabhängig davon, wie die Trades aussehen.</p>
+        <p class="note" id="edge-note">Vorwärtsrendite nach Entscheidung. Hat buy keinen klaren Vorsprung vor watch und skip, hat die Strategie keine Kante – unabhängig davon, wie die Trades aussehen.</p>
       </section>
       <section>
         <h2>Geschlossene Positionen</h2>
@@ -309,6 +309,7 @@
         <span class="ctl"><input type="number" id="bankroll" min="10" max="1000000000" step="10" inputmode="decimal" style="width:120px;background:var(--muted);border:1px solid var(--line-strong);border-radius:7px;padding:6px 8px;text-align:right"> <span class="unit">$</span></span>
         <button class="btn danger" id="b-reset-pos">Positionen zurücksetzen</button>
         <button class="btn danger" id="b-reset-all">Alles zurücksetzen (inkl. Edge-Daten)</button>
+        <button class="btn" id="b-diag" title="Zustand, Quellen, Konfiguration und Protokoll als Text – zum Einfügen in eine Nachricht">Diagnose kopieren</button>
       </div>
       <p class="note">Aktuell <b id="k-initial">–</b> Startkapital · läuft seit <b id="k-uptime">–</b> · Polls <b id="k-polls">–</b> · Ø Poll-Dauer <b id="k-pollms">–</b> · Fehler <b id="k-errors">–</b></p>
       <p class="note">Export (CSV, Semikolon, für Excel/Numbers): <a href="/api/export/positions.csv" download="positionen.csv">Positionen</a> · <a href="/api/export/trades.csv" download="trades.csv">Fills</a> · <a href="/api/export/candidates.csv" download="kandidaten.csv">Kandidaten mit Kennzahlen</a></p>
@@ -472,17 +473,19 @@ function renderOverview(s) {
     toast(`${p.symbol} geschlossen · ${usd(r.position.realized_usd)}`); refresh();
   }));
 
-  const source = edgeView === 'rule_decision' ? s.edge_rules : edgeView === 'ai_decision' ? s.edge_ai : s.edge;
-  const edge = (source || []).slice().sort((a, b) => a.horizon_min - b.horizon_min || ['buy','watch','skip'].indexOf(a.decision) - ['buy','watch','skip'].indexOf(b.decision));
+  const source = edgeView === 'rule_decision' ? s.edge_rules : edgeView === 'ai_decision' ? s.edge_ai : edgeView === 'source' ? s.edge_source : s.edge;
+  const bySource = edgeView === 'source';
+  const edge = (source || []).slice().sort((a, b) => a.horizon_min - b.horizon_min || (bySource ? String(a.decision).localeCompare(String(b.decision)) : ['buy','watch','skip'].indexOf(a.decision) - ['buy','watch','skip'].indexOf(b.decision)));
   const maxAbs = Math.max(1, ...edge.map((r) => Math.abs(r.avg_change_pct || 0)));
   const ebar = (v) => { const w = Math.min(50, Math.abs(v || 0) / maxAbs * 50); return `<span class="ebar" aria-hidden="true"><i class="${v < 0 ? 'neg' : ''}" style="${v < 0 ? `right:50%;width:${w}%` : `left:50%;width:${w}%`}"></i></span>`; };
   $('edge').innerHTML = table(edge, [
     {h: 'Horizont', f: (r) => r.horizon_min + ' min', num: true},
-    {h: 'Entscheidung', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
+    {h: bySource ? 'Quelle' : 'Entscheidung', f: (r) => bySource ? esc(srcShort[r.decision] || r.decision) : `<span class="d-${r.decision}">${r.decision}</span>`},
     {h: 'n', f: (r) => r.n, num: true},
     {h: 'Ø Rendite', f: (r) => `<span class="${cls(r.avg_change_pct)}">${pct(r.avg_change_pct)}</span>${ebar(r.avg_change_pct)}`, num: true},
     {h: 'Treffer', f: (r) => Math.round(100 * r.win_rate) + '%', num: true},
   ], edgeView === 'ai_decision' ? 'Noch keine KI-Urteile mit Ergebnis – KI-Modus einschalten und 5 Minuten warten.' : 'Noch keine Ergebnisse – die ersten kommen 5 Minuten nach dem ersten Kandidaten.');
+  $('edge-note').textContent = bySource ? 'Alle Kandidaten je Quelle, unabhängig von der Entscheidung: Liefert eine Quelle im Schnitt bessere Tokens, lohnt ihr Vorrang.' : 'Vorwärtsrendite nach Entscheidung. Hat buy keinen klaren Vorsprung vor watch und skip, hat die Strategie keine Kante – unabhängig davon, wie die Trades aussehen.';
   renderEquity(s);
 
   $('closed').innerHTML = table(s.closed, [
@@ -726,6 +729,14 @@ document.querySelectorAll('[data-lf]').forEach((c) => c.onclick = () => {
   logFilter[c.dataset.lf] = !logFilter[c.dataset.lf]; c.setAttribute('aria-pressed', String(logFilter[c.dataset.lf])); if (state) renderLog(state);
 });
 
+let pollClock = null;
+function paintPollClock() {
+  if (!pollClock) return;
+  const since = pollClock.since == null ? null : pollClock.since + (Date.now() - pollClock.at) / 1000;
+  const next = since == null ? null : Math.max(0, pollClock.interval - since);
+  $('k-poll').textContent = since == null ? 'noch keiner' : 'vor ' + dur(since) + (next != null && since < 3 * pollClock.interval ? ` · nächster in ${Math.round(next)} s` : '');
+}
+setInterval(() => { if (!document.hidden) paintPollClock(); }, 1000);
 function renderHeader(s) {
   $('mode').textContent = s.mode;
   $('paused').hidden = !s.paused;
@@ -737,7 +748,8 @@ function renderHeader(s) {
   $('k-daily').title = s.daily_limit_hit ? 'Tages-Verlustlimit erreicht – keine neuen Einstiege' : '';
   $('k-trades').textContent = `${s.stats.closed} · ${s.stats.closed ? Math.round(100 * s.stats.wins / s.stats.closed) + '%' : '–'}`;
   const since = s.last_poll_wall ? s.wall_now - s.last_poll_wall : null;
-  $('k-poll').textContent = since == null ? 'noch keiner' : 'vor ' + dur(since);
+  pollClock = { since, interval: s.poll_seconds, at: Date.now() };
+  paintPollClock();
   const connState = since == null ? 'warn' : since > 3 * s.poll_seconds ? 'bad' : 'ok';
   $('conn').className = 'dot ' + connState;
   $('conn').setAttribute('aria-label', 'Verbindung: ' + ({ok: 'verbunden', warn: 'noch kein Poll', bad: 'keine Daten seit ' + dur(since)})[connState] + (s.errors ? `, ${s.errors} Fehler` : ''));
@@ -858,9 +870,34 @@ $('b-ai-key').onclick = () => busy($('b-ai-key'), async () => {
   const r = await api('/api/ai/key', {key}); if (!r.ok) throw new Error(r.error);
   $('ai-key').value = ''; toast('Schlüssel gespeichert'); refresh();
 });
+let lastDoctor = null;
+function diagnosisText(s) {
+  const L = [];
+  L.push(`New-Token Bot ${s.version || ''} · Diagnose ${new Date().toISOString()} · Modus ${s.mode}${s.paused ? ' (pausiert)' : ''} · läuft seit ${dur(s.now - s.started_at)}`);
+  L.push(`Bankroll ${usd(s.bankroll)} (Start ${usd(s.initial)}) · Cash ${usd(s.cash)} · unrealisiert ${usd(s.unrealized)} · heute ${usd(s.daily_pnl)} · offen ${s.open_positions.length} · Trades ${s.stats.closed} (${s.stats.wins} Treffer)`);
+  L.push(`Polls ${s.polls} · Fehler ${s.errors} · Ø Poll ${s.poll_ms_avg ?? '–'} ms · letzter Poll ${s.last_poll_wall ? 'vor ' + dur(s.wall_now - s.last_poll_wall) : 'keiner'} · Chains ${(s.chains || []).join(',')}`);
+  L.push('', 'Quellen:');
+  for (const r of s.sources || []) L.push(`  ${r.enabled ? (r.ok ? 'OK ' : r.ok === false ? 'ERR' : '...') : 'aus'}  ${r.label}  gemeldet ${r.found} · eigene ${r.unique} · Abfragen ${r.calls}${r.error ? ' · ' + r.error : ''}`);
+  const a = s.ai || {}; L.push('', `KI: Modus ${a.mode} · ${a.available ? 'bereit' : 'nicht verfügbar'} · Modell ${a.model} · Schlüssel ${a.key_source} · ${a.calls_total} Aufrufe · $${(a.cost_total_usd || 0).toFixed(3)}${a.reason ? ' · ' + a.reason : ''}`);
+  if (lastDoctor) { L.push('', `Selbsttest ${hhmm(lastDoctor.at)}:`); for (const c of lastDoctor.checks) L.push(`  ${c.ok ? 'OK ' : 'ERR'}  ${c.name}  ${c.ms} ms  ${c.detail}`); }
+  L.push('', 'Edge (Bot):'); for (const r of s.edge || []) L.push(`  ${r.horizon_min} min ${r.decision}: n=${r.n} Ø ${pct(r.avg_change_pct)} Treffer ${Math.round(r.win_rate * 100)}%`);
+  L.push('', 'Konfiguration:', JSON.stringify(s.config));
+  L.push('', 'Protokoll (zuletzt):'); for (const e of (s.events || []).slice(0, 30)) L.push(`  ${hhmm(e.at)} ${e.level} ${e.message}`);
+  L.push('', `Browser: ${navigator.userAgent}`);
+  return L.join('\n');
+}
+$('b-diag').onclick = () => busy($('b-diag'), async () => {
+  const s = await api('/api/state'); const text = diagnosisText(s);
+  let copied = false;
+  try { await navigator.clipboard.writeText(text); copied = true; } catch {}
+  $('d-title').textContent = 'Diagnose'; $('d-sub').textContent = copied ? 'In die Zwischenablage kopiert – einfach in die Nachricht einfügen.' : 'Text markieren und kopieren (die Zwischenablage war nicht erreichbar).';
+  $('d-body').innerHTML = `<textarea id="d-diag" readonly rows="14" style="width:100%;font:12px ui-monospace,monospace;background:var(--muted);color:var(--fg);border:1px solid var(--line-strong);border-radius:7px;padding:8px;resize:vertical" aria-label="Diagnosetext"></textarea>`;
+  $('d-diag').value = text; $('detail').showModal(); $('d-diag').select();
+  if (copied) toast('Diagnose kopiert');
+});
 $('b-doctor').onclick = () => busy($('b-doctor'), async () => {
   $('doctor').hidden = false; $('doctor').innerHTML = '<li><span class="dot warn"></span><span class="reasons">Prüfe Quellen, Parser, RugCheck, Zugang …</span></li>';
-  const r = await api('/api/doctor', {});
+  const r = await api('/api/doctor', {}); lastDoctor = r;
   $('doctor').innerHTML = r.checks.map((c) => `<li><span class="dot ${c.ok ? 'ok' : 'bad'}" role="img" aria-label="${c.ok ? 'bestanden' : 'Fehler'}"></span><b>${esc(c.name)}</b> <span class="reasons">${c.ms} ms · ${esc(c.detail)}</span></li>`).join('')
     + `<li><span class="reasons">Selbsttest ${hhmm(r.at)}: ${r.checks.filter((c) => c.ok).length} von ${r.checks.length} bestanden. Dasselbe im Terminal: <code>python3 -m bot.doctor</code></span></li>`;
   toast(r.ok ? 'Selbsttest ohne Befund' : 'Selbsttest: Fehler gefunden – siehe Liste', !r.ok);

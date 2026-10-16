@@ -378,3 +378,25 @@ class DoctorTests(unittest.TestCase):
             self.assertEqual(r.status, 200); self.assertTrue(body["ok"]); self.assertGreaterEqual(len(body["checks"]), 7)
         finally:
             c.close(); server.shutdown(); server.server_close()
+
+
+class EdgeBySourceTests(unittest.TestCase):
+    def test_edge_report_groups_by_source(self):
+        import bot.demo as demo
+        cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite")
+            dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["geckoterminal", "dexscreener"]
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            eng.poll_once()
+            for m in (6, 16):
+                t[0] = dex.started + m * 60; eng.poll_once()
+            rows = store.edge_report("source")
+            self.assertTrue(rows)
+            self.assertEqual({r["decision"] for r in rows} <= {"geckoterminal", "dexscreener"}, True)
+            self.assertIn("edge_source", eng.state())
+            self.assertEqual(eng.state()["edge_source"], rows)
+            self.assertEqual(eng.state()["version"], "0.9")
+            store.close()
