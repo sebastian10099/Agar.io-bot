@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.29"
+VERSION="1.30"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -373,9 +373,16 @@ names_of() {
     command -v python3 >/dev/null || return 0
     python3 -I - "$file" <<'EOF' 2>/dev/null
 import json, re, sys, time
+def read_nofollow(path, limit=16 * 1024 * 1024):
+    """Inhalt einer regulaeren Datei, ohne einem Symlink zu folgen (Ordner gehoeren beammp)."""
+    import os as _os, stat as _stat
+    fd = _os.open(path, _os.O_RDONLY | _os.O_NOFOLLOW | _os.O_NONBLOCK)
+    with _os.fdopen(fd, "rb") as fh:
+        if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
+            raise OSError("keine regulaere Datei: " + path)
+        return fh.read(limit).decode("utf-8")
 try:
-    with open(sys.argv[1], encoding="utf-8") as f:
-        st = json.load(f)
+    st = json.loads(read_nofollow(sys.argv[1]))
 except Exception:
     sys.exit(0)
 if not isinstance(st, dict) or not isinstance(st.get("names"), list):
@@ -1789,15 +1796,23 @@ watch_season() {
     line=$(python3 -I - "$month" "$SHARED" <<'PY'
 import glob, json, os, sys
 month, shared = sys.argv[1], sys.argv[2]
+def read_nofollow(path, limit=16 * 1024 * 1024):
+    """Inhalt einer regulaeren Datei, ohne einem Symlink zu folgen (Ordner gehoeren beammp)."""
+    import os as _os, stat as _stat
+    fd = _os.open(path, _os.O_RDONLY | _os.O_NOFOLLOW | _os.O_NONBLOCK)
+    with _os.fdopen(fd, "rb") as fh:
+        if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
+            raise OSError("keine regulaere Datei: " + path)
+        return fh.read(limit).decode("utf-8")
 rows = []
 try:
-    with open(os.path.join(shared, "seasons", month + ".json"), encoding="utf-8") as f:
-        rows = [(float(e.get("xp", 0)), str(e.get("name", "?"))) for e in json.load(f).get("top", []) if isinstance(e, dict)]
+    rows = [(float(e.get("xp", 0)), str(e.get("name", "?")))
+            for e in json.loads(read_nofollow(os.path.join(shared, "seasons", month + ".json"))).get("top", [])
+            if isinstance(e, dict)]
 except Exception:
     for path in glob.glob(os.path.join(shared, "players", "*.json")):
         try:
-            with open(path, encoding="utf-8") as f:
-                r = json.load(f)
+            r = json.loads(read_nofollow(path))
         except Exception:
             continue
         xp = r.get("monthXp") if r.get("month") == month else r.get("lastMonthXp") if r.get("lastMonth") == month else None
@@ -2014,9 +2029,16 @@ cmd_admin() {
     python3 -I - "$SHARED/config.json" "$out" "$action" "$@" <<'PY' || { rm -f "$out"; exit 1; }
 import json, os, re, sys
 path, out, action, names = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
+def read_nofollow(path, limit=16 * 1024 * 1024):
+    """Inhalt einer regulaeren Datei, ohne einem Symlink zu folgen (Ordner gehoeren beammp)."""
+    import os as _os, stat as _stat
+    fd = _os.open(path, _os.O_RDONLY | _os.O_NOFOLLOW | _os.O_NONBLOCK)
+    with _os.fdopen(fd, "rb") as fh:
+        if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
+            raise OSError("keine regulaere Datei: " + path)
+        return fh.read(limit).decode("utf-8")
 try:
-    with open(path, encoding="utf-8") as f:
-        cfg = json.load(f)
+    cfg = json.loads(read_nofollow(path))
     if not isinstance(cfg, dict):
         raise ValueError
 except FileNotFoundError:
@@ -2180,9 +2202,16 @@ cmd_bans() {
     command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
     python3 -I - "$SHARED/bans.json" <<'PY'
 import json, sys, time
+def read_nofollow(path, limit=16 * 1024 * 1024):
+    """Inhalt einer regulaeren Datei, ohne einem Symlink zu folgen (Ordner gehoeren beammp)."""
+    import os as _os, stat as _stat
+    fd = _os.open(path, _os.O_RDONLY | _os.O_NOFOLLOW | _os.O_NONBLOCK)
+    with _os.fdopen(fd, "rb") as fh:
+        if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
+            raise OSError("keine regulaere Datei: " + path)
+        return fh.read(limit).decode("utf-8")
 try:
-    with open(sys.argv[1], encoding="utf-8") as f:
-        data = json.load(f)
+    data = json.loads(read_nofollow(sys.argv[1]))
 except FileNotFoundError:
     print("Keine Banns.")
     sys.exit(0)
@@ -2212,9 +2241,16 @@ cmd_unban() {
     python3 -I - "$SHARED/bans.json" "$*" "$out" <<'PY' || { rm -f "$out"; exit 1; }
 import json, os, sys
 path, query, out = sys.argv[1], sys.argv[2].lower(), sys.argv[3]
+def read_nofollow(path, limit=16 * 1024 * 1024):
+    """Inhalt einer regulaeren Datei, ohne einem Symlink zu folgen (Ordner gehoeren beammp)."""
+    import os as _os, stat as _stat
+    fd = _os.open(path, _os.O_RDONLY | _os.O_NOFOLLOW | _os.O_NONBLOCK)
+    with _os.fdopen(fd, "rb") as fh:
+        if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
+            raise OSError("keine regulaere Datei: " + path)
+        return fh.read(limit).decode("utf-8")
 try:
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+    data = json.loads(read_nofollow(path))
     if not isinstance(data, dict):
         raise ValueError
 except FileNotFoundError:
@@ -2273,10 +2309,19 @@ now = time.time()
 E = html.escape
 
 
+def read_nofollow(path, limit=16 * 1024 * 1024):
+    """Inhalt einer regulaeren Datei, ohne einem Symlink zu folgen (Ordner gehoeren beammp)."""
+    import os as _os, stat as _stat
+    fd = _os.open(path, _os.O_RDONLY | _os.O_NOFOLLOW | _os.O_NONBLOCK)
+    with _os.fdopen(fd, "rb") as fh:
+        if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
+            raise OSError("keine regulaere Datei: " + path)
+        return fh.read(limit).decode("utf-8")
+
+
 def load(path):
     try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        return json.loads(read_nofollow(path))
     except Exception:
         return None
 

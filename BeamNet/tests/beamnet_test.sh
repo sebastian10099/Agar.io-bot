@@ -1221,6 +1221,28 @@ ln -s "$victim/system.conf" "$T/root/6/ServerConfig.toml"
 "$TOOL" set-map 6 utah -y >/dev/null 2>&1
 contains "$(cat "$victim/system.conf")" "levels/x/" "Sicherheit: set-map folgt keinem Symlink"
 rm -f "$T/root/6/ServerConfig.toml"; mv "$T/cfg6.keep" "$T/root/6/ServerConfig.toml"
+# Lesen als root: Symlinks auf fremde JSON-Dateien (z. B. Zugangsdaten unter /root) werden nie gelesen.
+echo '{"id":"7","name":"GEHEIMNIS-ROOT","km":5,"secret":"tok","week":"x","weekKm":1}' >"$victim/creds.json"; chmod 600 "$victim/creds.json"
+mkdir -p "$S/players" "$S/servers"
+ln -sf "$victim/creds.json" "$S/players/77.json"
+"$TOOL" web run >/dev/null 2>&1
+lacks "$(cat "$T/web/index.html" "$T/web/api.json")" "GEHEIMNIS-ROOT" "Sicherheit: Statusseite liest keine Symlinks (oeffentlich!)"
+rm -f "$S/players/77.json"
+cp "$S/bans.json" "$T/bans.keep" 2>/dev/null
+ln -sf "$victim/creds.json" "$S/bans.json"
+"$TOOL" -y unban irgendwer >/dev/null 2>&1
+lacks "$([[ -L $S/bans.json ]] || cat "$S/bans.json" 2>/dev/null)" "tok|GEHEIMNIS" "Sicherheit: unban kopiert keine fremde Datei nach bans.json"
+lacks "$("$TOOL" bans 2>&1)" "GEHEIMNIS|tok" "Sicherheit: bans liest keine Symlinks"
+rm -f "$S/bans.json"; [[ -f $T/bans.keep ]] && mv "$T/bans.keep" "$S/bans.json"
+ln -sf "$victim/creds.json" "$S/config.json"
+"$TOOL" admin add Testadmin >/dev/null 2>&1
+lacks "$([[ -L $S/config.json ]] || cat "$S/config.json" 2>/dev/null)" "GEHEIMNIS|tok" "Sicherheit: admin kopiert keine fremde Datei nach config.json"
+rm -f "$S/config.json"
+echo "{\"port\":30814,\"players\":1,\"max\":8,\"names\":[\"GEHEIMNIS-ROOT\"],\"updated\":$(date +%s)}" >"$victim/hb.json"
+mv "$S/servers/30814.json" "$T/hb.keep" 2>/dev/null; ln -sf "$victim/hb.json" "$S/servers/30814.json"
+lacks "$("$TOOL" players 2>&1)" "GEHEIMNIS" "Sicherheit: Namen aus dem Lebenszeichen nur ohne Symlink"
+rm -f "$S/servers/30814.json"; [[ -f $T/hb.keep ]] && mv "$T/hb.keep" "$S/servers/30814.json"
+[[ $(stat -c %a "$victim/creds.json") == 600 ]] && pass || fail "Sicherheit: fremde Datei unveraendert"
 # Lebenszeichen: watch.json als Symlink.
 ln -sf "$victim/passwd" "$S/watch.json"
 ln -sf "$victim/passwd" "$S/.watch.json.tmp"      # feste Zwischendatei der Version 1.11–1.16
