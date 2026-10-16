@@ -9,7 +9,7 @@
       "geckoterminal"
     ]
   },
-  "poll_seconds": 20,
+  "poll_seconds": 10,
   "bankroll_usd": 1000,
   "risk_per_trade_pct": 1.0,
   "max_open_positions": 5,

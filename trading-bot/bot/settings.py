@@ -13,7 +13,7 @@ CHAINS = ["solana", "ethereum", "base", "bsc"]
 SCHEMA: list[dict[str, Any]] = [
     {"path": "poll_seconds", "type": "int", "min": 2, "max": 300, "step": 1,
      "label": "Abfrage-Intervall", "unit": "s", "group": "Allgemein",
-     "help": "Wie oft neue Tokens geholt und offene Positionen geprüft werden."},
+     "help": "Wie oft neue Tokens geholt und offene Positionen geprüft werden. Unter 10 s drohen Rate-Limits der kostenlosen APIs (429) – dann wird ein Poll übersprungen, kein Schaden, aber auch kein Gewinn."},
     {"path": "chains", "type": "chains", "label": "Chains", "group": "Allgemein",
      "help": "Welche Netzwerke beobachtet werden. RugCheck gibt es nur für Solana."},
     {"path": "discovery.sources", "type": "multi", "label": "Discovery-Quellen", "group": "Allgemein",

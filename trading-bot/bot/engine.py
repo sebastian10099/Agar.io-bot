@@ -42,6 +42,7 @@ class Engine:
         self.started_at = clock()
         self.persist: Optional[Callable[[dict[str, Any]], None]] = None
         self.home: Optional[Any] = None          # data dir, set by main for the self-test
+        self.demo = False                        # set by main: fake market, no real token pages
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._lock = threading.Lock()
@@ -350,7 +351,7 @@ class Engine:
                 "age_min": round((now - pos["opened_at"]) / 60, 1),
             })
         return {
-            "mode": self.cfg["mode"], "paused": self.paused, "now": now,
+            "mode": self.cfg["mode"], "demo": self.demo, "paused": self.paused, "now": now,
             "started_at": self.started_at, "poll_seconds": self.cfg["poll_seconds"],
             "wall_now": time.time(), "last_poll_wall": self.last_poll_wall,
             "chains": self.cfg["chains"],

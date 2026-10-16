@@ -49,6 +49,10 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   (nur Positionen, oder alles inklusive Edge-Daten), wahlweise mit neuem
   Startkapital, und CSV-Export von Positionen, Fills und Kandidaten. Bricht
   die Verbindung zum Bot ab, erscheint ein Banner mit „Erneut versuchen“.
+  Die Seite holt sich alle 2 Sekunden den Stand, der Bot pollt standardmäßig
+  alle 10 Sekunden (einstellbar; darunter drohen Rate-Limits der kostenlosen
+  APIs). Im Demo-Modus zeigt die Modus-Pille „paper · Demo“ und es gibt
+  keine Kursseiten-Links, weil Demo-Tokens nicht existieren.
   **Diagnose kopieren** legt Zustand, Quellen, Selbsttest, Konfiguration und
   die letzten Protokollzeilen als Text in die Zwischenablage – zum Einfügen,
   wenn du Hilfe brauchst.

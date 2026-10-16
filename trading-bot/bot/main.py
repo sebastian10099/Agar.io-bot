@@ -102,6 +102,7 @@ def main(argv: list[str] = None) -> int:
     engine = build(cfg, home, args.demo)
     engine.persist = persist_to(home)
     engine.home = home
+    engine.demo = args.demo
 
     if args.once:
         counts = engine.poll_once()

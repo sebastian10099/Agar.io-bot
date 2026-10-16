@@ -39,6 +39,10 @@
   .kv { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px 14px; margin:0 0 12px; }
   .kv div { background:var(--muted); border-radius:7px; padding:6px 8px; } .kv span { display:block; font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; }
   .kv b { font-weight:600; }
+  .gloss { margin:0; display:grid; grid-template-columns:max-content 1fr; gap:6px 14px; font-size:13px; }
+  .gloss dt { font-weight:600; } .gloss dd { margin:0; color:var(--dim); }
+  @media (max-width:640px) { .gloss { grid-template-columns:1fr; } .gloss dd { margin-bottom:4px; } }
+  dialog#help { max-width:min(640px, 92vw); width:100%; }
   .dlg-h { margin:12px 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); }
   .sources { list-style:none; margin:0 0 10px; padding:0; display:grid; gap:6px; }
   .sources li { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
@@ -178,6 +182,7 @@
     .kpi { min-width:72px; } .kpi b { font-size:15px; }
     section > h2 .filterbar, section > h2 .note { flex-basis:100%; }
     section > h2 .spacer { display:none; }
+    .lo { display:none; }   /* low-priority columns: the detail dialogs still show them */
   }
   #cands td:nth-child(2), #open td:first-child { white-space:nowrap; }
   .sw { position:relative; width:38px; height:22px; border-radius:999px; background:var(--line-strong); cursor:pointer;
@@ -225,6 +230,7 @@
       <div class="kpi"><span>Letzter Poll</span><b id="k-poll">–</b></div>
     </div>
     <div class="actions">
+      <button class="btn" id="b-help" title="Hilfe und Tastenkürzel (Taste ?)" aria-label="Hilfe">?</button>
       <button class="btn" id="b-notify" aria-pressed="false">🔔</button>
       <button class="btn" id="b-poll" title="Sofort neue Tokens holen (Taste r)">Jetzt pollen</button>
       <button class="btn primary" id="b-toggle" title="Taste p">Pause</button>
@@ -277,6 +283,7 @@
         <button type="button" class="btn" id="b-prof-save">Aktuelle Werte speichern als…</button>
         <button type="button" class="btn danger" id="b-prof-del" disabled>Löschen</button>
       </div>
+      <div class="formbar" style="margin:0 0 10px"><label for="pq" class="status">Parameter suchen</label><input type="search" id="pq" placeholder="z. B. Liquidität, Stop, KI" style="width:220px;background:var(--muted);border:1px solid var(--line-strong);border-radius:7px;padding:6px 8px" aria-describedby="pq-n"><span class="status" id="pq-n"></span></div>
       <form id="form" autocomplete="off" novalidate><div class="groups" id="groups"></div>
         <div class="formbar">
           <button type="submit" class="btn primary" id="b-save" disabled>Speichern</button>
@@ -359,6 +366,24 @@
 <dialog id="ask" aria-labelledby="a-title"><h3 id="a-title"></h3><p id="a-text"></p>
   <input type="text" id="a-input" maxlength="40" style="width:100%;background:var(--muted);border:1px solid var(--line-strong);border-radius:7px;padding:7px 9px;margin-bottom:14px" aria-labelledby="a-title">
   <div class="row"><button class="btn" id="a-no">Abbrechen</button><button class="btn primary" id="a-yes">Speichern</button></div></dialog>
+<dialog id="help" aria-labelledby="h-title"><h3 id="h-title">Hilfe</h3>
+  <p class="dlg-h">Tasten</p>
+  <p class="note" style="margin:0 0 6px"><kbd>1</kbd>–<kbd>5</kbd> Reiter · <kbd>p</kbd> Pause/Fortsetzen · <kbd>r</kbd> Jetzt pollen · <kbd>/</kbd> Suche · <kbd>?</kbd> diese Hilfe · <kbd>Esc</kbd> Dialog schließen · in der Kapitalkurve <kbd>←</kbd> <kbd>→</kbd> <kbd>Pos1</kbd> <kbd>Ende</kbd></p>
+  <p class="dlg-h">Begriffe</p>
+  <dl class="gloss">
+    <dt>buy / watch / skip</dt><dd>Kaufen, nur beobachten, aussortiert. Alle drei werden weiterverfolgt, damit der Edge-Report eine Kontrollgruppe hat.</dd>
+    <dt>Score</dt><dd>0–100 aus Liquidität, Aktivität, Kaufdruck, Momentum, Alter, Socials und RugCheck. Ab „Min. Score“ wird gekauft.</dd>
+    <dt>Edge-Report</dt><dd>Durchschnittliche Kursänderung 5/15/60 Minuten nach der Entscheidung. Liegt buy nicht klar vor watch und skip, hat die Strategie keine Kante.</dd>
+    <dt>Danach</dt><dd>Dieselbe Kursänderung für einen einzelnen Kandidaten.</dd>
+    <dt>Gewinnleiter</dt><dd>Stufen „Gewinn %: Anteil“. Bei +50 % die Hälfte verkaufen heißt 50: 0.5.</dd>
+    <dt>Trailing-Stop</dt><dd>Abstand zum Hoch. Wird erst scharf, wenn das Hoch so weit im Plus lag.</dd>
+    <dt>Risiko pro Trade</dt><dd>Was bei einem Stop-Loss verloren geht, als Anteil der Bankroll. Daraus folgt die Positionsgröße.</dd>
+    <dt>Paper</dt><dd>Simuliert mit Gebühr und Slippage je Fill. Echtgeld ist bewusst nicht enthalten.</dd>
+    <dt>Rückblick</dt><dd>Jeder Filterwert einzeln über ein Raster, gemessen an der eigenen Historie. Unter fünf Treffern ist es Rauschen.</dd>
+    <dt>Quellen</dt><dd>Woher neue Tokens kommen. DexScreener liefert immer die Kennzahlen, GeckoTerminal sieht frische Pools früher.</dd>
+  </dl>
+  <form method="dialog" class="formbar" style="justify-content:flex-end"><button class="btn">Schließen</button></form>
+</dialog>
 <dialog id="detail" aria-labelledby="d-title"><h3 id="d-title"></h3><p id="d-sub"></p><div id="d-body" class="scroll" style="max-height:50vh"></div>
   <div class="row" style="margin-top:14px"><button class="btn" id="d-close">Schließen</button></div></dialog>
 <dialog id="confirm"><h3 id="c-title"></h3><p id="c-text"></p><div class="row">
@@ -422,8 +447,8 @@ function table(rows, cols, empty) {
   if (!rows.length) return `<div class="empty">${empty}</div>`;
   const head = cols.map((c) => c.sort
     ? `<th class="${c.num ? 'num' : ''} sortable" data-sort="${c.sort}" aria-sort="${sort.key === c.sort ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}"><button type="button">${c.h}<span class="arrow">${sort.key === c.sort ? (sort.dir > 0 ? '▲' : '▼') : ''}</span></button></th>`
-    : `<th class="${c.num ? 'num' : ''}">${c.h}</th>`).join('');
-  const body = rows.map((r) => '<tr>' + cols.map((c) => `<td class="${c.num ? 'num ' : ''}${c.cls ? c.cls(r) : ''}">${c.f(r)}</td>`).join('') + '</tr>').join('');
+    : `<th class="${c.num ? 'num' : ''}${c.lo ? ' lo' : ''}">${c.h}</th>`).join('');
+  const body = rows.map((r) => '<tr>' + cols.map((c) => `<td class="${c.num ? 'num ' : ''}${c.lo ? 'lo ' : ''}${c.cls ? c.cls(r) : ''}">${c.f(r)}</td>`).join('') + '</tr>').join('');
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
@@ -446,10 +471,10 @@ function renderOverview(s) {
     {h: 'Einstieg', f: (r) => px(r.entry_price), num: true},
     {h: 'Kurs', f: (r) => px(r.price), num: true},
     {h: 'Gain', f: (r) => pct(r.gain_pct), num: true, cls: (r) => cls(r.gain_pct)},
-    {h: 'Hoch', f: (r) => pct((r.peak_price / r.entry_price - 1) * 100), num: true},
+    {h: 'Hoch', f: (r) => pct((r.peak_price / r.entry_price - 1) * 100), num: true, lo: true},
     {h: 'Offen', f: (r) => usd(r.size_usd * r.remaining_frac) + ` <span class="reasons">${Math.round(r.remaining_frac * 100)}%</span>`, num: true},
     {h: 'Unrealisiert', f: (r) => usd(r.unrealized), num: true, cls: (r) => cls(r.unrealized)},
-    {h: 'Realisiert', f: (r) => usd(r.realized_usd), num: true, cls: (r) => cls(r.realized_usd)},
+    {h: 'Realisiert', f: (r) => usd(r.realized_usd), num: true, cls: (r) => cls(r.realized_usd), lo: true},
     {h: 'Stop', f: (r) => { const g = targets(r, s.config); return `<span class="neg">${px(g.stop)}</span>` + (g.trailPrice ? `<div class="reasons" title="Trailing-Stop, scharf">↑ ${px(g.trailPrice)}</div>` : ''); }, num: true},
     {h: 'Nächstes Ziel', f: (r) => { const g = targets(r, s.config); return g.next ? `<span class="pos">${px(g.next.price)}</span><div class="reasons">+${g.next.pct}% · ${Math.round(g.next.frac * 100)}% verkaufen</div>` : '<span class="reasons">Leiter fertig</span>'; }, num: true},
     {h: 'Zeit', f: (r) => { const g = targets(r, s.config); return dur(r.age_min * 60) + `<div class="reasons">${g.left > 0 ? 'noch ' + dur(g.left * 60) : 'Zeit-Stop fällig'}</div>`; }, num: true},
@@ -528,7 +553,7 @@ async function showCandidate(id) {
     <p class="dlg-h">RugCheck</p>
     <p class="note" style="margin:0 0 6px">${rug ? `Score ${Math.round(rug.score)}` + (rug.danger && rug.danger.length ? ` · <span class="neg">Gefahr: ${esc(rug.danger.join(', '))}</span>` : '') + (rug.warn && rug.warn.length ? ` · Warnung: ${esc(rug.warn.join(', '))}` : ' · keine Auffälligkeiten') : (c.chain === 'solana' ? 'nicht erreichbar oder nicht abgefragt' : 'nur für Solana')}</p>
     ${s.ai_decision ? `<p class="dlg-h">KI</p><p class="note" style="margin:0 0 6px"><span class="d-${s.ai_decision}">${s.ai_decision}</span> mit ${Math.round((s.ai_confidence || 0) * 100)} % Vertrauen (${esc(s.ai_model || '')}) · ${esc((s.ai_reasons || []).join(' · '))}${(s.ai_flags || []).length ? ` · <span class="neg">Risiken: ${esc(s.ai_flags.join(', '))}</span>` : ''}</p>` : ''}
-    <p class="note" style="margin:10px 0 0">${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">Kursseite öffnen ↗</a> · ` : ''}<span class="reasons">${esc(c.token)}</span>${d.held ? ' · <b>im Bestand</b>' : ` · <button type="button" class="btn sm" id="d-buy">Jetzt manuell kaufen</button>`}</p>`;
+    <p class="note" style="margin:10px 0 0">${state && state.demo ? '<span class="reasons" title="Demo-Markt: dieser Token existiert nicht wirklich">Demo-Token, keine Kursseite</span> · ' : s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">Kursseite öffnen ↗</a> · ` : ''}<span class="reasons">${esc(c.token)}</span>${d.held ? ' · <b>im Bestand</b>' : ` · <button type="button" class="btn sm" id="d-buy">Jetzt manuell kaufen</button>`}</p>`;
   $('d-body').innerHTML = body;
   const buy = $('d-buy');
   if (buy) buy.onclick = () => busy(buy, async () => {
@@ -547,12 +572,12 @@ function renderCandidates(s) {
   $('n-cands').textContent = s.candidates.length ? `(${s.candidates.length})` : '';
   $('cands').innerHTML = table(rows, [
     {h: 'Zeit', sort: 'seen_at', f: (r) => hhmm(r.seen_at)},
-    {h: 'Token', sort: 'symbol', f: (r) => `<button type="button" class="linkish" data-cdetail="${r.id}" aria-label="${esc(r.symbol)} Details"><b>${esc(r.symbol)}</b></button> ${r.snapshot.url ? `<a href="${esc(r.snapshot.url)}" target="_blank" rel="noopener" aria-label="${esc(r.symbol)} im Browser öffnen" title="Kursseite öffnen">↗</a>` : ''}${r.snapshot.source ? `<div class="reasons">${esc(srcShort[r.snapshot.source] || r.snapshot.source)}${r.snapshot.via_feed ? ' · via Feed' : ''}</div>` : ''}`},
+    {h: 'Token', sort: 'symbol', f: (r) => `<button type="button" class="linkish" data-cdetail="${r.id}" aria-label="${esc(r.symbol)} Details"><b>${esc(r.symbol)}</b></button> ${s.demo ? '' : r.snapshot.url ? `<a href="${esc(r.snapshot.url)}" target="_blank" rel="noopener" aria-label="${esc(r.symbol)} im Browser öffnen" title="Kursseite öffnen">↗</a>` : ''}${r.snapshot.source ? `<div class="reasons">${esc(srcShort[r.snapshot.source] || r.snapshot.source)}${r.snapshot.via_feed ? ' · via Feed' : ''}</div>` : ''}`},
     {h: 'Entscheidung', sort: 'decision', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
     {h: 'Score', sort: 'score', f: (r) => r.score || '–', num: true},
     {h: 'Liq.', sort: 'liq', f: (r) => usd(r.snapshot.liquidity_usd), num: true},
-    {h: 'Vol 5m', sort: 'vol', f: (r) => usd(r.snapshot.volume_m5), num: true},
-    {h: 'K/V 5m', f: (r) => `${r.snapshot.buys_m5 ?? '–'}/${r.snapshot.sells_m5 ?? '–'}`, num: true},
+    {h: 'Vol 5m', sort: 'vol', f: (r) => usd(r.snapshot.volume_m5), num: true, lo: true},
+    {h: 'K/V 5m', f: (r) => `${r.snapshot.buys_m5 ?? '–'}/${r.snapshot.sells_m5 ?? '–'}`, num: true, lo: true},
     {h: 'Δ 5m', sort: 'change', f: (r) => pct(r.snapshot.change_m5), num: true, cls: (r) => cls(r.snapshot.change_m5)},
     {h: 'Alter', sort: 'age', f: (r) => r.snapshot.age_min == null ? '–' : Math.round(r.snapshot.age_min) + ' min', num: true},
     {h: 'Danach', sort: 'after', f: (r) => afterCell(r.outcomes), num: true},
@@ -738,7 +763,7 @@ function paintPollClock() {
 }
 setInterval(() => { if (!document.hidden) paintPollClock(); }, 1000);
 function renderHeader(s) {
-  $('mode').textContent = s.mode;
+  $('mode').textContent = s.demo ? s.mode + ' · Demo' : s.mode; $('mode').title = s.demo ? 'Demo-Markt: simulierte Tokens, keine echten Kursseiten' : '';
   $('paused').hidden = !s.paused;
   $('b-toggle').textContent = s.paused ? 'Fortsetzen' : 'Pause';
   $('k-bankroll').textContent = usd(s.bankroll); $('k-bankroll').className = cls(s.bankroll - s.initial);
@@ -791,6 +816,12 @@ function buildForm() {
   $('groups').querySelectorAll('input').forEach((i) => i.oninput = () => setDraft(i.dataset.path, i.value));
   $('groups').querySelectorAll('select[data-path]').forEach((i) => i.onchange = () => setDraft(i.dataset.path, i.value));
 }
+$('pq').oninput = () => {
+  const q = $('pq').value.trim().toLowerCase(); let n = 0;
+  $('groups').querySelectorAll('.field').forEach((el) => { const hit = !q || el.textContent.toLowerCase().includes(q) || el.dataset.field.toLowerCase().includes(q); el.hidden = !hit; if (hit) n++; });
+  $('groups').querySelectorAll('fieldset').forEach((fs) => fs.hidden = !fs.querySelector('.field:not([hidden])'));
+  $('pq-n').textContent = q ? `${n} Treffer` : '';
+};
 const ladderText = (l) => Array.isArray(l) ? l.map(([p, f]) => `${p}: ${f}`).join(', ') : String(l ?? '');
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function normalized(path, v) {
@@ -829,6 +860,7 @@ function changedPatch() {
   }
   return patch;
 }
+window.addEventListener('beforeunload', (ev) => { if (schema && Object.keys(changedPatch()).length) { ev.preventDefault(); ev.returnValue = ''; } });
 function paintFormBar() {
   const n = Object.keys(changedPatch()).length;
   $('b-save').disabled = n === 0; $('b-revert').disabled = n === 0;
@@ -892,9 +924,10 @@ $('b-diag').onclick = () => busy($('b-diag'), async () => {
   try { await navigator.clipboard.writeText(text); copied = true; } catch {}
   $('d-title').textContent = 'Diagnose'; $('d-sub').textContent = copied ? 'In die Zwischenablage kopiert – einfach in die Nachricht einfügen.' : 'Text markieren und kopieren (die Zwischenablage war nicht erreichbar).';
   $('d-body').innerHTML = `<textarea id="d-diag" readonly rows="14" style="width:100%;font:12px ui-monospace,monospace;background:var(--muted);color:var(--fg);border:1px solid var(--line-strong);border-radius:7px;padding:8px;resize:vertical" aria-label="Diagnosetext"></textarea>`;
-  $('d-diag').value = text; $('detail').showModal(); $('d-diag').select();
+  $('d-diag').value = text; $('detail').showModal(); $('d-diag').select(); $('d-diag').scrollTop = 0;
   if (copied) toast('Diagnose kopiert');
 });
+$('b-help').onclick = () => $('help').showModal();
 $('b-doctor').onclick = () => busy($('b-doctor'), async () => {
   $('doctor').hidden = false; $('doctor').innerHTML = '<li><span class="dot warn"></span><span class="reasons">Prüfe Quellen, Parser, RugCheck, Zugang …</span></li>';
   const r = await api('/api/doctor', {}); lastDoctor = r;
@@ -1059,7 +1092,7 @@ $('b-retry').onclick = () => busy($('b-retry'), refresh);
   try { const t = localStorage.getItem('tab'); if (t) document.querySelector(`nav [data-tab="${t}"]`)?.click(); } catch {}
   try { const sv = JSON.parse(localStorage.getItem('sort') || 'null'); if (sv && sortKeys[sv.key]) sort = sv; } catch {}
   await refresh();
-  setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+  setInterval(() => { if (!document.hidden) refresh(); }, 2000);
   // Shortcuts: p pause/resume, r poll now, 1-4 tabs, / search. Never while typing.
   document.addEventListener('keydown', (ev) => {
     const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) || document.querySelector('dialog[open]');
@@ -1069,6 +1102,7 @@ $('b-retry').onclick = () => busy($('b-retry'), refresh);
     else if (ev.key === 'r') $('b-poll').click();
     else if (ev.key >= '1' && ev.key <= '5') document.querySelector(`nav [data-tab="${tabs[Number(ev.key) - 1]}"]`).click();
     else if (ev.key === '/') { document.querySelector('nav [data-tab="candidates"]').click(); $('q').focus(); ev.preventDefault(); }
+    else if (ev.key === '?') $('help').showModal();
     else return;
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });

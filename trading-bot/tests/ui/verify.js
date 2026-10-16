@@ -321,6 +321,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok((await watchRow.count()) === 1, 'Kaufen-Knopf an einem watch-Kandidaten');
   // --- Kandidaten: „Danach“-Spalte und Details-Dialog ---
   ok((await p.textContent('#cands thead')).includes('Danach'), 'Spalte „Danach“ (Rendite 5/15/60 min) vorhanden');
+  ok((await p.$$('#cands a[href]')).length === 0 && (await p.textContent('#mode')).includes('Demo'), 'Demo: keine toten Kursseiten-Links, Modus-Pill sagt Demo');
   ok((await p.$$('#cands tbody .after, #cands tbody td:nth-child(10) .reasons')).length >= 1, 'Danach-Zellen gerendert (Wert oder „…“)');
   await p.locator('#cands tbody [data-cdetail]').first().click(); await p.waitForSelector('dialog#detail[open]');
   const cdBody = await p.textContent('#d-body');
@@ -387,6 +388,22 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   // --- Verbindungsverlust: Banner erscheint, „Erneut versuchen“ räumt es weg ---
   await p.click('nav [data-tab="control"]');
   ok(/ms|s \(zuletzt/.test(await p.textContent('#k-pollms')), 'Ø Poll-Dauer angezeigt: ' + (await p.textContent('#k-pollms')));
+  // --- Hilfe, Parameter-Suche, Schutz vor ungespeicherten Änderungen ---
+  await p.keyboard.press('?'); await p.waitForSelector('dialog#help[open]');
+  ok((await p.textContent('#help')).includes('Edge-Report') && (await p.$$('#help dt')).length >= 8, 'Hilfe per Taste ? mit Tasten und Glossar');
+  await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.querySelector('dialog#help[open]'));
+  await p.click('#b-help'); await p.waitForSelector('dialog#help[open]'); await p.keyboard.press('Escape');
+  await p.fill('#pq', 'liquid');
+  const visible = await p.$$eval('#groups .field:not([hidden])', (l) => l.map((x) => x.dataset.field));
+  ok(visible.length >= 2 && visible.every((f) => /liquidity/.test(f)) && (await p.textContent('#pq-n')).includes('Treffer'), 'Parameter-Suche filtert: ' + visible.join(', '));
+  ok((await p.$$eval('#groups fieldset[hidden]', (l) => l.length)) >= 3, 'leere Gruppen ausgeblendet');
+  await p.fill('#pq', '');
+  ok((await p.$$eval('#groups .field[hidden]', (l) => l.length)) === 0, 'Suche leeren zeigt alles wieder');
+  await p.locator('input[data-path="exits.time_stop_minutes"]').fill('777');
+  const guard = await p.evaluate(() => { const ev = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(ev); return ev.defaultPrevented; });
+  ok(guard, 'ungespeicherte Änderung löst beforeunload-Schutz aus');
+  await p.click('#b-revert');
+  ok(!(await p.evaluate(() => { const ev = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(ev); return ev.defaultPrevented; })), 'ohne Änderung kein Schutz');
   expectOffline = true; await p.route('**/api/state', (r) => r.abort());
   await p.evaluate(() => refresh());
   await p.waitForSelector('#offline:not([hidden])');
@@ -409,6 +426,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   await ctx.close();
 
   console.log('\n== Telefon 390px ==');
+  // low-priority columns disappear on phones (and are back in the detail dialogs)
   [ctx, p] = await page({ viewport: { width: 390, height: 844 }, colorScheme: 'dark', isMobile: true, hasTouch: true });
   await p.goto(URL); await p.waitForSelector('#groups .field', { state: 'attached' });
   for (const tab of ['overview', 'control', 'candidates', 'analysis']) {
@@ -420,6 +438,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
       tallest: Math.round(Math.max(0, ...[...document.querySelectorAll('tbody tr')].map((r) => r.getBoundingClientRect().height))),
     }));
     ok(m.doc <= 0 && m.card <= 0, `${tab}: nichts ragt über den Viewport (Dokument ${m.doc}px, Karten ${m.card}px)`);
+    if (tab === 'candidates') ok(await p.$eval('#cands th.lo', (th) => getComputedStyle(th).display === 'none'), 'Telefon: Nebenspalten (Vol 5m, K/V) ausgeblendet');
     if (tab === 'candidates') ok(m.tallest <= 80, `${tab}: Zeilen bleiben kompakt (höchste ${m.tallest}px)`);
     await p.screenshot({ path: SHOTS + `/09-phone-${tab}.png`, fullPage: true });
   }
