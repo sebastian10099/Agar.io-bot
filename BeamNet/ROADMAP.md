@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.71 / Plugin 1.59)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.72 / Plugin 1.60)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -47,7 +47,7 @@
 - [x] „Wo ist was los?“: Wer fast allein auf einem Server fährt, bekommt den vollsten anderen Server genannt
       (Plugin 1.59).
 - [x] Erfolge für Aufträge, Verfolgungsjagden und Konvois: 7 neue (Plugin 1.57, Statusseite 1.69). Die Erfolge der
-      Werkstatt-Aufgabe 07 (5000 km, 50 Stunden, 50 Rennen, 5 Rekorde) bleiben für die lokale KI.
+      Werkstatt-Aufgabe 07 (5000 km, 50 Stunden, 50 Rennen, 5 Rekorde) folgten in Plugin 1.60.
 
 ## Die nächsten 40 Punkte (Stand Werkzeug 1.48 / Plugin 1.29)
 
@@ -116,7 +116,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
         Später: je Map.
 25. [x] Teams: `/team gründen|beitreten|verlassen|liste`, netzweit in `teams.json`, Team-Kilometer = Summe der
         Mitglieder, Rangliste im Spiel und auf der Statusseite (Plugin 1.28, Werkzeug 1.47).
-26. [ ] Neue Erfolge (5000 km, 50 Stunden, 50 Rennen, 5 Rekorde) – als Aufgabe 07 für die lokale KI vorbereitet. 🤖
+26. [x] Neue Erfolge (5000 km, 50 Stunden, 50 Rennen, 5 Rekorde) – Aufgabe 07; da die lokale KI sie nicht übernommen
+       hat, selbst umgesetzt (Plugin 1.60).
 27. [x] Saison-Titel: Die Top 3 jeder Saison tragen „Saisonsieger / Saison-Zweiter / Saison-Dritter <Monat>“ in
         `/stats` und auf ihrer Profilseite (Plugin 1.25, Werkzeug 1.44).
 28. [ ] Tagesaufgabe „X km auf einer Map“ – als Aufgabe 09 für die lokale KI vorbereitet. 🤖

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.59"
+BN.VERSION = "1.60"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -640,6 +640,8 @@ local EN = {
     ["Tipp: /konvoi – fahrt zusammen! Wer nah beieinander fährt, bekommt Bonus-XP."] =
         "Tip: /convoy – drive together! Driving close to each other gives bonus XP.",
     ["Konvoi: zusammen fahren gibt Bonus-XP – /konvoi"] = "Convoy: driving together gives bonus XP – /convoy",
+    ["Neue Erfolge für Vielfahrer: 5000 km, 50 Stunden, 50 Rennen, 5 Streckenrekorde"] =
+        "New achievements for regulars: 5000 km, 50 hours, 50 races, 5 track records",
     ["7 neue Erfolge für Aufträge, Verfolgungsjagden und Konvois – /erfolge"] =
         "7 new achievements for jobs, chases and convoys – /achievements",
     -- Serien
@@ -886,6 +888,9 @@ local EN = {
     ["Streckenrekord"] = "Track record",
     ["Weltenbummler (3 Maps)"] = "Globetrotter (3 maps)",
     ["Kenner aller Welten (8 Maps)"] = "World expert (8 maps)",
+    ["50 Stunden unterwegs"] = "50 hours on the road",
+    ["50 Rennen"] = "50 races",
+    ["5 Streckenrekorde"] = "5 track records",
     ["Erster Auftrag"] = "First job",
     ["25 Aufträge"] = "25 jobs",
     ["Profi-Fahrer (100 Aufträge)"] = "Pro driver (100 jobs)",
@@ -1668,6 +1673,10 @@ BN.ACHIEVEMENTS = {
     { id = "maps3", name = "Weltenbummler (3 Maps)", xp = 30, value = function(t) return t.maps end, goal = 3 },
     { id = "maps8", name = "Kenner aller Welten (8 Maps)", xp = 80, value = function(t) return t.maps end, goal = 8 },
     { id = "level10", name = "Level 10", xp = 0, value = function(t) return t.level end, goal = 10 },
+    { id = "km5000", name = "5000 km", xp = 400, value = function(t) return t.km end, goal = 5000 },
+    { id = "hours50", name = "50 Stunden unterwegs", xp = 250, value = function(t) return t.seconds / 3600 end, goal = 50 },
+    { id = "race50", name = "50 Rennen", xp = 150, value = function(t) return t.races end, goal = 50 },
+    { id = "record5", name = "5 Streckenrekorde", xp = 150, value = function(t) return t.records end, goal = 5 },
     { id = "job1", name = "Erster Auftrag", xp = 10, value = function(t) return t.jobs end, goal = 1 },
     { id = "job25", name = "25 Aufträge", xp = 60, value = function(t) return t.jobs end, goal = 25 },
     { id = "job100", name = "Profi-Fahrer (100 Aufträge)", xp = 150, value = function(t) return t.jobs end, goal = 100 },
@@ -2122,6 +2131,7 @@ BN.NEWS = {
     { "1.53", "Einsatz-Alarm: ab und zu ein Ziel für alle – wer zuerst da ist, bekommt Bonus-XP" },
     { "1.56", "Konvoi: zusammen fahren gibt Bonus-XP – /konvoi" },
     { "1.57", "7 neue Erfolge für Aufträge, Verfolgungsjagden und Konvois – /erfolge" },
+    { "1.60", "Neue Erfolge für Vielfahrer: 5000 km, 50 Stunden, 50 Rennen, 5 Streckenrekorde" },
 }
 
 local function versionNum(v)

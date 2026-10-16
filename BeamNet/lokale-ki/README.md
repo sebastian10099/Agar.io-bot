@@ -49,7 +49,7 @@ Claude schaut sich dann nur die Änderung an, lässt die GitHub-Tests laufen und
 | `04-config-ganzzahlen.md` | Ganzzahlen in `config.json` prüfen | klein |
 | `05-rennzeit-runden.md` | Rennzeiten sauber runden | klein |
 | `06-reservierte-streckennamen.md` | Streckennamen wie „stop“ verbieten | klein |
-| `07-neue-erfolge.md` | Vier neue Erfolge (5000 km, 50 h, 50 Rennen, 5 Rekorde) | klein |
+| `07-neue-erfolge.md` | Vier neue Erfolge (5000 km, 50 h, 50 Rennen, 5 Rekorde) – **erledigt** (Plugin 1.60) | klein |
 | `08-readme-englisch.md` | Englische Kurzanleitung `README.en.md` | mittel |
 | `09-tagesaufgabe-map.md` | Tagesaufgabe „X km auf einer Map“ | mittel |
 

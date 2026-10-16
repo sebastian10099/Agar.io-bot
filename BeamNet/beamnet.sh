@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.71"
+VERSION="1.72"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -4072,7 +4072,8 @@ write(os.path.join(os.path.dirname(out), "api.json"), json.dumps(api, ensure_asc
 ACH = {"km10": "Erste 10 km", "km100": "100 km", "km1000": "1000 km", "hour1": "1 Stunde unterwegs",
        "hours10": "10 Stunden unterwegs", "speed200": "200 km/h", "speed300": "300 km/h", "race1": "Erstes Rennen",
        "race10": "10 Rennen", "record1": "Streckenrekord", "maps3": "Weltenbummler (3 Maps)",
-       "maps8": "Kenner aller Welten (8 Maps)", "level10": "Level 10", "job1": "Erster Auftrag",
+       "maps8": "Kenner aller Welten (8 Maps)", "level10": "Level 10", "km5000": "5000 km",
+       "hours50": "50 Stunden unterwegs", "race50": "50 Rennen", "record5": "5 Streckenrekorde", "job1": "Erster Auftrag",
        "job25": "25 Aufträge", "job100": "Profi-Fahrer (100 Aufträge)", "chase1": "Erste Jagd gewonnen",
        "chase10": "Jagd-Legende (10 Jagden gewonnen)", "convoy10": "Konvoi-Fahrer (10 km)",
        "convoy100": "Kolonnenführer (100 km im Konvoi)"}

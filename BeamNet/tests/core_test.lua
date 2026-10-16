@@ -932,7 +932,7 @@ do
     end
     check(not BN.hasAchievement(v, "race1") and not BN.hasAchievement(v, "maps8"), "Nicht verdiente Erfolge fehlen")
     say(10, "/erfolge")
-    check(chatContains("Erfolge von Veteran: 9 von 20", 10), "/erfolge zaehlt")
+    check(chatContains("Erfolge von Veteran: 9 von 24", 10), "/erfolge zaehlt")
     check(chatContains("Als Nächstes: Erstes Rennen 0/1", 10), "/erfolge zeigt Fortschritt")
     BN.savePlayer(v)
     local saved = readJson(SHARED .. "/players/4242.json")
@@ -957,7 +957,7 @@ do
     -- Englisch.
     say(10, "/lang en")
     say(10, "/achievements")
-    check(chatContains("Achievements of Veteran: 9 of 20", 10) and chatContains("Next: First race 0/1", 10), "/achievements auf Englisch")
+    check(chatContains("Achievements of Veteran: 9 of 24", 10) and chatContains("Next: First race 0/1", 10), "/achievements auf Englisch")
     -- Abschaltbar.
     C.achievements = false
     players[11] = { name = "Ohne", ids = { beammp = "1111" }, vehicles = {} }
@@ -3176,8 +3176,8 @@ do
     chatLog = {}
     _G[events.onPlayerJoin](117)
     check(chatContains("✨ Neu seit deinem letzten Besuch:", 117), "Neuheiten: fuer Spieler von frueher")
-    check(chatContains("^  7 neue Erfolge", 117) and chatContains("^  Konvoi", 117) and chatContains("^  Einsatz%-Alarm", 117), "Neuheiten: die drei neuesten")
-    check(not chatContains("Orte vorschlagen", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
+    check(chatContains("^  Neue Erfolge für Vielfahrer", 117) and chatContains("^  7 neue Erfolge", 117) and chatContains("^  Konvoi", 117), "Neuheiten: die drei neuesten")
+    check(not chatContains("Einsatz%-Alarm", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
     _G[events.onPlayerDisconnect](117)
     eq(readJson(SHARED .. "/players/11717.json").seenVersion, BN.VERSION, "Neuheiten: Version gemerkt")
     chatLog = {}
@@ -3188,7 +3188,7 @@ do
     local r = readJson(SHARED .. "/players/11717.json"); r.seenVersion = "1.43"; writeJson(SHARED .. "/players/11717.json", r)
     chatLog = {}
     _G[events.onPlayerJoin](117)
-    check(chatContains("^  7 neue Erfolge", 117) and chatContains("^  Konvoi", 117) and chatContains("^  Einsatz", 117) and not chatContains("Verfolgungsjagd: /fangen", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
+    check(chatContains("^  Neue Erfolge für Vielfahrer", 117) and chatContains("^  7 neue Erfolge", 117) and chatContains("^  Konvoi", 117) and not chatContains("Verfolgungsjagd: /fangen", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
     _G[events.onPlayerDisconnect](117); players[117] = nil
     -- Ganz neue Spieler bekommen die Begruessung statt Neuheiten.
     players[118] = { name = "Ganzneu", ids = { beammp = "11818" }, vehicles = {} }
@@ -3514,6 +3514,18 @@ do
     for _ in pairs(BN.errorLog) do errorsAfter = errorsAfter + 1 end
     eq(errorsAfter, errorsBefore, "64 Spieler: keine neuen Fehler im Protokoll")
     check(next(BN.players) == nil or BN.players[first] == nil, "64 Spieler: Sitzungen nach Abmeldung weg")
+end
+
+-- --- Neue Erfolge (Werkstatt-Aufgabe 07) -----------------------------------------------------------------------
+do
+    local byId = {}
+    for _, a in ipairs(BN.ACHIEVEMENTS) do byId[a.id] = a end
+    for _, id in ipairs({ "km5000", "hours50", "race50", "record5" }) do
+        local a = byId[id]
+        check(a ~= nil and a.goal > 0 and a.xp > 0, "Neue Erfolge: " .. id)
+    end
+    eq(byId.km5000.value({ km = 5000 }), 5000, "Neue Erfolge: 5000 km zaehlt Kilometer")
+    eq(byId.hours50.value({ seconds = 50 * 3600 }), 50, "Neue Erfolge: 50 Stunden zaehlt Fahrzeit")
 end
 
 -- Herunterfahren speichert alle.
