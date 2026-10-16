@@ -2286,6 +2286,7 @@ do
     check(chatContains("Bestenliste Aufträge:", 96) and chatContains("^1%. Fahrer – 2$", 96), "Auftrag: /top auftraege")
     _G[events.onPlayerDisconnect](96)
     eq(readJson(SHARED .. "/players/9696.json").jobsDone, 2, "Auftrag: gespeichert")
+    check((readJson(SHARED .. "/players/9696.json").dayJobs or 0) >= 1, "Auftrag: Tageszaehler fuer die Tageszusammenfassung")
     -- Manipulierte Datei: unbekannte Typen und Unsinn fallen weg, lange Namen werden gekuerzt.
     writeJson(SHARED .. "/places/gridmap_v2.json", { places = { 5, { type = "x", x = 1, y = 1, z = 1 }, { type = "schule", name = string.rep("A", 99), x = 1, y = 2, z = 3 }, { type = "schule", name = "ohne", x = "a" } } })
     local list = BN.loadPlaces()

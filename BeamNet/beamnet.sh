@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.53"
+VERSION="1.54"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2629,12 +2629,15 @@ def load(path):
         return None
     return r if isinstance(r, dict) else None
 
-rows = []
+rows, jobs = [], 0
 for path in glob.glob(os.path.join(shared, "players", "*.json")):
     r = load(path)
     km = r.get("dayKm") if r and r.get("day") == day else None
     if isinstance(km, (int, float)) and not isinstance(km, bool) and km > 0:
         rows.append((float(km), str(r.get("name", "?"))))
+    j = r.get("dayJobs") if r and r.get("day") == day else None
+    if isinstance(j, int) and not isinstance(j, bool) and 0 < j < 10000:
+        jobs += j
 if not rows:
     sys.exit(0)
 records = 0
@@ -2654,6 +2657,8 @@ parts = [f"{total:.1f} km von {len(rows)} " + ("Fahrer" if len(rows) == 1 else "
          "Top: " + " · ".join(f"{i + 1}. {n} ({k:.1f} km)" for i, (k, n) in enumerate(rows[:3]))]
 if records:
     parts.append("1 neuer Streckenrekord" if records == 1 else f"{records} neue Streckenrekorde")
+if jobs:
+    parts.append("1 Auftrag erledigt" if jobs == 1 else f"{jobs} Aufträge erledigt")
 print(" · ".join(parts))
 PY
 )
