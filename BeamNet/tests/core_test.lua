@@ -1907,6 +1907,49 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Teams ------------------------------------------------------------------------------------------------------
+do
+    os.remove(SHARED .. "/teams.json")
+    for pid, name in pairs({ [81] = "Kapitaen", [82] = "Matrose", [83] = "Einzel" }) do
+        players[pid] = { name = name, ids = { beammp = tostring(8100 + pid) }, vehicles = {} }
+        _G[events.onPlayerJoin](pid)
+    end
+    players[84] = { name = "GastTeam", ids = {}, vehicles = {} }
+    _G[events.onPlayerJoin](84)
+    chatLog = {}
+    say(81, "/team")
+    check(chatContains("Du bist in keinem Team", 81), "Team: ohne Team Hinweis")
+    say(81, "/team gründen x")
+    check(chatContains("Teamname: 3–20 Zeichen", 81), "Team: Name wird geprueft")
+    say(81, "/team gründen Die Raser")
+    check(chatContains("Kapitaen hat das Team Die Raser gegründet", 83), "Team: Gruendung an alle")
+    say(82, "/team beitreten die raser")
+    check(chatContains("Willkommen im Team Die Raser!", 82), "Team: beitreten (Gross/Klein egal)")
+    say(82, "/team gruenden Andere")
+    check(chatContains("Du bist schon im Team Die Raser", 82), "Team: nur ein Team gleichzeitig")
+    say(83, "/team gründen die raser")
+    check(chatContains("Das Team Die Raser gibt es schon", 83), "Team: Name nur einmal")
+    say(84, "/team gründen Gaeste")
+    check(chatContains("Teams gibt es nur mit BeamMP%-Konto", 84), "Team: nicht fuer Gaeste")
+    local t = readJson(SHARED .. "/teams.json")
+    check(t and t.teams["die raser"] and t.teams["die raser"].members["8181"] == "Kapitaen" and t.teams["die raser"].members["8182"] == "Matrose",
+        "Team: in teams.json gespeichert")
+    BN.players[81].pendingKm = 30; BN.players[82].pendingKm = 12
+    BN.board = { at = -math.huge, list = {} }
+    chatLog = {}
+    say(83, "/team liste")
+    check(chatContains("^1%. Die Raser – 42%.0 km · 2$", 83), "Team: Liste mit Team-Kilometern")
+    say(81, "/team")
+    check(chatContains("Team Die Raser: 2 Mitglieder · Platz 1", 81), "Team: eigenes Team")
+    say(81, "/team verlassen"); say(82, "/team leave")
+    check(chatContains("Du hast das Team Die Raser verlassen", 82), "Team: verlassen (auch englisch)")
+    t = readJson(SHARED .. "/teams.json")
+    check(t and t.teams["die raser"] == nil, "Team: leeres Team wird geloescht")
+    BN.players[81].pendingKm = 0; BN.players[82].pendingKm = 0
+    for _, pid in ipairs({ 81, 82, 83, 84 }) do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    os.remove(SHARED .. "/teams.json")
+end
+
 -- --- XP-Event (/event) ------------------------------------------------------------------------------------------
 do
     local savedAdmins = C.admins

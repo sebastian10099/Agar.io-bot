@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.27"
+BN.VERSION = "1.28"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -370,6 +370,7 @@ local function bansFile() return C.sharedDir .. "/bans.json" end
 local function mutesFile() return C.sharedDir .. "/mutes.json" end
 local function announcementsFile() return C.sharedDir .. "/announcements.json" end
 local function eventFile() return C.sharedDir .. "/event.json" end
+local function teamsFile() return C.sharedDir .. "/teams.json" end
 local function modlogFile() return C.sharedDir .. "/modlog.jsonl" end
 
 -- Dateiname aus der BeamMP-ID (nur Ziffern und Buchstaben – nie Pfade aus Spielereingaben).
@@ -557,8 +558,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /melden · /regeln · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|speed|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /report · /rules · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /melden · /regeln · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|speed|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /report · /rules · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -607,6 +608,25 @@ local EN = {
         "Great to have you, %s! Your kilometres and XP count on every BeamNet server.",
     ["%s ist zum ersten Mal im BeamNet – herzlich willkommen!"] = "%s is new to BeamNet – welcome!",
     ["Regeln:"] = "Rules:",
+    ["Noch keine Teams. Gründen: /team gründen <Name>"] = "No teams yet. Create one: /team create <name>",
+    ["Teams nach Kilometern:"] = "Teams by kilometres:",
+    ["Teams gibt es nur mit BeamMP-Konto."] = "Teams need a BeamMP account.",
+    ["Du bist in keinem Team. /team gründen <Name> · /team beitreten <Name> · /team liste"] =
+        "You are not in a team. /team create <name> · /team join <name> · /team list",
+    ["Team %s: %d Mitglieder · Platz %s · /team verlassen"] = "Team %s: %d members · rank %s · /team leave",
+    ["Du bist in keinem Team."] = "You are not in a team.",
+    ["Du hast das Team %s verlassen."] = "You left the team %s.",
+    ["Du bist schon im Team %s – erst /team verlassen."] = "You are already in team %s – /team leave first.",
+    ["Teamname: 3–20 Zeichen, Buchstaben, Ziffern, Leerzeichen, _ und -"] =
+        "Team name: 3–20 characters, letters, digits, spaces, _ and -",
+    ["Das Team %s gibt es schon – /team beitreten %s"] = "Team %s already exists – /team join %s",
+    ["Es gibt schon zu viele Teams."] = "There are already too many teams.",
+    ["%s hat das Team %s gegründet – mitmachen: /team beitreten %s"] = "%s founded the team %s – join: /team join %s",
+    ["Das Team %s gibt es nicht. Liste: /team liste"] = "Team %s does not exist. List: /team list",
+    ["Das Team %s ist voll (%d Mitglieder)."] = "Team %s is full (%d members).",
+    ["Willkommen im Team %s!"] = "Welcome to team %s!",
+    ["Aufruf: /team · /team gründen <Name> · /team beitreten <Name> · /team verlassen · /team liste"] =
+        "Usage: /team · /team create <name> · /team join <name> · /team leave · /team list",
     ["Gruppenrennen auf %s beendet – niemand im Ziel."] = "Group race on %s over – nobody finished.",
     ["Gruppenrennen auf %s – Ergebnis: %s"] = "Group race on %s – result: %s",
     ["Platz %d im Gruppenrennen: +%d Bonus-XP!"] = "Place %d in the group race: +%d bonus XP!",
@@ -2391,7 +2411,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /melden · /regeln · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /melden · /regeln · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
@@ -2965,6 +2985,114 @@ function commands.regeln(pid)
     BN.sayRules(pid)
 end
 commands.rules = commands.regeln
+
+-- Teams (netzweit, teams.json): offen zum Beitreten, hoechstens BN.TEAM_MAX Mitglieder; Team-Kilometer = Summe der
+-- Kilometer der Mitglieder (aus der Bestenliste, also inklusive der Spieler online).
+BN.TEAM_MAX = 20
+
+function BN.loadTeams()
+    local data = json.decode(readFile(teamsFile()) or "")
+    if type(data) ~= "table" or type(data.teams) ~= "table" then data = { teams = {} } end
+    return data
+end
+
+local function saveTeams(data)
+    ensureDir(C.sharedDir)
+    return writeFileAtomic(teamsFile(), json.encode(data))
+end
+
+local function teamOf(data, id)
+    for key, t in pairs(data.teams) do
+        if type(t) == "table" and type(t.members) == "table" and t.members[id] then return key, t end
+    end
+end
+
+local function teamKey(name) return tostring(name):lower() end
+
+local function memberCount(t)
+    local n = 0
+    for _ in pairs(t.members or {}) do n = n + 1 end
+    return n
+end
+
+-- Teams nach Kilometern: { {name, members, km}, ... }
+function BN.teamRanking()
+    local km = {}
+    for _, rec in ipairs(BN.refreshBoard(false)) do km[rec.id] = rec.km end
+    local list = {}
+    for _, t in pairs(BN.loadTeams().teams) do
+        if type(t) == "table" and type(t.members) == "table" then
+            local sum = 0
+            for id in pairs(t.members) do sum = sum + (km[id] or 0) end
+            list[#list + 1] = { name = tostring(t.name), members = memberCount(t), km = sum }
+        end
+    end
+    table.sort(list, function(a, b) if a.km ~= b.km then return a.km > b.km end return a.name < b.name end)
+    return list
+end
+
+function commands.team(pid, arg)
+    local s = session(pid)
+    local words = {}
+    for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
+    local sub = (words[1] or ""):lower()
+    local aliases = { gruenden = "gründen", create = "gründen", found = "gründen", join = "beitreten",
+                      leave = "verlassen", list = "liste", top = "liste" }
+    sub = aliases[sub] or sub
+    if sub == "liste" then
+        local list = BN.teamRanking()
+        if #list == 0 then say(pid, "Noch keine Teams. Gründen: /team gründen <Name>") return end
+        say(pid, "Teams nach Kilometern:")
+        for i = 1, math.min(5, #list) do
+            chat(pid, string.format("%d. %s – %s · %d", i, list[i].name, fmtKm(list[i].km), list[i].members))
+        end
+        return
+    end
+    if s.guest then say(pid, "Teams gibt es nur mit BeamMP-Konto.") return end
+    local data = BN.loadTeams()
+    local key, mine = teamOf(data, s.id)
+    if sub == "" then
+        if not mine then say(pid, "Du bist in keinem Team. /team gründen <Name> · /team beitreten <Name> · /team liste") return end
+        local rank
+        for i, t in ipairs(BN.teamRanking()) do if t.name == mine.name then rank = i end end
+        say(pid, "Team %s: %d Mitglieder · Platz %s · /team verlassen", mine.name, memberCount(mine), rank and tostring(rank) or "–")
+        return
+    end
+    if sub == "verlassen" then
+        if not mine then say(pid, "Du bist in keinem Team.") return end
+        mine.members[s.id] = nil
+        if memberCount(mine) == 0 then data.teams[key] = nil end
+        saveTeams(data)
+        say(pid, "Du hast das Team %s verlassen.", mine.name)
+        return
+    end
+    local name = table.concat(words, " ", 2)
+    if sub == "gründen" or sub == "beitreten" then
+        if mine then say(pid, "Du bist schon im Team %s – erst /team verlassen.", mine.name) return end
+        if not name:match("^[%w _%-]+$") or #name < 3 or #name > 20 or name:match("^%s") or name:match("%s$") then
+            say(pid, "Teamname: 3–20 Zeichen, Buchstaben, Ziffern, Leerzeichen, _ und -")
+            return
+        end
+        local existing = data.teams[teamKey(name)]
+        if sub == "gründen" then
+            if existing then say(pid, "Das Team %s gibt es schon – /team beitreten %s", existing.name, existing.name) return end
+            local count = 0
+            for _ in pairs(data.teams) do count = count + 1 end
+            if count >= 500 then say(pid, "Es gibt schon zu viele Teams.") return end
+            data.teams[teamKey(name)] = { name = name, by = s.name, created = BN.now(), members = { [s.id] = s.name } }
+            saveTeams(data)
+            sayAll("%s hat das Team %s gegründet – mitmachen: /team beitreten %s", s.name, name, name)
+            return
+        end
+        if not existing then say(pid, "Das Team %s gibt es nicht. Liste: /team liste", name) return end
+        if memberCount(existing) >= BN.TEAM_MAX then say(pid, "Das Team %s ist voll (%d Mitglieder).", existing.name, BN.TEAM_MAX) return end
+        existing.members[s.id] = s.name
+        saveTeams(data)
+        say(pid, "Willkommen im Team %s!", existing.name)
+        return
+    end
+    say(pid, "Aufruf: /team · /team gründen <Name> · /team beitreten <Name> · /team verlassen · /team liste")
+end
 
 -- Text fuer Meldungen: ohne Steuerzeichen, hoechstens maxBytes Bytes, nie mitten in einem UTF-8-Zeichen getrennt.
 local function clipText(text, maxBytes)

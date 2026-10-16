@@ -580,6 +580,12 @@ echo '{"week":"2000-W01","map":"italy","name":"alt","xp":50}' >"$T/root/shared/b
 lacks "$(cat "$T/web/index.html")" "Strecke der Woche" "Statusseite: alte Strecke der Woche nicht gezeigt"
 rm -f "$T/root/shared/beamnet/weekly-track.json"
 "$TOOL" web run >/dev/null 2>&1
+# Teams: Kilometer der Mitglieder, maskierte Namen.
+echo '{"teams":{"a":{"name":"<b>Crew</b>","members":{"1":"Sebi","999":"Weg"}}}}' >"$T/root/shared/beamnet/teams.json"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" '<h2>Teams</h2>.*<td class=n>1</td><td>&lt;b&gt;Crew&lt;/b&gt;</td><td class=n>2</td><td class=n>[0-9.]+ km</td>' "Statusseite: Teams"
+rm -f "$T/root/shared/beamnet/teams.json"
+"$TOOL" web run >/dev/null 2>&1
 # Kennzahlen fuer Prometheus/Grafana.
 m=$(cat "$T/web/metrics.txt")
 contains "$m" '^beamnet_players\{port="30814",map="gridmap_v2"\} 2$' "metrics: Spieler je Server"

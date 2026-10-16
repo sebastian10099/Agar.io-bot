@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.46 / Plugin 1.27)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.47 / Plugin 1.28)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -61,7 +61,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 24. [x] Bestenliste Höchstgeschwindigkeit: `/top speed` im Spiel und „Schnellste Fahrer“ auf der Statusseite.
         Die Messung filtert Sprünge über 540 km/h, die Seite zeigt nichts über 600 km/h (Plugin 1.21, Werkzeug 1.39).
         Später: je Map.
-25. [ ] Teams/Clans: `/team gründen|beitreten`, mit Team-Kilometern und Team-Wertung auf der Statusseite.
+25. [x] Teams: `/team gründen|beitreten|verlassen|liste`, netzweit in `teams.json`, Team-Kilometer = Summe der
+        Mitglieder, Rangliste im Spiel und auf der Statusseite (Plugin 1.28, Werkzeug 1.47).
 26. [ ] Neue Erfolge (5000 km, 50 Stunden, 50 Rennen, 5 Rekorde) – als Aufgabe 07 für die lokale KI vorbereitet. 🤖
 27. [x] Saison-Titel: Die Top 3 jeder Saison tragen „Saisonsieger / Saison-Zweiter / Saison-Dritter <Monat>“ in
         `/stats` und auf ihrer Profilseite (Plugin 1.25, Werkzeug 1.44).
