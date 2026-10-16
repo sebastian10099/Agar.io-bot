@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.60 / Plugin 1.44)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.63 / Plugin 1.46)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -18,6 +18,10 @@
       Tages-Serie, Streckenseiten, Orte je Map auf der Statusseite (Werkzeug 1.56–1.59).
 - [x] Wiederholungstäter an die Admins melden (`REPEAT_WARN`, 1.58), Sicherung wöchentlich probeweise
       wiederherstellen (`beamnet restore check`, 1.60).
+- [x] Saison-Rückblick beim ersten Besuch im neuen Monat (1.45), Aufstiegsmeldungen in der Bestenliste (1.46).
+- [x] Ansagen aus Telegram für `TELEGRAM_ADMINS` (1.61), „Demnächst“ auf der Statusseite (1.62), neue
+      Streckenrekorde sofort an Discord/Telegram (1.63).
+- [ ] Sechste Sicherheitsprüfung (läuft).
 - [ ] Erfolge für Aufträge und Verfolgungsjagden (nach der Werkstatt-Aufgabe 07, damit es keine Konflikte gibt).
 
 ## Die nächsten 40 Punkte (Stand Werkzeug 1.48 / Plugin 1.29)
