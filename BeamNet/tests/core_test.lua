@@ -2454,6 +2454,15 @@ do
     check(chatContains("✅ Auftrag erledigt: St%. Marien in 0:4%d – %+100 XP %(Blitzschnell! %+50 %%%)", 96), "Auftrag: erledigt, schnell = +50 %")
     tick(1)
     check(BN.hasAchievement(BN.players[96], "job1") and chatContains("Erster Auftrag", 96), "Auftrag: Erfolg Erster Auftrag")
+    -- Update im laufenden Betrieb: ein neuer Erfolg fuer frueheren Fortschritt zaehlt nachtraeglich (keine Saison-XP).
+    do
+        local s96 = BN.players[96]
+        s96.unlocked.job1, s96.record.achievements.job1 = nil, nil
+        s96.achVersion = "1.0"
+        BN.normalizeSession(s96)
+        BN.checkAchievements(s96)
+        check(s96.unlocked.job1 and s96.unlocked.job1.retro == true, "Erfolge: nach Update im laufenden Betrieb nachtraeglich")
+    end
     eq(BN.players[96].pendingBonus - bonus0, 100, "Auftrag: XP gutgeschrieben")
     eq(BN.players[96].pendingJobs, 1, "Auftrag: gezaehlt")
     -- Kurze Pause zwischen zwei Auftraegen.

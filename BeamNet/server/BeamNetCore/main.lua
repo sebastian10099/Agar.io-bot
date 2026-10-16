@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.57"
+BN.VERSION = "1.58"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1332,6 +1332,8 @@ function BN.normalizeSession(s)
     end
     s.challengeDoneDay = nil
     if s.achChecked == nil then s.achChecked = true end
+    -- Update im laufenden Betrieb: neue Erfolge fuer frueheren Fortschritt gelten als nachtraeglich (keine Saison-XP).
+    if s.achVersion ~= BN.VERSION then s.achChecked, s.achVersion = false, BN.VERSION end
     if type(s.record) ~= "table" then s.record = sessionRecord(s.id, s.name) end
     normalizeRecord(s.record, s.id, s.name)
     applyWeek(s.record)
@@ -1352,7 +1354,8 @@ function BN.addPlayer(pid)
     local ids = identifiers(pid)
     local id = safeId(ids.beammp)
     -- achChecked = false: was bei der ersten Pruefung schon erreicht ist, wird nachtraeglich vergeben.
-    local session = { pid = pid, name = name, id = id, ip = ids.ip, guest = id == nil, achChecked = false }
+    local session = { pid = pid, name = name, id = id, ip = ids.ip, guest = id == nil, achChecked = false,
+                      achVersion = BN.VERSION }
     BN.lastLoadWasNew = false
     session.record = sessionRecord(id, name)
     session.isNew = id ~= nil and BN.lastLoadWasNew
@@ -4685,6 +4688,7 @@ function BN.endChase(reason)
         local earned = c.rewarded and huntSec >= 60 and runnerM >= 300
         if catcher then
             if earned then
+                -- Gewonnen zaehlt bei jeder Jagd, die XP bringt (auch wenn das Tageslimit erreicht ist).
                 if not catcher.guest then catcher.pendingChaseWins = (catcher.pendingChaseWins or 0) + 1 end
                 say(catcher.pid, "🚓 Gefangen! +%d XP", chaseReward(catcher, C.chaseXpCatch))
             else
