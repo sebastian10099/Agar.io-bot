@@ -2707,6 +2707,42 @@ do
     BN.titleCache = {}
 end
 
+-- --- Aufstieg in der Bestenliste ----------------------------------------------------------------------------------
+do
+    players[115] = { name = "Aufsteiger", ids = { beammp = "11515" }, vehicles = {} }
+    players[116] = { name = "Zuschauer2", ids = { beammp = "11616" }, vehicles = {} }
+    _G[events.onPlayerJoin](115); _G[events.onPlayerJoin](116)
+    local savedBoard = BN.refreshBoard
+    local list = {}
+    BN.refreshBoard = function() return list end
+    local function board(ids) list = {}; for i, id in ipairs(ids) do list[i] = { id = id, name = id } end end
+    board({ "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "11515" })
+    BN.lastRankCheck = nil
+    chatLog = {}
+    BN.rankTick()
+    check(not chatContains("Platz", 115), "Rang: erster Blick merkt sich nur den Platz")
+    board({ "a", "b", "c", "11515", "d", "e", "f", "g", "h", "i", "j", "k" })
+    clock = clock + 60
+    BN.rankTick()
+    check(chatContains("📈 Du bist jetzt Platz 4 der Bestenliste %(vorher 12%)!", 115), "Rang: Aufstieg in die Top 10")
+    check(not chatContains("Platz 4", 116), "Rang: nur an den Spieler selbst")
+    clock = clock + 30
+    board({ "11515", "a" })
+    BN.rankTick()
+    check(not chatContains("Platz 1", 116), "Rang: hoechstens einmal je Minute")
+    clock = clock + 30
+    BN.rankTick()
+    check(chatContains("👑 Aufsteiger ist jetzt Platz 1 der Bestenliste!", 116), "Rang: Platz 1 hoeren alle")
+    chatLog = {}
+    board({ "a", "11515" })
+    clock = clock + 60
+    BN.rankTick()
+    check(not chatContains("Platz", 115), "Rang: Abstieg wird nicht gemeldet")
+    BN.refreshBoard = savedBoard
+    for _, pid in ipairs({ 115, 116 }) do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    for _, id in ipairs({ "11515", "11616" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.45"
+BN.VERSION = "1.46"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -852,6 +852,8 @@ local EN = {
     ["Herausforderung an %s gesendet."] = "Challenge sent to %s.",
     ["📅 Dein Rückblick %s: %d XP%s – neue Saison, neues Glück!"] = "📅 Your %s recap: %d XP%s – new season, new chances!",
     [" · Platz %d"] = " · rank %d",
+    ["👑 %s ist jetzt Platz 1 der Bestenliste!"] = "👑 %s is now number 1 on the leaderboard!",
+    ["📈 Du bist jetzt Platz %d der Bestenliste (vorher %d)!"] = "📈 You are now rank %d on the leaderboard (before %d)!",
     -- Tipps
     ["Tipp: /auftrag – fahr einen Patienten ins Krankenhaus oder Kinder zur Schule und sammle XP."] =
         "Tip: /job – drive a patient to hospital or children to school and earn XP.",
@@ -1913,6 +1915,30 @@ function BN.rankOf(id)
         if rec.id == id then return i, #BN.board.list end
     end
     return nil, #BN.board.list
+end
+
+-- Aufstieg in der Bestenliste: einmal je Minute die Plaetze der Spieler hier; wer in den Top 10 einen Platz gutmacht,
+-- bekommt es gesagt, und Platz 1 hoeren alle. Der erste Blick nach dem Betreten merkt sich nur den Platz.
+function BN.rankTick()
+    local now = BN.now()
+    if now - (BN.lastRankCheck or -math.huge) < 60 then return end
+    BN.lastRankCheck = now
+    local here = {}
+    for _, s in pairs(BN.players) do if not s.guest and s.id then here[s.id] = s end end
+    if next(here) == nil then return end
+    for i, rec in ipairs(BN.refreshBoard(false)) do
+        local s = here[rec.id]
+        if s then
+            if s.lastRank and i < s.lastRank and i <= 10 then
+                if i == 1 then
+                    sayAll("👑 %s ist jetzt Platz 1 der Bestenliste!", s.name)
+                else
+                    say(s.pid, "📈 Du bist jetzt Platz %d der Bestenliste (vorher %d)!", i, s.lastRank)
+                end
+            end
+            s.lastRank = i
+        end
+    end
 end
 
 -- Welche BeamMP-Funktionen gibt es auf diesem Server? (Aeltere Server-Versionen haben nicht alles.)
@@ -4864,6 +4890,7 @@ function BN.tick()
     guarded("Wochenziel", BN.communityCheck)
     guarded("Verfolgungsjagd", BN.chaseTick)
     guarded("Tipps", BN.tipTick)
+    guarded("Bestenliste", BN.rankTick)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)
