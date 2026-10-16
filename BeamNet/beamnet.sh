@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.25"
+VERSION="1.26"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -191,6 +191,128 @@ except OSError as e:
     sys.exit(2)
 PY
 safe() { python3 -I -c "$SAFE_PY" "$@"; }
+
+# Datensicherung des gemeinsamen Ordners (Spieler, Rekorde, Banns, Protokoll …) und ihre Wiederherstellung.
+#   data save <Ordner> <Archiv>   – nur regulaere Dateien, ueber Ordner-Deskriptoren ohne Symlinks (der Ordner gehoert
+#                                   beammp); ohne servers/, votes/, reports/ und Zwischendateien
+#   data restore <Archiv> <Ziel>  – prueft jedes Mitglied (nur Dateien/Ordner, keine absoluten Pfade, kein ..) und
+#                                   legt alles exklusiv im leeren, root-eigenen Zielordner an
+read -r -d '' DATA_PY <<'PY'
+import io, os, stat, sys, tarfile, time
+
+SKIP_DIRS = {"servers", "votes", "reports"}
+FLAGS_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+def skip_file(name):
+    return name.startswith(".") or name.endswith(".tmp") or name == "players-index.tsv" or ".kaputt-" in name
+
+def save(src, dest):
+    tmp = dest + ".tmp"
+    count = 0
+    with tarfile.open(tmp, "w:gz") as tar:
+        def walk(dfd, rel, depth):
+            nonlocal count
+            for name in sorted(os.listdir(dfd)):
+                try:
+                    st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+                except OSError:
+                    continue
+                if stat.S_ISDIR(st.st_mode):
+                    if depth >= 4 or (rel == "" and name in SKIP_DIRS) or name.startswith("."):
+                        continue
+                    sub = os.open(name, FLAGS_DIR, dir_fd=dfd)
+                    try:
+                        info = tarfile.TarInfo(rel + name)
+                        info.type, info.mode, info.mtime = tarfile.DIRTYPE, 0o755, int(st.st_mtime)
+                        tar.addfile(info)
+                        walk(sub, rel + name + "/", depth + 1)
+                    finally:
+                        os.close(sub)
+                elif stat.S_ISREG(st.st_mode) and not skip_file(name):
+                    try:
+                        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
+                    except OSError:
+                        continue
+                    with os.fdopen(fd, "rb") as f:
+                        fst = os.fstat(f.fileno())
+                        if not stat.S_ISREG(fst.st_mode) or fst.st_size > 64 * 1024 * 1024:
+                            continue
+                        data = f.read()
+                    info = tarfile.TarInfo(rel + name)
+                    info.size, info.mode, info.mtime = len(data), 0o644, int(fst.st_mtime)
+                    tar.addfile(info, io.BytesIO(data))
+                    count += 1
+        top = os.open(src, FLAGS_DIR)
+        try:
+            walk(top, "", 0)
+        finally:
+            os.close(top)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, dest)
+    print(count)
+
+def safe_parts(name):
+    parts = [p for p in name.split("/") if p not in ("", ".")]
+    if not parts or name.startswith("/") or any(p == ".." or "\\" in p for p in parts) or len(parts) > 5:
+        raise ValueError("unsicherer Pfad im Archiv: " + name)
+    return parts
+
+def restore(archive, target):
+    if os.listdir(target):
+        raise ValueError("Zielordner ist nicht leer")
+    with tarfile.open(archive, "r:gz") as tar:
+        members = tar.getmembers()
+        total = 0
+        for m in members:
+            safe_parts(m.name)
+            if not (m.isreg() or m.isdir()):
+                raise ValueError("unerlaubter Eintrag im Archiv: " + m.name)
+            total += m.size
+        if total > 4 * 1024 * 1024 * 1024:
+            raise ValueError("Archiv zu gross")
+        top = os.open(target, FLAGS_DIR)
+        count = 0
+        try:
+            def dir_for(parts):
+                fd = os.dup(top)
+                for p in parts:
+                    try:
+                        os.mkdir(p, 0o755, dir_fd=fd)
+                    except FileExistsError:
+                        pass
+                    nfd = os.open(p, FLAGS_DIR, dir_fd=fd)
+                    os.close(fd)
+                    fd = nfd
+                return fd
+            for m in members:
+                parts = safe_parts(m.name)
+                if m.isdir():
+                    os.close(dir_for(parts))
+                    continue
+                dfd = dir_for(parts[:-1])
+                try:
+                    fd = os.open(parts[-1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644, dir_fd=dfd)
+                    with os.fdopen(fd, "wb") as out:
+                        out.write(tar.extractfile(m).read())
+                    count += 1
+                finally:
+                    os.close(dfd)
+        finally:
+            os.close(top)
+    print(count)
+
+try:
+    if sys.argv[1] == "save":
+        save(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "restore":
+        restore(sys.argv[2], sys.argv[3])
+    else:
+        raise ValueError("unbekannter Befehl")
+except Exception as e:
+    print(f"Fehler: {e}", file=sys.stderr)
+    sys.exit(1)
+PY
+data_tool() { python3 -I -c "$DATA_PY" "$@"; }
 
 unit() { printf '%s%s.service' "$UNIT_PREFIX" "$1"; }
 
@@ -708,6 +830,80 @@ cmd_backup() {
     echo "Enthält die AuthKeys – nicht weitergeben."
     # Nur die 20 neuesten behalten.
     find "$BACKUP_DIR" -maxdepth 1 -name 'beamnet-*.tgz' -printf '%T@ %p\n' 2>/dev/null | sort -rn | tail -n +21 | cut -d' ' -f2- | xargs -r rm -f
+}
+
+# Datensicherungen (taeglich vom Waechter): auflisten oder einen Stand zuruecksetzen.
+cmd_restore() {
+    need_root restore
+    local want=${1:-} file ts new old nr running=() f
+    if [[ -z $want ]]; then
+        echo "Tägliche Datensicherungen in $BACKUP_DIR (Spieler, Rekorde, Banns, Protokoll):"
+        f=""
+        for file in "$BACKUP_DIR"/daten-*.tgz; do
+            [[ -f $file ]] || continue
+            f=1
+            printf '  %s  %s\n' "$(basename "$file" .tgz | sed 's/^daten-//')" "$(du -h "$file" | cut -f1)"
+        done
+        [[ -n $f ]] || echo "  (noch keine – der Wächter legt sie täglich ab $(backup_hour) Uhr an: beamnet watch install)"
+        echo "Zurücksetzen: beamnet restore <JJJJ-MM-TT>"
+        return 0
+    fi
+    [[ $want =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "Aufruf: beamnet restore [JJJJ-MM-TT]"
+    file="$BACKUP_DIR/daten-$want.tgz"
+    [[ -f $file && ! -L $file ]] || die "Keine Datensicherung vom $want (Liste: beamnet restore)."
+    [[ -L $SHARED ]] && die "$SHARED ist ein Symlink – bitte prüfen, nichts geändert."
+    command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
+    confirm "Spielerdaten auf den Stand vom $want zurücksetzen? Alle Server werden dafür kurz gestoppt." \
+        || { echo "Abgebrochen."; return 1; }
+    ts=$(date +%Y%m%d-%H%M%S)
+    new="$SHARED.neu-$ts"
+    old="$SHARED.vor-wiederherstellung-$ts"
+    mkdir -m 700 "$new" || die "Konnte $new nicht anlegen."
+    if ! f=$(data_tool restore "$file" "$new" 2>&1); then
+        rm -rf "$new"
+        die "Sicherung vom $want ist nicht lesbar – nichts geändert. ($f)"
+    fi
+    for nr in $(servers); do unit_active "$nr" && running+=("$nr"); done
+    for nr in "${running[@]}"; do set_maintenance "$nr"; systemctl stop "$(unit "$nr")"; done
+    if [[ -d $SHARED ]]; then mv -T "$SHARED" "$old" || { rm -rf "$new"; die "Konnte den alten Stand nicht beiseitelegen."; }; fi
+    mv -T "$new" "$SHARED"
+    ensure_shared
+    for nr in "${running[@]}"; do systemctl start "$(unit "$nr")"; clear_maintenance "$nr"; done
+    ok "Stand vom $want wiederhergestellt ($f Dateien). Server wieder gestartet: ${running[*]:-keine}."
+    [[ -d $old ]] && echo "Der bisherige Stand liegt in $old (löschen, wenn alles passt)."
+    return 0
+}
+
+backup_hour() {
+    local h
+    h=$(conf_get BACKUP_HOUR)
+    if [[ $h =~ ^[0-9]{1,2}$ ]] && (( 10#$h <= 23 )); then echo $(( 10#$h )); else echo 4; fi
+}
+
+# Taegliche Datensicherung des gemeinsamen Ordners ab BACKUP_HOUR (Standard 4 Uhr); BACKUP_KEEP (Standard 14) Tage
+# aufbewahren. Nur bei einem Fehler eine Meldung (einmal am Tag).
+watch_backup() {
+    local -n bout=$1
+    local hour today keep err
+    [[ $(conf_get DATA_BACKUP) == 0 ]] && return 0
+    [[ -d $SHARED && ! -L $SHARED ]] || return 0
+    command -v python3 >/dev/null || return 0
+    hour=${BEAMNET_HOUR:-$(date +%H)}
+    (( 10#$hour >= $(backup_hour) )) || return 0
+    today=$(date +%Y-%m-%d)
+    [[ -f $BACKUP_DIR/daten-$today.tgz || -f $STATE_DIR/backup-failed-$today ]] && return 0
+    mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
+    if ! err=$(data_tool save "$SHARED" "$BACKUP_DIR/daten-$today.tgz" 2>&1); then
+        : >"$STATE_DIR/backup-failed-$today"
+        bout+=("⚠️ Tägliche Datensicherung fehlgeschlagen: ${err:0:200}")
+        return 0
+    fi
+    keep=$(conf_get BACKUP_KEEP)
+    [[ $keep =~ ^[0-9]{1,3}$ ]] && (( 10#$keep >= 1 )) || keep=14
+    find "$BACKUP_DIR" -maxdepth 1 -name 'daten-*.tgz' -printf '%f\n' 2>/dev/null | sort -r | tail -n +$(( 10#$keep + 1 )) \
+        | while read -r f; do rm -f "$BACKUP_DIR/$f"; done
+    find "$STATE_DIR" -maxdepth 1 -name 'backup-failed-*' -mtime +3 -delete 2>/dev/null
+    return 0
 }
 
 cmd_logs() {
@@ -1315,6 +1511,7 @@ watch_run() {
     done
     watch_rotation msgs
     watch_index
+    watch_backup msgs
     watch_peak msgs
     watch_online msgs
     watch_weekly msgs
@@ -1596,6 +1793,11 @@ VOTE_MAPS=
 # DAILY_HOUR = ab dieser Stunde (Ortszeit, 0-23) einmal am Tag; ist heute niemand gefahren, kommt keine Meldung.
 DAILY_SUMMARY=1
 DAILY_HOUR=22
+# Taegliche Datensicherung der Spielerdaten nach /root/beamnet-backups/daten-<Datum>.tgz: ab BACKUP_HOUR Uhr,
+# BACKUP_KEEP Tage aufbewahren (zurueckholen: beamnet restore). DATA_BACKUP=0 schaltet ab.
+DATA_BACKUP=1
+BACKUP_HOUR=4
+BACKUP_KEEP=14
 # Haengt ein Server (Dienst laeuft, aber seit HANG_MIN Minuten kein Lebenszeichen von BeamNetCore)? Antwortet er auch
 # auf seinem Port nicht mehr, startet ihn der Waechter mit AUTO_RESTART=1 neu; sonst nur Meldung. 0 = aus.
 HANG_MIN=3
@@ -1649,6 +1851,8 @@ cmd_watch() {
             if [[ -f $SYSTEMD_DIR/beamnet-watch.timer ]]; then ok "Wächter eingerichtet"; else echo "Wächter nicht eingerichtet (beamnet watch install)."; fi
             if [[ -n $(conf_get DISCORD_WEBHOOK) ]]; then echo "Discord: an"; else echo "Discord: aus"; fi
             if [[ -n $(conf_get TELEGRAM_TOKEN) && -n $(conf_get TELEGRAM_CHAT) ]]; then echo "Telegram: an"; else echo "Telegram: aus"; fi
+            if [[ $(conf_get DATA_BACKUP) == 0 ]]; then echo "Datensicherung: aus"
+            else echo "Datensicherung: täglich ab $(backup_hour) Uhr ($(find "$BACKUP_DIR" -maxdepth 1 -name 'daten-*.tgz' 2>/dev/null | wc -l) vorhanden, beamnet restore)"; fi
             if (( $(online_report_min) > 0 )) && notify_configured; then echo "Wer-ist-online-Meldung: alle $(online_report_min) Minuten"
             else echo "Wer-ist-online-Meldung: aus"; fi
             if [[ $(conf_get AUTO_RESTART) == 1 ]]; then echo "Automatischer Neustart: an"; else echo "Automatischer Neustart: aus"; fi
@@ -2439,6 +2643,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet plugin-enable <name>   … und wieder einschalten
   beamnet players [json]         Wer gerade fährt, je Server mit Namen (mit Plugin BeamNetCore)
   beamnet backup                 Sichert Konfigurationen, Plugins und Dienste nach $BACKUP_DIR
+  beamnet restore [JJJJ-MM-TT]   Tägliche Datensicherungen (vom Wächter) anzeigen oder einen Stand zurückholen
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, Moderation) auf allen Servern
   beamnet bans · unban <Name> · modlog [n]   Banns ansehen/aufheben, Moderationsprotokoll
   beamnet admin list · add <Name …> · remove <Name …>   Admins für Rennen und Moderation
@@ -2477,6 +2682,7 @@ main() {
         plugin-enable) cmd_plugin_toggle enable "$@" ;;
         players|spieler) cmd_players "$@" ;;
         backup|sicherung) cmd_backup ;;
+        restore|wiederherstellen) cmd_restore "$@" ;;
         install-core) cmd_install_core ;;
         openclaw) cmd_openclaw "$@" ;;
         watch|waechter) cmd_watch "$@" ;;

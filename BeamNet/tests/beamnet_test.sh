@@ -944,6 +944,78 @@ sys.exit(0 if lines and all(len(l.split("\t")) == 13 for l in lines) else 1)
 PY
 rm -f "$P"/90[1-6].json "$T/fremd.json"
 
+# --- Taegliche Datensicherung und Wiederherstellung --------------------------------------------------------------------
+S="$T/root/shared/beamnet"
+B="$T/backups"
+today=$(date +%Y-%m-%d)
+rm -f "$B"/daten-*.tgz "$T"/watch/backup-failed-*
+mkdir -p "$S/players" "$S/races" "$S/servers" "$S/votes"
+echo '{"id":"501","name":"Gesichert","km":42}' >"$S/players/501.json"
+echo '{"tracks":{}}' >"$S/races/italy.json"
+echo '[]' >"$S/bans.json"
+echo '{"x":1}' >"$S/votes/30814.json"
+echo 'tmp' >"$S/.beamnet-abc.tmp"
+echo '{"id":"502","secret":"root"}' >"$T/geheim2.json"; ln -sf "$T/geheim2.json" "$S/players/502.json"
+ln -sfn "$T" "$S/evil"
+out=$(BEAMNET_HOUR=03 "$TOOL" watch 2>&1)
+[[ ! -f $B/daten-$today.tgz ]] && pass || fail "backup: nicht vor BACKUP_HOUR"
+out=$(BEAMNET_HOUR=05 "$TOOL" watch 2>&1)
+[[ -f $B/daten-$today.tgz ]] && pass || fail "backup: taeglich angelegt"
+[[ $(stat -c %a "$B/daten-$today.tgz") == 600 ]] && pass || fail "backup: nur fuer root lesbar"
+list=$(tar -tzf "$B/daten-$today.tgz" | sort)
+contains "$list" "^players/501.json$" "backup: Spielerdateien drin"
+contains "$list" "^races/italy.json$" "backup: Rekorde drin"
+contains "$list" "^bans.json$" "backup: Banns drin"
+lacks "$list" "^servers|^votes|502|evil|\\.tmp|players-index" "backup: ohne Lebenszeichen, Auftraege, Symlinks, Zwischendateien"
+lacks "$(tar -xzOf "$B/daten-$today.tgz")" "secret" "backup: Symlink-Ziel nicht mitgesichert"
+before=$(stat -c %Y "$B/daten-$today.tgz"); sleep 1
+BEAMNET_HOUR=06 "$TOOL" watch >/dev/null 2>&1
+[[ $(stat -c %Y "$B/daten-$today.tgz") == "$before" ]] && pass || fail "backup: nur einmal am Tag"
+# Aufbewahrung: die BACKUP_KEEP (14) neuesten bleiben.
+for d in $(seq -w 1 16); do : >"$B/daten-2000-01-$d.tgz"; done
+mv "$B/daten-$today.tgz" "$T/heute.tgz"
+BEAMNET_HOUR=05 "$TOOL" watch >/dev/null 2>&1
+[[ $(ls "$B"/daten-*.tgz | wc -l) == 14 && -f $B/daten-$today.tgz && ! -f $B/daten-2000-01-03.tgz && -f $B/daten-2000-01-04.tgz ]] \
+    && pass || fail "backup: aelteste Sicherungen entfernt (14 bleiben)"
+rm -f "$B"/daten-2000-*.tgz; mv "$T/heute.tgz" "$B/daten-$today.tgz"
+contains "$("$TOOL" restore 2>&1)" "^  $today  " "restore: listet die Sicherungen"
+# Wiederherstellen: Stand von heute zurueck, neuer Spieler weg, alter Stand beiseitegelegt, Server neu gestartet.
+echo '{"id":"501","name":"Gesichert","km":9999}' >"$S/players/501.json"
+echo '{"id":"503","name":"Neu"}' >"$S/players/503.json"
+: >"$T/actions"
+out=$(printf 'n\n' | "$TOOL" restore "$today" 2>&1)
+contains "$out" "Abgebrochen" "restore: fragt vorher"
+contains "$(cat "$S/players/501.json")" '"km":9999' "restore: ohne Zustimmung nichts geaendert"
+out=$("$TOOL" -y restore "$today" 2>&1)
+contains "$out" "Stand vom $today wiederhergestellt \\([0-9]+ Dateien\\)" "restore: Erfolgsmeldung"
+contains "$(cat "$S/players/501.json")" '"km":42' "restore: Spielerdatei auf altem Stand"
+[[ ! -e $S/players/503.json && ! -e $S/evil && -d $S/servers ]] && pass || fail "restore: neuer Spieler und Symlink weg, Ordner wieder da"
+old_dir=$(ls -d "$S".vor-wiederherstellung-* 2>/dev/null | head -n1)
+[[ -f $old_dir/players/503.json ]] && pass || fail "restore: bisheriger Stand beiseitegelegt"
+contains "$(cat "$T/actions")" "^stop beammp-1.service$" "restore: Server waehrend der Wiederherstellung gestoppt"
+contains "$(cat "$T/actions")" "^start beammp-1.service$" "restore: Server danach wieder gestartet"
+[[ ! -f $T/watch/maintenance-1 ]] && pass || fail "restore: keine Wartungsmarker uebrig"
+[[ -f $T/geheim2.json && $(cat "$T/geheim2.json") == '{"id":"502","secret":"root"}' ]] && pass || fail "restore: Symlink-Ziel unberuehrt"
+# Manipulierte Archive: nichts aendern.
+python3 - "$B/daten-2000-02-01.tgz" "$B/daten-2000-02-02.tgz" <<'PY'
+import io, sys, tarfile
+with tarfile.open(sys.argv[1], "w:gz") as t:
+    i = tarfile.TarInfo("../ausgebrochen.json"); data = b"x"; i.size = 1; t.addfile(i, io.BytesIO(data))
+with tarfile.open(sys.argv[2], "w:gz") as t:
+    i = tarfile.TarInfo("players/link.json"); i.type = tarfile.SYMTYPE; i.linkname = "/etc/passwd"; t.addfile(i)
+PY
+cp "$S/players/501.json" "$T/501.vorher"
+out=$("$TOOL" -y restore 2000-02-01 2>&1); rc=$?
+[[ $rc -ne 0 && ! -e $T/root/shared/ausgebrochen.json ]] && pass || fail "restore: Pfad mit .. abgewiesen"
+contains "$out" "nicht lesbar – nichts geändert" "restore: Meldung bei kaputtem Archiv"
+out=$("$TOOL" -y restore 2000-02-02 2>&1); rc=$?
+[[ $rc -ne 0 ]] && pass || fail "restore: Symlink im Archiv abgewiesen"
+cmp -s "$S/players/501.json" "$T/501.vorher" && pass || fail "restore: nach abgewiesenem Archiv unveraendert"
+[[ -z $(ls -d "$S".neu-* 2>/dev/null) ]] && pass || fail "restore: keine halben Ordner uebrig"
+contains "$("$TOOL" restore 1999-01-01 2>&1)" "Keine Datensicherung vom 1999-01-01" "restore: unbekanntes Datum"
+contains "$("$TOOL" restore gestern 2>&1)" "Aufruf: beamnet restore" "restore: falsches Format"
+rm -rf "$S".vor-wiederherstellung-* "$B"/daten-*.tgz "$T/geheim2.json" "$T/501.vorher" "$S/players/501.json"
+
 # --- Meldungen aus dem Spiel (watch_reports) --------------------------------------------------------------------------
 R="$T/root/shared/beamnet/reports"
 mkdir -p "$R"

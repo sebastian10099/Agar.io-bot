@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.25 / Plugin 1.16)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.26 / Plugin 1.16)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -18,7 +18,9 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 6. [ ] „Server voll“-Hilfe: Ein voller Server lässt niemanden mehr herein, das Plugin sieht diese Spieler also nicht.
        Machbar ist: `/server` und Statusseite markieren freie Server mit derselben Map, und bei 90 % Auslastung des
        ganzen Netzwerks geht eine Meldung an Discord/Telegram („Server 7 hat noch Platz“).
-7. [ ] Tägliche Sicherung des gemeinsamen Datenordners, 7 Tage aufbewahrt, mit `beamnet restore <datum>`.
+7. [x] Tägliche Sicherung der Spielerdaten (ab 4 Uhr, 14 Tage aufbewahrt) und `beamnet restore [datum]`.
+       Gesichert werden nur reguläre Dateien, ohne Symlinks. Beim Zurückholen wird jedes Archiv-Mitglied geprüft und der
+       bisherige Stand beiseitegelegt (Werkzeug 1.26).
 8. [ ] Der doctor prüft die Größe von Server.log und Journal und richtet eine Protokoll-Rotation ein.
 9. [ ] Lasttest in der CI mit echtem BeamMP-Server und vielen simulierten Spielerdateien.
 10. [x] Der Wächter erkennt hängende Server: Der Dienst läuft, aber BeamNetCore meldet sich seit 3 Minuten nicht

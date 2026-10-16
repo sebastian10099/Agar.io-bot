@@ -47,6 +47,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet logs <nr> [zeilen]` | Letzte Zeilen des Server-Protokolls |
 | `beamnet plugins` | Installierte (und abgeschaltete) Plugins je Server |
 | `beamnet plugin-disable <name>` / `plugin-enable <name>` | Plugin auf allen Servern ab- oder einschalten – verschiebt nur nach `Resources/Server.disabled`, löscht nichts |
+| `beamnet restore [JJJJ-MM-TT]` | Tägliche Datensicherungen anzeigen bzw. Spielerdaten auf einen Stand zurücksetzen (Server werden kurz gestoppt, der bisherige Stand bleibt daneben liegen) |
 | `beamnet players` | Wer gerade fährt: je Server mit Namen (mit BeamNetCore; `players json` = Rohdaten) |
 | `beamnet backup` | Konfigurationen, Plugins und systemd-Dienste nach `/root/beamnet-backups` (die 20 neuesten bleiben) |
 | `beamnet install-core` | Installiert BeamNetCore auf allen Servern |
@@ -90,6 +91,9 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   „👥 Gerade online: 14 Spieler · Server 1 (italy): Ana, Max, Sebi · Server 3 (utah): …“ – nur, wenn jemand fährt und
   sich die Runde seit der letzten Meldung geändert hat. Dieselbe Übersicht im Terminal: `beamnet players`.
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
+- Er sichert **täglich die Spielerdaten** (Kilometer, XP, Rekorde, Banns, Protokoll) nach
+  `/root/beamnet-backups/daten-<Datum>.tgz`, ab 4 Uhr (`BACKUP_HOUR`), 14 Tage lang (`BACKUP_KEEP`). Zurückholen:
+  `beamnet restore` zeigt die Stände, `beamnet restore 2026-10-15` setzt zurück.
 - Er erkennt **hängende Server**: Der Dienst läuft, aber BeamNetCore meldet sich seit 3 Minuten nicht (`HANG_MIN`,
   0 = aus). Antwortet der Server auch auf seinem Port nicht mehr, startet er ihn mit `AUTO_RESTART=1` neu. Antwortet er
   noch, meldet er nur, dass das Plugin steht; die Spieler können dann weiterfahren und werden nicht rausgeworfen.
