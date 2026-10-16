@@ -560,6 +560,17 @@ lacks "$(cat "$T/web/index.html")" "9999 km/h" "Statusseite: unplausible Geschwi
 rm -f "$T/root/shared/beamnet/players/61.json" "$T/root/shared/beamnet/players/62.json"
 "$TOOL" web run >/dev/null 2>&1
 page=$(cat "$T/web/index.html")
+# Saison-Titel auf der Profilseite (Platz 1-3 der archivierten Saisons, neueste zuerst; kaputte Archive ignoriert).
+mkdir -p "$T/root/shared/beamnet/seasons"
+echo '{"month":"2026-08","top":[{"id":"1","name":"Sebi","xp":900}]}' >"$T/root/shared/beamnet/seasons/2026-08.json"
+echo '{"month":"2026-09","top":[{"id":"x","name":"A","xp":9},{"id":"1","name":"Sebi","xp":5}]}' >"$T/root/shared/beamnet/seasons/2026-09.json"
+echo '{"month":"<b>","top":[{"id":"1"}]}' >"$T/root/shared/beamnet/seasons/kaputt.json"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/p/1.html")" "<div class=tags><span>🥈 Saison-Zweiter September 2026</span><span>🥇 Saisonsieger August 2026</span></div>" "Profilseite: Saison-Titel"
+lacks "$(cat "$T/web/p/1.html")" "&lt;b&gt;|Saison[^<]* <b>" "Profilseite: kaputtes Archiv ignoriert"
+rm -rf "$T/root/shared/beamnet/seasons"
+"$TOOL" web run >/dev/null 2>&1
+page=$(cat "$T/web/index.html")
 # Hilfeseite: Befehle, Regeln (eigene aus config.json, maskiert), Ligen, Erfolge; verlinkt von der Statusseite.
 contains "$page" '<a href="hilfe.html">Hilfe, Befehle &amp; Regeln</a>' "Hilfeseite: verlinkt"
 help=$(cat "$T/web/hilfe.html")

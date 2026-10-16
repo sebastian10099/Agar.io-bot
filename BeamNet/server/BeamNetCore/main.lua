@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.24"
+BN.VERSION = "1.25"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -601,6 +601,10 @@ local EN = {
         "Great to have you, %s! Your kilometres and XP count on every BeamNet server.",
     ["%s ist zum ersten Mal im BeamNet – herzlich willkommen!"] = "%s is new to BeamNet – welcome!",
     ["Regeln:"] = "Rules:",
+    ["Titel: %s"] = "Titles: %s",
+    ["Saisonsieger %s"] = "Season champion %s",
+    ["Saison-Zweiter %s"] = "Season runner-up %s",
+    ["Saison-Dritter %s"] = "Season 3rd place %s",
     ["Bitte freundlich bleiben – du bist %d Minuten stummgeschaltet."] = "Please stay friendly – you are muted for %d minutes.",
     ["Bitte freundlich bleiben – deine Nachricht wurde nicht gesendet (%d/%d)."] =
         "Please stay friendly – your message was not sent (%d/%d).",
@@ -1503,6 +1507,38 @@ function BN.endSeason(month, quiet)
     return true
 end
 
+-- Saison-Titel: Platz 1–3 jeder archivierten Saison (seasons/*.json), neueste zuerst; zwischengespeichert (10 min).
+BN.titleCache = BN.titleCache or {}
+local TITLE_TEXT = { "Saisonsieger %s", "Saison-Zweiter %s", "Saison-Dritter %s" }
+
+function BN.titlesFor(id)
+    if not id then return {} end
+    local now = BN.now()
+    if not BN.titleCache.at or now - BN.titleCache.at >= 600 then
+        local map = {}
+        for _, file in ipairs(listJsonFiles(C.sharedDir .. "/seasons")) do
+            local a = json.decode(readFile(file) or "")
+            if type(a) == "table" and type(a.month) == "string" and a.month:match("^%d%d%d%d%-%d%d$") and type(a.top) == "table" then
+                for i = 1, math.min(3, #a.top) do
+                    local e = a.top[i]
+                    if type(e) == "table" and e.id then
+                        local key = tostring(e.id)
+                        map[key] = map[key] or {}
+                        map[key][#map[key] + 1] = { month = a.month, place = i }
+                    end
+                end
+            end
+        end
+        for _, list in pairs(map) do table.sort(list, function(x, y) return x.month > y.month end) end
+        BN.titleCache = { at = now, map = map }
+    end
+    return BN.titleCache.map[tostring(id)] or {}
+end
+
+function BN.titleText(t, lang)
+    return tr(lang, TITLE_TEXT[t.place], BN.seasonName(t.month, lang))
+end
+
 -- Nachholen, falls beim Monatswechsel kein Server lief: fehlt das Archiv der Vorsaison, wird es jetzt still geschrieben.
 function BN.ensureSeasonArchive()
     local prev = previousMonthKey()
@@ -2261,6 +2297,9 @@ function commands.stats(pid, arg)
         local nextLevel = BN.xpForLevel(t.level + 1)
         say(pid, "Rang %s von %d · noch %d XP bis Level %d", rank and tostring(rank) or "–", total,
             math.max(0, nextLevel - t.xp), t.level + 1)
+        local titles, parts = BN.titlesFor(s.id), {}
+        for i = 1, math.min(3, #titles) do parts[#parts + 1] = BN.titleText(titles[i], lang) end
+        if #parts > 0 then say(pid, "Titel: %s", table.concat(parts, " · ")) end
     end
 end
 

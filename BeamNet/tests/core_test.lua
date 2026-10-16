@@ -1773,6 +1773,33 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Saison-Titel ----------------------------------------------------------------------------------------------
+do
+    os.execute('mkdir -p "' .. SHARED .. '/seasons"')
+    writeJson(SHARED .. "/seasons/2026-08.json", { month = "2026-08", top = { { id = "9301", name = "Meister", xp = 900 },
+        { id = "9302", name = "Zweite", xp = 800 }, { id = "x", name = "Dritter", xp = 700 } } })
+    writeJson(SHARED .. "/seasons/2026-09.json", { month = "2026-09", top = { { id = "9302", name = "Zweite", xp = 990 },
+        { id = "9301", name = "Meister", xp = 980 } } })
+    writeJson(SHARED .. "/seasons/kaputt.json", { month = "../x", top = { { id = "9301" } } })
+    BN.titleCache = {}
+    local t = BN.titlesFor("9301")
+    eq(#t, 2, "Titel: zwei Saisons")
+    check(t[1].month == "2026-09" and t[1].place == 2 and t[2].month == "2026-08" and t[2].place == 1, "Titel: neueste zuerst, mit Platz")
+    eq(#BN.titlesFor("nix"), 0, "Titel: ohne Platzierung keine")
+    players[93] = { name = "Meister", ids = { beammp = "9301" }, vehicles = {} }
+    _G[events.onPlayerJoin](93)
+    chatLog = {}
+    say(93, "/stats")
+    check(chatContains("^Titel: Saison%-Zweiter September 2026 · Saisonsieger August 2026$", 93), "Titel in /stats")
+    say(93, "/lang en"); chatLog = {}
+    say(93, "/stats")
+    check(chatContains("^Titles: Season runner%-up ", 93) and chatContains("Season champion ", 93), "Titel auf Englisch")
+    say(93, "/lang de")
+    _G[events.onPlayerDisconnect](93); players[93] = nil
+    for _, f in ipairs({ "2026-08", "2026-09", "kaputt" }) do os.remove(SHARED .. "/seasons/" .. f .. ".json") end
+    BN.titleCache = {}
+end
+
 -- --- XP-Event (/event) ------------------------------------------------------------------------------------------
 do
     local savedAdmins = C.admins

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.43"
+VERSION="1.44"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2837,7 +2837,7 @@ web_generate() {
     command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
     mkdir -p "$WEB_DIR" || die "Kann $WEB_DIR nicht anlegen."
     python3 -I - "$SHARED" "$WEB_DIR/index.html" "${1:-BeamNet}" <<'PY'
-import glob, html, json, math, os, sys, time
+import glob, html, json, math, os, re, sys, time
 
 shared, out, title = sys.argv[1], sys.argv[2], sys.argv[3] or "BeamNet"
 now = time.time()
@@ -2916,6 +2916,18 @@ week = time.strftime("%G-W%V", time.gmtime(now))
 month = time.strftime("%Y-%m", time.gmtime(now))
 MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
 season_title = f"{MONTHS[int(month[5:7]) - 1]} {month[:4]}"
+
+# Saison-Titel (Platz 1-3 der archivierten Saisons) je Spieler-ID, neueste zuerst.
+TITLES = {}
+for path in sorted(glob.glob(os.path.join(shared, "seasons", "*.json")), reverse=True):
+    a = load(path)
+    m = a.get("month") if isinstance(a, dict) else None
+    if not (isinstance(m, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}", m) and 1 <= int(m[5:7]) <= 12):
+        continue
+    for place, e in enumerate((a.get("top") if isinstance(a.get("top"), list) else [])[:3], 1):
+        if isinstance(e, dict) and e.get("id") is not None:
+            TITLES.setdefault(str(e["id"]), []).append((m, place))
+PLACE_TEXT = {1: "🥇 Saisonsieger", 2: "🥈 Saison-Zweiter", 3: "🥉 Saison-Dritter"}
 servers = [s for s in (load(p) for p in glob.glob(os.path.join(shared, "servers", "*.json")))
            if isinstance(s, dict) and now - num(s.get("updated")) <= 90]
 servers.sort(key=lambda s: num(s.get("port")))
@@ -3217,6 +3229,7 @@ for rank, r in enumerate(ranked, 1):
 <div class=sub><a href="../index.html">← {E(title)} Status</a></div>
 <h1>{name}</h1>
 <div class=sub>Level {lvl} · Liga {E(league_of(xp))}{(" · zuletzt auf " + E(str(r.get("lastServer")))) if r.get("lastServer") else ""}</div>
+{("<div class=tags>" + "".join(f"<span>{PLACE_TEXT[p]} {MONTHS[int(m[5:7]) - 1]} {m[:4]}</span>" for m, p in TITLES.get(rid, [])[:6]) + "</div>") if TITLES.get(rid) else ""}
 <section><div class=stats>{body}</div></section>
 <section><h2>Erfolge ({len([a for a in ACH if a in ach])} von {len(ACH)})</h2><div class=tags>{tags_a}</div></section>
 <div class=grid>
