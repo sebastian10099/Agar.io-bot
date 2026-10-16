@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.48"
+BN.VERSION = "1.49"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -862,6 +862,12 @@ local EN = {
     [" · Platz %d"] = " · rank %d",
     ["👑 %s ist jetzt Platz 1 der Bestenliste!"] = "👑 %s is now number 1 on the leaderboard!",
     ["📈 Du bist jetzt Platz %d der Bestenliste (vorher %d)!"] = "📈 You are now rank %d on the leaderboard (before %d)!",
+    ["✨ Neu seit deinem letzten Besuch:"] = "✨ New since your last visit:",
+    ["Freundesliste: /freund <Name> – Nachricht, wenn ein Freund online kommt"] = "Friend list: /friend <name> – get a message when a friend comes online",
+    ["Fahraufträge: /auftrag – Patienten ins Krankenhaus, Kinder zur Schule, Taxi …"] = "Driving jobs: /job – patients to hospital, children to school, taxi …",
+    ["Wochenziel für alle: /ziel – zusammen Kilometer sammeln, alle bekommen Bonus-XP"] = "Weekly goal for everyone: /goal – collect kilometers together, everyone gets bonus XP",
+    ["Verfolgungsjagd: /fangen – einer flüchtet, alle jagen ihn"] = "Chase: /chase – one runs, everyone hunts them",
+    ["Duell: /duell <Name> <Strecke> – Zeitrennen gegen einen Freund"] = "Duel: /duel <name> <track> – time trial against a friend",
     -- Tipps
     ["Tipp: /auftrag – fahr einen Patienten ins Krankenhaus oder Kinder zur Schule und sammle XP."] =
         "Tip: /job – drive a patient to hospital or children to school and earn XP.",
@@ -1384,6 +1390,7 @@ function BN.savePlayer(s)
     end
     if s.friendsChanged then rec.friends = s.record.friends end
     if s.pendingRecap then rec.recapMonth = s.pendingRecap end
+    if s.pendingSeenVersion then rec.seenVersion = s.pendingSeenVersion end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
     rec.xp = xpOf(rec)
@@ -1406,6 +1413,7 @@ function BN.savePlayer(s)
     s.friendsChanged = nil
     s.resetTop = nil
     s.pendingRecap = nil
+    s.pendingSeenVersion = nil
     s.pendingWeeklyTrack = nil
     s.pendingCommunity, s.pendingCommunityXp = nil, nil
     return true
@@ -1878,6 +1886,38 @@ end
 
 function BN.titleText(t, lang)
     return tr(lang, TITLE_TEXT[t.place], BN.seasonName(t.month, lang))
+end
+
+-- Neu seit dem letzten Besuch: die (hoechstens 3) neuesten Neuheiten seit der Plugin-Version, die der Spieler zuletzt
+-- gesehen hat. Neue Spieler bekommen stattdessen die Begruessung; wer vor dieser Funktion schon da war, gilt als 1.29.
+BN.NEWS = {
+    { "1.30", "Freundesliste: /freund <Name> – Nachricht, wenn ein Freund online kommt" },
+    { "1.33", "Fahraufträge: /auftrag – Patienten ins Krankenhaus, Kinder zur Schule, Taxi …" },
+    { "1.34", "Wochenziel für alle: /ziel – zusammen Kilometer sammeln, alle bekommen Bonus-XP" },
+    { "1.38", "Verfolgungsjagd: /fangen – einer flüchtet, alle jagen ihn" },
+    { "1.44", "Duell: /duell <Name> <Strecke> – Zeitrennen gegen einen Freund" },
+}
+
+local function versionNum(v)
+    local a, b = tostring(v or ""):match("^(%d+)%.(%d+)$")
+    return a and (tonumber(a) * 1000 + tonumber(b)) or 0
+end
+
+function BN.showNews(s)
+    if s.guest then return 0 end
+    local seen = s.record.seenVersion
+    if versionNum(seen) >= versionNum(BN.VERSION) then return 0 end
+    s.pendingSeenVersion, s.dirty = BN.VERSION, true
+    if s.isNew then return 0 end
+    local from = versionNum(seen ~= nil and seen or "1.29")
+    local lang, items = BN.langOf(s.pid), {}
+    for i = #BN.NEWS, 1, -1 do
+        if versionNum(BN.NEWS[i][1]) > from and #items < 3 then items[#items + 1] = BN.NEWS[i][2] end
+    end
+    if #items == 0 then return 0 end
+    say(s.pid, "✨ Neu seit deinem letzten Besuch:")
+    for _, text in ipairs(items) do chat(s.pid, "  " .. tr(lang, text)) end
+    return #items
 end
 
 -- Saison-Rueckblick: beim ersten Besuch im neuen Monat die eigene Bilanz des Vormonats (XP, Platz aus dem Archiv).
@@ -5007,6 +5047,7 @@ function BN_onPlayerJoin(pid)
         if n > 0 then say(pid, "Freunde online: %s", text) end
     end
     BN.seasonRecap(s)
+    BN.showNews(s)
     if s.isNew and C.welcomeNew then
         say(pid, "Schön, dass du da bist, %s! Deine Kilometer und XP zählen auf allen BeamNet-Servern.", s.name)
         BN.sayRules(pid)

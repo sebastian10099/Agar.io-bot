@@ -2766,6 +2766,36 @@ do
     for _, id in ipairs({ "11515", "11616" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
 end
 
+-- --- Neu seit dem letzten Besuch -------------------------------------------------------------------------------
+do
+    writeJson(SHARED .. "/players/11717.json", { id = "11717", name = "Rueckkehrer", km = 50, seconds = 600 })
+    players[117] = { name = "Rueckkehrer", ids = { beammp = "11717" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](117)
+    check(chatContains("✨ Neu seit deinem letzten Besuch:", 117), "Neuheiten: fuer Spieler von frueher")
+    check(chatContains("^  Duell: /duell", 117) and chatContains("^  Verfolgungsjagd", 117) and chatContains("^  Wochenziel", 117), "Neuheiten: die drei neuesten")
+    check(not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
+    _G[events.onPlayerDisconnect](117)
+    eq(readJson(SHARED .. "/players/11717.json").seenVersion, BN.VERSION, "Neuheiten: Version gemerkt")
+    chatLog = {}
+    _G[events.onPlayerJoin](117)
+    check(not chatContains("Neu seit", 117), "Neuheiten: nur einmal")
+    _G[events.onPlayerDisconnect](117)
+    -- War zuletzt mit 1.43 da: nur das Duell ist neu.
+    local r = readJson(SHARED .. "/players/11717.json"); r.seenVersion = "1.43"; writeJson(SHARED .. "/players/11717.json", r)
+    chatLog = {}
+    _G[events.onPlayerJoin](117)
+    check(chatContains("^  Duell", 117) and not chatContains("Verfolgungsjagd", 117), "Neuheiten: nur was seitdem neu ist")
+    _G[events.onPlayerDisconnect](117); players[117] = nil
+    -- Ganz neue Spieler bekommen die Begruessung statt Neuheiten.
+    players[118] = { name = "Ganzneu", ids = { beammp = "11818" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](118)
+    check(not chatContains("Neu seit", 118), "Neuheiten: nicht fuer neue Spieler")
+    _G[events.onPlayerDisconnect](118); players[118] = nil
+    for _, id in ipairs({ "11717", "11818" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }
