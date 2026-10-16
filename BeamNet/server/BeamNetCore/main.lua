@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.54"
+BN.VERSION = "1.55"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -619,8 +619,8 @@ local EN = {
     ["Serie %s: Teil %d von %d geschafft (bisher %s). Weiter: %s"] = "Series %s: part %d of %d done (so far %s). Next: %s",
     ["🏆 Neuer Serienrekord %s: %s in %s!"] = "🏆 New series record %s: %s in %s!",
     ["🏁 Serie %s geschafft: %s gesamt – +%d XP"] = "🏁 Series %s done: %s total – +%d XP",
-    ["🏁 Serie %s geschafft: %s gesamt (deine Bestzeit: %s – XP gibt es für eine neue Bestzeit)"] =
-        "🏁 Series %s done: %s total (your best: %s – XP only for a new personal best)",
+    ["🏁 Serie %s geschafft: %s gesamt (deine Bestzeit: %s – Serien-XP gibt es einmal am Tag für eine deutlich bessere Bestzeit)"] =
+        "🏁 Series %s done: %s total (your best: %s – series XP once a day for a clearly better personal best)",
     ["%s ist ein Befehl und kein Serienname – bitte einen anderen Namen."] = "%s is a command, not a series name – please pick another name.",
     ["Jede Strecke nur einmal pro Serie (%s doppelt)."] = "Each track only once per series (%s twice).",
     ["Mit gelöscht (Serien mit dieser Strecke): %s"] = "Also deleted (series using this track): %s",
@@ -1025,6 +1025,10 @@ local EN = {
     ["%s %s ist jetzt ein Ort für Aufträge."] = "%s %s is now a place for jobs.",
     ["Dein Vorschlag %s wurde angenommen – danke!"] = "Your suggestion %s was accepted – thanks!",
     ["Vorschlag %s abgelehnt."] = "Suggestion %s rejected.",
+    ["Die Orte-Datei dieser Map ist kaputt oder nicht lesbar – nichts geändert (beamnet doctor)."] =
+        "The places file of this map is broken or unreadable – nothing changed (beamnet doctor).",
+    ["Die Vorschlags-Datei dieser Map ist kaputt oder nicht lesbar – nichts geändert (beamnet doctor)."] =
+        "The suggestions file of this map is broken or unreadable – nothing changed (beamnet doctor).",
     ["Aufruf: /ort neu <Typ> <Name> – Typen: %s"] = "Usage: /place new <type> <name> – types: %s",
     ["Keine Position – bitte erst mit einem Fahrzeug an den Ort fahren."] = "No position – please drive to the place with a vehicle first.",
     ["Den Ort %s gibt es schon (löschen: /ort weg %s)."] = "The place %s already exists (delete: /place remove %s).",
@@ -1405,6 +1409,7 @@ function BN.savePlayer(s)
     BN.applyMonth(rec)
     local xpBefore = xpOf(rec)
     local fileKm = rec.km
+    local tutorialSkipped = false
     local map = currentMap(s)
     rec.dayKm = rec.dayKm + s.pendingKm
     rec.daySeconds = rec.daySeconds + s.pendingSeconds
@@ -1475,7 +1480,7 @@ function BN.savePlayer(s)
         -- Datei schon faehrt, bekommt keinen Einsteiger-Pfad – auch nicht die schon gutgeschriebenen Schritt-XP.
         for _, xp in pairs(s.pendingTutorial or {}) do rec.bonusXp = rec.bonusXp - xp end
         rec.tutorial = false
-        s.pendingTutorial, s.tutorialStarted, s.tutorialFinished = nil, nil, true
+        tutorialSkipped = true          -- Sitzung erst nach erfolgreichem Schreiben aendern (sonst beim naechsten Versuch)
     end
     if s.tutorialStarted and type(rec.tutorial) ~= "table" and rec.tutorial ~= false then rec.tutorial = {} end
     if s.pendingTutorial and type(rec.tutorial) == "table" then
@@ -1508,6 +1513,7 @@ function BN.savePlayer(s)
     s.pendingRecap = nil
     s.pendingSeenVersion = nil
     s.pendingTutorial, s.tutorialStarted = nil, nil
+    if tutorialSkipped then s.tutorialFinished = true end
     s.pendingWeeklyTrack = nil
     s.pendingCommunity, s.pendingCommunityXp = nil, nil
     return true
@@ -1754,10 +1760,11 @@ function BN.track(pid, vid, pos, tim, vel)
     if j and j.vid == vid then
         if jump then j.jumped = true else j.legDriven = (j.legDriven or 0) + counted end
     end
-    -- Einsatz-Alarm: genauso – nur das Fahrzeug vom Alarmbeginn, ein Sprung scheidet aus.
+    -- Einsatz-Alarm: genauso – nur Fahrzeuge vom Alarmbeginn, ein Sprung scheidet das Fahrzeug aus.
     local e = BN.alert and BN.alert.entries[s.id]
-    if e and e.pid == pid and e.vid == vid then
-        if jump then e.out = true else e.driven = e.driven + counted end
+    local ev = e and e.pid == pid and e.vids[vid]
+    if ev then
+        if jump then ev.out = true else ev.driven = ev.driven + counted end
     end
     local speed
     if type(vel) == "table" then
@@ -1783,7 +1790,7 @@ function BN.forgetVehicle(pid, vid)
     s.vehicles[vid] = nil
     if s.job and s.job.vid == vid then s.job.reset = true end   -- danach: weiter nur ohne Sprung (siehe jobTick)
     local e = BN.alert and BN.alert.entries[s.id]
-    if e and e.pid == pid and e.vid == vid then e.out = true end   -- Zuruecksetzen/Fahrzeug weg: aus dem Einsatz
+    if e and e.pid == pid and e.vids[vid] then e.vids[vid].out = true end   -- Zuruecksetzen/Fahrzeug weg: scheidet aus
     local r = s.race
     if r and r.vid == vid and r.state ~= "armed" then
         BN.raceInvalid(s, "Fahrzeug zurückgesetzt")
@@ -3580,20 +3587,29 @@ function BN.seriesNext(s, trackDone, time)
             local prevBest = records[1] and tonumber(records[1].time)
             local mine
             for _, e in ipairs(records) do if e.id == s.id then mine = e end end
+            -- Serien-XP: fuer die erste Runde oder eine deutlich bessere Bestzeit (mindestens 2 % schneller), und je
+            -- Serie hoechstens einmal am Tag – sonst liesse sich mit einer absichtlich langsamen ersten Runde (oder
+            -- ausserhalb der 50 gespeicherten Zeiten) endlos XP sammeln.
+            local earn = not mine or total <= tonumber(mine.time) * 0.98
             if not mine then
                 records[#records + 1] = { id = s.id, name = s.name, time = total, at = now }
-                bonus = C.seriesXp
             elseif total < tonumber(mine.time) then
                 mine.time, mine.name, mine.at = total, s.name, now
+            end
+            if not earn then best = tonumber(mine.time) end
+            local today = dayNumber()
+            if BN.seriesPaidDay ~= today then BN.seriesPaid, BN.seriesPaidDay = {}, today end
+            local key = s.id .. "|" .. BN.mapKey() .. "|" .. se.name
+            if earn and BN.seriesPaid[key] then earn, best = false, tonumber(mine and mine.time or total) end
+            if earn then
                 bonus = C.seriesXp
-            else
-                best = tonumber(mine.time)
+                BN.seriesPaid[key] = true
             end
             table.sort(records, function(a, b) return tonumber(a.time) < tonumber(b.time) end)
             while #records > 50 do table.remove(records) end
             if not prevBest or total < prevBest then
                 record = true
-                bonus = bonus + C.raceRecordXp
+                if earn then bonus = bonus + C.raceRecordXp end   -- gleiche Regeln wie die Serien-XP
             end
             saveTracks(data)
         end
@@ -3603,7 +3619,7 @@ function BN.seriesNext(s, trackDone, time)
         sayAll("🏆 Neuer Serienrekord %s: %s in %s!", se.name, s.name, BN.fmtRaceTime(total))
     end
     if best then
-        say(s.pid, "🏁 Serie %s geschafft: %s gesamt (deine Bestzeit: %s – XP gibt es für eine neue Bestzeit)", se.name,
+        say(s.pid, "🏁 Serie %s geschafft: %s gesamt (deine Bestzeit: %s – Serien-XP gibt es einmal am Tag für eine deutlich bessere Bestzeit)", se.name,
             BN.fmtRaceTime(total), BN.fmtRaceTime(best))
     else
         say(s.pid, "🏁 Serie %s geschafft: %s gesamt – +%d XP", se.name, BN.fmtRaceTime(total), bonus)
@@ -4242,6 +4258,7 @@ function commands.ort(pid, arg)
     local sub = (words[1] or ""):lower()
     if sub == "" or sub == "liste" or sub == "list" then return commands.orte(pid) end
     local broken = "Die Orte-Datei dieser Map ist kaputt oder nicht lesbar – nichts geändert (beamnet doctor)."
+    local brokenSugg = "Die Vorschlags-Datei dieser Map ist kaputt oder nicht lesbar – nichts geändert (beamnet doctor)."
     if sub == "vorschlag" or sub == "vorschlagen" or sub == "suggest" then
         -- Jeder mit Konto: hoechstens einer alle 10 Minuten (je Konto, auch ueber Neuverbinden), 3 offene je Spieler,
         -- 30 je Map; Admins nehmen an.
@@ -4263,7 +4280,7 @@ function commands.ort(pid, arg)
             return
         end
         local raw, err = readListFile(suggestFile(), "suggestions")
-        if not raw then BN.logError("Ort-Vorschlaege", err) say(pid, broken) return end
+        if not raw then BN.logError("Ort-Vorschlaege", err) say(pid, brokenSugg) return end
         local list, mine = cleanPlaces(raw, 1000), 0
         for _, p in ipairs(list) do if p.byId == s.id then mine = mine + 1 end end
         if #list >= 30 or mine >= 3 then say(pid, "Es gibt schon viele offene Vorschläge – die Admins schauen sie sich an.") return end
@@ -4311,7 +4328,7 @@ function commands.ort(pid, arg)
         -- Feste Kennung (#12345 aus der Liste) statt Listennummer: ein anderer Admin kann die Liste inzwischen geaendert haben.
         local want = tostring(words[2] or ""):gsub("^#", "")
         local sraw, serr = readListFile(suggestFile(), "suggestions")
-        if not sraw then BN.logError("Ort-Vorschlaege", serr) say(pid, broken) return end
+        if not sraw then BN.logError("Ort-Vorschlaege", serr) say(pid, brokenSugg) return end
         local list = cleanPlaces(sraw, 1000)
         local idx
         for i, p in ipairs(list) do if p.sid == want then idx = i end end
@@ -4825,12 +4842,14 @@ function BN.alertTick()
         -- oder Zuruecksetzen ankommt und den Weg wirklich gefahren ist (wie bei /auftrag).
         for pid, s in pairs(BN.players) do
             local e = a.entries[s.id]
-            local v = e and e.pid == pid and not e.out and s.vehicles[e.vid]
-            if v and now - (v.at or 0) <= 3 and dist(v, a.place) <= C.jobRadiusM and e.driven >= 0.7 * e.start then
-                BN.alert = nil
-                s.pendingBonus = s.pendingBonus + C.alertXp
-                sayAll("🏆 %s war zuerst beim Einsatz %s (%s) – +%d XP!", s.name, a.place.name, fmtClock(now - a.at), C.alertXp)
-                return
+            for vid, ev in pairs(e and e.pid == pid and e.vids or {}) do
+                local v = not ev.out and s.vehicles[vid]
+                if v and now - (v.at or 0) <= 3 and dist(v, a.place) <= C.jobRadiusM and ev.driven >= 0.7 * ev.start then
+                    BN.alert = nil
+                    s.pendingBonus = s.pendingBonus + C.alertXp
+                    sayAll("🏆 %s war zuerst beim Einsatz %s (%s) – +%d XP!", s.name, a.place.name, fmtClock(now - a.at), C.alertXp)
+                    return
+                end
             end
         end
         return
@@ -4849,11 +4868,13 @@ function BN.alertTick()
     local place = places[BN.random(#places)]
     local entries = {}
     for pid, s in pairs(BN.players) do
-        local pos = currentPosition(s)
-        local d = pos and dist(pos, place)
-        if not s.guest and d and d >= C.jobMinDistM then
-            entries[s.id] = { pid = pid, vid = pos.vid, start = d, driven = 0 }
+        -- Jedes Fahrzeug zaehlt fuer sich (welches der Spieler gerade faehrt, ist beim Alarm nicht sicher bekannt).
+        local vids = {}
+        for vid, v in pairs(s.vehicles) do
+            local d = dist(v, place)
+            if d >= C.jobMinDistM then vids[vid] = { start = d, driven = 0 } end
         end
+        if not s.guest and next(vids) then entries[s.id] = { pid = pid, vids = vids } end
     end
     BN.alert = { place = place, at = now, entries = entries }
     sayEach(function(lang)

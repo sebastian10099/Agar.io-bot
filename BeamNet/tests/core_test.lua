@@ -1921,6 +1921,18 @@ do
     run(122, 7000, 8000, 700, 20)
     check(chatContains("deine Bestzeit: 1:", 122), "Serie: langsamer – Hinweis auf Bestzeit")
     check(not chatContains("Serie tour geschafft: [^%(]*%+%d+ XP", 122), "Serie: langsamer – keine Serien-XP")
+    -- Deutlich schneller, aber am selben Tag schon Serien-XP bekommen: keine XP; am naechsten Tag wieder.
+    chatLog = {}
+    say(122, "/serie tour")
+    run(122, 6000, 7000, 520, 40)
+    run(122, 7000, 8000, 720, 40)
+    check(chatContains("deine Bestzeit: 0:", 122), "Serie: Serien-XP hoechstens einmal am Tag")
+    BN.seriesPaidDay = nil
+    chatLog = {}
+    say(122, "/serie tour")
+    run(122, 6000, 7000, 540, 60)
+    run(122, 7000, 8000, 740, 60)
+    check(chatContains("Serie tour geschafft: 0:%d%d%.%d gesamt – %+%d+ XP", 122), "Serie: am naechsten Tag wieder Serien-XP")
     -- Kaputte Serien-Daten (falsche Typen) fuehren zu keinem Laufzeitfehler.
     local rf = SHARED .. "/races/gridmap_v2.json"
     local raw = readJson(rf)
@@ -2773,6 +2785,18 @@ do
     check(BN.alert ~= nil, "Einsatz: zweites Fahrzeug am Ziel gewinnt nicht")
     players[126].vehicles[2] = nil
     _G[events.onVehicleDeleted](126, 2)
+    BN.alert = nil
+    -- Ein geparktes zweites Auto stoert nicht: gewonnen wird mit dem Auto, das wirklich hinfaehrt.
+    players[126].vehicles[1].pos = { 61000, 0, 0 }
+    players[126].vehicles[3] = { pos = { 90000, 0, 0 }, tim = 0 }
+    tick(1)
+    BN.alert, BN.nextAlertAt = nil, clock
+    BN.alertTick()
+    chatLog = {}
+    for _ = 1, 50 do move(126, 1, -20, 0, 0); tick(1) end
+    check(BN.alert == nil and chatContains("🏆 Schnell war zuerst beim Einsatz Wache", 126), "Einsatz: geparktes Zweitauto stoert nicht")
+    players[126].vehicles[3] = nil
+    _G[events.onVehicleDeleted](126, 3)
     BN.alert = nil
     -- Gaeste zaehlen nicht zu den Mitspielern.
     players[128] = { name = "GastE", ids = {}, vehicles = { [1] = { pos = { 50000, 0, 0 }, tim = 0 } } }
