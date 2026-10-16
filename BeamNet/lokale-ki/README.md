@@ -39,6 +39,22 @@ Das Skript legt den Branch aus der Aufgabe an, lässt die KI programmieren, füh
 Branch hoch und sagt dir am Ende, was du Claude schreiben sollst – z. B. **„prüfe Branch lokal/hilfe-zu-befehl“**.
 Claude schaut sich dann nur die Änderung an, lässt die GitHub-Tests laufen und übernimmt sie (oder sagt, was fehlt).
 
+## Offene Aufgaben (Stand Werkzeug 1.48 / Plugin 1.29)
+
+| Datei | Was | Größe |
+|---|---|---|
+| `01-hilfe-zu-befehl.md` | `/hilfe <Befehl>` erklärt einen Befehl | mittel |
+| `02-version-mit-plugins.md` | `beamnet version` zeigt auch die Plugin-Versionen | klein |
+| `03-bann-dauer.md` | `/ban Name 2H`, `1w`, riesige Zahlen | klein |
+| `04-config-ganzzahlen.md` | Ganzzahlen in `config.json` prüfen | klein |
+| `05-rennzeit-runden.md` | Rennzeiten sauber runden | klein |
+| `06-reservierte-streckennamen.md` | Streckennamen wie „stop“ verbieten | klein |
+| `07-neue-erfolge.md` | Vier neue Erfolge (5000 km, 50 h, 50 Rennen, 5 Rekorde) | klein |
+| `08-readme-englisch.md` | Englische Kurzanleitung `README.en.md` | mittel |
+| `09-tagesaufgabe-map.md` | Tagesaufgabe „X km auf einer Map“ | mittel |
+
+Am besten mit den kleinen anfangen. Mit der Werkstatt-App (`BeamNet Werkstatt`) laufen sie nacheinander von selbst.
+
 ## Gut zu wissen
 
 - Lokale Modelle sind schwächer als Claude: Die Aufgaben in `aufgaben/` sind deshalb klein und sehr genau beschrieben.
