@@ -1,0 +1,101 @@
+# BeamNet – tool and plugin for BeamMP server networks
+
+BeamNet has two parts. **`beamnet`** is a command for the server console: it shows the state of all BeamMP servers,
+finds problems and fixes them. Its **watcher** reports outages, hanging servers, load, player records and moderation
+to **Discord and Telegram**, backs up the player data every day and builds a **status page**. **`BeamNetCore`** is a
+server plugin shared by all servers: kilometres, driving time, XP and levels, leagues, leaderboards, seasons,
+achievements, daily challenges, time trials and group races, jobs (hospital, school, taxi …), chases, convoys, XP
+events and moderation (bans on all servers, reports, word filter, spam protection) – tested with 64 players and
+5000 player files.
+
+## Install
+
+As root on the server console – the second command is a wizard that asks before every step:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sebastian10099/Agar.io-bot/claude/friendly-goldberg-31l8fp/BeamNet/beamnet.sh \
+  -o /usr/local/bin/beamnet && chmod +x /usr/local/bin/beamnet
+beamnet setup
+```
+
+`beamnet setup` walks through: diagnosis → backup → pausing OpenClaw (if it gets in the way) → repairing and starting
+the servers → installing the BeamNetCore plugin → admins → watcher with Discord → status page → restart. Press Enter
+to skip a step. Later, `beamnet update` brings the tool and the plugin on all servers up to date (no restart needed;
+a new plugin version goes to one test server first and only then to the others).
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `beamnet status` | Overview: running?, autostart, who started the process, port, players, map, name |
+| `beamnet doctor` | Diagnosis with an explanation and a fix for every problem (changes nothing) |
+| `beamnet report` | Report to share: status, diagnosis, plugins and error lines – IP addresses and AuthKeys are masked |
+| `beamnet fix` | Stops stray server processes, resets file permissions, sets up log rotation, enables autostart and starts everything cleanly via systemd |
+| `beamnet start / stop / restart [nr … \| all]` | Control servers; `stop` and `restart` ask first |
+| `beamnet players` | Who is driving right now, per server with names (`players json` = raw data) |
+| `beamnet backup` | Saves configurations, plugins and systemd services to `/root/beamnet-backups` |
+| `beamnet restore [YYYY-MM-DD]` | Lists the daily data backups or rolls the player data back to one; `beamnet restore check` test-restores without writing anything |
+| `beamnet install-core` | Installs BeamNetCore on all servers |
+| `beamnet watch install` | Sets up the watcher (checks all servers every minute); `status`, `test`, `uninstall` |
+| `beamnet web install [port]` | Status page as a website, default port 8080 |
+| `beamnet ansage [HH:MM] <text>` | Announcement on all servers, now or at a time of day (without text: list planned ones) |
+| `beamnet event start <factor> <duration>` / `stop` / `auto …` | Network-wide XP event; `beamnet event auto fr,sa 20:00 2 2h` runs one automatically, announced an hour before |
+| `beamnet slots` | Player slots by popularity: last 30 days per server and more slots for popular servers and maps |
+| `beamnet update` | Updates the tool **and** the plugin on all servers |
+
+Add `-y` to run a command without questions. Day names for `beamnet event auto` are German: `mo di mi do fr sa so`
+or `täglich`.
+
+## Watcher
+
+Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested with `beamnet watch test`.
+
+- Reports outages and recoveries once each („🔴 Server 5 (utah) ist ausgefallen“ / „🟢 … ist wieder online“); with
+  `AUTO_RESTART=1` it restarts failed servers (at most 3 times per hour).
+- Detects **hanging servers**: the service runs but BeamNetCore has not reported for 3 minutes (`HANG_MIN`).
+- Watches the **load** per server (CPU and RAM) and warns once, with an all-clear.
+- **Network overview** every 10 minutes while someone plays (`NETWORK_REPORT`): players per server (account players by
+  name, guests counted), empty servers and how full each map is.
+- Remembers the **player record** (most players at the same time) and reports new records.
+- **Backs up the player data every day** (`/root/beamnet-backups/daten-<date>.tgz`, 14 days) and test-restores the
+  newest backup once a week.
+- Reports moderation (bans, kicks, mutes, warnings), in-game reports and new track records; posts weekly and season
+  winners and a daily summary.
+- Map rotation, map votes from the chat and automatic player slots (only while a server is empty).
+- The Telegram bot answers `/online`, `/top`, `/rekord` and `/server` in the configured chat.
+- It never fights you: servers stopped with `beamnet stop` count as maintenance until `beamnet start`.
+
+## In-game chat commands
+
+Every player can switch to English with `/lang en`; the German commands work too.
+
+| Command | Answer |
+|---|---|
+| `/help` | List of commands |
+| `/stats [name]` | Level, league, XP, kilometres, driving time, top speed, rank, XP to the next level |
+| `/top [km \| xp \| speed]` | Leaderboard (top 5) |
+| `/league` | All leagues and how far it is to the next one |
+| `/season` | Season table (calendar month), your place, last season's winners |
+| `/server` | All BeamNet servers with map and player count (switch servers in the BeamMP launcher) |
+| `/where <name>` | Which server is a friend on right now? |
+| `/km` | Your kilometres |
+| `/race [name]` | Tracks of this map with records, track of the week; `/race <name>` starts a time trial |
+| `/records [name]` | Top 5 of a track or the records of all tracks on this map |
+| `/achievements [name]` | Unlocked achievements and the next ones with progress |
+| `/daily` | Daily challenge and progress |
+| `/vote map <name>` | Start a vote for another map (`/vote yes`, `/vote no`) |
+| `/event` | Is an XP event running? (admins: `/event <factor> <duration>`) |
+| `/report <name> <reason>` | Report a player to the admins |
+| `/rules` | The rules of the network |
+| `/lang en` | English (`/lang de` = German) |
+| `/job` | Driving job: take a patient to the hospital, children to school, a taxi guest to the station … |
+| `/goal` | Weekly goal for everyone: collect kilometres together, everyone who drives gets bonus XP |
+| `/chase` | Chase: one player flees, everyone else hunts them |
+| `/convoy` | Convoy bonus: drive close to other players for bonus XP; shows who is nearby |
+| `/duel <name> <track>` | Challenge a player to a time trial |
+| `/series [name]` | Race series: several tracks in a row, the times add up |
+| `/friend <name>` | Friend list: get a message when a friend comes online anywhere in the network |
+| `/places` | Places (hospital, school, fire station …) on this map |
+| `/start` | Starter path for new players with bonus XP |
+
+German documentation: README.md

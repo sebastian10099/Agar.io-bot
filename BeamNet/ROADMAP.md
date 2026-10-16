@@ -147,7 +147,7 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
         registrierte Fahrer, Kilometer (Werkzeug 1.45).
 38. [x] Die CI läuft bei jedem Push auf jeden Branch mit BeamNet-Änderungen, also auch auf `lokal/*` der Werkstatt.
         Ich sehe das Ergebnis vor der Durchsicht.
-39. [ ] Englische Kurzanleitung `README.en.md` – als Aufgabe 08 für die lokale KI vorbereitet. 🤖
+39. [x] Englische Kurzanleitung `README.en.md` – Aufgabe 08, selbst umgesetzt (mit den neuen Befehlen).
 40. [x] Hilfeseite `hilfe.html` mit Regeln (auch eigene aus `config.json`), allen Chat-Befehlen, XP-Regeln, Ligen
         und Erfolgen, verlinkt von der Statusseite (Werkzeug 1.37).
 

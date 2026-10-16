@@ -1,5 +1,7 @@
 # BeamNet – Werkzeug und Plugin für die BeamMP-Server
 
+English summary: [README.en.md](README.en.md)
+
 Zwei Teile, beide getestet:
 
 1. **`beamnet`** – ein Befehl für die Server-Konsole: zeigt den Zustand aller Server, findet Probleme und repariert sie.
@@ -248,7 +250,6 @@ beamnet restart all
 | `/freund <Name>` | Freundesliste (bis 20): Du bekommst eine Nachricht, sobald ein Freund auf irgendeinem BeamNet-Server online kommt; beim Betreten siehst du, welche Freunde wo fahren. `/freund` zeigt die Liste, `/freund weg <Name>` entfernt (englisch `/friend`, `/friend remove`) |
 | `/melden <Name> <Grund>` | Meldung an die Admins: sofort im Chat an Admins auf dem Server, über den Wächter an Discord/Telegram (höchstens alle 2 Minuten; englisch `/report`) |
 | `/km` | Eigene Kilometer |
-| `/rennen` | Strecken dieser Map mit Rekord |
 | `/rennen` | Strecken dieser Map mit Rekord, dazu die **Strecke der Woche** (jede Woche eine andere aus dem ganzen Netzwerk; der erste gültige Lauf der Woche bringt 50 Bonus-XP, `weeklyTrackXp`) |
 | `/rennen gruppe <Name>` | **Gruppenrennen**: In 30 Sekunden geht es los. Alle auf dem Server werden eingeladen und machen mit `/rennen mit` mit. Countdown, Fehlstart-Erkennung, Zieleinlauf an alle, Ergebnisliste und Bonus-XP für die Plätze 1–3 (30/20/10) |
 | `/rennen <Name>` | Auf Zeit fahren: zum Start fahren, die Zeit läuft ab dem Verlassen des Startbereichs. Alle 500 m eine Zwischenzeit mit dem Abstand zur eigenen Bestzeit und zum Streckenrekord |
