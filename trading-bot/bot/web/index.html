@@ -297,8 +297,9 @@
       <p class="note">Nur auf macOS; sonst <code>ANTHROPIC_API_KEY</code> in der Umgebung setzen. Die KI sieht nur Kandidaten, die die harten Filter bestanden haben. Im Edge-Report (Übersicht) vergleichst du <b>Regeln</b> gegen <b>KI</b> auf denselben Tokens – erst wenn die KI dort über Wochen vorn liegt, lohnt „Entscheiden“.</p>
     </section>
     <section>
-      <h2>Quellen <span class="spacer"></span><span id="src-pill" class="pill"></span></h2>
+      <h2>Quellen <span class="spacer"></span><span id="src-pill" class="pill"></span> <button class="btn sm" id="b-doctor" title="Erreichbarkeit und Parser aller Quellen prüfen">Selbsttest</button></h2>
       <ul id="sources" class="sources" aria-label="Discovery-Quellen und ihr Status"></ul>
+      <ul id="doctor" class="sources" aria-label="Ergebnis des Selbsttests" aria-live="polite" hidden></ul>
       <p class="note">Jede Quelle meldet Token-Adressen, DexScreener liefert dann die Kennzahlen. „eigene“ zählt Tokens, die nur diese Quelle gemeldet hat. Ist ein Token bei DexScreener noch nicht gelistet, wird er mit den Zahlen der Quelle bewertet (Kandidaten zeigen dann <b>via Feed</b>).</p>
     </section>
     <section>
@@ -856,6 +857,14 @@ $('b-ai-key').onclick = () => busy($('b-ai-key'), async () => {
   const key = $('ai-key').value.trim(); if (!key) { toast('Schlüssel fehlt', true); return; }
   const r = await api('/api/ai/key', {key}); if (!r.ok) throw new Error(r.error);
   $('ai-key').value = ''; toast('Schlüssel gespeichert'); refresh();
+});
+$('b-doctor').onclick = () => busy($('b-doctor'), async () => {
+  $('doctor').hidden = false; $('doctor').innerHTML = '<li><span class="dot warn"></span><span class="reasons">Prüfe Quellen, Parser, RugCheck, Zugang …</span></li>';
+  const r = await api('/api/doctor', {});
+  $('doctor').innerHTML = r.checks.map((c) => `<li><span class="dot ${c.ok ? 'ok' : 'bad'}" role="img" aria-label="${c.ok ? 'bestanden' : 'Fehler'}"></span><b>${esc(c.name)}</b> <span class="reasons">${c.ms} ms · ${esc(c.detail)}</span></li>`).join('')
+    + `<li><span class="reasons">Selbsttest ${hhmm(r.at)}: ${r.checks.filter((c) => c.ok).length} von ${r.checks.length} bestanden. Dasselbe im Terminal: <code>python3 -m bot.doctor</code></span></li>`;
+  toast(r.ok ? 'Selbsttest ohne Befund' : 'Selbsttest: Fehler gefunden – siehe Liste', !r.ok);
+  refresh();
 });
 function renderSources(s) {
   const rows = s.sources || [];

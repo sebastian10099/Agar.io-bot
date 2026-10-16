@@ -313,3 +313,68 @@ class CandidateDetailTests(unittest.TestCase):
             self.assertEqual(r.status, 404)
         finally:
             c.close(); server.shutdown(); server.server_close()
+
+
+class DoctorTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.sqlite")
+        self.dex = FakeDex(accel=1.0)
+        self.cfg = copy.deepcopy(CFG)
+        self.eng = Engine(self.cfg, self.store, self.dex, FakeRug(), clock=self.dex.now, feeds=demo_feeds(self.dex))
+        self.eng.home = Path(self.tmp.name) / "home"
+
+    def tearDown(self):
+        self.store.close()
+        self.tmp.cleanup()
+
+    def test_all_green_against_the_fakes(self):
+        r = self.eng.doctor()
+        names = [c["name"] for c in r["checks"]]
+        self.assertTrue(r["ok"], r)
+        for needle in ("Python", "Datenverzeichnis", "DexScreener – Profile", "Paare & Parser", "GeckoTerminal", "RugCheck", "Claude"):
+            self.assertTrue(any(needle in n for n in names), needle)
+        self.assertTrue(all(isinstance(c["ms"], int) for c in r["checks"]))
+        self.assertIn("Selbsttest ohne Befund", self.store.events(5)[0]["message"])
+        json.dumps(r)
+
+    def test_failures_are_findings_not_crashes(self):
+        from bot.doctor import run_checks
+        class DeadDex:
+            def recent_token_addresses(self, chains): raise OSError("blocked by proxy")
+            def pairs_for_tokens(self, chain, addrs): return []
+        class DeadGecko:
+            def discover(self, chains): return {chains[0]: []}
+        class DeadRug:
+            def summary(self, mint): return None
+        self.cfg["ai"]["mode"] = "advise"
+        checks = run_checks(self.cfg, DeadDex(), {"geckoterminal": DeadGecko()}, DeadRug(), None)
+        by = {c["name"]: c for c in checks}
+        self.assertFalse(by["DexScreener – Profile & Boosts"]["ok"]); self.assertIn("blocked by proxy", by["DexScreener – Profile & Boosts"]["detail"])
+        self.assertFalse(by["DexScreener – Paare & Parser"]["ok"]); self.assertIn("übersprungen", by["DexScreener – Paare & Parser"]["detail"])
+        self.assertFalse(by["GeckoTerminal – neue Pools & Parser"]["ok"]); self.assertIn("leer", by["GeckoTerminal – neue Pools & Parser"]["detail"])
+        self.assertFalse(by["RugCheck"]["ok"])
+        self.assertNotIn("Datenverzeichnis", by)
+        import os
+        if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+            self.assertFalse(by["Claude-Zugang"]["ok"]); self.assertIn("kein Anthropic-Schlüssel", by["Claude-Zugang"]["detail"])
+
+    def test_parser_check_catches_missing_fields(self):
+        from bot.doctor import _parsed
+        with self.assertRaises(RuntimeError) as cm:
+            _parsed([{"token": "x", "pair": "y"}])
+        self.assertIn("Felder fehlen", str(cm.exception))
+        self.assertIn("1 Paare", _parsed([dict.fromkeys(("token", "pair", "symbol", "price_usd", "liquidity_usd", "volume_m5", "buys_m5", "sells_m5", "change_m5", "age_min"), 1)]))
+
+    def test_doctor_route(self):
+        from bot.server import make_server
+        import http.client, threading
+        server = make_server(self.eng, "127.0.0.1", 0)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=10)
+            c.request("POST", "/api/doctor", body="{}", headers={"Content-Type": "application/json"})
+            r = c.getresponse(); body = json.loads(r.read())
+            self.assertEqual(r.status, 200); self.assertTrue(body["ok"]); self.assertGreaterEqual(len(body["checks"]), 7)
+        finally:
+            c.close(); server.shutdown(); server.server_close()

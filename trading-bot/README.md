@@ -49,7 +49,11 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   die Verbindung zum Bot ab, erscheint ein Banner mit „Erneut versuchen“.
   Die Karte **Quellen** zeigt für jede Discovery-Quelle, ob sie liefert, wie
   viele Tokens sie im letzten Poll gemeldet hat und wie viele davon nur sie
-  gesehen hat – so siehst du, welche Quelle wirklich etwas bringt.
+  gesehen hat – so siehst du, welche Quelle wirklich etwas bringt. Der
+  **Selbsttest** daneben prüft in einem Rutsch: Python und TLS-Zertifikate,
+  Datenverzeichnis, DexScreener (Discovery und Parser), GeckoTerminal (neue
+  Pools und Parser), RugCheck und den Claude-Zugang – mit Laufzeit und
+  Befund je Prüfung. Im Terminal: `python3 -m bot.doctor`.
 - **Kandidaten** – alle bewerteten Tokens mit Score, Kennzahlen, den
   Gründen für die Entscheidung und der Spalte **Danach**: die tatsächliche
   Kursänderung 5, 15 und 60 Minuten nach der Bewertung, sobald sie vorliegt.
@@ -100,6 +104,7 @@ nutzen kannst (nur von `127.0.0.1` erreichbar):
 | GET | `/api/positions/3` | Position mit allen Fills, Kursverlauf (`ticks`) und den Exit-Parametern |
 | GET | `/api/candidates/12` | Kandidat mit Snapshot, RugCheck, KI-Urteil und Renditen je Horizont |
 | GET | `/api/sweep?horizon=15` | Rückblick-Analyse der Filterwerte |
+| POST | `/api/doctor` `{}` | Selbsttest aller Quellen, Parser und Zugänge |
 | POST | `/api/reset` `{"what": "positions"\|"all", "bankroll": 500}` | Paper-Konto zurücksetzen, optional mit neuem Startkapital |
 | GET/POST | `/api/profiles` · `/api/profiles/apply` · `/api/profiles/delete` | Parameter-Profile verwalten |
 | GET | `/api/export/positions.csv` · `trades.csv` · `candidates.csv` | Export (Semikolon-CSV, UTF-8 mit BOM) |
@@ -247,6 +252,7 @@ bot/
   ai.py          Claude-Anbindung: zweiter Blick auf gefilterte Kandidaten
   live.py        Schnittstelle für Echtgeld — bewusst nicht implementiert
   discovery.py   Discovery-Quellen zusammenführen, Status je Quelle
+  doctor.py      Selbsttest: Erreichbarkeit und Parser aller Quellen
   sources/       DexScreener, GeckoTerminal, RugCheck
 tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources
 ```

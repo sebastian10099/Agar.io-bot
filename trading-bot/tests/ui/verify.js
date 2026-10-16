@@ -130,6 +130,12 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok(srcRows.length === 2 && srcRows.every((r) => r.dot.includes('ok')), 'Quellen-Liste: beide Feeds liefern (' + srcRows.map((r) => r.text.slice(0, 14)).join(', ') + ')');
   ok(srcRows.some((r) => /\d+ gemeldet · \d+ eigene · \d+ Abfragen/.test(r.text)), 'Quellen zeigen Zähler');
   ok((await p.textContent('#src-pill')) === '2 aktiv', 'Quellen-Pill: 2 aktiv');
+  await clearToast(); await p.click('#b-doctor');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Selbsttest'));
+  const docRows = await p.$$eval('#doctor li', (l) => l.map((x) => ({ text: x.textContent, ok: !!x.querySelector('.dot.ok'), bad: !!x.querySelector('.dot.bad') })));
+  ok(docRows.length >= 7 && docRows.filter((r) => r.ok).length >= 6 && !docRows.some((r) => r.bad), 'Selbsttest: ' + docRows.filter((r) => r.ok).length + ' Prüfungen bestanden, keine rot');
+  ok(docRows.some((r) => /GeckoTerminal.*Parser/.test(r.text)) && docRows.some((r) => /RugCheck/.test(r.text)), 'Selbsttest prüft GeckoTerminal-Parser und RugCheck');
+  ok((await p.textContent('#toast')).includes('ohne Befund'), 'Toast: Selbsttest ohne Befund');
   await p.click('.chips[data-path="discovery.sources"] .chip[data-chain="geckoterminal"]');
   ok((await p.getAttribute('.chips[data-path="discovery.sources"] .chip[data-chain="geckoterminal"]', 'aria-pressed')) === 'false', 'Quellen-Chip abwählbar');
   await clearToast(); await p.click('#b-save'); await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));

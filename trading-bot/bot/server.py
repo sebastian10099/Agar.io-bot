@@ -131,6 +131,8 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             elif self.path == "/api/positions/open":
                 result = engine.open_from_candidate(int(body.get("candidate_id") or 0))
                 self._json(result, 200 if result["ok"] else 409)
+            elif self.path == "/api/doctor":
+                self._json(engine.doctor())
             elif self.path == "/api/reset":
                 result = engine.reset(str(body.get("what") or "positions"), body.get("bankroll"))
                 self._json(result, 200 if result["ok"] else 400)

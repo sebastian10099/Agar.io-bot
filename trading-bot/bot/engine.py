@@ -40,6 +40,7 @@ class Engine:
         self.errors = 0
         self.started_at = clock()
         self.persist: Optional[Callable[[dict[str, Any]], None]] = None
+        self.home: Optional[Any] = None          # data dir, set by main for the self-test
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._lock = threading.Lock()
@@ -308,6 +309,14 @@ class Engine:
         result["horizon_min"] = horizon_min
         result["horizons"] = horizons
         return result
+
+    def doctor(self) -> dict[str, Any]:
+        """Self-test against this engine's own sources (fakes in the demo)."""
+        from . import doctor as _doctor
+        checks = _doctor.run_checks(self.cfg, self.dex, self.discovery.feeds, self.rug, self.home)
+        bad = [c["name"] for c in checks if not c["ok"]]
+        self.store.log("warn" if bad else "info", "dashboard: Selbsttest " + ("ohne Befund" if not bad else "– Fehler: " + ", ".join(bad)))
+        return {"ok": not bad, "checks": checks, "at": time.time()}
 
     def candidate_detail(self, cid: int) -> dict[str, Any]:
         c = self.store.candidate(cid)
