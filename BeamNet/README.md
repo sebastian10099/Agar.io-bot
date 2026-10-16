@@ -3,9 +3,14 @@
 Zwei Teile, beide getestet:
 
 1. **`beamnet`** – ein Befehl für die Server-Konsole: zeigt den Zustand aller Server, findet Probleme und repariert sie.
-2. **`BeamNetCore`** – ein Server-Plugin: Kilometer, Fahrzeit, XP und Level, Ligen, Bestenliste, **Zeitrennen mit
-   Rekordliste**, **Moderation** (Banns auf allen Servern, Ansagen, Spamschutz) und eine Liste aller Server im Chat –
-   gemeinsam für alle Server.
+   Dazu ein **Wächter**, der rund um die Uhr Ausfälle, hängende Server, Last, Spielerrekorde und Moderation an
+   **Discord und Telegram** meldet, täglich die Spielerdaten sichert und eine **Statusseite** mit Bestenlisten,
+   Profilen, Diagrammen und Hilfeseite erzeugt. Plugin-Updates gehen zuerst auf einen Testserver.
+2. **`BeamNetCore`** – ein Server-Plugin: Kilometer, Fahrzeit, XP und Level, Ligen, Bestenlisten, Saisons mit Titeln,
+   Erfolge, Tagesaufgaben, **Zeitrennen** mit Zwischenzeiten, **Gruppenrennen** und **Strecke der Woche**,
+   **XP-Events**, **Teams**, Map-Abstimmung, `/wo`, **Moderation** (Banns auf allen Servern, `/melden`, Wortfilter,
+   Spam- und Verbindungsschutz) und eine Liste aller Server im Chat – gemeinsam für alle Server, auch mit 30+ Spielern
+   gleichzeitig (getestet mit 64 Spielern und 5000 Spielerdateien).
 
 ## Schnellstart (Web-Konsole des Servers, als root)
 
