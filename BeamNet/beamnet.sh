@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.64"
+VERSION="1.65"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3571,6 +3571,22 @@ if os.path.isdir(pl_dir) and not os.path.islink(pl_dir):
             place_rows.append(f"<tr><td>{E(map_name(os.path.basename(path)[:-5]))}</td><td>{kinds}</td>"
                               f"<td class=n>{sum(counts.values())}</td></tr>")
 
+# Rennserien (races/<Map>.json, "series"): Map, Name, Strecken, Bestzeit.
+series_rows = []
+for path in sorted(glob.glob(os.path.join(shared, "races", "*.json"))):
+    data = load(path)
+    ser = data.get("series") if isinstance(data, dict) else None
+    if not isinstance(ser, dict):
+        continue
+    for sn, sd in sorted(ser.items())[:20]:
+        if not isinstance(sd, dict) or not isinstance(sd.get("tracks"), list):
+            continue
+        tracks = " → ".join(E(str(t)) for t in sd["tracks"][:5])
+        recs = sd.get("records") if isinstance(sd.get("records"), list) else []
+        b = recs[0] if recs and isinstance(recs[0], dict) else None
+        series_rows.append(f"<tr><td>{E(map_name(os.path.basename(path)[:-5]))}</td><td><b>{E(str(sn))}</b><div class=small>{tracks}</div></td>"
+                           f"<td>{E(str(b.get('name', '?'))) if b else '–'}</td><td class=n>{race_time(b.get('time')) if b else '–'}</td></tr>")
+
 ID_OK = __import__("re").compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
@@ -3789,6 +3805,7 @@ page = f"""<!doctype html>
 <section><h2>Beliebteste Maps</h2>{table(["Map", "Kilometer#", "Fahrer#"], popular_rows, "Noch keine Kilometer je Map.")}</section>
 <section><h2>Schnellste Fahrer</h2>{table(["#", "Name", "Spitze#"], speed_rows, "Noch keine Geschwindigkeiten.")}</section>
 <section><h2>Meiste Aufträge</h2>{table(["#", "Name", "Aufträge#"], job_rows, "Noch keine Aufträge – im Spiel: /auftrag")}</section>
+<section><h2>Rennserien</h2>{table(["Map", "Serie", "Bester", "Gesamt#"], series_rows, "Noch keine Serien – Admins im Spiel: /serie neu &lt;Name&gt; &lt;Strecke1&gt; &lt;Strecke2&gt;")}</section>
 <section><h2>Orte für Aufträge</h2>{table(["Map", "Orte", "Anzahl#"], place_rows, "Noch keine Orte – Admins legen sie im Spiel an: /ort neu krankenhaus &lt;Name&gt;")}</section>
 <section><h2>Teams</h2>{table(["#", "Team", "Fahrer#", "Kilometer#"], team_rows, "Noch keine Teams – im Spiel: /team gründen &lt;Name&gt;")}</section>
 </div>

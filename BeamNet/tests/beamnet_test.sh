@@ -633,8 +633,9 @@ contains "$track" '<td class=n>1</td><td><a href="../../p/1.html">Sebi</a></td><
 mkdir -p "$T/root/shared/beamnet/places"; echo '{"places":[{"type":["a"]},{"type":{"b":1}}]}' >"$T/root/shared/beamnet/places/x.json"
 contains "$("$TOOL" web run 2>&1)" "Statusseite erzeugt" "Statusseite: fremde Typen in places/*.json brechen nichts"
 rm -rf "$T/root/shared/beamnet/places"
-echo '{"tracks":{"sprint":{"records":[{"id":"1","name":"Sebi","time":49.0667}]},"leer":{"records":[]}}}' >"$T/root/shared/beamnet/races/italy.json"
+echo '{"tracks":{"sprint":{"records":[{"id":"1","name":"Sebi","time":49.0667}]},"leer":{"records":[]}},"series":{"tour":{"tracks":["sprint","leer"],"records":[{"id":"1","name":"Sebi","time":101.5}]},"bad":"x"}}' >"$T/root/shared/beamnet/races/italy.json"
 out=$("$TOOL" web run 2>&1)
+contains "$(cat "$T/web/index.html")" "<h2>Rennserien</h2>.*<td>Italy</td><td><b>tour</b><div class=small>sprint → leer</div></td><td>Sebi</td><td class=n>1:41\.5</td>" "Statusseite: Rennserien mit Bestzeit"
 contains "$out" "Statusseite erzeugt" "web run"
 page=$(cat "$T/web/index.html")
 contains "$page" "<title>BeamNet – Status</title>" "Statusseite: Titel"
