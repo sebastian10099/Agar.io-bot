@@ -1,5 +1,10 @@
 # BeamNet – Roadmap
 
+Erledigt (Werkzeug 1.19):
+- [x] Spielerrekord: der Wächter zählt jede Minute die Spieler aller Server zusammen, meldet einen neuen Rekord nach
+      Discord (ab 5 Spielern, höchstens alle 30 Minuten), hängt die Tagesspitze an die Tageszusammenfassung und zeigt
+      den Rekord auf der Statusseite und in `api.json` (`peak`).
+
 Erledigt (Werkzeug 1.18):
 - [x] Discord-Tageszusammenfassung zählt einen Tag erst als erledigt, wenn es etwas zu melden gab.
 - [x] Statusseite: `api.json` auch von anderen Webseiten abrufbar (CORS); strengere Prüfung der Spieler-IDs.

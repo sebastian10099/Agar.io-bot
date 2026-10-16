@@ -816,11 +816,16 @@ contains "$(cat "$T/curl.log")" "Heute im Netzwerk" "daily: an Discord"
 out=$(BEAMNET_HOUR=23 "$TOOL" watch 2>&1)
 lacks "$out" "Heute im Netzwerk" "daily: nur einmal am Tag"
 # Eigene Uhrzeit, Einzahl und ein Rekord.
-rm -f "$T/watch/daily-$todaydate" "$P"/[2-4].json
+rm -f "$T/watch/daily-$todaydate" "$T"/watch/peak-* "$P"/[2-4].json
 echo "{\"tracks\":{\"A\":{\"records\":[{\"name\":\"Sebi\",\"time\":61.2,\"at\":$now}]}}}" >"$T/root/shared/beamnet/races/italy.json"
 echo "DAILY_HOUR=8" >>"$T/beamnet.conf"
 out=$(BEAMNET_HOUR=09 "$TOOL" watch 2>&1)
 contains "$out" "📊 Heute im Netzwerk: 40\\.2 km von 1 Fahrer · Top: 1\\. Sebi \\(40\\.2 km\\) · 1 neuer Streckenrekord$" "daily: DAILY_HOUR, Einzahl"
+# Tagesspitze haengt an der Zusammenfassung.
+rm -f "$T/watch/daily-$todaydate"
+echo 9 >"$T/watch/peak-$todaydate"
+out=$(BEAMNET_HOUR=09 "$TOOL" watch 2>&1)
+contains "$out" "1 neuer Streckenrekord · Spitze: [0-9]+ Spieler gleichzeitig$" "daily: Tagesspitze"
 contains "$("$TOOL" watch status 2>&1)" "Tageszusammenfassung: an \\(täglich ab 8 Uhr\\)" "watch status: Tageszusammenfassung"
 # Niemand gefahren: keine Meldung.
 rm -f "$T/watch/daily-$todaydate" "$P"/1.json
@@ -844,6 +849,38 @@ rm -rf "$P" "$T/fremd.json" "$T/root/shared/beamnet/races/italy.json" "$T/watch/
 [[ -f $T/italy.keep ]] && mv "$T/italy.keep" "$T/root/shared/beamnet/races/italy.json"
 mv "$T/players.keep" "$P"
 mv "$T/conf.keep" "$T/beamnet.conf"
+
+# --- Spielerrekord (watch_peak) ------------------------------------------------------------------------------------
+S="$T/root/shared/beamnet"
+mkdir -p "$S/servers"
+rm -f "$S"/servers/*.json "$T/watch/peak" "$T"/watch/peak-*
+cp "$T/beamnet.conf" "$T/conf.peak"
+sed -i 's|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/abc|' "$T/beamnet.conf"
+players_on() {   # players_on <nr> <anzahl>
+    echo "{\"port\":$((30813 + $1)),\"players\":$2,\"max\":8,\"updated\":$(date +%s)}" >"$S/servers/$((30813 + $1)).json"
+}
+players_on 1 3; players_on 2 4
+out=$("$TOOL" watch 2>&1)
+lacks "$out" "Spielerrekord" "peak: erster Lauf legt den Rekord nur fest"
+contains "$(cat "$S/peak.json")" '"allTime":7,' "peak: Rekord gespeichert"
+players_on 3 5
+: >"$T/curl.log"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🎉 Neuer Spielerrekord: 12 Spieler gleichzeitig im Netzwerk \\(bisher 7\\)!" "peak: neuer Rekord gemeldet"
+contains "$(cat "$T/curl.log")" "Neuer Spielerrekord" "peak: an Discord"
+players_on 4 2
+out=$("$TOOL" watch 2>&1)
+lacks "$out" "Spielerrekord" "peak: höchstens alle 30 Minuten eine Meldung"
+contains "$(cat "$S/peak.json")" '"allTime":14,' "peak: Rekord trotzdem fortgeschrieben"
+contains "$(cat "$S/peak.json")" '"today":14,' "peak: Tagesspitze"
+players_on 4 0
+"$TOOL" watch >/dev/null 2>&1
+contains "$(cat "$S/peak.json")" '"allTime":14,.*"online":12,' "peak: weniger online ändert den Rekord nicht"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" "Rekord: 14 gleichzeitig \\([0-9]{2}\\.[0-9]{2}\\.[0-9]{4}\\)" "peak: auf der Statusseite"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["peak"]["allTime"] == 14' "$T/web/api.json" && pass || fail "peak: in api.json"
+rm -f "$S"/servers/*.json
+cp "$T/conf.peak" "$T/beamnet.conf"
 
 # --- Sicherheit: root folgt nie Symlinks in Ordnern, die dem Dienst-Benutzer gehoeren ------------------------------
 S="$T/root/shared/beamnet"

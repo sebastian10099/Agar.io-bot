@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.18"
+VERSION="1.19"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1034,6 +1034,45 @@ cmd_rotation() {
     [[ -f $SYSTEMD_DIR/beamnet-watch.timer ]] || echo "Hinweis: Der Wechsel braucht den Wächter – beamnet watch install"
 }
 
+# Spielerrekord: wie viele sind gleichzeitig im ganzen Netzwerk? Neuer Rekord -> Discord (hoechstens alle 30 min),
+# Tagesspitze fuer die Tageszusammenfassung, peak.json fuer die Statusseite.
+watch_peak() {
+    local -n pout=$1
+    local nr pl online=0 now today best=0 best_at=0 day_best=0 last_note=0
+    now=$(date +%s)
+    today=$(date +%Y-%m-%d)
+    for nr in $(servers); do
+        pl=$(players_of "$(cfg "$nr" Port)")
+        [[ $pl =~ ^([0-9]+)/ ]] && online=$(( online + BASH_REMATCH[1] ))
+    done
+    read -r best best_at last_note < <(cat "$STATE_DIR/peak" 2>/dev/null; echo)
+    [[ $best =~ ^[0-9]+$ ]] || best=0
+    [[ $best_at =~ ^[0-9]+$ ]] || best_at=0
+    [[ $last_note =~ ^[0-9]+$ ]] || last_note=0
+    day_best=$(cat "$STATE_DIR/peak-$today" 2>/dev/null)
+    [[ $day_best =~ ^[0-9]+$ ]] || day_best=0
+    if (( online > day_best )); then
+        day_best=$online
+        echo "$day_best" >"$STATE_DIR/peak-$today"
+        find "$STATE_DIR" -maxdepth 1 -name 'peak-*' -mtime +7 -delete 2>/dev/null
+    fi
+    if (( online > best )); then
+        # Erst ab 5 Spielern und mit einem bisherigen Rekord melden (der erste Lauf legt ihn nur fest).
+        if (( best > 0 && online >= 5 && now - last_note >= 1800 )); then
+            pout+=("🎉 Neuer Spielerrekord: $online Spieler gleichzeitig im Netzwerk (bisher $best)!")
+            last_note=$now
+        fi
+        best=$online
+        best_at=$now
+    fi
+    echo "$best $best_at $last_note" >"$STATE_DIR/peak"
+    if [[ -d $SHARED && ! -L $SHARED ]]; then
+        printf '{"allTime":%s,"allTimeAt":%s,"today":%s,"online":%s,"updated":%s}\n' \
+            "$best" "$best_at" "$day_best" "$online" "$now" | safe put "$SHARED/peak.json" 644
+    fi
+    return 0
+}
+
 watch_run() {
     mkdir -p "$STATE_DIR"
     local nr state last name msgs=() auto
@@ -1073,6 +1112,7 @@ watch_run() {
         echo "$state" >"$STATE_DIR/state-$nr"
     done
     watch_rotation msgs
+    watch_peak msgs
     watch_weekly msgs
     watch_season msgs
     watch_daily msgs
@@ -1218,6 +1258,9 @@ PY
 )
     # Erst als erledigt merken, wenn es etwas zu melden gab – wer nach DAILY_HOUR losfaehrt, kommt noch in die Meldung.
     if [[ -n $line ]]; then
+        local peak
+        peak=$(cat "$STATE_DIR/peak-$today" 2>/dev/null)
+        [[ $peak =~ ^[0-9]+$ ]] && (( peak > 1 )) && line+=" · Spitze: $peak Spieler gleichzeitig"
         : >"$STATE_DIR/daily-$today"
         dout+=("📊 Heute im Netzwerk: $line")
     fi
@@ -1713,6 +1756,14 @@ records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name'
            for m, n, b in races]
 
 
+peak = load(os.path.join(shared, "peak.json"))
+peak_text = ""
+if isinstance(peak, dict) and num(peak.get("allTime")) > 0:
+    peak_text = f" · Rekord: {int(num(peak.get('allTime')))} gleichzeitig"
+    if num(peak.get("allTimeAt")) > 0:
+        peak_text += f" ({time.strftime('%d.%m.%Y', time.localtime(num(peak.get('allTimeAt'))))})"
+
+
 def table(head, body, empty):
     """head: Spaltennamen; ein '#' am Ende markiert Zahlenspalten (rechtsbuendig)."""
     if not body:
@@ -1751,7 +1802,7 @@ page = f"""<!doctype html>
 <meta http-equiv="refresh" content="60"><title>{E(title)} – Status</title>
 {STYLE}</head><body><main>
 <h1><span>{E(title)}</span> Status</h1>
-<div class=sub>{len(servers)} Server online · {online} Spieler · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))} (aktualisiert sich jede Minute)</div>
+<div class=sub>{len(servers)} Server online · {online} Spieler{peak_text} · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))} (aktualisiert sich jede Minute)</div>
 <section><h2>Server</h2>{table(["Server", "Map", "Spieler#"], rows, "Gerade meldet sich kein Server.")}</section>
 <section><h2>Bestenliste</h2>{table(["#", "Name", "Level#", "Liga", "XP#", "Kilometer#", "Erfolge#"], top, "Noch keine Einträge – einfach losfahren!")}</section>
 <div class=grid>
@@ -1796,6 +1847,8 @@ api = {
                  "time": round(max(0.0, num(b.get("time"))), 3)} for m, n, b in races],
     "popularMaps": [{"map": m, "mapName": map_name(m), "km": round(v, 1), "drivers": d}
                     for m, (v, d) in sorted(popular.items(), key=lambda x: (-x[1][0], x[0]))[:10]],
+    "peak": {"allTime": int(num(peak.get("allTime"))), "allTimeAt": int(num(peak.get("allTimeAt"))),
+             "today": int(num(peak.get("today")))} if isinstance(peak, dict) else None,
 }
 write(os.path.join(os.path.dirname(out), "api.json"), json.dumps(api, ensure_ascii=False, indent=1) + "\n")
 
