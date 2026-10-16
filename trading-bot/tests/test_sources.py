@@ -252,3 +252,64 @@ class TickAndExitTests(unittest.TestCase):
         self.eng.poll_once()
         self.store.reset("positions")
         self.assertEqual(self.store._one("SELECT COUNT(*) AS n FROM ticks")["n"], 0)
+
+
+class CandidateDetailTests(unittest.TestCase):
+    """Forward returns on the candidate rows, the candidate detail and poll timing."""
+
+    def setUp(self):
+        import bot.demo as demo
+        self.cycle = demo.CYCLE_MIN
+        demo.CYCLE_MIN = 1e9
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.sqlite")
+        self.dex = FakeDex(accel=1.0)
+        self.t = [self.dex.started]
+        self.dex.now = lambda: self.t[0]
+        self.cfg = copy.deepcopy(CFG)
+        self.eng = Engine(self.cfg, self.store, self.dex, FakeRug(), clock=self.dex.now, feeds=demo_feeds(self.dex))
+
+    def tearDown(self):
+        import bot.demo as demo
+        demo.CYCLE_MIN = self.cycle
+        self.store.close()
+        self.tmp.cleanup()
+
+    def test_outcomes_appear_on_candidates_as_they_fill(self):
+        self.eng.poll_once()
+        self.assertTrue(all(c["outcomes"] == {} for c in self.store.candidates()))
+        for m in (6, 16, 61):
+            self.t[0] = self.dex.started + m * 60
+            self.eng.poll_once()
+        run = next(c for c in self.store.candidates() if c["symbol"] == "RUN" and c["seen_at"] == self.dex.started)
+        self.assertEqual(set(run["outcomes"]), {"5", "15", "60"})
+        self.assertGreater(run["outcomes"]["5"], 0)                     # a runner is up after 5 minutes
+        d = self.eng.candidate_detail(run["id"])
+        self.assertTrue(d["ok"])
+        self.assertEqual([o["horizon_min"] for o in d["outcomes"]], [5, 15, 60])
+        self.assertTrue(all(o["filled_at"] for o in d["outcomes"]))
+        self.assertEqual(d["candidate"]["snapshot"]["source"], "dexscreener")
+        self.assertIn("held", d)
+        json.dumps(d)
+        self.assertFalse(self.eng.candidate_detail(999999)["ok"])
+
+    def test_poll_timing_in_state_and_candidate_route(self):
+        self.eng.poll_once()
+        s = self.eng.state()
+        self.assertIsInstance(s["poll_ms_last"], int)
+        self.assertGreaterEqual(s["poll_ms_avg"], 0)
+        from bot.server import make_server
+        import http.client, threading
+        server = make_server(self.eng, "127.0.0.1", 0)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+            cid = self.store.candidates()[0]["id"]
+            c.request("GET", f"/api/candidates/{cid}"); r = c.getresponse(); body = json.loads(r.read())
+            self.assertEqual((r.status, body["candidate"]["id"]), (200, cid))
+            c.request("GET", "/api/candidates/424242"); r = c.getresponse(); r.read()
+            self.assertEqual(r.status, 404)
+            c.request("GET", "/api/candidates/x"); r = c.getresponse(); r.read()
+            self.assertEqual(r.status, 404)
+        finally:
+            c.close(); server.shutdown(); server.server_close()

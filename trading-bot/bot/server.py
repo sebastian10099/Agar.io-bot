@@ -72,6 +72,10 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                 cols = ["id", "seen_at", "chain", "symbol", "token", "pair", "decision", "score", "price_usd", "reasons",
                         "snap_liquidity_usd", "snap_volume_m5", "snap_buys_m5", "snap_sells_m5", "snap_change_m5", "snap_age_min", "snap_fdv"]
                 self._send(200, _csv(rows, cols), "text/csv; charset=utf-8")
+            elif self.path.startswith("/api/candidates/"):
+                cid = self.path.rsplit("/", 1)[1]
+                result = engine.candidate_detail(int(cid)) if cid.isdigit() else {"ok": False, "error": "bad id"}
+                self._json(result, 200 if result["ok"] else 404)
             elif self.path.startswith("/api/positions/"):
                 tail = self.path.rsplit("/", 1)[-1]
                 result = engine.position_detail(int(tail)) if tail.isdigit() else {"ok": False, "error": "not found"}

@@ -35,6 +35,8 @@ class Engine:
         self.last_poll_wall: Optional[float] = None   # real time, for the liveness indicator
         self.last_prices: dict[str, float] = {}
         self.poll_count = 0
+        self.poll_ms_last: Optional[int] = None
+        self.poll_ms_avg: Optional[int] = None
         self.errors = 0
         self.started_at = clock()
         self.persist: Optional[Callable[[dict[str, Any]], None]] = None
@@ -44,7 +46,15 @@ class Engine:
 
     # --- one cycle ------------------------------------------------------
     def poll_once(self) -> dict[str, int]:
-        now = self.clock()
+        started = time.time()
+        try:
+            return self._poll(self.clock())
+        finally:
+            ms = (time.time() - started) * 1000
+            self.poll_ms_last = round(ms)
+            self.poll_ms_avg = round(ms if self.poll_ms_avg is None else 0.8 * self.poll_ms_avg + 0.2 * ms)
+
+    def _poll(self, now: float) -> dict[str, int]:
         counts = {"seen": 0, "new": 0, "buy": 0, "watch": 0, "skip": 0, "exits": 0}
 
         found = self.discovery.recent(list(self.cfg["chains"]))
@@ -299,6 +309,14 @@ class Engine:
         result["horizons"] = horizons
         return result
 
+    def candidate_detail(self, cid: int) -> dict[str, Any]:
+        c = self.store.candidate(cid)
+        if c is None:
+            return {"ok": False, "error": "Kandidat nicht gefunden"}
+        held = self.store.has_open_for(c["chain"], c["token"])
+        return {"ok": True, "candidate": c, "outcomes": self.store.outcomes_for(cid), "held": held,
+                "price": self.last_prices.get(c["pair"]), "now": self.clock()}
+
     def position_detail(self, pid: int) -> dict[str, Any]:
         pos = self.store.position(pid)
         if pos is None:
@@ -327,6 +345,7 @@ class Engine:
             "wall_now": time.time(), "last_poll_wall": self.last_poll_wall,
             "chains": self.cfg["chains"],
             "last_poll": self.last_poll, "polls": self.poll_count, "errors": self.errors,
+            "poll_ms_last": self.poll_ms_last, "poll_ms_avg": self.poll_ms_avg,
             "initial": self.paper.initial, "bankroll": round(self.paper.bankroll(), 2),
             "cash": round(self.paper.cash(), 2), "exposure": round(self.paper.exposure(), 2),
             "unrealized": round(unrealized_total, 2), "daily_pnl": round(self.paper.daily_pnl(), 2),

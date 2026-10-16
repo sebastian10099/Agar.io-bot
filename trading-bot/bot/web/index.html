@@ -33,6 +33,13 @@
   .dot { width:9px; height:9px; border-radius:50%; background:var(--dim); display:inline-block; }
   .dot.ok { background:var(--green); box-shadow:0 0 0 3px color-mix(in srgb, var(--green) 25%, transparent); }
   .dot.warn { background:var(--amber); } .dot.bad { background:var(--red); }
+  .offline { background:var(--red-bg); color:var(--fg); border-bottom:1px solid var(--line); padding:8px 20px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:13px; }
+  .offline b { color:var(--red); }
+  .after { white-space:nowrap; } .after span + span::before { content:" · "; color:var(--dim); }
+  .kv { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px 14px; margin:0 0 12px; }
+  .kv div { background:var(--muted); border-radius:7px; padding:6px 8px; } .kv span { display:block; font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; }
+  .kv b { font-weight:600; }
+  .dlg-h { margin:12px 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); }
   .sources { list-style:none; margin:0 0 10px; padding:0; display:grid; gap:6px; }
   .sources li { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
   .sources .dot { flex:none; position:relative; top:-1px; }
@@ -50,6 +57,8 @@
   .btn:hover:not(:disabled) { border-color:var(--fg); }
   .btn:focus-visible, .sw:focus-visible, .chip:focus-visible, nav button:focus-visible, a:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
   .btn:disabled { opacity:.5; cursor:default; }
+  .linkish { background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; border-radius:4px; }
+  .linkish:hover b { text-decoration:underline; }
   .btn.primary { background:var(--blue); border-color:var(--blue); color:var(--on-accent); }
   .btn.primary:hover:not(:disabled) { filter:brightness(1.08); }
   .btn.danger { color:var(--red); border-color:color-mix(in srgb, var(--red) 40%, var(--line)); }
@@ -221,6 +230,7 @@
       <button class="btn primary" id="b-toggle" title="Taste p">Pause</button>
     </div>
   </div>
+  <div id="offline" class="offline" role="alert" hidden><b>Keine Verbindung zum Bot.</b> Läuft er? Auf dem Mac <code>Start Trading Bot.command</code> starten, dann hier <button class="btn sm" id="b-retry">Erneut versuchen</button> <span id="offline-since" class="reasons"></span></div>
   <nav role="tablist">
     <button role="tab" id="tabbtn-overview" data-tab="overview" aria-selected="true" aria-controls="tab-overview">Übersicht</button>
     <button role="tab" id="tabbtn-control" data-tab="control" aria-selected="false" aria-controls="tab-control">Steuerung</button>
@@ -299,7 +309,7 @@
         <button class="btn danger" id="b-reset-pos">Positionen zurücksetzen</button>
         <button class="btn danger" id="b-reset-all">Alles zurücksetzen (inkl. Edge-Daten)</button>
       </div>
-      <p class="note">Aktuell <b id="k-initial">–</b> Startkapital · läuft seit <b id="k-uptime">–</b> · Polls <b id="k-polls">–</b> · Fehler <b id="k-errors">–</b></p>
+      <p class="note">Aktuell <b id="k-initial">–</b> Startkapital · läuft seit <b id="k-uptime">–</b> · Polls <b id="k-polls">–</b> · Ø Poll-Dauer <b id="k-pollms">–</b> · Fehler <b id="k-errors">–</b></p>
       <p class="note">Export (CSV, Semikolon, für Excel/Numbers): <a href="/api/export/positions.csv" download="positionen.csv">Positionen</a> · <a href="/api/export/trades.csv" download="trades.csv">Fills</a> · <a href="/api/export/candidates.csv" download="kandidaten.csv">Kandidaten mit Kennzahlen</a></p>
     </section>
   </div>
@@ -376,6 +386,7 @@ const sortKeys = {
   seen_at: (r) => r.seen_at, symbol: (r) => (r.symbol || '').toLowerCase(), decision: (r) => ({buy: 0, watch: 1, skip: 2})[r.decision] ?? 3,
   score: (r) => r.score || 0, liq: (r) => r.snapshot.liquidity_usd || 0, vol: (r) => r.snapshot.volume_m5 || 0,
   change: (r) => r.snapshot.change_m5 || 0, age: (r) => r.snapshot.age_min ?? 1e9,
+  after: (r) => { const o = r.outcomes || {}; return o['15'] ?? o['5'] ?? o['60'] ?? -1e9; },
 };
 
 // ---------- transport ----------
@@ -486,6 +497,43 @@ function renderOverview(s) {
 }
 
 const srcShort = {dexscreener: 'DexScreener', geckoterminal: 'GeckoTerminal'};
+// forward returns 5 / 15 / 60 min after the decision: the honest answer to "was wurde daraus?"
+const HORIZONS = ['5', '15', '60'];
+function afterCell(o) {
+  o = o || {};
+  if (!HORIZONS.some((h) => o[h] != null)) return '<span class="reasons" title="Ergebnis kommt 5, 15 und 60 Minuten nach der Bewertung">…</span>';
+  return `<span class="after" title="Kursänderung nach 5 · 15 · 60 min">${HORIZONS.map((h) => `<span class="${o[h] == null ? 'reasons' : cls(o[h])}">${o[h] == null ? '–' : pct(o[h])}</span>`).join('')}</span>`;
+}
+async function showCandidate(id) {
+  const d = await api('/api/candidates/' + id);
+  if (!d.ok) throw new Error(d.error);
+  const c = d.candidate, s = c.snapshot || {}, rug = s.rug;
+  $('d-title').textContent = `${c.symbol} · ${c.decision}` + (c.score ? ` · Score ${c.score}` : '');
+  $('d-sub').textContent = `${hhmm(c.seen_at)} · ${c.chain} · ${srcShort[s.source] || s.source || '–'}${s.via_feed ? ' (via Feed)' : ''} · ${s.dex || ''}` + (d.price ? ` · Kurs jetzt ${px(d.price)} (${pct((d.price / c.price_usd - 1) * 100)} seit Bewertung)` : '');
+  const kv = (label, val) => `<div><span>${label}</span><b>${val}</b></div>`;
+  const dueTxt = (o) => o.filled_at ? pct(o.change_pct) : `fällig ${hhmm(o.due_at)}`;
+  const body = `
+    <p class="dlg-h">Kennzahlen bei der Bewertung</p>
+    <div class="kv">${kv('Kurs', px(c.price_usd))}${kv('Liquidität', usd(s.liquidity_usd))}${kv('FDV', usd(s.fdv))}${kv('Marktkap.', s.market_cap ? usd(s.market_cap) : '–')}
+      ${kv('Volumen 5 min', usd(s.volume_m5))}${kv('Volumen 1 h', usd(s.volume_h1))}${kv('Käufe/Verkäufe 5 min', `${s.buys_m5 ?? '–'} / ${s.sells_m5 ?? '–'}`)}${kv('Käufe/Verkäufe 1 h', `${s.buys_h1 ?? '–'} / ${s.sells_h1 ?? '–'}`)}
+      ${kv('Δ 5 min', pct(s.change_m5))}${kv('Δ 1 h', pct(s.change_h1))}${kv('Alter', s.age_min == null ? '–' : Math.round(s.age_min) + ' min')}${kv('Socials · Boosts', `${s.has_socials ? 'ja' : 'nein'} · ${s.boosts || 0}`)}</div>
+    <p class="dlg-h">Danach</p>
+    <div class="kv">${(d.outcomes || []).map((o) => `<div><span>nach ${o.horizon_min} min</span><b class="${o.filled_at ? cls(o.change_pct) : 'reasons'}">${dueTxt(o)}</b></div>`).join('') || '<div><span>Tracker</span><b class="reasons">keine Horizonte</b></div>'}</div>
+    <p class="dlg-h">Regeln</p>
+    <p class="note" style="margin:0 0 6px">${esc((c.reasons || []).join(' · ')) || '–'}</p>
+    <p class="dlg-h">RugCheck</p>
+    <p class="note" style="margin:0 0 6px">${rug ? `Score ${Math.round(rug.score)}` + (rug.danger && rug.danger.length ? ` · <span class="neg">Gefahr: ${esc(rug.danger.join(', '))}</span>` : '') + (rug.warn && rug.warn.length ? ` · Warnung: ${esc(rug.warn.join(', '))}` : ' · keine Auffälligkeiten') : (c.chain === 'solana' ? 'nicht erreichbar oder nicht abgefragt' : 'nur für Solana')}</p>
+    ${s.ai_decision ? `<p class="dlg-h">KI</p><p class="note" style="margin:0 0 6px"><span class="d-${s.ai_decision}">${s.ai_decision}</span> mit ${Math.round((s.ai_confidence || 0) * 100)} % Vertrauen (${esc(s.ai_model || '')}) · ${esc((s.ai_reasons || []).join(' · '))}${(s.ai_flags || []).length ? ` · <span class="neg">Risiken: ${esc(s.ai_flags.join(', '))}</span>` : ''}</p>` : ''}
+    <p class="note" style="margin:10px 0 0">${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">Kursseite öffnen ↗</a> · ` : ''}<span class="reasons">${esc(c.token)}</span>${d.held ? ' · <b>im Bestand</b>' : ` · <button type="button" class="btn sm" id="d-buy">Jetzt manuell kaufen</button>`}</p>`;
+  $('d-body').innerHTML = body;
+  const buy = $('d-buy');
+  if (buy) buy.onclick = () => busy(buy, async () => {
+    const r = await api('/api/positions/open', {candidate_id: c.id});
+    if (!r.ok) throw new Error(r.error);
+    $('detail').close(); toast(`${c.symbol} gekauft · ${usd(r.position.size_usd)} @ ${px(r.position.entry_price)}`); refresh();
+  });
+  $('detail').showModal();
+}
 function renderCandidates(s) {
   const q = query.trim().toLowerCase();
   const rows = s.candidates.filter((r) => filters[r.decision] && (!q || (r.symbol || '').toLowerCase().includes(q) || r.reasons.join(' ').toLowerCase().includes(q)));
@@ -495,7 +543,7 @@ function renderCandidates(s) {
   $('n-cands').textContent = s.candidates.length ? `(${s.candidates.length})` : '';
   $('cands').innerHTML = table(rows, [
     {h: 'Zeit', sort: 'seen_at', f: (r) => hhmm(r.seen_at)},
-    {h: 'Token', sort: 'symbol', f: (r) => `<b>${esc(r.symbol)}</b> ${r.snapshot.url ? `<a href="${esc(r.snapshot.url)}" target="_blank" rel="noopener" aria-label="${esc(r.symbol)} im Browser öffnen" title="Kursseite öffnen">↗</a>` : ''}${r.snapshot.source ? `<div class="reasons">${esc(srcShort[r.snapshot.source] || r.snapshot.source)}${r.snapshot.via_feed ? ' · via Feed' : ''}</div>` : ''}`},
+    {h: 'Token', sort: 'symbol', f: (r) => `<button type="button" class="linkish" data-cdetail="${r.id}" aria-label="${esc(r.symbol)} Details"><b>${esc(r.symbol)}</b></button> ${r.snapshot.url ? `<a href="${esc(r.snapshot.url)}" target="_blank" rel="noopener" aria-label="${esc(r.symbol)} im Browser öffnen" title="Kursseite öffnen">↗</a>` : ''}${r.snapshot.source ? `<div class="reasons">${esc(srcShort[r.snapshot.source] || r.snapshot.source)}${r.snapshot.via_feed ? ' · via Feed' : ''}</div>` : ''}`},
     {h: 'Entscheidung', sort: 'decision', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
     {h: 'Score', sort: 'score', f: (r) => r.score || '–', num: true},
     {h: 'Liq.', sort: 'liq', f: (r) => usd(r.snapshot.liquidity_usd), num: true},
@@ -503,10 +551,12 @@ function renderCandidates(s) {
     {h: 'K/V 5m', f: (r) => `${r.snapshot.buys_m5 ?? '–'}/${r.snapshot.sells_m5 ?? '–'}`, num: true},
     {h: 'Δ 5m', sort: 'change', f: (r) => pct(r.snapshot.change_m5), num: true, cls: (r) => cls(r.snapshot.change_m5)},
     {h: 'Alter', sort: 'age', f: (r) => r.snapshot.age_min == null ? '–' : Math.round(r.snapshot.age_min) + ' min', num: true},
+    {h: 'Danach', sort: 'after', f: (r) => afterCell(r.outcomes), num: true},
     {h: 'KI', f: (r) => r.snapshot.ai_decision ? `<span class="d-${r.snapshot.ai_decision}" title="${esc((r.snapshot.ai_reasons || []).concat(r.snapshot.ai_flags || []).join(' · '))}">${r.snapshot.ai_decision} <span class="reasons">${Math.round((r.snapshot.ai_confidence || 0) * 100)}%</span></span>` : '<span class="reasons">–</span>'},
     {h: 'Gründe', f: (r) => `<span class="reasons">${esc(r.reasons.join(' · '))}</span>`},
     {h: '<span class="sr">Aktion</span>', f: (r) => holding.has(r.token) ? `<span class="reasons" title="bereits im Bestand">im Bestand</span>` : `<button class="btn sm" data-buy="${r.id}" aria-label="${esc(r.symbol)} manuell kaufen" title="Als Paper-Position eröffnen, unabhängig vom Bot-Urteil">Kaufen</button>`, num: true},
   ], s.candidates.length ? 'Nichts passt zum Filter.' : 'Noch keine Kandidaten gesehen.');
+  $('cands').querySelectorAll('[data-cdetail]').forEach((b) => b.onclick = () => busy(b, () => showCandidate(Number(b.dataset.cdetail))));
   $('cands').querySelectorAll('[data-buy]').forEach((b) => b.onclick = () => busy(b, async () => {
     const c = s.candidates.find((x) => x.id === Number(b.dataset.buy));
     if (!await confirmDialog(`${c.symbol} manuell kaufen?`, `Eröffnet eine Paper-Position zum aktuellen Kurs mit der normalen Positionsgröße. Der Bot hatte entschieden: ${c.decision}. Der Tracker merkt sich das – so siehst du später, ob dein Urteil besser war.`)) return;
@@ -695,6 +745,7 @@ function renderHeader(s) {
   renderAi(s); renderSources(s);
   if (document.activeElement !== $('bankroll') && !$('bankroll').value) $('bankroll').value = s.initial;
   $('k-polls').textContent = s.polls; $('k-errors').textContent = s.errors;
+  $('k-pollms').textContent = s.poll_ms_avg == null ? '–' : (s.poll_ms_avg >= 1000 ? (s.poll_ms_avg / 1000).toFixed(1) + ' s' : s.poll_ms_avg + ' ms') + (s.poll_ms_last != null ? ` (zuletzt ${s.poll_ms_last} ms)` : '');
 }
 
 // ---------- control form ----------
@@ -946,10 +997,16 @@ async function refresh() {
     const s = await api('/api/state'); state = s;
     renderHeader(s); renderOverview(s); renderCandidates(s); renderLog(s); renderExits(s); checkNotify(s);
     if (firstConfig && schema) { loadForm(s.config); firstConfig = false; }
+    if (!$('offline').hidden) { $('offline').hidden = true; offlineSince = null; toast('Verbindung wieder da'); }
   } catch (e) {
     $('conn').className = 'dot bad'; $('conn').title = 'keine Verbindung zum Bot'; $('k-poll').textContent = 'keine Verbindung';
+    offlineSince = offlineSince || Date.now();
+    $('offline-since').textContent = `seit ${dur((Date.now() - offlineSince) / 1000)}`;
+    $('offline').hidden = false;
   }
 }
+let offlineSince = null;
+$('b-retry').onclick = () => busy($('b-retry'), refresh);
 (async () => {
   try { schema = await api('/api/schema'); buildForm(); } catch (e) { toast('Schema nicht ladbar: ' + e.message, true); }
   loadProfiles();

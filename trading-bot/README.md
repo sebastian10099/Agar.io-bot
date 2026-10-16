@@ -45,13 +45,18 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   Dazu: **Profile** (Parametersätze unter Namen speichern, laden, löschen – zum
   Vergleichen von Strategien), Standardwerte laden, Paper-Konto zurücksetzen
   (nur Positionen, oder alles inklusive Edge-Daten), wahlweise mit neuem
-  Startkapital, und CSV-Export von Positionen, Fills und Kandidaten.
+  Startkapital, und CSV-Export von Positionen, Fills und Kandidaten. Bricht
+  die Verbindung zum Bot ab, erscheint ein Banner mit „Erneut versuchen“.
   Die Karte **Quellen** zeigt für jede Discovery-Quelle, ob sie liefert, wie
   viele Tokens sie im letzten Poll gemeldet hat und wie viele davon nur sie
   gesehen hat – so siehst du, welche Quelle wirklich etwas bringt.
-- **Kandidaten** – alle bewerteten Tokens mit Score, Kennzahlen und den
-  Gründen für die Entscheidung; filterbar nach buy/watch/skip und Suchtext,
-  sortierbar per Klick auf die Spaltenköpfe. **Kaufen** eröffnet einen Token
+- **Kandidaten** – alle bewerteten Tokens mit Score, Kennzahlen, den
+  Gründen für die Entscheidung und der Spalte **Danach**: die tatsächliche
+  Kursänderung 5, 15 und 60 Minuten nach der Bewertung, sobald sie vorliegt.
+  Filterbar nach buy/watch/skip und Suchtext, sortierbar per Klick auf die
+  Spaltenköpfe (auch nach „Danach“). Klick auf das Symbol öffnet den
+  **Kandidaten-Dialog** mit allen Kennzahlen, RugCheck-Details, KI-Urteil und
+  den Renditen je Horizont. **Kaufen** eröffnet einen Token
   als Paper-Position unabhängig vom Bot-Urteil – der Tracker behält die
   ursprüngliche Entscheidung, so lässt sich das eigene Urteil gegen die Regeln
   messen.
@@ -93,6 +98,7 @@ nutzen kannst (nur von `127.0.0.1` erreichbar):
 | POST | `/api/positions/close` `{"id": 3}` | Position zum letzten Kurs schließen |
 | POST | `/api/positions/open` `{"candidate_id": 12}` | Kandidaten manuell als Paper-Position kaufen |
 | GET | `/api/positions/3` | Position mit allen Fills, Kursverlauf (`ticks`) und den Exit-Parametern |
+| GET | `/api/candidates/12` | Kandidat mit Snapshot, RugCheck, KI-Urteil und Renditen je Horizont |
 | GET | `/api/sweep?horizon=15` | Rückblick-Analyse der Filterwerte |
 | POST | `/api/reset` `{"what": "positions"\|"all", "bankroll": 500}` | Paper-Konto zurücksetzen, optional mit neuem Startkapital |
 | GET/POST | `/api/profiles` · `/api/profiles/apply` · `/api/profiles/delete` | Parameter-Profile verwalten |

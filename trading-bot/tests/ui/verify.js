@@ -24,6 +24,7 @@ const HOME_DIR = process.env.HOME_DIR || (process.platform === 'darwin'
   : path.join(process.env.HOME, '.new-token-bot'));
 fs.mkdirSync(SHOTS, { recursive: true });
 const problems = [];
+let expectOffline = false;   // true while the check deliberately cuts /api/state
 let page_;
 const clearToast = () => page_.evaluate(() => { const t = document.querySelector('#toast'); if (t) { t.textContent = ''; t.className = 'toast'; } });
 const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { console.log('  ✗ ' + msg); problems.push(msg); } };
@@ -34,9 +35,9 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
     const ctx = await browser.newContext(opts);
     const p = await ctx.newPage();
     page_ = p;
-    p.on('console', (m) => { if (m.type() === 'error' && !/status of 422/.test(m.text())) problems.push('console: ' + m.text()); });
+    p.on('console', (m) => { if (m.type() === 'error' && !/status of 422/.test(m.text()) && !(expectOffline && /ERR_FAILED/.test(m.text()))) problems.push('console: ' + m.text()); });
     p.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
-    p.on('requestfailed', (r) => problems.push('requestfailed: ' + r.url()));
+    p.on('requestfailed', (r) => { if (!(expectOffline && /api\/state/.test(r.url()))) problems.push('requestfailed: ' + r.url()); });
     p.on('response', (r) => { if (r.status() >= 500) problems.push('HTTP ' + r.status() + ' ' + r.url()); });
     return [ctx, p];
   }
@@ -300,6 +301,15 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   const openBefore = (await (await p.request.get(URL + 'api/state')).json()).open_positions.length;
   const watchRow = p.locator('#cands tbody tr:has(.d-watch) [data-buy]').first();
   ok((await watchRow.count()) === 1, 'Kaufen-Knopf an einem watch-Kandidaten');
+  // --- Kandidaten: „Danach“-Spalte und Details-Dialog ---
+  ok((await p.textContent('#cands thead')).includes('Danach'), 'Spalte „Danach“ (Rendite 5/15/60 min) vorhanden');
+  ok((await p.$$('#cands tbody .after, #cands tbody td:nth-child(10) .reasons')).length >= 1, 'Danach-Zellen gerendert (Wert oder „…“)');
+  await p.locator('#cands tbody [data-cdetail]').first().click(); await p.waitForSelector('dialog#detail[open]');
+  const cdBody = await p.textContent('#d-body');
+  ok(/Kennzahlen bei der Bewertung/.test(cdBody) && /RugCheck/.test(cdBody) && /Regeln/.test(cdBody) && /Danach/.test(cdBody), 'Kandidaten-Dialog: Kennzahlen, Danach, Regeln, RugCheck');
+  ok((await p.$$('#d-body .kv div')).length >= 12, 'Kandidaten-Dialog zeigt alle Kennzahlen (' + (await p.$$('#d-body .kv div')).length + ')');
+  ok(!!(await p.$('#d-buy')) || cdBody.includes('im Bestand'), 'Kandidaten-Dialog bietet Kaufen oder zeigt „im Bestand“');
+  await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.querySelector('dialog#detail[open]'));
   // the demo clock runs 60x, so the first position may already be closed by now: only then is nothing "im Bestand"
   const heldNow = (await (await p.request.get(URL + 'api/state')).json()).open_positions.map((x) => x.token);
   if (heldNow.length) ok((await p.textContent('#cands')).includes('im Bestand'), 'Token im Bestand zeigt „im Bestand“ statt Kaufen');
@@ -355,6 +365,21 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   await p.waitForSelector('#groups .field', { state: 'attached' });
   ok(!(await p.$eval('#tab-control', (e) => e.hidden)), 'Reiter nach Reload gemerkt');
   ok((await p.$$('#closed tbody tr')).length === 0, 'Reset hat geschlossene Positionen entfernt');
+
+  // --- Verbindungsverlust: Banner erscheint, „Erneut versuchen“ räumt es weg ---
+  await p.click('nav [data-tab="control"]');
+  ok(/ms|s \(zuletzt/.test(await p.textContent('#k-pollms')), 'Ø Poll-Dauer angezeigt: ' + (await p.textContent('#k-pollms')));
+  expectOffline = true; await p.route('**/api/state', (r) => r.abort());
+  await p.evaluate(() => refresh());
+  await p.waitForSelector('#offline:not([hidden])');
+  ok(await p.$eval('#offline', (e) => e.getAttribute('role') === 'alert' && e.textContent.includes('Keine Verbindung')), 'Offline-Banner als Alert mit Hinweis');
+  ok(await p.$eval('#conn', (e) => e.classList.contains('bad')), 'Verbindungspunkt rot');
+  await p.unroute('**/api/state'); expectOffline = false;
+  await clearToast(); await p.click('#b-retry');
+  await p.waitForSelector('#offline[hidden]', { state: 'attached' });
+  ok(await p.$eval('#offline', (e) => e.hidden), 'Banner nach erfolgreichem Versuch weg');
+  ok((await p.textContent('#toast')).includes('Verbindung wieder da'), 'Toast: Verbindung wieder da');
+
   await ctx.close();
 
   console.log('\n== Desktop, hell ==');

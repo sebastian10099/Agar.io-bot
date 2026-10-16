@@ -163,6 +163,22 @@ class Store:
         for r in rows:
             r["reasons"] = json.loads(r["reasons"] or "[]")
             r["snapshot"] = json.loads(r["snapshot"] or "{}")
+            r["outcomes"] = {}
+        if rows:
+            by_id = {r["id"]: r for r in rows}
+            for o in self._rows("SELECT candidate_id, horizon_min, change_pct FROM outcomes "
+                                "WHERE filled_at IS NOT NULL AND candidate_id >= ?", (rows[-1]["id"],)):
+                c = by_id.get(o["candidate_id"])
+                if c is not None:
+                    c["outcomes"][str(o["horizon_min"])] = None if o["change_pct"] is None else round(o["change_pct"], 2)
+        return rows
+
+    def outcomes_for(self, cid: int) -> list[dict[str, Any]]:
+        """Every horizon of one candidate, filled or still pending (due_at tells when)."""
+        rows = self._rows("SELECT horizon_min, due_at, price_usd, change_pct, filled_at FROM outcomes "
+                          "WHERE candidate_id=? ORDER BY horizon_min", (cid,))
+        for r in rows:
+            r["change_pct"] = None if r["change_pct"] is None else round(r["change_pct"], 2)
         return rows
 
     def edge_report(self, key: str = "decision") -> list[dict[str, Any]]:
