@@ -1950,6 +1950,87 @@ do
     os.remove(SHARED .. "/teams.json")
 end
 
+-- --- Freundesliste (/freund) ------------------------------------------------------------------------------------
+do
+    local function hb(names, ids)
+        local fh = io.open(SHARED .. "/servers/30815.json", "w")
+        fh:write(json.encode({ name = "BeamNet | Server 2", port = 30815, map = "west_coast_usa", players = #names, max = 8,
+                               names = names, ids = ids, updated = clock }))
+        fh:close()
+    end
+    hb({ "Remote", "Boese" }, { "9999", "../../etc" })
+    for pid, name in pairs({ [85] = "Freundin", [86] = "Kumpel" }) do
+        players[pid] = { name = name, ids = { beammp = tostring(8500 + pid) }, vehicles = {} }
+        _G[events.onPlayerJoin](pid)
+    end
+    players[87] = { name = "GastFreund", ids = {}, vehicles = {} }
+    _G[events.onPlayerJoin](87)
+    chatLog = {}
+    say(85, "/freund")
+    check(chatContains("Noch keine Freunde", 85), "Freunde: leere Liste mit Hinweis")
+    say(85, "/freund Kumpel")
+    check(chatContains("Kumpel ist jetzt in deiner Freundesliste", 85), "Freunde: Spieler hier hinzufuegen")
+    say(85, "/freund kumpel")
+    check(chatContains("Kumpel ist schon in deiner Freundesliste", 85), "Freunde: nicht doppelt")
+    say(85, "/freund Freundin")
+    check(chatContains("Dich selbst brauchst du nicht", 85), "Freunde: nicht sich selbst")
+    say(87, "/freund Kumpel")
+    check(chatContains("Freunde gibt es nur mit BeamMP%-Konto", 87), "Freunde: nicht fuer Gaeste")
+    say(85, "/freund remote")
+    check(chatContains("Remote ist jetzt in deiner Freundesliste", 85), "Freunde: Spieler auf anderem Server")
+    say(85, "/freund boese")
+    check(chatContains("Keinen Spieler „boese“ gefunden", 85), "Freunde: unsichere ID aus dem Lebenszeichen zaehlt nicht")
+    say(85, "/freund Niemand")
+    check(chatContains("Keinen Spieler „Niemand“ gefunden", 85), "Freunde: unbekannter Name")
+    chatLog = {}
+    say(85, "/freunde")
+    check(chatContains("Deine Freunde: 2 · online: 2", 85), "Freunde: Liste zaehlt online")
+    check(chatContains("Kumpel – hier · Remote – BeamNet | Server 2 %(west_coast_usa%)", 85), "Freunde: wer wo faehrt")
+    -- Benachrichtigung: Remote geht und kommt wieder (anderer Server), Kumpel kommt neu auf diesen Server.
+    BN.friendOnline = nil
+    BN.friendTick(true)
+    hb({}, {})
+    _G[events.onPlayerDisconnect](86)
+    BN.friendTick(true)
+    chatLog = {}
+    hb({ "Remote" }, { "9999" })
+    _G[events.onPlayerJoin](86)
+    BN.friendTick(true)
+    check(chatContains("👋 Dein Freund Remote ist jetzt online: BeamNet | Server 2 %(west_coast_usa%) · beamnet%.example:30815", 85),
+        "Freunde: Meldung, wenn ein Freund auf einem anderen Server kommt")
+    check(chatContains("👋 Dein Freund Kumpel ist gerade auf diesen Server gekommen%.", 85), "Freunde: Meldung, wenn ein Freund hierher kommt")
+    check(not chatContains("Dein Freund", 86), "Freunde: nur wer ihn als Freund hat, bekommt die Meldung")
+    chatLog = {}
+    BN.friendTick(true)
+    check(not chatContains("Dein Freund", 85), "Freunde: keine doppelte Meldung")
+    -- Gespeichert und beim naechsten Besuch: wer online ist.
+    _G[events.onPlayerDisconnect](85)
+    local rec = readJson(SHARED .. "/players/8585.json")
+    check(rec and type(rec.friends) == "table" and #rec.friends == 2, "Freunde: in der Spielerdatei gespeichert")
+    chatLog = {}
+    _G[events.onPlayerJoin](85)
+    check(chatContains("Freunde online: Kumpel – hier · Remote – BeamNet | Server 2", 85), "Freunde: beim Betreten, wer online ist")
+    say(85, "/freund weg xyz")
+    check(chatContains("„xyz“ ist nicht in deiner Freundesliste", 85), "Freunde: entfernen unbekannt")
+    say(85, "/freund weg kum")
+    check(chatContains("Kumpel ist nicht mehr in deiner Freundesliste", 85), "Freunde: entfernen (Teilname)")
+    C.maxFriends = 1
+    say(85, "/friend Kumpel")
+    check(chatContains("Deine Freundesliste ist voll %(1%)", 85), "Freunde: Obergrenze")
+    C.maxFriends = 20
+    _G[events.onPlayerDisconnect](85)
+    rec = readJson(SHARED .. "/players/8585.json")
+    check(rec and #rec.friends == 1 and rec.friends[1].id == "9999", "Freunde: Entfernen gespeichert")
+    -- Manipulierte Datei: unsichere IDs, Doppelte, man selbst und Unsinn fallen weg.
+    local n = BN.normalizeRecord({ id = "1", friends = { { id = "../x" }, { id = "2", name = "A" }, { id = "2" }, { id = "1" }, "x", 5 } }, "1", "Ich")
+    check(#n.friends == 1 and n.friends[1].id == "2" and n.friends[1].name == "A", "Freunde: manipulierte Liste wird bereinigt")
+    n = BN.normalizeRecord({ id = "1", friends = "kaputt" }, "1", "Ich")
+    check(type(n.friends) == "table" and #n.friends == 0, "Freunde: kaputtes Feld wird leere Liste")
+    for _, pid in ipairs({ 86, 87 }) do _G[events.onPlayerDisconnect](pid) end
+    for _, pid in ipairs({ 85, 86, 87 }) do players[pid] = nil end
+    os.remove(SHARED .. "/servers/30815.json")
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }

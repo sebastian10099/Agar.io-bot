@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.29"
+BN.VERSION = "1.30"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -87,6 +87,10 @@ local defaults = {
     -- Gruppenrennen (/rennen gruppe <Strecke>): Start nach groupRaceDelaySec, Ende spaetestens nach groupRaceMaxSec.
     groupRaceDelaySec = 30,
     groupRaceMaxSec = 900,
+    -- Freundesliste (/freund): hoechstens maxFriends Eintraege; alle friendCheckSec Sekunden wird geprueft, wer neu
+    -- im Netzwerk ist (andere Server ueber ihre Lebenszeichen).
+    maxFriends = 20,
+    friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
     commandWindowSec = 10,
@@ -471,11 +475,11 @@ end
 local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBestXp = true, raceRecordXp = true,
                        spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true,
                        mapVoteSec = true, joinLimit = true, filterStrikes = true, weeklyTrackXp = true,
-                       groupRaceDelaySec = true }
+                       groupRaceDelaySec = true, maxFriends = true, friendCheckSec = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
-                     filterStrikes = 1, filterMuteSec = 10 }
+                     filterStrikes = 1, filterMuteSec = 10, maxFriends = 1, friendCheckSec = 5 }
 
 function BN.loadOverrides()
     local data = readFile(C.sharedDir .. "/config.json")
@@ -558,8 +562,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /melden · /regeln · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|speed|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /report · /rules · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /melden · /regeln · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|speed|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /report · /rules · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -779,6 +783,31 @@ local EN = {
     ["Sprache: Deutsch. English: /lang en"] = "Language: English. Deutsch: /lang de",
     ["Sprache auf Deutsch gestellt."] = "Language set to English.",
     ["Sprachen: /lang de · /lang en"] = "Languages: /lang de · /lang en",
+    -- Freunde
+    ["hier"] = "here",
+    [" · und %d weitere"] = " · and %d more",
+    ["👋 Dein Freund %s ist jetzt online: %s · %s"] = "👋 Your friend %s is now online: %s · %s",
+    ["👋 Dein Freund %s ist gerade auf diesen Server gekommen."] = "👋 Your friend %s just joined this server.",
+    ["Freunde gibt es nur mit BeamMP-Konto."] = "Friends need a BeamMP account.",
+    ["Noch keine Freunde. /freund <Name> fügt jemanden hinzu – du bekommst dann Bescheid, wenn er online kommt."] =
+        "No friends yet. /friend <name> adds someone – you get a message when they come online.",
+    ["Deine Freunde: %d · online: %d"] = "Your friends: %d · online: %d",
+    ["Offline: %s"] = "Offline: %s",
+    ["Aufruf: /freund weg <Name>"] = "Usage: /friend remove <name>",
+    ["Mehrere Freunde passen zu „%s“ – bitte genauer schreiben."] = "Several friends match \"%s\" – please be more specific.",
+    ["„%s“ ist nicht in deiner Freundesliste."] = "\"%s\" is not on your friend list.",
+    ["%s ist nicht mehr in deiner Freundesliste."] = "%s is no longer on your friend list.",
+    ["Aufruf: /freund <Name> · /freund weg <Name> · /freund"] = "Usage: /friend <name> · /friend remove <name> · /friend",
+    ["Deine Freundesliste ist voll (%d). Entferne erst jemanden mit /freund weg <Name>."] =
+        "Your friend list is full (%d). Remove someone first with /friend remove <name>.",
+    ["Mehrere Spieler passen zu „%s“ – bitte genauer schreiben."] = "Several players match \"%s\" – please be more specific.",
+    ["Keinen Spieler „%s“ gefunden (er muss online sein oder schon einmal gefahren sein)."] =
+        "No player \"%s\" found (they must be online or have driven here before).",
+    ["Dich selbst brauchst du nicht als Freund. 😉"] = "You don't need to add yourself. 😉",
+    ["%s ist schon in deiner Freundesliste."] = "%s is already on your friend list.",
+    ["%s ist jetzt in deiner Freundesliste – du bekommst Bescheid, wenn er online kommt."] =
+        "%s is now on your friend list – you get a message when they come online.",
+    ["Freunde online: %s"] = "Friends online: %s",
     -- Ligen (Standardnamen)
     ["Silber"] = "Silver", ["Platin"] = "Platinum", ["Diamant"] = "Diamond", ["Legende"] = "Legend",
 }
@@ -848,6 +877,18 @@ local function normalizeRecord(rec, id, name)
     rec.monthXp = tonumber(rec.monthXp)
     rec.monthStartXp = tonumber(rec.monthStartXp)
     rec.week = rec.week or weekKey(BN.now())
+    -- Freunde: Liste aus { id, name }; alles andere (auch aus einer manipulierten Datei) faellt weg.
+    local friends, seen = {}, {}
+    if type(rec.friends) == "table" then
+        for _, f in ipairs(rec.friends) do
+            local fid = type(f) == "table" and safeId(f.id)
+            if fid and not seen[fid] and fid ~= rec.id and #friends < 100 then
+                seen[fid] = true
+                friends[#friends + 1] = { id = fid, name = tostring(f.name or "?"):sub(1, 64) }
+            end
+        end
+    end
+    rec.friends = friends
     return rec
 end
 BN.normalizeRecord = normalizeRecord
@@ -1118,6 +1159,7 @@ function BN.savePlayer(s)
     -- schnellen Wechsel die Wahl, die der Spieler inzwischen auf dem anderen Server getroffen hat.
     if s.langChanged and s.lang then rec.lang = s.lang end
     if s.pendingWeeklyTrack then rec.weeklyTrackWeek = s.pendingWeeklyTrack end
+    if s.friendsChanged then rec.friends = s.record.friends end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
     rec.xp = xpOf(rec)
@@ -1135,6 +1177,7 @@ function BN.savePlayer(s)
     s.pendingKm, s.pendingSeconds, s.pendingTop, s.pendingBonus, s.dirty = 0, 0, 0, 0, false
     s.pendingRaces, s.pendingRecords, s.unlocked, s.challengeReward = 0, 0, {}, nil
     s.langChanged = nil
+    s.friendsChanged = nil
     s.pendingWeeklyTrack = nil
     return true
 end
@@ -2418,7 +2461,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /melden · /regeln · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /melden · /regeln · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
@@ -3152,6 +3195,193 @@ function commands.melden(pid, arg)
 end
 commands.report = commands.melden
 
+-- ---------------------------------------------------------------------------------------------------------------------
+-- Freundesliste: /freund <Name> fuegt hinzu, /freund weg <Name> entfernt, /freund zeigt, wer gerade wo faehrt.
+-- Gespeichert wird die BeamMP-ID (Name nur zur Anzeige). Kommt ein Freund irgendwo im Netzwerk online, bekommt man
+-- hier eine Nachricht (dieser Server live, die anderen ueber ihre Lebenszeichen, also mit bis zu einer Minute Verzug).
+
+-- Wer gerade im Netzwerk ist: id -> { name, st } (st = Serverstatus eines anderen Servers, nil = hier).
+function BN.networkOnline()
+    local online = {}
+    for _, s in pairs(BN.players) do
+        if not s.guest and s.id then online[s.id] = { name = s.name } end
+    end
+    for _, st in ipairs(BN.serverList()) do
+        if tonumber(st.port) ~= tonumber(BN.server.port) and type(st.ids) == "table" then
+            local names = type(st.names) == "table" and st.names or {}
+            for i, id in ipairs(st.ids) do
+                id = safeId(id)
+                if id and not online[id] then online[id] = { name = clipText(names[i] or "?", 64), st = st } end
+            end
+        end
+    end
+    return online
+end
+
+local function whereText(lang, entry)
+    if not entry.st then return tr(lang, "hier") end
+    return string.format("%s (%s)", tostring(entry.st.name or "?"), tostring(entry.st.map or "?"))
+end
+
+-- Freunde, die gerade online sind, als "Name – Server" (hoechstens 5, Rest als Zahl).
+function BN.friendsOnlineText(s, lang, online)
+    online = online or BN.networkOnline()
+    local parts = {}
+    for _, f in ipairs(s.record.friends or {}) do
+        local e = online[f.id]
+        if e then parts[#parts + 1] = string.format("%s – %s", e.name, whereText(lang, e)) end
+    end
+    table.sort(parts)
+    local n = #parts
+    while #parts > 5 do table.remove(parts) end
+    local text = table.concat(parts, " · ")
+    if n > 5 then text = text .. tr(lang, " · und %d weitere", n - 5) end
+    return text, n
+end
+
+-- Prueft im Takt (alle friendCheckSec), wer neu im Netzwerk ist, und sagt es seinen Freunden auf diesem Server.
+function BN.friendTick(force)
+    local now = BN.now()
+    if not force and now - (BN.lastFriendCheck or -math.huge) < C.friendCheckSec then return end
+    BN.lastFriendCheck = now
+    local online = BN.networkOnline()
+    local before = BN.friendOnline
+    BN.friendOnline = online
+    if not before then return end            -- erster Durchlauf (Plugin-Start): nur merken, nichts melden
+    for pid, s in pairs(BN.players) do
+        for _, f in ipairs((s.record and s.record.friends) or {}) do
+            local e = online[f.id]
+            if e and not before[f.id] then
+                local lang = BN.langOf(pid)
+                if e.st then
+                    local addr = C.publicHost ~= "" and (C.publicHost .. ":" .. tostring(e.st.port)) or tr(lang, "Port %s", tostring(e.st.port))
+                    say(pid, "👋 Dein Freund %s ist jetzt online: %s · %s", e.name, whereText(lang, e), addr)
+                else
+                    say(pid, "👋 Dein Freund %s ist gerade auf diesen Server gekommen.", e.name)
+                end
+                if e.name ~= f.name and e.name ~= "?" then
+                    f.name = e.name
+                    s.friendsChanged, s.dirty = true, true
+                end
+            end
+        end
+    end
+end
+
+-- Sucht einen Spieler mit BeamMP-Konto: erst gleicher Name online (hier, dann andere Server), dann gleicher Name in
+-- der Bestenliste, dann Teilname online (nur wenn eindeutig). Liefert id, name oder nil, Fehlertext.
+local function findAccount(query)
+    local lower = query:lower()
+    local online = BN.networkOnline()
+    for id, e in pairs(online) do
+        if e.name:lower() == lower then return id, e.name end
+    end
+    for _, rec in ipairs(BN.refreshBoard(false)) do
+        local id = safeId(rec.id)
+        if id and tostring(rec.name or ""):lower() == lower then return id, tostring(rec.name) end
+    end
+    local hitId, hitName, count = nil, nil, 0
+    for id, e in pairs(online) do
+        if e.name:lower():find(lower, 1, true) then hitId, hitName, count = id, e.name, count + 1 end
+    end
+    if count == 1 then return hitId, hitName end
+    if count > 1 then return nil, "mehrdeutig" end
+    return nil, "unbekannt"
+end
+
+function commands.freund(pid, arg)
+    local s = session(pid)
+    local text = tostring(arg or ""):match("^%s*(.-)%s*$")
+    local sub, rest = text:match("^(%S+)%s*(.-)$")
+    sub = (sub or ""):lower()
+    if s.guest then
+        say(pid, "Freunde gibt es nur mit BeamMP-Konto.")
+        return
+    end
+    local friends = s.record.friends
+    if text == "" or sub == "liste" or sub == "list" then
+        if #friends == 0 then
+            say(pid, "Noch keine Freunde. /freund <Name> fügt jemanden hinzu – du bekommst dann Bescheid, wenn er online kommt.")
+            return
+        end
+        local lang = BN.langOf(pid)
+        local onlineText, n = BN.friendsOnlineText(s, lang)
+        say(pid, "Deine Freunde: %d · online: %d", #friends, n)
+        if n > 0 then chat(pid, onlineText) end
+        local offline = {}
+        local online = BN.friendOnline or BN.networkOnline()
+        for _, f in ipairs(friends) do
+            if not online[f.id] then offline[#offline + 1] = f.name end
+        end
+        table.sort(offline, function(a, b) return a:lower() < b:lower() end)
+        if #offline > 0 then say(pid, "Offline: %s", table.concat(offline, ", ")) end
+        return
+    end
+    if sub == "weg" or sub == "entfernen" or sub == "remove" or sub == "del" then
+        if rest == "" then
+            say(pid, "Aufruf: /freund weg <Name>")
+            return
+        end
+        local lower = rest:lower()
+        local idx
+        for i, f in ipairs(friends) do if f.name:lower() == lower then idx = i end end
+        if not idx then
+            for i, f in ipairs(friends) do
+                if f.name:lower():find(lower, 1, true) then
+                    if idx then
+                        say(pid, "Mehrere Freunde passen zu „%s“ – bitte genauer schreiben.", rest)
+                        return
+                    end
+                    idx = i
+                end
+            end
+        end
+        if not idx then
+            say(pid, "„%s“ ist nicht in deiner Freundesliste.", rest)
+            return
+        end
+        local name = friends[idx].name
+        table.remove(friends, idx)
+        s.friendsChanged, s.dirty = true, true
+        say(pid, "%s ist nicht mehr in deiner Freundesliste.", name)
+        return
+    end
+    local query = (sub == "add" or sub == "neu" or sub == "hinzu") and rest or text
+    if query == "" then
+        say(pid, "Aufruf: /freund <Name> · /freund weg <Name> · /freund")
+        return
+    end
+    if #friends >= C.maxFriends then
+        say(pid, "Deine Freundesliste ist voll (%d). Entferne erst jemanden mit /freund weg <Name>.", C.maxFriends)
+        return
+    end
+    local id, name = findAccount(query)
+    if not id then
+        if name == "mehrdeutig" then
+            say(pid, "Mehrere Spieler passen zu „%s“ – bitte genauer schreiben.", query)
+        else
+            say(pid, "Keinen Spieler „%s“ gefunden (er muss online sein oder schon einmal gefahren sein).", query)
+        end
+        return
+    end
+    if id == s.id then
+        say(pid, "Dich selbst brauchst du nicht als Freund. 😉")
+        return
+    end
+    for _, f in ipairs(friends) do
+        if f.id == id then
+            say(pid, "%s ist schon in deiner Freundesliste.", f.name)
+            return
+        end
+    end
+    friends[#friends + 1] = { id = id, name = clipText(name, 64) }
+    s.friendsChanged, s.dirty = true, true
+    say(pid, "%s ist jetzt in deiner Freundesliste – du bekommst Bescheid, wenn er online kommt.", name)
+end
+commands.friend = commands.freund
+commands.freunde = commands.freund
+commands.friends = commands.freund
+
 function commands.lang(pid, arg)
     local s = session(pid)
     local choice = tostring(arg or ""):lower()
@@ -3519,6 +3749,7 @@ function BN.tick()
     guarded("Abstimmung", BN.voteCheck)
     guarded("Map-Wechsel", BN.mapChangeCheck)
     guarded("Gruppenrennen", BN.groupTick)
+    guarded("Freunde", BN.friendTick)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)
@@ -3587,6 +3818,10 @@ function BN_onPlayerJoin(pid)
     end
     local ev = BN.activeEvent()
     if ev then say(pid, "XP-Event läuft: %s-fache XP bis %s Uhr.", fmtFactor(ev.factor), os.date("%H:%M", ev["until"])) end
+    if #(s.record.friends or {}) > 0 then
+        local text, n = BN.friendsOnlineText(s, BN.langOf(pid))
+        if n > 0 then say(pid, "Freunde online: %s", text) end
+    end
     if s.isNew and C.welcomeNew then
         say(pid, "Schön, dass du da bist, %s! Deine Kilometer und XP zählen auf allen BeamNet-Servern.", s.name)
         BN.sayRules(pid)

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.48"
+VERSION="1.49"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3298,6 +3298,7 @@ COMMANDS = [
     ("/liga", "Ligen und was dir bis zur nächsten fehlt"), ("/saison", "Saisonwertung des Monats"),
     ("/aufgabe", "Tagesaufgabe mit Bonus-XP"), ("/erfolge", "Deine Erfolge"),
     ("/server", "Alle BeamNet-Server mit Map und Spielerzahl"), ("/wo &lt;Name&gt;", "Auf welchem Server fährt jemand gerade?"),
+    ("/freund &lt;Name&gt;", "Freundesliste: Nachricht, sobald ein Freund irgendwo online kommt (/freund zeigt alle, /freund weg &lt;Name&gt; entfernt)"),
     ("/km", "Kilometer dieser Sitzung"), ("/rennen &lt;Strecke&gt;", "Zeitrennen starten (Strecken: /rennen)"),
     ("/rekorde", "Streckenrekorde dieser Map"), ("/vote map &lt;Name&gt;", "Abstimmung über eine andere Map"),
     ("/event", "Läuft gerade ein XP-Event?"), ("/melden &lt;Name&gt; &lt;Grund&gt;", "Meldung an die Admins"),

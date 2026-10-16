@@ -8,7 +8,7 @@ Zwei Teile, beide getestet:
    Profilen, Diagrammen und Hilfeseite erzeugt. Plugin-Updates gehen zuerst auf einen Testserver.
 2. **`BeamNetCore`** – ein Server-Plugin: Kilometer, Fahrzeit, XP und Level, Ligen, Bestenlisten, Saisons mit Titeln,
    Erfolge, Tagesaufgaben, **Zeitrennen** mit Zwischenzeiten, **Gruppenrennen** und **Strecke der Woche**,
-   **XP-Events**, **Teams**, Map-Abstimmung, `/wo`, **Moderation** (Banns auf allen Servern, `/melden`, Wortfilter,
+   **XP-Events**, **Teams**, Map-Abstimmung, `/wo`, **Freundesliste**, **Moderation** (Banns auf allen Servern, `/melden`, Wortfilter,
    Spam- und Verbindungsschutz) und eine Liste aller Server im Chat – gemeinsam für alle Server, auch mit 30+ Spielern
    gleichzeitig (getestet mit 64 Spielern und 5000 Spielerdateien).
 
@@ -203,6 +203,7 @@ beamnet restart all
 | `/team` | **Teams**: `/team gründen <Name>`, `/team beitreten <Name>`, `/team verlassen`, `/team liste` (Rangliste nach Kilometern aller Mitglieder). Höchstens 20 Mitglieder, netzweit; auch auf der Statusseite |
 | `/regeln` | Regeln des Netzwerks (englisch `/rules`). Eigene Regeln: `"rules": ["…", "…"]` in `config.json` (höchstens 10 Zeilen). Neue Spieler bekommen beim ersten Besuch eine Begrüßung mit den Regeln und werden den anderen vorgestellt (`"welcomeNew": false` schaltet ab) |
 | `/wo <Name>` | Auf welchem Server fährt ein Freund gerade? (Teil des Namens reicht; englisch `/where`) |
+| `/freund <Name>` | Freundesliste (bis 20): Du bekommst eine Nachricht, sobald ein Freund auf irgendeinem BeamNet-Server online kommt; beim Betreten siehst du, welche Freunde wo fahren. `/freund` zeigt die Liste, `/freund weg <Name>` entfernt (englisch `/friend`, `/friend remove`) |
 | `/melden <Name> <Grund>` | Meldung an die Admins: sofort im Chat an Admins auf dem Server, über den Wächter an Discord/Telegram (höchstens alle 2 Minuten; englisch `/report`) |
 | `/km` | Eigene Kilometer |
 | `/rennen` | Strecken dieser Map mit Rekord |
