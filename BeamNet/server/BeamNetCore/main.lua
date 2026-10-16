@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.36"
+BN.VERSION = "1.37"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -582,8 +582,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /melden · /regeln · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|speed|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /job · /places · /goal · /report · /rules · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /melden · /regeln · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|speed|jobs|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /job · /places · /goal · /report · /rules · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -618,6 +618,7 @@ local EN = {
     ["Bestenliste %s:"] = "Leaderboard %s:",
     ["Kilometer"] = "kilometers",
     ["Höchstgeschwindigkeit"] = "top speed",
+    ["Aufträge"] = "jobs",
     ["Kilometer diese Woche"] = "kilometers this week",
     ["Kilometer letzte Woche"] = "kilometers last week",
     ["%d XP (Level %d)"] = "%d XP (level %d)",
@@ -1513,10 +1514,10 @@ end
 BN.INDEX_MAX_AGE = 180
 -- Format 1: die ersten 13 Felder; Format 2 (Werkzeug ab 1.39): dazu topSpeedKmh.
 BN.INDEX_FIELDS = { "id", "name", "km", "seconds", "bonusXp", "week", "weekKm", "lastWeek", "lastWeekKm",
-                    "month", "monthXp", "lastMonth", "lastMonthXp", "topSpeedKmh" }
-local INDEX_COUNT = { [1] = 13, [2] = 14 }
+                    "month", "monthXp", "lastMonth", "lastMonthXp", "topSpeedKmh", "jobsDone" }
+local INDEX_COUNT = { [1] = 13, [2] = 14, [3] = 15 }
 local INDEX_NUMBERS = { km = true, seconds = true, bonusXp = true, weekKm = true, lastWeekKm = true, monthXp = true,
-                        lastMonthXp = true, topSpeedKmh = true }
+                        lastMonthXp = true, topSpeedKmh = true, jobsDone = true }
 BN.savedRecently = BN.savedRecently or {}
 BN.recordsCache = BN.recordsCache or { at = -math.huge, list = {} }
 
@@ -1590,7 +1591,7 @@ function BN.refreshBoard(force)
         if rec.id then
             byId[rec.id] = { id = rec.id, name = rec.name, km = tonumber(rec.km) or 0, seconds = tonumber(rec.seconds) or 0,
                              bonusXp = tonumber(rec.bonusXp) or 0, topSpeedKmh = tonumber(rec.topSpeedKmh) or 0,
-                             weekKm = rec.week == wk and (tonumber(rec.weekKm) or 0) or 0 }
+                             weekKm = rec.week == wk and (tonumber(rec.weekKm) or 0) or 0, jobsDone = tonumber(rec.jobsDone) or 0 }
         end
     end
     -- Spieler online mit ihren noch nicht gespeicherten Werten.
@@ -1598,7 +1599,7 @@ function BN.refreshBoard(force)
         if not s.guest then
             local t = BN.totals(s)
             byId[s.id] = { id = s.id, name = s.name, km = t.km, seconds = t.seconds, weekKm = t.weekKm, bonusXp = t.bonusXp,
-                           topSpeedKmh = t.topSpeedKmh }
+                           topSpeedKmh = t.topSpeedKmh, jobsDone = (tonumber(s.record.jobsDone) or 0) + (s.pendingJobs or 0) }
         end
     end
     local list = {}
@@ -2613,7 +2614,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /melden · /regeln · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /melden · /regeln · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name>")
     end
@@ -2676,6 +2677,15 @@ function commands.top(pid, arg)
         end)
         list = fast
         label, value = "Höchstgeschwindigkeit", function(r) return string.format("%d km/h", math.floor(r.topSpeedKmh + 0.5)) end
+    elseif mode == "auftraege" or mode == "aufträge" or mode == "jobs" or mode == "auftrag" then
+        local workers = {}
+        for _, r in ipairs(list) do if (r.jobsDone or 0) > 0 then workers[#workers + 1] = r end end
+        table.sort(workers, function(a, b)
+            if a.jobsDone ~= b.jobsDone then return a.jobsDone > b.jobsDone end
+            return tostring(a.name) < tostring(b.name)
+        end)
+        list = workers
+        label, value = "Aufträge", function(r) return tostring(math.floor(r.jobsDone)) end
     elseif mode == "woche" or mode == "week" then
         table.sort(list, function(a, b) return a.weekKm > b.weekKm end)
         label, value = "Kilometer diese Woche", function(r) return fmtKm(r.weekKm) end

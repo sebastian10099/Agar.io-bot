@@ -2280,6 +2280,10 @@ do
     chatLog = {}
     say(96, "/stats")
     check(chatContains("Aufträge erledigt: 2", 96), "Auftrag: in /stats")
+    BN.board = { at = -math.huge, list = {} }
+    chatLog = {}
+    say(96, "/top auftraege")
+    check(chatContains("Bestenliste Aufträge:", 96) and chatContains("^1%. Fahrer – 2$", 96), "Auftrag: /top auftraege")
     _G[events.onPlayerDisconnect](96)
     eq(readJson(SHARED .. "/players/9696.json").jobsDone, 2, "Auftrag: gespeichert")
     -- Manipulierte Datei: unbekannte Typen und Unsinn fallen weg, lange Namen werden gekuerzt.
@@ -2540,6 +2544,15 @@ do
     chatLog = {}
     say(1, "/top speed")
     check(chatContains("Bestenliste Höchstgeschwindigkeit:", 1) and chatContains("^1%. Raser – 412 km/h", 1), "/top speed: schnellster zuerst")
+    -- Format 3 (mit Auftraegen).
+    local f3 = io.open(indexPath, "wb")
+    f3:write("# beamnet-index 3 " .. tostring(clock) .. "\n"
+        .. table.concat({ "8821", "Fahrer3", "10", "0", "0", "", "", "", "", "", "", "", "", "90", "7" }, "\t") .. "\n"
+        .. table.concat({ "8822", "Kurz", "10", "0", "0", "", "", "", "", "", "", "", "", "90" }, "\t") .. "\n")
+    f3:close()
+    fresh()
+    check(BN.boardSource == "index" and boardHas("8821") and boardHas("8821").jobsDone == 7, "Index 3: Auftraege gelesen")
+    check(not boardHas("8822"), "Index 3: Zeile mit 14 Feldern ist im Format 3 ungueltig")
     -- Die geteilte Liste wird von der Bestenliste nicht veraendert.
     writeIndex(clock, { table.concat({ "8805", "Alte Woche", "3", "0", "0", "2000-W01", "50", "", "", "", "", "", "" }, "\t") })
     fresh()

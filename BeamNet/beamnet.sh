@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.52"
+VERSION="1.53"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2189,8 +2189,9 @@ watch_load() {
     return 0
 }
 
-# Bestenlisten-Index fuer das Plugin (ab 1.13; Format 2 mit Hoechstgeschwindigkeit ab Plugin 1.21 – aeltere Plugins
-# erkennen Format 2 nicht und lesen dann wie frueher alle Dateien): eine Zeile je Spieler in players-index.tsv. So liest jeder Server
+# Bestenlisten-Index fuer das Plugin (ab 1.13; Format 2 mit Hoechstgeschwindigkeit ab Plugin 1.21, Format 3 mit
+# Auftraegen ab Plugin 1.37 – aeltere Plugins erkennen das neue Format nicht und lesen dann wie frueher alle Dateien, bis
+# beamnet update sie erneuert): eine Zeile je Spieler in players-index.tsv. So liest jeder Server
 # einmal pro Minute eine kleine Datei statt aller Spielerdateien (bei 10 000 Spielern 0,07 s statt 1,4 s je Liste).
 # Nur regulaere Dateien, keinen Symlinks folgen; Namen ohne Tabulatoren und Steuerzeichen.
 watch_index() {
@@ -2228,7 +2229,7 @@ def key(v):
 def text(v):
     return re.sub(r"[\x00-\x1f\x7f]", "", str(v))[:64]
 
-out = [f"# beamnet-index 2 {int(time.time())}"]
+out = [f"# beamnet-index 3 {int(time.time())}"]
 try:
     pdir = os.open(os.path.join(shared, "players"), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 except OSError:
@@ -2258,12 +2259,12 @@ for name in sorted(n for n in os.listdir(pdir) if n.endswith(".json")):
     out.append("\t".join([r["id"], text(r.get("name", "?")), num(r.get("km")), num(r.get("seconds")),
                           num(r.get("bonusXp")), key(r.get("week")), num(r.get("weekKm")), key(r.get("lastWeek")),
                           num(r.get("lastWeekKm")), key(r.get("month")), num(month_xp), key(r.get("lastMonth")),
-                          num(r.get("lastMonthXp")), num(r.get("topSpeedKmh"))]))
+                          num(r.get("lastMonthXp")), num(r.get("topSpeedKmh")), num(r.get("jobsDone"))]))
 sys.stdout.write("\n".join(out) + "\n")
 PY
 )
     # Nur einen vollstaendigen Index schreiben (bei einem Fehler bleibt der alte; das Plugin erkennt veraltete).
-    [[ $idx == "# beamnet-index 2 "* ]] && printf '%s\n' "$idx" | safe put "$SHARED/players-index.tsv" 644
+    [[ $idx == "# beamnet-index 3 "* ]] && printf '%s\n' "$idx" | safe put "$SHARED/players-index.tsv" 644
     return 0
 }
 
@@ -2451,7 +2452,7 @@ per_km, per_min = n(cfg.get("xpPerKm"), 10), n(cfg.get("xpPerMinute"), 1)
 rows = []
 for line in read(sys.argv[1]).splitlines()[1:]:
     f = line.split("\t")
-    if len(f) not in (13, 14):
+    if len(f) not in (13, 14, 15):
         continue
     try:
         km, sec, bonus = float(f[2] or 0), float(f[3] or 0), float(f[4] or 0)
@@ -3287,6 +3288,20 @@ fastest = sorted([r for r in players if 0 < num(r.get("topSpeedKmh")) <= 600],
                  key=lambda r: (-num(r.get("topSpeedKmh")), str(r.get("name", ""))))[:10]
 speed_rows = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{int(round(num(r.get('topSpeedKmh'))))} km/h</td></tr>"
               for i, r in enumerate(fastest, 1)]
+workers = sorted([r for r in players if 0 < num(r.get("jobsDone")) < 1e7],
+                 key=lambda r: (-num(r.get("jobsDone")), str(r.get("name", ""))))[:10]
+job_rows = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{int(num(r.get('jobsDone')))}</td></tr>"
+            for i, r in enumerate(workers, 1)]
+# Wochenziel fuer alle: Ziel aus community.json (vom Plugin), Fortschritt = Wochen-km aller Fahrer.
+community = ""
+cg = load(os.path.join(shared, "community.json"))
+if isinstance(cg, dict) and cg.get("week") == week and 0 < num(cg.get("goal")) < 1e7:
+    done = sum(num(r.get("weekKm")) for r in players if r.get("week") == week and 0 < num(r.get("weekKm")) < 1e6)
+    goal = num(cg.get("goal"))
+    pct = min(100, int(done / goal * 100))
+    community = (f'<section><h2>Wochenziel für alle</h2><p>{km(done)} von {km(goal)} ({pct} %)'
+                 f'{" – geschafft! 🎉" if done >= goal else ""}</p><div class=bar><span style="width:{pct}%"></span></div>'
+                 f'<p class=small>Alle fahren zusammen; wer diese Woche mitfährt, bekommt Bonus-XP. Im Spiel: <b>/ziel</b></p></section>')
 popular_rows = [f"<tr><td>{E(map_name(m))}</td><td class=n>{km(v)}</td><td class=n>{d}</td></tr>"
                 for m, (v, d) in sorted(popular.items(), key=lambda x: (-x[1][0], x[0]))[:10]]
 records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name', '?')))}</td><td class=n>{race_time(b.get('time'))}</td></tr>"
@@ -3388,6 +3403,7 @@ a {{ color:inherit; text-decoration:none; border-bottom:1px dotted var(--muted);
 .stats div {{ background:var(--bg); border-radius:8px; padding:10px 12px; }} .stats b {{ display:block; font-size:20px; }}
 .tags span {{ display:inline-block; background:var(--bg); border-radius:999px; padding:3px 10px; margin:0 6px 6px 0; font-size:13px; }}
 svg.chart {{ width:100%; height:auto; display:block; }} svg.chart rect {{ fill:var(--accent); }}
+.bar {{ height:12px; border-radius:6px; background:var(--line); overflow:hidden; }} .bar span {{ display:block; height:100%; background:var(--accent); }}
 svg.chart rect:hover {{ fill:var(--text); }} svg.chart .grid {{ stroke:var(--line); }} svg.chart text {{ fill:var(--muted); font-size:11px; }}
 .days {{ position:relative; height:18px; font-size:12px; color:var(--muted); }} .days span {{ position:absolute; top:2px; padding-left:3px; }}
 .days i {{ font-style:normal; }} @media (max-width:560px) {{ .days i {{ display:none; }} }}
@@ -3402,6 +3418,7 @@ page = f"""<!doctype html>
 <div class=sub>{len(servers)} Server online · {online} Spieler{peak_text} · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))} (aktualisiert sich jede Minute)</div>
 <section><h2>Server</h2>{table(["Server", "Map", "Spieler#"], rows, "Gerade meldet sich kein Server.")}</section>
 {hours_chart()}
+{community}
 <section><h2>Bestenliste</h2>{table(["#", "Name", "Level#", "Liga", "XP#", "Kilometer#", "Erfolge#"], top, "Noch keine Einträge – einfach losfahren!")}</section>
 <div class=grid>
 <section><h2>Diese Woche</h2>{table(["#", "Name", "Kilometer#"], weekly, "Diese Woche ist noch niemand gefahren.")}</section>
@@ -3409,6 +3426,7 @@ page = f"""<!doctype html>
 <section><h2>Streckenrekorde</h2>{weekly_track}{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>
 <section><h2>Beliebteste Maps</h2>{table(["Map", "Kilometer#", "Fahrer#"], popular_rows, "Noch keine Kilometer je Map.")}</section>
 <section><h2>Schnellste Fahrer</h2>{table(["#", "Name", "Spitze#"], speed_rows, "Noch keine Geschwindigkeiten.")}</section>
+<section><h2>Meiste Aufträge</h2>{table(["#", "Name", "Aufträge#"], job_rows, "Noch keine Aufträge – im Spiel: /auftrag")}</section>
 <section><h2>Teams</h2>{table(["#", "Team", "Fahrer#", "Kilometer#"], team_rows, "Noch keine Teams – im Spiel: /team gründen &lt;Name&gt;")}</section>
 </div>
 <footer><a href="hilfe.html">Hilfe, Befehle &amp; Regeln</a> · Chat-Befehle im Spiel: /hilfe · /stats · /top · /wo · /event · /regeln · /lang en · <a href="api.json">api.json</a></footer>
