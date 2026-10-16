@@ -3984,7 +3984,7 @@ rules = cfg.get("rules")
 if not (isinstance(rules, list) and len(rules) <= 10 and all(isinstance(r, str) and len(r.encode()) <= 200 for r in rules)):
     rules = RULES
 COMMANDS = [
-    ("/hilfe", "Alle Befehle im Chat"), ("/stats [Name]", "Deine Werte oder die eines anderen Fahrers"),
+    ("/hilfe", "Alle Befehle im Chat"), ("/start", "Einsteiger-Pfad: fünf kleine Schritte mit Bonus-XP für neue Fahrer"), ("/stats [Name]", "Deine Werte oder die eines anderen Fahrers"),
     ("/top [km|woche|vorwoche]", "Bestenliste (XP, Kilometer, diese oder letzte Woche)"),
     ("/liga", "Ligen und was dir bis zur nächsten fehlt"), ("/saison", "Saisonwertung des Monats"),
     ("/aufgabe", "Tagesaufgabe mit Bonus-XP"), ("/erfolge", "Deine Erfolge"),

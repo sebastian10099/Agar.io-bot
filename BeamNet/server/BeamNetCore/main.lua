@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.49"
+BN.VERSION = "1.50"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -121,6 +121,9 @@ local defaults = {
     chaseCooldownSec = 180,
     -- Tipps im Chat: alle tipEverySec Sekunden der naechste Tipp an alle auf diesem Server (0 = aus).
     tipEverySec = 900,
+    -- Einsteiger-Pfad (/start): Bonus-XP je Schritt und fuer alle zusammen (0 = aus).
+    tutorialXp = 25,
+    tutorialDoneXp = 50,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -511,7 +514,7 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true, jobCooldownSec = true, jobXpPerHour = true,
                        communityKm = true, communityXp = true, chaseJoinSec = true, chaseHeadStartSec = true,
                        chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true, chaseXpPerDay = true, chaseCooldownSec = true,
-                       tipEverySec = true }
+                       tipEverySec = true, tutorialXp = true, tutorialDoneXp = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
@@ -607,7 +610,7 @@ local EN = {
         "You: /stats [name] · /km · /achievements · /league · /season · /top [km|xp|speed|jobs|week]",
     ["Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event"] =
         "Network: /server · /where <name> · /friend <name> · /team · /places · /records · /event",
-    ["Sonst: /regeln · /melden <Name> <Grund> · /lang en"] = "Other: /rules · /report <name> <reason> · /lang de",
+    ["Sonst: /start · /regeln · /melden <Name> <Grund> · /lang en"] = "Other: /start · /rules · /report <name> <reason> · /lang de",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -868,6 +871,20 @@ local EN = {
     ["Wochenziel für alle: /ziel – zusammen Kilometer sammeln, alle bekommen Bonus-XP"] = "Weekly goal for everyone: /goal – collect kilometers together, everyone gets bonus XP",
     ["Verfolgungsjagd: /fangen – einer flüchtet, alle jagen ihn"] = "Chase: /chase – one runs, everyone hunts them",
     ["Duell: /duell <Name> <Strecke> – Zeitrennen gegen einen Freund"] = "Duel: /duel <name> <track> – time trial against a friend",
+    -- Einsteiger-Pfad
+    ["Fahr deinen ersten Kilometer"] = "Drive your first kilometer",
+    ["Erledige einen Auftrag: /auftrag"] = "Finish a job: /job",
+    ["Beende ein Rennen: /rennen"] = "Finish a race: /race",
+    ["Füge einen Freund hinzu: /freund <Name>"] = "Add a friend: /friend <name>",
+    ["Erreiche Level 3"] = "Reach level 3",
+    ["✅ Einsteiger-Schritt %d/%d geschafft (+%d XP). Nächster: %s"] = "✅ Starter step %d/%d done (+%d XP). Next: %s",
+    ["🎓 Einsteiger-Pfad geschafft! +%d XP und noch einmal +%d XP obendrauf. Viel Spaß im BeamNet!"] =
+        "🎓 Starter path complete! +%d XP and another +%d XP on top. Have fun in BeamNet!",
+    ["Den Einsteiger-Pfad gibt es mit BeamMP-Konto."] = "The starter path needs a BeamMP account.",
+    ["Du kennst dich schon aus – /hilfe zeigt alle Befehle."] = "You already know your way around – /help shows all commands.",
+    ["Einsteiger-Pfad: %d von %d geschafft (je +%d XP, alle zusammen +%d XP extra)"] =
+        "Starter path: %d of %d done (+%d XP each, +%d XP extra for all)",
+    ["Einsteiger-Pfad %d/%d: %s (/start)"] = "Starter path %d/%d: %s (/start)",
     -- Tipps
     ["Tipp: /auftrag – fahr einen Patienten ins Krankenhaus oder Kinder zur Schule und sammle XP."] =
         "Tip: /job – drive a patient to hospital or children to school and earn XP.",
@@ -1391,6 +1408,13 @@ function BN.savePlayer(s)
     if s.friendsChanged then rec.friends = s.record.friends end
     if s.pendingRecap then rec.recapMonth = s.pendingRecap end
     if s.pendingSeenVersion then rec.seenVersion = s.pendingSeenVersion end
+    if s.tutorialStarted and type(rec.tutorial) ~= "table" then rec.tutorial = {} end
+    if s.pendingTutorial and type(rec.tutorial) == "table" then
+        -- Schon auf einem anderen Server bekommen: nicht doppelt.
+        for id, xp in pairs(s.pendingTutorial) do
+            if rec.tutorial[id] then rec.bonusXp = rec.bonusXp - xp else rec.tutorial[id] = true end
+        end
+    end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
     rec.xp = xpOf(rec)
@@ -1414,6 +1438,7 @@ function BN.savePlayer(s)
     s.resetTop = nil
     s.pendingRecap = nil
     s.pendingSeenVersion = nil
+    s.pendingTutorial, s.tutorialStarted = nil, nil
     s.pendingWeeklyTrack = nil
     s.pendingCommunity, s.pendingCommunityXp = nil, nil
     return true
@@ -1567,7 +1592,66 @@ local function checkProgress(s)
     end
     BN.checkAchievements(s)
     BN.checkChallenge(s)
+    BN.checkTutorial(s, t)
 end
+
+-- Einsteiger-Pfad: fuenf kleine Schritte fuer neue Spieler, in beliebiger Reihenfolge. Wer schon vorher gefahren ist
+-- (ab 5 km beim ersten Blick), bekommt ihn nicht – sonst gaebe es XP fuer laengst Erledigtes.
+BN.TUTORIAL = {
+    { id = "km", text = "Fahr deinen ersten Kilometer", done = function(s, t) return t.km >= 1 end },
+    { id = "job", text = "Erledige einen Auftrag: /auftrag",
+      done = function(s) return (tonumber(s.record.jobsDone) or 0) + (s.pendingJobs or 0) >= 1 end },
+    { id = "race", text = "Beende ein Rennen: /rennen", done = function(s, t) return t.races >= 1 end },
+    { id = "friend", text = "Füge einen Freund hinzu: /freund <Name>",
+      done = function(s) return #(s.record.friends or {}) >= 1 end },
+    { id = "level", text = "Erreiche Level 3", done = function(s, t) return t.level >= 3 end },
+}
+
+local function tutorialState(s)
+    if type(s.record.tutorial) ~= "table" then return nil end
+    s.tutorialDone = s.tutorialDone or {}
+    local done, nextStep = 0, nil
+    for _, step in ipairs(BN.TUTORIAL) do
+        if s.record.tutorial[step.id] or s.tutorialDone[step.id] then done = done + 1 elseif not nextStep then nextStep = step end
+    end
+    return done, nextStep
+end
+
+function BN.checkTutorial(s, t)
+    if s.guest or C.tutorialXp <= 0 or s.tutorialFinished then return end
+    local rec = s.record
+    if rec.tutorial == nil then
+        if t.km >= 5 and not s.isNew then
+            s.tutorialFinished = true            -- alter Hase: kein Einsteiger-Pfad
+            return
+        end
+        rec.tutorial = {}
+        s.tutorialStarted, s.dirty = true, true
+    end
+    if type(rec.tutorial) ~= "table" then s.tutorialFinished = true return end
+    s.tutorialDone = s.tutorialDone or {}
+    s.pendingTutorial = s.pendingTutorial or {}
+    local lang = BN.langOf(s.pid)
+    for _, step in ipairs(BN.TUTORIAL) do
+        if not rec.tutorial[step.id] and not s.tutorialDone[step.id] and step.done(s, t) then
+            s.tutorialDone[step.id] = true
+            s.pendingTutorial[step.id] = C.tutorialXp
+            s.pendingBonus = s.pendingBonus + C.tutorialXp
+            local done, nextStep = tutorialState(s)
+            if nextStep then
+                say(s.pid, "✅ Einsteiger-Schritt %d/%d geschafft (+%d XP). Nächster: %s", done, #BN.TUTORIAL, C.tutorialXp,
+                    tr(lang, nextStep.text))
+            else
+                s.pendingTutorial.all = C.tutorialDoneXp
+                s.pendingBonus = s.pendingBonus + C.tutorialDoneXp
+                say(s.pid, "🎓 Einsteiger-Pfad geschafft! +%d XP und noch einmal +%d XP obendrauf. Viel Spaß im BeamNet!",
+                    C.tutorialXp, C.tutorialDoneXp)
+                s.tutorialFinished = true
+            end
+        end
+    end
+end
+
 
 -- ---------------------------------------------------------------------------------------------------------------------
 -- Kilometer
@@ -2837,13 +2921,27 @@ local function findPlayerByName(query)
     return nil
 end
 
+function commands.start(pid)
+    local s = session(pid)
+    local lang = BN.langOf(pid)
+    if s.guest then say(pid, "Den Einsteiger-Pfad gibt es mit BeamMP-Konto.") return end
+    local done = tutorialState(s)
+    if not done then say(pid, "Du kennst dich schon aus – /hilfe zeigt alle Befehle.") return end
+    say(pid, "Einsteiger-Pfad: %d von %d geschafft (je +%d XP, alle zusammen +%d XP extra)", done, #BN.TUTORIAL, C.tutorialXp, C.tutorialDoneXp)
+    for _, step in ipairs(BN.TUTORIAL) do
+        local ok = s.record.tutorial[step.id] or (s.tutorialDone and s.tutorialDone[step.id])
+        chat(pid, (ok and "✔ " or "✘ ") .. tr(lang, step.text))
+    end
+end
+commands.einsteiger = commands.start
+
 function commands.hilfe(pid)
     -- In Gruppen: eine einzige lange Zeile wird im BeamNG-Chat schlecht lesbar oder abgeschnitten.
     say(pid, "BeamNet-Befehle:")
     say(pid, "Spielen: /auftrag · /rennen · /duell <Name> <Strecke> · /fangen · /aufgabe · /ziel · /vote")
     say(pid, "Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|woche]")
     say(pid, "Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event")
-    say(pid, "Sonst: /regeln · /melden <Name> <Grund> · /lang en")
+    say(pid, "Sonst: /start · /regeln · /melden <Name> <Grund> · /lang en")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name> · /resetspeed")
     end
@@ -5049,6 +5147,13 @@ function BN_onPlayerJoin(pid)
     end
     BN.seasonRecap(s)
     BN.showNews(s)
+    if s.isNew and not s.guest and C.tutorialXp > 0 and s.record.tutorial == nil then
+        s.record.tutorial, s.tutorialStarted = {}, true
+    end
+    if C.tutorialXp > 0 and type(s.record.tutorial) == "table" then
+        local done, nextStep = tutorialState(s)
+        if nextStep then say(pid, "Einsteiger-Pfad %d/%d: %s (/start)", done, #BN.TUTORIAL, tr(BN.langOf(pid), nextStep.text)) end
+    end
     if s.isNew and C.welcomeNew then
         say(pid, "Schön, dass du da bist, %s! Deine Kilometer und XP zählen auf allen BeamNet-Servern.", s.name)
         BN.sayRules(pid)

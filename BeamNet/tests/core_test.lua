@@ -108,6 +108,7 @@ local C = BN.config
 
 check(events.onChatMessage == "BN_onChatMessage", "onChatMessage registriert")
 C.commandLimit = 100000            -- Befehls-Bremse fuer die allgemeinen Tests aus (eigener Test weiter unten)
+C.tutorialXp = 0                   -- Einsteiger-Pfad fuer die allgemeinen Tests aus (eigener Test weiter unten)
 check(events.BN_Tick == "BN_Tick" and timers.BN_Tick == 1000, "Takt registriert")
 eq(BN.server.name, "BeamNet | Server 1", "Servername ohne Farbcodes")
 eq(BN.server.port, 30814, "Port trotz Kommentar")
@@ -2794,6 +2795,59 @@ do
     check(not chatContains("Neu seit", 118), "Neuheiten: nicht fuer neue Spieler")
     _G[events.onPlayerDisconnect](118); players[118] = nil
     for _, id in ipairs({ "11717", "11818" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+end
+
+-- --- Einsteiger-Pfad (/start) -----------------------------------------------------------------------------------
+do
+    C.tutorialXp = 25
+    players[119] = { name = "Lehrling", ids = { beammp = "11919" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } } }
+    chatLog = {}
+    _G[events.onPlayerJoin](119)
+    local s = BN.players[119]
+    tick(1)
+    check(chatContains("Einsteiger%-Pfad 0/5: Fahr deinen ersten Kilometer %(/start%)", 119), "Einsteiger: neuer Spieler sieht den ersten Schritt")
+    say(119, "/start")
+    check(chatContains("Einsteiger%-Pfad: 0 von 5 geschafft", 119) and chatContains("^✘ Fahr deinen ersten Kilometer", 119), "Einsteiger: /start zeigt die Schritte")
+    local b0 = BN.totals(s).bonusXp
+    for _ = 1, 60 do move(119, 0, 20); tick(1) end
+    check(chatContains("✅ Einsteiger%-Schritt 1/5 geschafft %(%+25 XP%)%. Nächster: Erledige einen Auftrag", 119), "Einsteiger: erster Kilometer")
+    eq(BN.totals(s).bonusXp - b0, 25, "Einsteiger: XP fuer den Schritt")
+    -- Freund, Auftrag, Rennen, Level 3 (simuliert)
+    s.record.friends = { { id = "1001", name = "Sebi" } }
+    s.pendingJobs = 1
+    s.pendingRaces = 1
+    s.pendingBonus = s.pendingBonus + 300
+    chatLog = {}
+    tick(1)
+    check(chatContains("🎓 Einsteiger%-Pfad geschafft!", 119), "Einsteiger: alles geschafft")
+    check(BN.totals(s).bonusXp - b0 - 300 >= 5 * 25 + 50, "Einsteiger: alle Schritte und Abschluss-Bonus")
+    chatLog = {}
+    tick(2)
+    check(not chatContains("Einsteiger", 119), "Einsteiger: keine Meldung mehr danach")
+    s.pendingJobs, s.pendingRaces = 0, 0
+    _G[events.onPlayerDisconnect](119)
+    local rec = readJson(SHARED .. "/players/11919.json")
+    check(rec.tutorial and rec.tutorial.km and rec.tutorial.level and rec.tutorial.all, "Einsteiger: gespeichert")
+    -- Doppelt auf zwei Servern: beim Speichern nicht noch einmal.
+    players[119].vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } }
+    _G[events.onPlayerJoin](119)
+    s = BN.players[119]
+    local before = readJson(SHARED .. "/players/11919.json").bonusXp
+    s.pendingTutorial, s.pendingBonus, s.dirty = { km = 25 }, 25, true
+    BN.savePlayer(s)
+    eq(readJson(SHARED .. "/players/11919.json").bonusXp, before, "Einsteiger: nicht doppelt")
+    _G[events.onPlayerDisconnect](119); players[119] = nil
+    -- Alte Hasen (schon ueber 5 km) bekommen keinen Einsteiger-Pfad.
+    writeJson(SHARED .. "/players/12020.json", { id = "12020", name = "Hase", km = 300, seconds = 9000 })
+    players[120] = { name = "Hase", ids = { beammp = "12020" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](120)
+    tick(1)
+    say(120, "/start")
+    check(chatContains("Du kennst dich schon aus", 120) and not chatContains("Einsteiger%-Schritt", 120), "Einsteiger: nicht fuer alte Hasen")
+    _G[events.onPlayerDisconnect](120); players[120] = nil
+    for _, id in ipairs({ "11919", "12020" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+    C.tutorialXp = 0
 end
 
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
