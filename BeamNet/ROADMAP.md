@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.32 / Plugin 1.16)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.33 / Plugin 1.17)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -37,7 +37,9 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
         Gäste und Neue ohne Profil bleiben ohne Link; Werkzeug 1.24).
 15. [ ] Profilseite: Kilometer je Woche als kleines Diagramm, letzte Rekorde.
 16. [ ] Geplante Ansagen: `beamnet ansage "Event um 20 Uhr" --um 19:45`, auf allen Servern im Chat.
-17. [ ] Event-Modus: doppelte XP in einem Zeitfenster (z. B. Wochenende), angekündigt im Chat und in Discord.
+17. [x] XP-Event: `/event 2 2h` (Admins) gibt auf allen Servern doppelte XP (Faktor 1,5–5, höchstens 24 h). Start und
+        Ende werden im Chat angesagt, beim Betreten gibt es einen Hinweis, Discord/Telegram bekommen eine Meldung, und es
+        zählt in die Saison (Plugin 1.17, Werkzeug 1.33).
 18. [ ] Begrüßung für neue Spieler beim ersten Besuch: kurze Regeln und die wichtigsten Befehle. 🤖
 19. [x] `/wo <Name>` (englisch `/where`): Auf welchem Server fährt ein Freund gerade? (Plugin 1.14)
 20. [x] Wochenbericht montags: Sieger plus „📈 Die Woche: Fahrer · km · Spitze gleichzeitig (Tag, Uhrzeit) · neue

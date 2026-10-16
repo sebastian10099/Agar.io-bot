@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.16"
+BN.VERSION = "1.17"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -345,6 +345,7 @@ local function racesDir() return C.sharedDir .. "/races" end
 local function bansFile() return C.sharedDir .. "/bans.json" end
 local function mutesFile() return C.sharedDir .. "/mutes.json" end
 local function announcementsFile() return C.sharedDir .. "/announcements.json" end
+local function eventFile() return C.sharedDir .. "/event.json" end
 local function modlogFile() return C.sharedDir .. "/modlog.jsonl" end
 
 -- Dateiname aus der BeamMP-ID (nur Ziffern und Buchstaben – nie Pfade aus Spielereingaben).
@@ -520,8 +521,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /melden · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /report · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /melden · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /report · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -564,6 +565,14 @@ local EN = {
     ["Du: %s mit %d XP – höchste Liga erreicht!"] = "You: %s with %d XP – top league reached!",
     ["Keine Serverliste verfügbar."] = "No server list available.",
     ["BeamNet-Server (wechseln im BeamMP-Launcher):"] = "BeamNet servers (switch in the BeamMP launcher):",
+    ["XP-Event: %s-fache XP bis %s Uhr! (gestartet von %s)"] = "XP event: %sx XP until %s! (started by %s)",
+    ["Das XP-Event ist vorbei – danke fürs Mitfahren!"] = "The XP event is over – thanks for driving!",
+    ["XP-Event läuft: %s-fache XP bis %s Uhr."] = "XP event running: %sx XP until %s.",
+    ["Gerade läuft kein XP-Event."] = "No XP event right now.",
+    ["XP-Event beendet."] = "XP event ended.",
+    ["Event konnte nicht gespeichert werden."] = "Event could not be saved.",
+    ["Aufruf: /event <Faktor 1,5–5> <Dauer, z. B. 2h oder 90m, höchstens 24h> · /event stop"] =
+        "Usage: /event <factor 1.5–5> <duration, e.g. 2h or 90m, at most 24h> · /event stop",
     ["Aufruf: /melden <Name> <Grund> – geht an die Admins."] = "Usage: /report <name> <reason> – goes to the admins.",
     ["Bitte warte noch %d s bis zur nächsten Meldung."] = "Please wait %d s before your next report.",
     ["Meldung konnte nicht gespeichert werden – bitte einem Admin direkt schreiben."] =
@@ -959,6 +968,16 @@ function BN.savePlayer(s)
     if map then
         rec.dayMaps[map] = true
         rec.maps[map] = true
+    end
+    -- XP-Event (/event): Zusatz-XP fuer die Strecke und Zeit seit dem letzten Speichern, als Bonus-XP.
+    local ev = BN.activeEvent()
+    if ev then
+        local gained = BN.xpFor(rec.km + s.pendingKm, rec.seconds + s.pendingSeconds) - BN.xpFor(rec.km, rec.seconds)
+        local extra = math.floor(gained * (ev.factor - 1))
+        if extra > 0 then
+            rec.bonusXp = rec.bonusXp + extra
+            rec.eventXp = (tonumber(rec.eventXp) or 0) + extra
+        end
     end
     rec.km = rec.km + s.pendingKm
     rec.weekKm = rec.weekKm + s.pendingKm
@@ -1912,6 +1931,7 @@ function BN.sync(force)
             if mute and (not s.mutedUntil or s.mutedUntil < mute["until"]) then s.mutedUntil = mute["until"] end
         end
     end
+    BN.loadEvent(now)
     local data = json.decode(readFile(announcementsFile()) or "")
     if type(data) == "table" and type(data.list) == "table" then
         for _, a in ipairs(data.list) do
@@ -1922,6 +1942,44 @@ function BN.sync(force)
         end
     end
 end
+
+-- XP-Event (netzweit): event.json im gemeinsamen Ordner, von /event geschrieben, von allen Servern beim Abgleich
+-- gelesen. Faktor 1,5 bis 5, hoechstens 24 Stunden. Start und Ende werden auf jedem Server einmal angesagt.
+BN.EVENT_MAX_SEC = 24 * 3600
+
+local function fmtFactor(f)
+    if f == math.floor(f) then return string.format("%d", f) end
+    return (string.format("%.1f", f):gsub("%.", ","))
+end
+
+function BN.activeEvent()
+    local ev = BN.event
+    if ev and ev["until"] > BN.now() then return ev end
+    return nil
+end
+
+function BN.loadEvent(now)
+    local data = json.decode(readFile(eventFile()) or "")
+    local ev = nil
+    if type(data) == "table" then
+        local factor, untilAt = tonumber(data.factor), tonumber(data["until"])
+        if factor and untilAt and factor >= 1.5 and factor <= 5 and untilAt > now and untilAt - now <= BN.EVENT_MAX_SEC then
+            ev = { factor = factor, ["until"] = untilAt, by = tostring(data.by or "?"), id = tostring(data.id or untilAt) }
+        end
+    end
+    local before = BN.event
+    if ev and (not before or before.id ~= ev.id) then
+        BN.event = ev
+        if not BN.eventSeen[ev.id] then
+            BN.eventSeen[ev.id] = true
+            sayAll("XP-Event: %s-fache XP bis %s Uhr! (gestartet von %s)", fmtFactor(ev.factor), os.date("%H:%M", ev["until"]), ev.by)
+        end
+    elseif not ev and before then
+        BN.event = nil
+        sayAll("Das XP-Event ist vorbei – danke fürs Mitfahren!")
+    end
+end
+BN.eventSeen = BN.eventSeen or {}
 
 -- Beim Start: alte Ansagen nicht wiederholen.
 function BN.markAnnouncementsSeen()
@@ -2037,7 +2095,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /melden · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /melden · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
@@ -2468,6 +2526,47 @@ function commands.ansage(pid, arg)
     if not arg or arg == "" then say(pid, "Aufruf: /ansage <Text> – erscheint auf allen BeamNet-Servern.") return end
     BN.announce(arg, admin.name)
     modlog({ action = "ansage", by = admin.name, reason = arg })
+end
+
+-- /event (alle): laufendes Event zeigen. /event <Faktor> <Dauer> (Admins): starten, z. B. /event 2 2h oder
+-- /event 1.5 90m. /event stop (Admins): beenden.
+function commands.event(pid, arg)
+    local words = {}
+    for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
+    if #words == 0 then
+        local ev = BN.activeEvent()
+        if ev then
+            say(pid, "XP-Event läuft: %s-fache XP bis %s Uhr.", fmtFactor(ev.factor), os.date("%H:%M", ev["until"]))
+        else
+            say(pid, "Gerade läuft kein XP-Event.")
+        end
+        return
+    end
+    local s = session(pid)
+    if not BN.isAdmin(s) then say(pid, "Nur für Admins.") return end
+    local now = BN.now()
+    if words[1]:lower() == "stop" or words[1]:lower() == "aus" then
+        writeFileAtomic(eventFile(), json.encode({ factor = 1, ["until"] = now, by = s.name, id = "stop-" .. now }))
+        modlog({ action = "event-stop", by = s.name })
+        BN.loadEvent(now)
+        say(pid, "XP-Event beendet.")
+        return
+    end
+    local factor = tonumber((words[1]:gsub(",", ".")))
+    local amount, unit = tostring(words[2] or ""):lower():match("^(%d+)([mh]?)$")
+    local seconds = amount and tonumber(amount) * ((unit == "m") and 60 or 3600) or nil
+    if not factor or factor < 1.5 or factor > 5 or not seconds or seconds < 60 or seconds > BN.EVENT_MAX_SEC then
+        say(pid, "Aufruf: /event <Faktor 1,5–5> <Dauer, z. B. 2h oder 90m, höchstens 24h> · /event stop")
+        return
+    end
+    factor = math.floor(factor * 10 + 0.5) / 10
+    local ev = { factor = factor, ["until"] = now + seconds, by = s.name, at = now, id = tostring(now) .. "-" .. tostring(pid) }
+    if not writeFileAtomic(eventFile(), json.encode(ev)) then
+        say(pid, "Event konnte nicht gespeichert werden.")
+        return
+    end
+    modlog({ action = "event", by = s.name, factor = factor, ["until"] = ev["until"] })
+    BN.loadEvent(now)
 end
 
 -- Text fuer Meldungen: ohne Steuerzeichen, hoechstens maxBytes Bytes, nie mitten in einem UTF-8-Zeichen getrennt.
@@ -2949,6 +3048,8 @@ function BN_onPlayerJoin(pid)
         local lang = BN.langOf(pid)
         say(pid, "Heute: %s (/aufgabe)", tr(lang, ch.text, ch.goal))
     end
+    local ev = BN.activeEvent()
+    if ev then say(pid, "XP-Event läuft: %s-fache XP bis %s Uhr.", fmtFactor(ev.factor), os.date("%H:%M", ev["until"])) end
     BN.writeStatus()
 end
 

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.32"
+VERSION="1.33"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1527,6 +1527,13 @@ for raw in chunk[:end].splitlines():
         lines.append(f"🔇 {who} wurde wegen Spam{span} stummgeschaltet ({where(e)})")
     elif a == "warn":
         lines.append(f"⚠️ {by} hat {who} verwarnt{reason} ({where(e)})")
+    elif a == "event":
+        f, u = e.get("factor"), e.get("until")
+        if isinstance(f, (int, float)) and isinstance(u, (int, float)) and 1 < f <= 5 and 0 < u < 4e9:
+            fs = (f"{f:.1f}".replace(".", ",") if f != int(f) else str(int(f)))
+            lines.append(f"🎉 {by} startet ein XP-Event: {fs}-fache XP bis {time.strftime('%H:%M', time.localtime(u))} Uhr – jetzt einsteigen!")
+    elif a == "event-stop":
+        lines.append(f"🎉 {by} hat das XP-Event beendet")
 for l in lines[:10]:
     print(l)
 if len(lines) > 10:

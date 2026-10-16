@@ -1604,6 +1604,70 @@ do
     C.admins = savedAdmins
 end
 
+-- --- XP-Event (/event) ------------------------------------------------------------------------------------------
+do
+    local savedAdmins = C.admins
+    C.admins = { "Orga" }
+    players[98] = { name = "Eventfahrer", ids = { beammp = "9801" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } } }
+    players[99] = { name = "Orga", ids = { beammp = "9901" }, vehicles = {} }
+    _G[events.onPlayerJoin](98); _G[events.onPlayerJoin](99)
+    chatLog = {}
+    say(98, "/event")
+    check(chatContains("Gerade läuft kein XP%-Event", 98), "/event: ohne Event Hinweis")
+    say(98, "/event 2 2h")
+    check(chatContains("Nur für Admins", 98), "/event: Starten nur fuer Admins")
+    say(99, "/event 9 2h"); say(99, "/event 2 30h"); say(99, "/event 2 zwei")
+    check(countChat("Aufruf: /event", 99) == 3, "/event: Faktor und Dauer werden geprueft")
+    check(readJson(SHARED .. "/event.json") == nil, "/event: ungueltig – keine Datei")
+    say(99, "/event 2 2h")
+    local ev = readJson(SHARED .. "/event.json")
+    check(ev and ev.factor == 2 and ev["until"] == clock + 7200 and ev.by == "Orga", "/event: event.json geschrieben")
+    check(chatContains("XP%-Event: 2%-fache XP bis %d%d:%d%d Uhr! %(gestartet von Orga%)", 98), "/event: Start auf dem Server angesagt")
+    -- Ein anderer Server (frischer Zustand) sagt das Event genau einmal an.
+    BN.event, BN.eventSeen = nil, {}
+    chatLog = {}
+    BN.sync(true); BN.sync(true)
+    eq(countChat("XP%-Event: 2%-fache", 98), 1, "/event: anderer Server sagt einmal an")
+    -- Fahren waehrend des Events: doppelte XP fuer Strecke und Zeit (als Bonus).
+    local s = BN.players[98]
+    BN.savePlayer(s)
+    local bonusBefore = (readJson(SHARED .. "/players/9801.json") or {}).bonusXp or 0
+    s.lastSaveAt = clock + 100000                          -- regelmaessiges Speichern hier nicht dazwischen
+    tick(1)
+    for _ = 1, 50 do move(98, 0, 20); tick(1) end
+    BN.flushMoved(s)
+    local before = BN.totals(s)
+    local gained = BN.xpFor(before.km, before.seconds) - BN.xpFor(s.record.km, s.record.seconds)
+    BN.savePlayer(s)
+    local rec = readJson(SHARED .. "/players/9801.json")
+    check(gained >= 10, "/event: Testfahrt bringt XP (" .. gained .. ")")
+    eq(rec.bonusXp - bonusBefore, gained, "/event: Zusatz-XP = gewonnene XP (Faktor 2)")
+    eq(rec.eventXp, gained, "/event: Event-XP mitgezaehlt")
+    say(98, "/event")
+    check(chatContains("XP%-Event läuft: 2%-fache XP", 98), "/event: laufendes Event anzeigen")
+    _G[events.onPlayerDisconnect](98)
+    players[98].vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } }
+    _G[events.onPlayerJoin](98)
+    check(chatContains("XP%-Event läuft", 98), "/event: Hinweis beim Betreten")
+    -- Ablauf: Ende angesagt, danach keine Zusatz-XP mehr.
+    clock = clock + 7201
+    chatLog = {}
+    BN.sync(true)
+    check(chatContains("Das XP%-Event ist vorbei", 98), "/event: Ende angesagt")
+    check(BN.activeEvent() == nil, "/event: nach Ablauf aus")
+    -- /event stop beendet sofort.
+    say(99, "/event 1,5 90m")
+    check(BN.activeEvent() and BN.activeEvent().factor == 1.5, "/event: Komma-Faktor 1,5")
+    say(99, "/event stop")
+    check(BN.activeEvent() == nil and chatContains("XP%-Event beendet", 99), "/event stop beendet")
+    local logged = 0
+    for line in io.lines(SHARED .. "/modlog.jsonl") do if line:find('"action":"event', 1, true) then logged = logged + 1 end end
+    check(logged >= 3, "/event: Start und Stopp im Moderationsprotokoll")
+    os.remove(SHARED .. "/event.json")
+    for pid = 98, 99 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    C.admins = savedAdmins
+end
+
 -- --- Bestenlisten-Index (players-index.tsv vom Waechter) -------------------------------------------------------------
 do
     local indexPath = SHARED .. "/players-index.tsv"

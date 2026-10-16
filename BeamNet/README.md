@@ -244,6 +244,7 @@ Englische Befehlsnamen funktionieren ebenfalls: `/help`, `/league`, `/race [new|
 | `/warn <Name> <Text>` | Verwarnung nur an diesen Spieler |
 | `/mute <Name> [Minuten]` | Im Chat stummschalten (Standard 10 min) – gilt auf allen Servern und auch nach Neu-Verbinden |
 | `/ansage <Text>` | Nachricht auf allen Servern gleichzeitig, z. B. „Neustart in 5 Minuten“ |
+| `/event <Faktor> <Dauer>` | **XP-Event** auf allen Servern, z. B. `/event 2 2h` (doppelte XP für 2 Stunden; Faktor 1,5–5, höchstens 24 h), `/event stop` beendet. Start und Ende werden im Chat angesagt und an Discord/Telegram gemeldet. `/event` ohne Angaben zeigt allen Spielern das laufende Event |
 
 - Teilnamen genügen (`/ban max`), solange sie eindeutig sind – sonst passiert nichts und es kommt ein Hinweis. Ein
   genauer Name hat immer Vorrang (auch der eines Spielers, der gerade offline ist).

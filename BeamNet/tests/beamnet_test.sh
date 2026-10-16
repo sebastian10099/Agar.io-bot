@@ -1060,6 +1060,8 @@ now=$(date +%s)
     printf '{"action":"spam-mute","target":"Spammer","seconds":60,"at":%s,"server":%s}\n' "$now" "$port1"
     printf '{"action":"warn","by":"Max","target":"Ana","reason":"bitte rechts fahren","at":%s,"server":%s}\n' "$now" "$port1"
     printf '{"action":"ansage","by":"Max","reason":"Event","at":%s}\n' "$now"
+    printf '{"action":"event","by":"Orga","factor":1.5,"until":%s,"at":%s,"server":%s}\n' "$((now + 7200))" "$now" "$port1"
+    printf '{"action":"event-stop","by":"Orga","at":%s,"server":%s}\n' "$now" "$port1"
     echo 'kaputt'
     printf '{"action":"kick","by":"Max","target":"Halb"'
 } >>"$M"
@@ -1069,7 +1071,9 @@ contains "$out" "🛡️ Sebi hat Rambo Racer gebannt bis [0-9]{2}\\.[0-9]{2}\\.
 contains "$out" "🛡️ Sebi hat Troll gebannt dauerhaft \\(Port 99999\\)" "modlog: dauerhafter Bann, unbekannter Port"
 contains "$out" "🔇 Spammer wurde wegen Spam für 60 s stummgeschaltet \\(Server 1\\)" "modlog: Spam-Stummschaltung"
 contains "$out" "⚠️ Max hat Ana verwarnt – bitte rechts fahren \\(Server 1\\)" "modlog: Verwarnung"
-lacks "$out" "Event|kaputt|Halb" "modlog: Ansage, kaputte und halbe Zeilen nicht gemeldet"
+contains "$out" "🎉 Orga startet ein XP-Event: 1,5-fache XP bis [0-9]{2}:[0-9]{2} Uhr – jetzt einsteigen!" "modlog: XP-Event angekuendigt"
+contains "$out" "🎉 Orga hat das XP-Event beendet" "modlog: XP-Event beendet"
+lacks "$out" "Max.*Event|kaputt|Halb" "modlog: Ansage, kaputte und halbe Zeilen nicht gemeldet"
 printf ',"server":%s}\n' "$port1" >>"$M"
 out=$("$TOOL" watch 2>&1)
 contains "$out" "🛡️ Max hat Halb vom Server geworfen \\(Server 1\\)" "modlog: halbe Zeile kommt, sobald sie vollstaendig ist"
