@@ -1064,6 +1064,7 @@ now=$(date +%s)
     printf '{"action":"event","by":"Orga","factor":1.5,"until":%s,"at":%s,"server":%s}\n' "$((now + 7200))" "$now" "$port1"
     printf '{"action":"event-stop","by":"Orga","at":%s,"server":%s}\n' "$now" "$port1"
     printf '{"action":"join-spam","target":"Hopper","seconds":120,"at":%s,"server":%s}\n' "$now" "$port1"
+    printf '{"action":"filter-mute","target":"Pöbler","seconds":300,"at":%s,"server":%s}\n' "$now" "$port1"
     echo 'kaputt'
     printf '{"action":"kick","by":"Max","target":"Halb"'
 } >>"$M"
@@ -1075,6 +1076,7 @@ contains "$out" "🔇 Spammer wurde wegen Spam für 60 s stummgeschaltet \\(Serv
 contains "$out" "⚠️ Max hat Ana verwarnt – bitte rechts fahren \\(Server 1\\)" "modlog: Verwarnung"
 contains "$out" "🎉 Orga startet ein XP-Event: 1,5-fache XP bis [0-9]{2}:[0-9]{2} Uhr – jetzt einsteigen!" "modlog: XP-Event angekuendigt"
 contains "$out" "🎉 Orga hat das XP-Event beendet" "modlog: XP-Event beendet"
+contains "$out" "🔇 Pöbler wurde wegen Beleidigungen im Chat für 5 min stummgeschaltet \\(Server 1\\)" "modlog: Wortfilter gemeldet"
 contains "$out" "🚫 Hopper hat sich zu oft neu verbunden und wird für 2 min abgewiesen \\(Server 1\\)" "modlog: Verbindungs-Spam gemeldet"
 lacks "$out" "Max.*Event|kaputt|Halb" "modlog: Ansage, kaputte und halbe Zeilen nicht gemeldet"
 printf ',"server":%s}\n' "$port1" >>"$M"

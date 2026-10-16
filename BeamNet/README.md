@@ -257,6 +257,10 @@ Englische Befehlsnamen funktionieren ebenfalls: `/help`, `/league`, `/race [new|
 - Admins können nicht gesperrt werden und haben keinen Spamschutz.
 - **Spamschutz** für alle anderen: mehr als 5 Nachrichten in 5 Sekunden → 30 Sekunden stumm (einstellbar:
   `spamMessages`, `spamWindowSec`, `spamMuteSec` in `config.json`). Befehle funktionieren weiter.
+- **Wortfilter**: Nachrichten mit Beleidigungen werden nicht gesendet (der Spieler bekommt einen Hinweis); beim
+  dritten Mal in 10 Minuten 5 Minuten stumm, mit Meldung an Discord/Telegram. Eigene Liste: `"badWords": ["…"]` in
+  `config.json` (ganze Wörter; ab 6 Buchstaben auch in Zusammensetzungen; 4→a, 3→e, 1→i, 0→o werden erkannt).
+  Admins sind ausgenommen. Abschalten: `"badWords": []`.
 - **Schutz gegen Verbindungs-Spam**: wer sich in einer Minute mehr als 6-mal verbindet (je IP oder Konto), wird
   2 Minuten abgewiesen (einstellbar: `joinLimit`, `joinWindowSec`, `joinBlockSec`). Admins sind ausgenommen.
 - Alles landet im Moderationsprotokoll (`modlog.jsonl`, lesbar mit `beamnet modlog`).

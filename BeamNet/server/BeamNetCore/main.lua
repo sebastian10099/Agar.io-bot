@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.19"
+BN.VERSION = "1.20"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -76,6 +76,12 @@ local defaults = {
     joinLimit = 6,
     joinWindowSec = 60,
     joinBlockSec = 120,
+    -- Wortfilter: Nachrichten mit diesen Woertern werden nicht gesendet (ganze Woerter, Gross/Klein egal; Woerter ab
+    -- 6 Buchstaben auch in Zusammensetzungen). Beim filterStrikes-ten Mal in 10 Minuten filterMuteSec stumm.
+    badWords = { "arschloch", "hurensohn", "wichser", "fotze", "missgeburt", "spast", "schlampe", "nutte",
+                 "asshole", "motherfucker", "cunt", "bitch" },
+    filterStrikes = 3,
+    filterMuteSec = 300,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
     commandWindowSec = 10,
@@ -458,10 +464,11 @@ end
 -- Werte, die ganze Zahlen sein muessen (z. B. "+40 XP" im Chat).
 local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBestXp = true, raceRecordXp = true,
                        spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true,
-                       mapVoteSec = true, joinLimit = true }
+                       mapVoteSec = true, joinLimit = true, filterStrikes = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
-                     spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10 }
+                     spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
+                     filterStrikes = 1, filterMuteSec = 10 }
 
 function BN.loadOverrides()
     local data = readFile(C.sharedDir .. "/config.json")
@@ -476,6 +483,10 @@ function BN.loadOverrides()
     for k, v in pairs(cfg) do
         if k == "leagues" then
             if BN.validLeagues(v) then C.leagues = v else print("[BeamNetCore] config.json: leagues ungueltig, Standard bleibt") end
+        elseif k == "badWords" then
+            local ok = type(v) == "table" and #v <= 500
+            if ok then for _, w in ipairs(v) do if type(w) ~= "string" or #w < 2 or #w > 40 then ok = false end end end
+            if ok then C.badWords = v else print("[BeamNetCore] config.json: badWords ungueltig (Liste aus Woertern), Standard bleibt") end
         elseif k == "rules" then
             local ok = type(v) == "table" and #v <= 10
             if ok then for _, line in ipairs(v) do if type(line) ~= "string" or #line > 200 then ok = false end end end
@@ -587,6 +598,9 @@ local EN = {
         "Great to have you, %s! Your kilometres and XP count on every BeamNet server.",
     ["%s ist zum ersten Mal im BeamNet – herzlich willkommen!"] = "%s is new to BeamNet – welcome!",
     ["Regeln:"] = "Rules:",
+    ["Bitte freundlich bleiben – du bist %d Minuten stummgeschaltet."] = "Please stay friendly – you are muted for %d minutes.",
+    ["Bitte freundlich bleiben – deine Nachricht wurde nicht gesendet (%d/%d)."] =
+        "Please stay friendly – your message was not sent (%d/%d).",
     ["Zu viele Verbindungsversuche – bitte in %d Minuten erneut versuchen."] =
         "Too many connection attempts – please try again in %d minutes.",
     ["Für dieses Netzwerk sind keine Regeln eingetragen."] = "No rules have been set for this network.",
@@ -2039,6 +2053,41 @@ function BN.announce(text, by)
 end
 
 -- Spamschutz. Gibt true zurueck, wenn die Nachricht unterdrueckt werden soll.
+-- Wortfilter: true, wenn die Nachricht ein Wort aus C.badWords enthaelt (dann wird sie nicht gesendet).
+function BN.filterHit(message)
+    if type(C.badWords) ~= "table" or #C.badWords == 0 then return false end
+    local text = tostring(message):lower()
+    -- Woerter: Buchstaben, Ziffern und UTF-8-Zeichen (Umlaute); Satzzeichen trennen. Haeufige Ersatzzeichen zaehlen
+    -- als Buchstaben (4 -> a, 3 -> e, 1 -> i, 0 -> o, $ -> s, @ -> a).
+    text = text:gsub("[4@]", "a"):gsub("3", "e"):gsub("1", "i"):gsub("0", "o"):gsub("%$", "s")
+    for word in text:gmatch("[%w\128-\255]+") do
+        for _, bad in ipairs(C.badWords) do
+            bad = bad:lower()
+            if word == bad or (#bad >= 6 and word:find(bad, 1, true)) then return true end
+        end
+    end
+    return false
+end
+
+function BN.filterCheck(s, message)
+    if BN.isAdmin(s) or not BN.filterHit(message) then return false end
+    local now = BN.now()
+    local kept = {}
+    for _, t in ipairs(s.filterTimes or {}) do if now - t < 600 then kept[#kept + 1] = t end end
+    kept[#kept + 1] = now
+    s.filterTimes = kept
+    if #kept >= C.filterStrikes then
+        s.filterTimes = {}
+        s.mutedUntil = now + C.filterMuteSec
+        s.muteNoticeAt = now
+        say(s.pid, "Bitte freundlich bleiben – du bist %d Minuten stummgeschaltet.", math.ceil(C.filterMuteSec / 60))
+        modlog({ action = "filter-mute", target = s.name, targetId = s.id, seconds = C.filterMuteSec })
+    else
+        say(s.pid, "Bitte freundlich bleiben – deine Nachricht wurde nicht gesendet (%d/%d).", #kept, C.filterStrikes)
+    end
+    return true
+end
+
 function BN.spamCheck(s)
     if BN.isAdmin(s) then return false end
     local now = BN.now()
@@ -3121,6 +3170,7 @@ function BN.onChat(pid, message)
     local s = BN.players[pid]
     -- Alles andere (auch "/..." anderer Plugins) unterliegt Spamschutz und Stummschaltung.
     if s and type(message) == "string" and BN.spamCheck(s) then return 1 end
+    if s and type(message) == "string" and BN.filterCheck(s, message) then return 1 end
 end
 
 function BN_onChatMessage(pid, _, message)
@@ -3132,7 +3182,6 @@ function BN_onChatMessage(pid, _, message)
     return result
 end
 
--- Gesperrte Spieler gar nicht erst hereinlassen (Rueckgabe eines Textes = Ablehnung mit diesem Grund).
 -- Verbindungs-Spam: Zeitpunkte der Versuche je Schluessel (IP und Konto), gesperrt bis blockedUntil.
 BN.joins = BN.joins or {}
 
@@ -3177,6 +3226,7 @@ function BN.joinAllowed(name, id, ip)
     return not blocked
 end
 
+-- Gesperrte Spieler gar nicht erst hereinlassen (Rueckgabe eines Textes = Ablehnung mit diesem Grund).
 function BN_onPlayerAuth(name, role, isGuest, identifiers)
     local ids = type(identifiers) == "table" and identifiers or {}
     local id = safeId(ids.beammp)

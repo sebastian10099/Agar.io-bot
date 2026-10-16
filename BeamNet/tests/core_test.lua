@@ -1674,6 +1674,49 @@ do
     BN.joins = {}
 end
 
+-- --- Wortfilter --------------------------------------------------------------------------------------------------
+do
+    check(BN.filterHit("Du Arschloch!"), "Wortfilter: ganzes Wort, Gross/Klein egal")
+    check(BN.filterHit("so ein Riesenarschloch"), "Wortfilter: lange Woerter auch in Zusammensetzungen")
+    check(BN.filterHit("4rschl0ch"), "Wortfilter: Ersatzzeichen (4, 0)")
+    check(not BN.filterHit("Nutella zum Fruehstueck, Klasse Rennen"), "Wortfilter: kurze Woerter nur ganz (nutte/Nutella)")
+    check(not BN.filterHit("Spaster? nein: Spass, Spastik? nein"), "Wortfilter: kurze Woerter nicht als Wortteil")
+    check(not BN.filterHit("gg, schoenes Rennen!"), "Wortfilter: normale Nachricht")
+    players[94] = { name = "Pöbler", ids = { beammp = "9401" }, vehicles = {} }
+    players[95] = { name = "Zuschauer", ids = { beammp = "9501b" }, vehicles = {} }
+    _G[events.onPlayerJoin](94); _G[events.onPlayerJoin](95)
+    local function chatAs(pid, text) return _G[events.onChatMessage](pid, "?", text) end
+    chatLog = {}
+    eq(chatAs(94, "du spast"), 1, "Wortfilter: Nachricht wird nicht gesendet")
+    check(chatContains("deine Nachricht wurde nicht gesendet %(1/3%)", 94), "Wortfilter: Hinweis mit Zaehler")
+    eq(chatAs(94, "gutes Rennen"), nil, "Wortfilter: normale Nachricht geht durch")
+    clock = clock + 10
+    chatAs(94, "arschloch")
+    clock = clock + 10
+    eq(chatAs(94, "WICHSER"), 1, "Wortfilter: dritter Treffer blockiert")
+    check(chatContains("du bist 5 Minuten stummgeschaltet", 94), "Wortfilter: dritter Treffer in 10 Minuten -> 5 Minuten stumm")
+    clock = clock + 10
+    eq(chatAs(94, "hallo?"), 1, "Wortfilter: danach stumm")
+    local logged = 0
+    for line in io.lines(SHARED .. "/modlog.jsonl") do if line:find('"action":"filter-mute"', 1, true) then logged = logged + 1 end end
+    eq(logged, 1, "Wortfilter: Stummschaltung im Moderationsprotokoll")
+    -- Admins nie, eigene Liste aus config.json.
+    local savedAdmins = C.admins
+    C.admins = { "Zuschauer" }
+    eq(chatAs(95, "arschloch"), nil, "Wortfilter: Admins ausgenommen")
+    C.admins = savedAdmins
+    local savedWords = C.badWords
+    writeJson(SHARED .. "/config.json", { badWords = { "Rammsau" } })
+    BN.loadOverrides()
+    check(BN.filterHit("du RAMMSAU") and not BN.filterHit("arschloch"), "Wortfilter: eigene Liste aus config.json")
+    writeJson(SHARED .. "/config.json", { badWords = { "x" } })
+    BN.loadOverrides()
+    check(BN.filterHit("rammsau"), "Wortfilter: ungueltige Liste (zu kurze Woerter) wird ignoriert")
+    os.remove(SHARED .. "/config.json")
+    C.badWords = savedWords
+    for pid = 94, 95 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+end
+
 -- --- XP-Event (/event) ------------------------------------------------------------------------------------------
 do
     local savedAdmins = C.admins
