@@ -38,6 +38,7 @@ case $cmd in
     enable) touch "$S/$unit.enabled" ;;
 esac
 EOF
+REAL_TIMEOUT=$(command -v timeout)     # die Attrappe unten ersetzt timeout fuer den Waechter
 cat >"$T/bin/timeout" <<'EOF'
 #!/usr/bin/env bash
 # Port-Pruefung des Waechters: "offen", ausser $FAKE/portdown existiert.
@@ -302,6 +303,7 @@ out=$("$TOOL" watch install 2>&1)
 contains "$out" "Wächter eingerichtet" "watch install"
 [[ -f $T/systemd/beamnet-watch.timer && -f $T/beamnet.conf ]] && pass || fail "watch install: Dateien fehlen"
 contains "$(cat "$T/systemd/beamnet-watch.service")" "^ExecStart=.*beamnet.sh watch$" "watch install: Dienst ruft das Werkzeug"
+contains "$(cat "$T/systemd/beamnet-watch.service")" "^TimeoutStartSec=300$" "watch install: Zeitlimit (haengt nie fuer immer)"
 contains "$(cat "$T/actions")" "enable --now" "watch install: Timer aktiviert"
 contains "$(cat "$T/beamnet.conf")" "^AUTO_RESTART=0$" "watch install: Neustart standardmaessig aus"
 contains "$(cat "$T/beamnet.conf")" "^MAP_VOTE=1$" "watch install: Map-Abstimmung standardmaessig an"
@@ -918,7 +920,8 @@ contains "$(cat "$S/peak.json")" '"allTime":14,.*"online":12,' "peak: weniger on
 contains "$(cat "$T/web/index.html")" "Rekord: 14 gleichzeitig \\([0-9]{2}\\.[0-9]{2}\\.[0-9]{4}\\)" "peak: auf der Statusseite"
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["peak"]["allTime"] == 14' "$T/web/api.json" && pass || fail "peak: in api.json"
 # Spitze je Stunde (7 Tage) fuer das Diagramm.
-hr=$(( $(date +%s) / 3600 * 3600 ))
+hr=$(tail -n1 "$T/watch/hours" | cut -d' ' -f1)      # Stunde aus der Datei (sonst wackelt der Test zur vollen Stunde)
+(( hr % 3600 == 0 && $(date +%s) - hr < 7200 )) && pass || fail "hours: Stundenbeginn der laufenden Stunde"
 contains "$(cat "$T/watch/hours")" "^$hr 14$" "hours: Spitze der laufenden Stunde"
 contains "$(cat "$S/peak.json")" "\"hours\":\\[\\[$hr,14\\]\\]" "hours: in peak.json"
 contains "$(cat "$T/web/index.html")" "Spieler je Stunde \\(7 Tage\\)" "hours: Diagramm auf der Statusseite"
@@ -1243,6 +1246,30 @@ mv "$S/servers/30814.json" "$T/hb.keep" 2>/dev/null; ln -sf "$victim/hb.json" "$
 lacks "$("$TOOL" players 2>&1)" "GEHEIMNIS" "Sicherheit: Namen aus dem Lebenszeichen nur ohne Symlink"
 rm -f "$S/servers/30814.json"; [[ -f $T/hb.keep ]] && mv "$T/hb.keep" "$S/servers/30814.json"
 [[ $(stat -c %a "$victim/creds.json") == 600 ]] && pass || fail "Sicherheit: fremde Datei unveraendert"
+mv "$S/servers/30814.json" "$T/hb.keep" 2>/dev/null; ln -sf "$victim/creds.json" "$S/servers/30814.json"
+lacks "$("$TOOL" players json 2>&1)" "GEHEIMNIS|tok" "Sicherheit: players json folgt keinem Symlink"
+rm -f "$S/servers/30814.json"
+# Lebenszeichen mit fuehrender Null und Zeit aus der Zukunft: Waechter stuerzt nicht ab, "fuer immer frisch" gibt es nicht.
+echo '{"port":30814,"players":08,"max":8,"updated":99999999999}' >"$S/servers/30814.json"
+out=$("$REAL_TIMEOUT" 60 "$TOOL" watch 2>&1); rc=$?
+[[ $rc -eq 0 ]] && pass || fail "Sicherheit: Lebenszeichen mit 08 bringt den Waechter nicht zum Absturz (rc=$rc)"
+lacks "$out" "value too great|Syntaxfehler|syntax error" "Sicherheit: keine Rechenfehler durch Spielerdaten"
+echo "{\"port\":30814,\"players\":3,\"max\":8,\"updated\":99999999999}" >"$S/servers/30814.json"
+contains "$("$TOOL" players 2>&1)" "^Server 1   \\?" "Sicherheit: Lebenszeichen aus der Zukunft gilt nicht"
+# FIFO statt Lebenszeichen: Waechter, Statusseite und players haengen nicht.
+rm -f "$S/servers/30814.json"; mkfifo "$S/servers/30814.json"
+"$REAL_TIMEOUT" 60 "$TOOL" watch >/dev/null 2>&1; rc=$?
+[[ $rc -ne 124 ]] && pass || fail "Sicherheit: Waechter haengt nicht an einer FIFO"
+"$REAL_TIMEOUT" 60 "$TOOL" players >/dev/null 2>&1; rc=$?
+[[ $rc -ne 124 ]] && pass || fail "Sicherheit: players haengt nicht an einer FIFO"
+"$REAL_TIMEOUT" 60 "$TOOL" web run >/dev/null 2>&1; rc=$?
+[[ $rc -ne 124 ]] && pass || fail "Sicherheit: Statusseite haengt nicht an einer FIFO"
+rm -f "$S/servers/30814.json"; [[ -f $T/hb.keep ]] && mv "$T/hb.keep" "$S/servers/30814.json"
+# peak.json mit absurder Zeit: Statusseite wird trotzdem erzeugt.
+cp "$S/peak.json" "$T/peak.keep" 2>/dev/null
+echo '{"allTime":5,"allTimeAt":1e300,"today":2,"hours":[[1,1e300]]}' >"$S/peak.json"
+contains "$("$TOOL" web run 2>&1)" "Statusseite erzeugt" "Sicherheit: peak.json mit absurder Zeit bricht die Statusseite nicht"
+rm -f "$S/peak.json"; [[ -f $T/peak.keep ]] && mv "$T/peak.keep" "$S/peak.json"
 # Lebenszeichen: watch.json als Symlink.
 ln -sf "$victim/passwd" "$S/watch.json"
 ln -sf "$victim/passwd" "$S/.watch.json.tmp"      # feste Zwischendatei der Version 1.11–1.16

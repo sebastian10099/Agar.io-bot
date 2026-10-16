@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.30"
+VERSION="1.31"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -142,7 +142,7 @@ def get(path):
     d, base = os.path.split(os.path.abspath(path))
     dfd = opendir(d)
     try:
-        fd = os.open(base, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dfd)
+        fd = os.open(base, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
     finally:
         os.close(dfd)
     with os.fdopen(fd, "rb") as f:
@@ -354,15 +354,60 @@ proc_user() {
 }
 
 # Spielerzahl aus dem Status, den das Plugin BeamNetCore alle 15 s schreibt ("?" ohne Plugin oder veraltet).
+# Lebenszeichen aller Server auf einmal lesen: "Port Spieler Max Zeit" je Zeile, nur ganze Zahlen. Der Ordner gehoert
+# beammp: ueber einen Ordner-Deskriptor, ohne Symlinks, nie an einer FIFO haengen, hoechstens 64 KB je Datei.
+declare -A HB_CACHE=()
+HB_LOADED=0
+load_heartbeats() {
+    local port pl mx up
+    HB_CACHE=()
+    HB_LOADED=1
+    [[ -d $SHARED/servers ]] || return 0
+    command -v python3 >/dev/null || return 0
+    while read -r port pl mx up; do
+        [[ $port =~ ^[0-9]+$ ]] && HB_CACHE[$port]="$pl $mx $up"
+    done < <(python3 -I - "$SHARED/servers" <<'PY' 2>/dev/null
+import json, os, re, stat, sys
+try:
+    dfd = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+except OSError:
+    sys.exit(0)
+
+def whole(v, hi):
+    return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= hi else None
+
+for name in sorted(os.listdir(dfd))[:500]:
+    m = re.fullmatch(r"([0-9]{1,5})\.json", name)
+    if not m:
+        continue
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                continue
+            st = json.loads(f.read(65536).decode("utf-8", "replace"))
+    except Exception:
+        continue
+    if not isinstance(st, dict):
+        continue
+    pl, mx, up = whole(st.get("players"), 10000), whole(st.get("max"), 10000), whole(st.get("updated"), 10**10)
+    if up is None:
+        continue
+    print(int(m.group(1)), pl if pl is not None else 0, mx if mx is not None else "?", up)
+PY
+)
+}
+
+# "Spieler/Max" eines Servers laut Lebenszeichen, "?" ohne aktuelles (aelter als 90 s oder aus der Zukunft).
 players_of() {
-    local file="$SHARED/servers/$1.json" players max updated now
-    [[ -f $file ]] || { echo "?"; return; }
-    players=$(grep -o '"players"[[:space:]]*:[[:space:]]*[0-9]*' "$file" | grep -o '[0-9]*$')
-    max=$(grep -o '"max"[[:space:]]*:[[:space:]]*[0-9]*' "$file" | grep -o '[0-9]*$')
-    updated=$(grep -o '"updated"[[:space:]]*:[[:space:]]*[0-9]*' "$file" | grep -o '[0-9]*$')
+    local entry pl mx up now
+    (( HB_LOADED )) || load_heartbeats
+    entry=${HB_CACHE[$1]:-}
+    [[ -n $entry ]] || { echo "?"; return; }
+    read -r pl mx up <<<"$entry"
     now=$(date +%s)
-    if [[ -z $updated || $((now - updated)) -gt 90 ]]; then echo "?"; return; fi
-    echo "${players:-0}/${max:-?}"
+    if (( now - up > 90 || up > now + 300 )); then echo "?"; return; fi
+    echo "$pl/$mx"
 }
 
 # Spielernamen eines Servers aus dem Lebenszeichen des Plugins: bereinigt (keine Steuerzeichen, hoechstens 32
@@ -380,7 +425,7 @@ def read_nofollow(path, limit=16 * 1024 * 1024):
     with _os.fdopen(fd, "rb") as fh:
         if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
             raise OSError("keine regulaere Datei: " + path)
-        return fh.read(limit).decode("utf-8")
+        return fh.read(limit).decode("utf-8", "replace")
 try:
     st = json.loads(read_nofollow(sys.argv[1]))
 except Exception:
@@ -968,8 +1013,9 @@ cmd_players() {
     fi
     if [[ ${1:-} == json ]]; then
         for file in "$SHARED"/servers/*.json; do
-            [[ -f $file ]] || continue
-            printf '%s\n' "$(cat "$file")"
+            [[ -f $file && ! -L $file ]] || continue
+            safe get "$file" 2>/dev/null | head -c 65536 | tr -d '\000-\010\013-\037\177'
+            echo
         done
         return
     fi
@@ -1176,10 +1222,12 @@ port_open() {
 
 # Sekunden seit dem letzten Lebenszeichen des Plugins (leer, wenn es keins gibt).
 heartbeat_age() {
-    local file="$SHARED/servers/$1.json" updated
-    [[ -f $file && ! -L $file ]] || return 0
-    updated=$(grep -o '"updated"[[:space:]]*:[[:space:]]*[0-9]*' "$file" | grep -o '[0-9]*$')
-    [[ -n $updated ]] && echo $(( $(date +%s) - updated ))
+    local entry pl mx up
+    (( HB_LOADED )) || load_heartbeats
+    entry=${HB_CACHE[$1]:-}
+    [[ -n $entry ]] || return 0
+    read -r pl mx up <<<"$entry"
+    echo $(( $(date +%s) - up ))
 }
 
 # Haengt ein laufender Server? Nur wenn BeamNetCore dort installiert ist, der Dienst schon HANG_MIN Minuten
@@ -1803,7 +1851,7 @@ def read_nofollow(path, limit=16 * 1024 * 1024):
     with _os.fdopen(fd, "rb") as fh:
         if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
             raise OSError("keine regulaere Datei: " + path)
-        return fh.read(limit).decode("utf-8")
+        return fh.read(limit).decode("utf-8", "replace")
 rows = []
 try:
     rows = [(float(e.get("xp", 0)), str(e.get("name", "?")))
@@ -1956,6 +2004,7 @@ Description=BeamNet-Waechter (prueft die BeamMP-Server)
 [Service]
 Type=oneshot
 ExecStart=$self watch
+TimeoutStartSec=300
 EOF
     cat >"$SYSTEMD_DIR/beamnet-watch.timer" <<'EOF'
 [Unit]
@@ -2036,7 +2085,7 @@ def read_nofollow(path, limit=16 * 1024 * 1024):
     with _os.fdopen(fd, "rb") as fh:
         if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
             raise OSError("keine regulaere Datei: " + path)
-        return fh.read(limit).decode("utf-8")
+        return fh.read(limit).decode("utf-8", "replace")
 try:
     cfg = json.loads(read_nofollow(path))
     if not isinstance(cfg, dict):
@@ -2209,7 +2258,7 @@ def read_nofollow(path, limit=16 * 1024 * 1024):
     with _os.fdopen(fd, "rb") as fh:
         if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
             raise OSError("keine regulaere Datei: " + path)
-        return fh.read(limit).decode("utf-8")
+        return fh.read(limit).decode("utf-8", "replace")
 try:
     data = json.loads(read_nofollow(sys.argv[1]))
 except FileNotFoundError:
@@ -2248,7 +2297,7 @@ def read_nofollow(path, limit=16 * 1024 * 1024):
     with _os.fdopen(fd, "rb") as fh:
         if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
             raise OSError("keine regulaere Datei: " + path)
-        return fh.read(limit).decode("utf-8")
+        return fh.read(limit).decode("utf-8", "replace")
 try:
     data = json.loads(read_nofollow(path))
     if not isinstance(data, dict):
@@ -2316,7 +2365,7 @@ def read_nofollow(path, limit=16 * 1024 * 1024):
     with _os.fdopen(fd, "rb") as fh:
         if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
             raise OSError("keine regulaere Datei: " + path)
-        return fh.read(limit).decode("utf-8")
+        return fh.read(limit).decode("utf-8", "replace")
 
 
 def load(path):
@@ -2466,9 +2515,9 @@ records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name'
 
 peak = load(os.path.join(shared, "peak.json"))
 peak_text = ""
-if isinstance(peak, dict) and num(peak.get("allTime")) > 0:
+if isinstance(peak, dict) and 0 < num(peak.get("allTime")) < 1e6:
     peak_text = f" · Rekord: {int(num(peak.get('allTime')))} gleichzeitig"
-    if num(peak.get("allTimeAt")) > 0:
+    if 0 < num(peak.get("allTimeAt")) < 4e9:
         peak_text += f" ({time.strftime('%d.%m.%Y', time.localtime(num(peak.get('allTimeAt'))))})"
 
 
@@ -2730,6 +2779,7 @@ Description=BeamNet-Statusseite erneuern
 [Service]
 Type=oneshot
 ExecStart=$self web run
+TimeoutStartSec=120
 EOF
     cat >"$SYSTEMD_DIR/beamnet-web-update.timer" <<'EOF'
 [Unit]
@@ -2840,6 +2890,7 @@ main() {
     set -- "${args[@]+"${args[@]}"}"
     local cmd=${1:-hilfe}
     [[ $# -gt 0 ]] && shift
+    load_heartbeats     # einmal je Aufruf (Befehlsersetzungen $(...) koennen den Zwischenspeicher nicht fuellen)
     case $cmd in
         status|st) cmd_status ;;
         doctor|diagnose) cmd_doctor ;;
