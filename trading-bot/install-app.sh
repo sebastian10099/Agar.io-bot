@@ -21,7 +21,7 @@ if command -v ant >/dev/null 2>&1 || [ -x /opt/homebrew/bin/ant ] || [ -x /usr/l
   echo "Anthropic-CLI (ant) ist da."
 elif command -v brew >/dev/null 2>&1; then
   echo "Installiere die Anthropic-CLI (ant) fuer die Claude-Anmeldung ..."
-  if brew install anthropics/tap/ant; then
+  if brew install anthropics/tap/ant < /dev/null; then
     xattr -d com.apple.quarantine "$(brew --prefix)/bin/ant" 2>/dev/null || true
     echo "ant installiert."
   else
