@@ -1800,6 +1800,54 @@ do
     BN.titleCache = {}
 end
 
+-- --- Strecke der Woche ----------------------------------------------------------------------------------------
+do
+    os.execute('rm -f "' .. SHARED .. '"/races/*.json')
+    local savedAdmins = C.admins
+    C.admins = { "Bauer" }
+    players[90] = { name = "Bauer", ids = { beammp = "9001w" }, vehicles = {} }
+    players[91] = { name = "Wochenfahrer", ids = { beammp = "9101w" }, vehicles = {} }
+    _G[events.onPlayerJoin](90); _G[events.onPlayerJoin](91)
+    BN.track(90, 0, { 6000, 0, 0 }, 1)
+    say(90, "/rennen neu woche")
+    BN.track(90, 0, { 7000, 0, 0 }, 2)
+    say(90, "/rennen ziel woche")
+    BN.weeklyCache = {}
+    local w = BN.trackOfWeek()
+    check(w and w.name == "woche" and w.map == "gridmap_v2", "Strecke der Woche: einzige Strecke gewaehlt")
+    local saved = readJson(SHARED .. "/weekly-track.json")
+    check(saved and saved.name == "woche" and saved.week == BN.weekKey(clock) and saved.xp == 50, "Strecke der Woche: fuer die Statusseite gespeichert")
+    chatLog = {}
+    say(91, "/rennen")
+    check(chatContains("Strecke der Woche: woche auf gridmap_v2 – 50 Bonus%-XP", 91), "Strecke der Woche in /rennen")
+    local function run(t0)
+        say(91, "/rennen woche")
+        BN.track(91, 0, { 6000, 0, 0 }, t0); BN.track(91, 0, { 6010, 0, 0 }, t0 + 1); BN.track(91, 0, { 6020, 0, 0 }, t0 + 2)
+        local x, tim = 6020, t0 + 2
+        while x < 7000 do x = math.min(7000, x + 20); tim = tim + 1; BN.track(91, 0, { x, 0, 0 }, tim) end
+    end
+    local s = BN.players[91]
+    local before = s.pendingBonus
+    run(100)
+    check(chatContains("Strecke der Woche geschafft: %+50 Bonus%-XP!", 91), "Strecke der Woche: Bonus beim ersten Lauf")
+    check(s.pendingBonus - before >= 50, "Strecke der Woche: Bonus-XP gutgeschrieben")
+    chatLog = {}
+    run(300)
+    check(not chatContains("Strecke der Woche geschafft", 91), "Strecke der Woche: nur einmal je Woche")
+    BN.savePlayer(s)
+    eq(readJson(SHARED .. "/players/9101w.json").weeklyTrackWeek, BN.weekKey(clock), "Strecke der Woche: in der Spielerdatei gemerkt")
+    -- Nach dem Wiederkommen (gleiche Woche) kein zweites Mal.
+    _G[events.onPlayerDisconnect](91)
+    _G[events.onPlayerJoin](91)
+    chatLog = {}
+    run(500)
+    check(not chatContains("Strecke der Woche geschafft", 91), "Strecke der Woche: auch nach Wiederkommen nur einmal")
+    say(90, "/rennen loeschen woche")
+    for pid = 90, 91 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    C.admins = savedAdmins
+    BN.weeklyCache = {}
+end
+
 -- --- XP-Event (/event) ------------------------------------------------------------------------------------------
 do
     local savedAdmins = C.admins

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.25"
+BN.VERSION = "1.26"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -82,6 +82,8 @@ local defaults = {
                  "asshole", "motherfucker", "cunt", "bitch" },
     filterStrikes = 3,
     filterMuteSec = 300,
+    -- Strecke der Woche: Bonus-XP fuer den ersten gueltigen Lauf je Woche (0 = aus).
+    weeklyTrackXp = 50,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
     commandWindowSec = 10,
@@ -464,7 +466,7 @@ end
 -- Werte, die ganze Zahlen sein muessen (z. B. "+40 XP" im Chat).
 local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBestXp = true, raceRecordXp = true,
                        spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true,
-                       mapVoteSec = true, joinLimit = true, filterStrikes = true }
+                       mapVoteSec = true, joinLimit = true, filterStrikes = true, weeklyTrackXp = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
@@ -601,6 +603,10 @@ local EN = {
         "Great to have you, %s! Your kilometres and XP count on every BeamNet server.",
     ["%s ist zum ersten Mal im BeamNet – herzlich willkommen!"] = "%s is new to BeamNet – welcome!",
     ["Regeln:"] = "Rules:",
+    ["Strecke der Woche: %s auf %s – %d Bonus-XP für den ersten Lauf der Woche"] =
+        "Track of the week: %s on %s – %d bonus XP for your first run this week",
+    ["Strecke der Woche geschafft: +%d Bonus-XP!"] = "Track of the week done: +%d bonus XP!",
+    ["Strecke der Woche auf dieser Map: %s – %d Bonus-XP (/rennen %s)"] = "Track of the week on this map: %s – %d bonus XP (/race %s)",
     ["Titel: %s"] = "Titles: %s",
     ["Saisonsieger %s"] = "Season champion %s",
     ["Saison-Zweiter %s"] = "Season runner-up %s",
@@ -1064,6 +1070,7 @@ function BN.savePlayer(s)
     -- Sprache nur, wenn sie in dieser Sitzung mit /lang geaendert wurde: sonst ueberschreibt ein Server nach einem
     -- schnellen Wechsel die Wahl, die der Spieler inzwischen auf dem anderen Server getroffen hat.
     if s.langChanged and s.lang then rec.lang = s.lang end
+    if s.pendingWeeklyTrack then rec.weeklyTrackWeek = s.pendingWeeklyTrack end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
     rec.xp = xpOf(rec)
@@ -1081,6 +1088,7 @@ function BN.savePlayer(s)
     s.pendingKm, s.pendingSeconds, s.pendingTop, s.pendingBonus, s.dirty = 0, 0, 0, 0, false
     s.pendingRaces, s.pendingRecords, s.unlocked, s.challengeReward = 0, 0, {}, nil
     s.langChanged = nil
+    s.pendingWeeklyTrack = nil
     return true
 end
 
@@ -1809,6 +1817,13 @@ local function finishRace(s, time)
                 if rec.id == s.id then mine = rec end
             end
             local improved, bonus = false, C.raceFinishXp
+            -- Strecke der Woche: einmal je Woche Bonus-XP.
+            local wk = weekKey(BN.now())
+            if BN.isTrackOfWeek(r.name) and s.record.weeklyTrackWeek ~= wk and s.pendingWeeklyTrack ~= wk then
+                s.pendingWeeklyTrack = wk
+                bonus = bonus + C.weeklyTrackXp
+                say(s.pid, "Strecke der Woche geschafft: +%d Bonus-XP!", C.weeklyTrackXp)
+            end
             if not mine then
                 mine = { id = s.id, name = s.name, time = time, at = BN.now() }
                 track.records[#track.records + 1] = mine
@@ -2410,6 +2425,47 @@ function commands.wo(pid, arg)
 end
 commands.where = commands.wo
 
+-- Strecke der Woche: aus allen Strecken mit Ziel auf allen Maps (races/*.json), nach Map und Name sortiert, je
+-- Kalenderwoche eine – auf allen Servern dieselbe. Die Wahl steht in weekly-track.json (fuer die Statusseite).
+BN.weeklyCache = BN.weeklyCache or {}
+
+function BN.trackOfWeek()
+    if C.weeklyTrackXp <= 0 then return nil end
+    local now = BN.now()
+    local wk = weekKey(now)
+    local c = BN.weeklyCache
+    if c.week == wk and now - (c.at or 0) < 3600 then return c.pick end
+    local all = {}
+    for _, file in ipairs(listJsonFiles(racesDir())) do
+        local map = file:match("([^/\\]+)%.json$")
+        local data = json.decode(readFile(file) or "")
+        if map and type(data) == "table" and type(data.tracks) == "table" then
+            for name, t in pairs(data.tracks) do
+                if type(t) == "table" and t.finish then all[#all + 1] = { map = map, name = tostring(name) } end
+            end
+        end
+    end
+    table.sort(all, function(a, b) if a.map ~= b.map then return a.map < b.map end return a.name < b.name end)
+    local pick = nil
+    if #all > 0 then
+        local year, num = wk:match("^(%d+)%-W(%d+)$")
+        local n = (tonumber(year) or 0) * 53 + (tonumber(num) or 0)
+        pick = all[(n % #all) + 1]
+        pick = { map = pick.map, name = pick.name, week = wk }
+        local saved = json.decode(readFile(C.sharedDir .. "/weekly-track.json") or "")
+        if type(saved) ~= "table" or saved.week ~= wk or saved.map ~= pick.map or saved.name ~= pick.name then
+            writeFileAtomic(C.sharedDir .. "/weekly-track.json", json.encode({ week = wk, map = pick.map, name = pick.name, xp = C.weeklyTrackXp }))
+        end
+    end
+    BN.weeklyCache = { week = wk, at = now, pick = pick }
+    return pick
+end
+
+function BN.isTrackOfWeek(name)
+    local w = BN.trackOfWeek()
+    return w ~= nil and w.map == tostring(BN.server.map) and w.name == name
+end
+
 local function listTracks(pid, s)
     local data = BN.loadTracks()
     local names = {}
@@ -2432,6 +2488,8 @@ local function listTracks(pid, s)
             end
         end
         say(pid, "Strecken auf %s: %s", tostring(BN.server.map), table.concat(parts, ", "))
+        local w = BN.trackOfWeek()
+        if w then say(pid, "Strecke der Woche: %s auf %s – %d Bonus-XP für den ersten Lauf der Woche", w.name, w.map, C.weeklyTrackXp) end
         say(pid, "Starten: /rennen <Name> · beenden: /rennen stop · Rekorde: /rekorde <Name>")
     end
     if BN.isAdmin(s) then
@@ -3250,6 +3308,10 @@ function BN_onPlayerJoin(pid)
     if ch and not BN.dayTotals(s).done then
         local lang = BN.langOf(pid)
         say(pid, "Heute: %s (/aufgabe)", tr(lang, ch.text, ch.goal))
+    end
+    local w = BN.trackOfWeek()
+    if w and w.map == tostring(BN.server.map) and s.record.weeklyTrackWeek ~= w.week then
+        say(pid, "Strecke der Woche auf dieser Map: %s – %d Bonus-XP (/rennen %s)", w.name, C.weeklyTrackXp, w.name)
     end
     local ev = BN.activeEvent()
     if ev then say(pid, "XP-Event läuft: %s-fache XP bis %s Uhr.", fmtFactor(ev.factor), os.date("%H:%M", ev["until"])) end

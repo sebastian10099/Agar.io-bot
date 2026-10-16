@@ -571,6 +571,15 @@ lacks "$(cat "$T/web/p/1.html")" "&lt;b&gt;|Saison[^<]* <b>" "Profilseite: kaput
 rm -rf "$T/root/shared/beamnet/seasons"
 "$TOOL" web run >/dev/null 2>&1
 page=$(cat "$T/web/index.html")
+# Strecke der Woche (vom Plugin in weekly-track.json gewaehlt); eine alte Woche wird nicht gezeigt.
+echo "{\"week\":\"$(date -u +%G-W%V)\",\"map\":\"italy\",\"name\":\"<i>bergauf</i>\",\"xp\":50}" >"$T/root/shared/beamnet/weekly-track.json"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" "⭐ Strecke der Woche: <b>&lt;i&gt;bergauf&lt;/i&gt;</b> auf Italy – 50 Bonus-XP" "Statusseite: Strecke der Woche (maskiert)"
+echo '{"week":"2000-W01","map":"italy","name":"alt","xp":50}' >"$T/root/shared/beamnet/weekly-track.json"
+"$TOOL" web run >/dev/null 2>&1
+lacks "$(cat "$T/web/index.html")" "Strecke der Woche" "Statusseite: alte Strecke der Woche nicht gezeigt"
+rm -f "$T/root/shared/beamnet/weekly-track.json"
+"$TOOL" web run >/dev/null 2>&1
 # Kennzahlen fuer Prometheus/Grafana.
 m=$(cat "$T/web/metrics.txt")
 contains "$m" '^beamnet_players\{port="30814",map="gridmap_v2"\} 2$' "metrics: Spieler je Server"

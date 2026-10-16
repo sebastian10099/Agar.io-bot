@@ -200,6 +200,7 @@ beamnet restart all
 | `/melden <Name> <Grund>` | Meldung an die Admins: sofort im Chat an Admins auf dem Server, über den Wächter an Discord/Telegram (höchstens alle 2 Minuten; englisch `/report`) |
 | `/km` | Eigene Kilometer |
 | `/rennen` | Strecken dieser Map mit Rekord |
+| `/rennen` | Strecken dieser Map mit Rekord, dazu die **Strecke der Woche** (jede Woche eine andere aus dem ganzen Netzwerk; der erste gültige Lauf der Woche bringt 50 Bonus-XP, `weeklyTrackXp`) |
 | `/rennen <Name>` | Auf Zeit fahren: zum Start fahren, die Zeit läuft ab dem Verlassen des Startbereichs. Alle 500 m eine Zwischenzeit mit dem Abstand zur eigenen Bestzeit und zum Streckenrekord |
 | `/rennen stop` | Rennmodus beenden |
 | `/rekorde [Name]` | Top 5 einer Strecke bzw. die Rekorde aller Strecken der Map |

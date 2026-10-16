@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.45"
+VERSION="1.46"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3016,6 +3016,11 @@ records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name'
 
 
 peak = load(os.path.join(shared, "peak.json"))
+wt = load(os.path.join(shared, "weekly-track.json"))
+weekly_track = ""
+if isinstance(wt, dict) and wt.get("week") == week and wt.get("name"):
+    weekly_track = (f'<p class=small>⭐ Strecke der Woche: <b>{E(str(wt.get("name")))}</b> auf {E(map_name(str(wt.get("map", "?"))))}'
+                    f' – {int(num(wt.get("xp")))} Bonus-XP für den ersten Lauf der Woche (<b>/rennen {E(str(wt.get("name")))}</b>)</p>')
 peak_text = ""
 if isinstance(peak, dict) and 0 < num(peak.get("allTime")) < 1e6:
     peak_text = f" · Rekord: {int(num(peak.get('allTime')))} gleichzeitig"
@@ -3123,7 +3128,7 @@ page = f"""<!doctype html>
 <div class=grid>
 <section><h2>Diese Woche</h2>{table(["#", "Name", "Kilometer#"], weekly, "Diese Woche ist noch niemand gefahren.")}</section>
 <section><h2>Saison {E(season_title)}</h2>{table(["#", "Name", "XP#"], season_rows, "In dieser Saison noch keine Punkte.")}</section>
-<section><h2>Streckenrekorde</h2>{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>
+<section><h2>Streckenrekorde</h2>{weekly_track}{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>
 <section><h2>Beliebteste Maps</h2>{table(["Map", "Kilometer#", "Fahrer#"], popular_rows, "Noch keine Kilometer je Map.")}</section>
 <section><h2>Schnellste Fahrer</h2>{table(["#", "Name", "Spitze#"], speed_rows, "Noch keine Geschwindigkeiten.")}</section>
 </div>
