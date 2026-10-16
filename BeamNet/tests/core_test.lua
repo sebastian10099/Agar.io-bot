@@ -2673,6 +2673,40 @@ do
     os.remove(SHARED .. "/players/10505.json"); BN.savedRecently["10505"] = nil
 end
 
+-- --- Saison-Rueckblick ------------------------------------------------------------------------------------------
+do
+    local y, m = BN.monthKey(clock):match("^(%d+)%-(%d+)$")
+    y, m = tonumber(y), tonumber(m) - 1
+    if m == 0 then y, m = y - 1, 12 end
+    local prev = string.format("%04d-%02d", y, m)
+    local archive = SHARED .. "/seasons/" .. prev .. ".json"
+    local keep = readJson(archive)
+    os.execute('mkdir -p "' .. SHARED .. '/seasons"')
+    writeJson(archive, { month = prev, top = { { id = "x1", name = "Erster", xp = 900 }, { id = "11313", name = "Rueckblick", xp = 450 } } })
+    BN.titleCache = {}
+    writeJson(SHARED .. "/players/11313.json", { id = "11313", name = "Rueckblick", km = 50, seconds = 3600, month = prev, monthXp = 450 })
+    players[113] = { name = "Rueckblick", ids = { beammp = "11313" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](113)
+    check(chatContains("📅 Dein Rückblick .* 2%d%d%d: 450 XP · Platz 2 – neue Saison", 113), "Rueckblick: beim ersten Besuch im neuen Monat")
+    _G[events.onPlayerDisconnect](113)
+    eq(readJson(SHARED .. "/players/11313.json").recapMonth, prev, "Rueckblick: gemerkt")
+    chatLog = {}
+    _G[events.onPlayerJoin](113)
+    check(not chatContains("Rückblick", 113), "Rueckblick: nur einmal")
+    _G[events.onPlayerDisconnect](113); players[113] = nil
+    -- Lange nicht da (letzte Saison ist nicht der Vormonat): kein Rueckblick.
+    writeJson(SHARED .. "/players/11414.json", { id = "11414", name = "Alt", km = 5, month = "2000-01", monthXp = 99 })
+    players[114] = { name = "Alt", ids = { beammp = "11414" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](114)
+    check(not chatContains("Rückblick", 114), "Rueckblick: nicht fuer alte Saisons")
+    _G[events.onPlayerDisconnect](114); players[114] = nil
+    for _, id in ipairs({ "11313", "11414" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+    if keep then writeJson(archive, keep) else os.remove(archive) end
+    BN.titleCache = {}
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }

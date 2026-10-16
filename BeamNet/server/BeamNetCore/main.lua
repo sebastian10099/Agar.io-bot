@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.44"
+BN.VERSION = "1.45"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -850,6 +850,8 @@ local EN = {
     ["⚔️ %s fordert dich zum Duell auf %s heraus! Annehmen: /duell ja · ablehnen: /duell nein (60 s)"] =
         "⚔️ %s challenges you to a duel on %s! Accept: /duel yes · decline: /duel no (60 s)",
     ["Herausforderung an %s gesendet."] = "Challenge sent to %s.",
+    ["📅 Dein Rückblick %s: %d XP%s – neue Saison, neues Glück!"] = "📅 Your %s recap: %d XP%s – new season, new chances!",
+    [" · Platz %d"] = " · rank %d",
     -- Tipps
     ["Tipp: /auftrag – fahr einen Patienten ins Krankenhaus oder Kinder zur Schule und sammle XP."] =
         "Tip: /job – drive a patient to hospital or children to school and earn XP.",
@@ -1371,6 +1373,7 @@ function BN.savePlayer(s)
         rec.communityWeek = s.pendingCommunity
     end
     if s.friendsChanged then rec.friends = s.record.friends end
+    if s.pendingRecap then rec.recapMonth = s.pendingRecap end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
     rec.xp = xpOf(rec)
@@ -1392,6 +1395,7 @@ function BN.savePlayer(s)
     s.langChanged = nil
     s.friendsChanged = nil
     s.resetTop = nil
+    s.pendingRecap = nil
     s.pendingWeeklyTrack = nil
     s.pendingCommunity, s.pendingCommunityXp = nil, nil
     return true
@@ -1864,6 +1868,28 @@ end
 
 function BN.titleText(t, lang)
     return tr(lang, TITLE_TEXT[t.place], BN.seasonName(t.month, lang))
+end
+
+-- Saison-Rueckblick: beim ersten Besuch im neuen Monat die eigene Bilanz des Vormonats (XP, Platz aus dem Archiv).
+function BN.seasonRecap(s)
+    local rec = s.record
+    if s.guest or type(rec.lastMonth) ~= "string" or rec.recapMonth == rec.lastMonth then return false end
+    local y, m = monthKey():match("^(%d+)%-(%d+)$")
+    y, m = tonumber(y), tonumber(m) - 1
+    if m == 0 then y, m = y - 1, 12 end
+    if rec.lastMonth ~= string.format("%04d-%02d", y, m) then return false end
+    s.pendingRecap, s.dirty = rec.lastMonth, true
+    local xp = math.floor(tonumber(rec.lastMonthXp) or 0)
+    if xp <= 0 then return false end
+    local rank
+    local a = json.decode(readFile(seasonFile(rec.lastMonth)) or "")
+    if type(a) == "table" and type(a.top) == "table" then
+        for i, e in ipairs(a.top) do if type(e) == "table" and tostring(e.id) == s.id then rank = i end end
+    end
+    local lang = BN.langOf(s.pid)
+    say(s.pid, "📅 Dein Rückblick %s: %d XP%s – neue Saison, neues Glück!", BN.seasonName(rec.lastMonth, lang), xp,
+        rank and tr(lang, " · Platz %d", rank) or "")
+    return true
 end
 
 -- Nachholen, falls beim Monatswechsel kein Server lief: fehlt das Archiv der Vorsaison, wird es jetzt still geschrieben.
@@ -4919,6 +4945,7 @@ function BN_onPlayerJoin(pid)
         local text, n = BN.friendsOnlineText(s, BN.langOf(pid))
         if n > 0 then say(pid, "Freunde online: %s", text) end
     end
+    BN.seasonRecap(s)
     if s.isNew and C.welcomeNew then
         say(pid, "Schön, dass du da bist, %s! Deine Kilometer und XP zählen auf allen BeamNet-Servern.", s.name)
         BN.sayRules(pid)
