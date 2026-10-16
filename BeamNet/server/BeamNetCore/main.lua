@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.41"
+BN.VERSION = "1.42"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -101,6 +101,8 @@ local defaults = {
     jobXpPerKm = 25,
     jobRadiusM = 25,
     jobMinDistM = 300,
+    jobCooldownSec = 45,
+    jobXpPerHour = 600,
     -- Wochenziel fuer alle (/ziel): Zusammen communityKm km pro Woche (0 = automatisch: 10 % mehr als letzte Woche,
     -- mindestens 200). Ist es geschafft, bekommt jeder mit mindestens communityMinKm eigenen km communityXp Bonus-XP.
     communityKm = 0,
@@ -115,6 +117,8 @@ local defaults = {
     chaseXpCatch = 60,
     chaseXpSurvive = 100,
     chaseXpPerMin = 10,
+    chaseXpPerDay = 300,
+    chaseCooldownSec = 180,
     -- Tipps im Chat: alle tipEverySec Sekunden der naechste Tipp an alle auf diesem Server (0 = aus).
     tipEverySec = 900,
     friendCheckSec = 15,
@@ -504,9 +508,9 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true,
                        mapVoteSec = true, joinLimit = true, filterStrikes = true, weeklyTrackXp = true,
                        groupRaceDelaySec = true, maxFriends = true, friendCheckSec = true,
-                       streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true,
+                       streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true, jobCooldownSec = true, jobXpPerHour = true,
                        communityKm = true, communityXp = true, chaseJoinSec = true, chaseHeadStartSec = true,
-                       chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true,
+                       chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true, chaseXpPerDay = true, chaseCooldownSec = true,
                        tipEverySec = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
@@ -840,6 +844,13 @@ local EN = {
     ["Tipp: /vote map <Name> – stimmt für eine andere Map ab."] = "Tip: /vote map <name> – vote for another map.",
     ["Tipp: /team gründen <Name> – fahrt zusammen Kilometer für euer Team."] = "Tip: /team create <name> – drive kilometers together for your team.",
     -- Verfolgungsjagd
+    ["🚓 Gefangen! (keine XP: zu kurz, zu wenig gefahren oder zu wenige Spieler mit Konto)"] =
+        "🚓 Caught! (no XP: too short, too little driving or not enough players with an account)",
+    ["🏁 Entkommen! (keine XP: zu wenig gefahren oder zu wenige Spieler mit Konto)"] =
+        "🏁 Escaped! (no XP: too little driving or not enough players with an account)",
+    ["Diese Jagd bringt keine XP (mindestens 2 Spieler mit BeamMP-Konto nötig)."] =
+        "This chase gives no XP (at least 2 players with a BeamMP account needed).",
+    ["Die nächste Verfolgungsjagd geht in %d s."] = "The next chase can start in %d s.",
     ["Verfolgungsjagd abgesagt – %s"] = "Chase cancelled – %s",
     ["🚓 Gefangen! +%d XP"] = "🚓 Caught! +%d XP",
     ["Du hast %d min durchgehalten: +%d XP"] = "You lasted %d min: +%d XP",
@@ -882,6 +893,10 @@ local EN = {
     ["Taxi: Ein Fahrgast wartet bei %s und muss zum Flughafen %s"] = "Taxi: a passenger is waiting at %s and needs to get to %s airport",
     ["Taxi: Ein Gast wartet bei %s und möchte zum Hotel %s"] = "Taxi: a guest is waiting at %s and wants to go to %s hotel",
     ["Eingestiegen! Weiter nach %s – %s, noch %s"] = "Picked up! Now on to %s – %s, %s left",
+    ["Nächster Auftrag in %d s."] = "Next job in %d s.",
+    ["Sprung erkannt – der Auftrag nach %s ist abgebrochen. Neuer: /auftrag"] = "Jump detected – the job to %s is cancelled. New one: /job",
+    ["Stundenlimit für Auftrags-XP erreicht – weitere Aufträge zählen, bringen aber erst später wieder XP."] =
+        "Hourly job XP limit reached – further jobs count but only give XP again later.",
     ["Notfall! Bring den Patienten ins Krankenhaus %s"] = "Emergency! Take the patient to %s hospital",
     ["Schulbus: Bring die Kinder zur Schule %s"] = "School bus: take the children to %s school",
     ["Alarm! Bring die Ausrüstung zur Feuerwache %s"] = "Alarm! Take the equipment to %s fire station",
@@ -1327,7 +1342,11 @@ function BN.savePlayer(s)
     -- schnellen Wechsel die Wahl, die der Spieler inzwischen auf dem anderen Server getroffen hat.
     if s.langChanged and s.lang then rec.lang = s.lang end
     if s.pendingWeeklyTrack then rec.weeklyTrackWeek = s.pendingWeeklyTrack end
-    if s.pendingCommunity then rec.communityWeek = s.pendingCommunity end
+    if s.pendingCommunity then
+        -- Schon auf einem anderen Server bekommen (Datei kennt die Woche): nicht doppelt.
+        if rec.communityWeek == s.pendingCommunity then rec.bonusXp = rec.bonusXp - (s.pendingCommunityXp or 0) end
+        rec.communityWeek = s.pendingCommunity
+    end
     if s.friendsChanged then rec.friends = s.record.friends end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
@@ -1351,7 +1370,7 @@ function BN.savePlayer(s)
     s.friendsChanged = nil
     s.resetTop = nil
     s.pendingWeeklyTrack = nil
-    s.pendingCommunity = nil
+    s.pendingCommunity, s.pendingCommunityXp = nil, nil
     return true
 end
 
@@ -1532,6 +1551,11 @@ function BN.track(pid, vid, pos, tim, vel)
         end
     end
     if s.race then BN.raceUpdate(s, vid, v, { x = x, y = y, z = z, tim = tim, at = now }, jump) end
+    -- Fahrauftrag: nur die Strecke des Auftragsfahrzeugs zaehlt, ein Sprung beendet den Auftrag.
+    local j = s.job
+    if j and j.vid == vid then
+        if jump then j.jumped = true else j.legDriven = (j.legDriven or 0) + counted end
+    end
     local speed
     if type(vel) == "table" then
         local vx, vy, vz = tonumber(vel[1] or vel.x) or 0, tonumber(vel[2] or vel.y) or 0, tonumber(vel[3] or vel.z) or 0
@@ -1554,6 +1578,7 @@ function BN.forgetVehicle(pid, vid)
     local s = BN.players[pid]
     if not s then return end
     s.vehicles[vid] = nil
+    if s.job and s.job.vid == vid then s.job.reset = true end   -- danach: weiter nur ohne Sprung (siehe jobTick)
     local r = s.race
     if r and r.vid == vid and r.state ~= "armed" then
         BN.raceInvalid(s, "Fahrzeug zurückgesetzt")
@@ -3021,6 +3046,7 @@ function commands.rennen(pid, arg)
                 say(pid, "Bitte warte noch %d s, bevor du wieder ein Gruppenrennen startest.", 180 - (BN.now() - last))
                 return
             end
+            for k, t in pairs(BN.groupStarts) do if BN.now() - t >= 180 then BN.groupStarts[k] = nil end end
             BN.groupStarts[key] = BN.now()
         end
         BN.group = { name = name, startAt = BN.now() + C.groupRaceDelaySec, by = s.name, members = {}, results = {}, done = {} }
@@ -3446,6 +3472,7 @@ function commands.team(pid, arg)
             if count >= 500 then say(pid, "Es gibt schon zu viele Teams.") return end
             data.teams[teamKey(name)] = { name = name, by = s.name, created = BN.now(), members = { [s.id] = s.name } }
             if not saveTeams(data) then say(pid, "Teams gerade nicht verfügbar – bitte später noch einmal.") return end
+            for k, t in pairs(BN.teamFounded) do if BN.now() - t >= 600 then BN.teamFounded[k] = nil end end
             BN.teamFounded[s.id] = BN.now()
             sayAll("%s hat das Team %s gegründet – mitmachen: /team beitreten %s", s.name, name, name)
             return
@@ -3664,11 +3691,43 @@ commands.places = commands.orte
 -- Zufall (in den Tests ersetzbar).
 BN.random = BN.random or function(n) return math.random(1, n) end
 
+BN.jobLimits = BN.jobLimits or {}
+
+-- Abklingzeit und XP je Stunde gelten je Konto (Gaeste je IP), auch ueber Neuverbinden hinweg.
+local function jobLimit(s)
+    local key = s.id or ("ip:" .. tostring(s.ip or s.pid))
+    local now = BN.now()
+    local e = BN.jobLimits[key]
+    if not e or now - e.hourStart >= 3600 then
+        if e and now - (e.doneAt or 0) < C.jobCooldownSec then
+            e.hourStart, e.xp = now, 0
+        else
+            e = { hourStart = now, xp = 0 }
+            BN.jobLimits[key] = e
+        end
+    end
+    -- Aufraeumen, damit die Tabelle nicht waechst.
+    BN.jobLimitCount = (BN.jobLimitCount or 0) + 1
+    if BN.jobLimitCount % 200 == 0 then
+        for k, v in pairs(BN.jobLimits) do
+            if now - v.hourStart >= 3600 and now - (v.doneAt or 0) >= C.jobCooldownSec then BN.jobLimits[k] = nil end
+        end
+        BN.jobLimits[key] = e
+    end
+    return e
+end
+
 function BN.startJob(s)
     local lang = BN.langOf(s.pid)
     local pos = currentPosition(s)
     if not pos then
         say(s.pid, "Steig erst in ein Fahrzeug, dann gibt es einen Auftrag.")
+        return false
+    end
+    local lim = jobLimit(s)
+    local wait = C.jobCooldownSec - (BN.now() - (lim.doneAt or -math.huge))
+    if wait > 0 then
+        say(s.pid, "Nächster Auftrag in %d s.", math.ceil(wait))
         return false
     end
     local places = BN.loadPlaces()
@@ -3696,11 +3755,13 @@ function BN.startJob(s)
     local total = pickup and (dist(pos, pickup) + dist(pickup, dest)) or pick.d
     local speed = kind.urgent and 18 or 12
     local limit = math.floor(45 + 1.6 * total / speed + (pickup and 20 or 0))
-    local xp = C.jobXp + total / 1000 * C.jobXpPerKm
+    -- Fester Anteil erst ab 1 km: sonst lohnt Pendeln zwischen zwei nahen Orten mehr als Fahren.
+    local xp = (total >= 1000 and C.jobXp or 0) + total / 1000 * C.jobXpPerKm
     if kind.urgent then xp = xp * 1.5 end
     local first = pickup or dest
     s.job = { place = first, dest = pickup and dest or nil, startAt = BN.now(), limit = limit, xp = math.floor(xp),
-              legStraight = dist(pos, first), legStartKm = drivenKm(s), hintAt = BN.now(), finalName = dest.name }
+              legStraight = dist(pos, first), legDriven = 0, hintAt = BN.now(), finalName = dest.name, total = total,
+              vid = pos.vid, lastPos = { x = pos.x, y = pos.y, z = pos.z }, lastAt = BN.now() }
     local text = pickup and tr(lang, kind.pickup, pickup.name, dest.name) or tr(lang, kind.text, dest.name)
     chat(s.pid, string.format("%s %s – %s, %s min Zeit (/auftrag stop bricht ab)", kind.icon, text,
         fmtDist(lang, total), fmtClock(limit)))
@@ -3711,10 +3772,18 @@ function BN.jobTick(s)
     local j = s.job
     local now = BN.now()
     local lang = BN.langOf(s.pid)
-    local pos = currentPosition(s)
+    local v = s.vehicles[j.vid]
+    local pos = v and { x = v.x, y = v.y, z = v.z } or nil
     local left = j.limit - (now - j.startAt)
+    -- Sprung (Teleport, Zuruecksetzen an einen anderen Ort, neues Fahrzeug mit derselben Nummer): Auftrag vorbei.
+    if j.jumped or (pos and dist(pos, j.lastPos) > C.maxSpeedMps * math.max(1, now - j.lastAt) + 50) then
+        s.job = nil
+        say(s.pid, "Sprung erkannt – der Auftrag nach %s ist abgebrochen. Neuer: /auftrag", j.place.name)
+        return
+    end
+    if pos then j.lastPos, j.lastAt = pos, now end
     if pos and dist(pos, j.place) <= C.jobRadiusM then
-        local driven = (drivenKm(s) - j.legStartKm) * 1000
+        local driven = j.legDriven or 0
         if driven < 0.7 * j.legStraight then
             -- Ohne echte Fahrt (Sprung, Zuruecksetzen in die Naehe) zaehlt das Ankommen nicht.
             if not j.warned then
@@ -3726,20 +3795,25 @@ function BN.jobTick(s)
         if j.dest then
             -- Abgeholt: weiter zum Ziel.
             j.place, j.dest, j.warned = j.dest, nil, nil
-            j.legStraight, j.legStartKm, j.hintAt = dist(pos, j.place), drivenKm(s), now
+            j.legStraight, j.legDriven, j.hintAt = dist(pos, j.place), 0, now
             say(s.pid, "Eingestiegen! Weiter nach %s – %s, noch %s", j.place.name, fmtDist(lang, j.legStraight), fmtClock(left))
             return
         end
         local xp = j.xp
-        local fast = (now - j.startAt) <= j.limit * 0.6
+        local fast = (j.total or 0) >= 1000 and (now - j.startAt) <= j.limit * 0.6
         if fast then xp = math.floor(xp * 1.5) end
         xp = math.min(xp, 250)
+        local lim = jobLimit(s)
+        local capped = xp > C.jobXpPerHour - lim.xp
+        xp = math.max(0, math.min(xp, C.jobXpPerHour - lim.xp))
+        lim.xp, lim.doneAt = lim.xp + xp, now
         s.job = nil
         s.lastJobPlace = j.place.name
         s.pendingBonus = s.pendingBonus + xp
         s.pendingJobs = (s.pendingJobs or 0) + 1
         say(s.pid, "✅ Auftrag erledigt: %s in %s – +%d XP%s. Nächster: /auftrag", j.place.name, fmtClock(now - j.startAt), xp,
             fast and tr(lang, " (Blitzschnell! +50 %)") or "")
+        if capped then say(s.pid, "Stundenlimit für Auftrags-XP erreicht – weitere Aufträge zählen, bringen aber erst später wieder XP.") end
         return
     end
     if left <= 0 then
@@ -3795,11 +3869,33 @@ local function freshPosition(s)
     return nil
 end
 
+BN.chaseXpDay = BN.chaseXpDay or {}
+
+-- XP aus der Verfolgungsjagd: nur fuer Konten, hoechstens chaseXpPerDay je Tag und Konto.
+local function chaseReward(s, xp)
+    if not s or s.guest or xp <= 0 then return 0 end
+    local day = dayNumber()
+    local e = BN.chaseXpDay[s.id]
+    if not e or e.day ~= day then
+        e = { day = day, xp = 0 }
+        BN.chaseXpDay[s.id] = e
+        for id, v in pairs(BN.chaseXpDay) do if v.day ~= day then BN.chaseXpDay[id] = nil end end
+    end
+    xp = math.max(0, math.min(xp, C.chaseXpPerDay - e.xp))
+    e.xp = e.xp + xp
+    s.pendingBonus = s.pendingBonus + xp
+    return xp
+end
+
 function BN.endChase(reason)
     local c = BN.chase
     if not c then return end
     BN.chase = nil
+    BN.chaseEndedAt = BN.now()
     local runner = c.runner and BN.players[c.runner]
+    -- Echte Jagd: genug Spieler mit Konto, der Fluechtige ist gefahren, und es hat eine Weile gedauert.
+    local runnerM = runner and (drivenKm(runner) - (c.runnerKm0 or 0)) * 1000 or 0
+    local huntSec = c.huntAt and (BN.now() - c.huntAt) or 0
     if not c.started then
         sayAll("Verfolgungsjagd abgesagt – %s", reason or "")
         return
@@ -3807,22 +3903,27 @@ function BN.endChase(reason)
     local minutes = math.floor((BN.now() - c.huntAt) / 60)
     if reason == "gefangen" then
         local catcher = BN.players[c.catcher]
+        local earned = c.rewarded and huntSec >= 60 and runnerM >= 300
         if catcher then
-            catcher.pendingBonus = catcher.pendingBonus + C.chaseXpCatch
-            say(catcher.pid, "🚓 Gefangen! +%d XP", C.chaseXpCatch)
+            if earned then
+                say(catcher.pid, "🚓 Gefangen! +%d XP", chaseReward(catcher, C.chaseXpCatch))
+            else
+                say(catcher.pid, "🚓 Gefangen! (keine XP: zu kurz, zu wenig gefahren oder zu wenige Spieler mit Konto)")
+            end
         end
-        if runner then
-            local xp = minutes * C.chaseXpPerMin
-            runner.pendingBonus = runner.pendingBonus + xp
+        if runner and earned then
+            local xp = chaseReward(runner, minutes * C.chaseXpPerMin)
             if xp > 0 then say(runner.pid, "Du hast %d min durchgehalten: +%d XP", minutes, xp) end
         end
         sayAll("🚓 Verfolgungsjagd vorbei: %s hat %s nach %s gefangen!", catcher and catcher.name or "?", c.runnerName,
             fmtClock(BN.now() - c.huntAt))
     elseif reason == "entkommen" then
         if runner then
-            local xp = C.chaseXpSurvive + minutes * C.chaseXpPerMin
-            runner.pendingBonus = runner.pendingBonus + xp
-            say(runner.pid, "🏁 Entkommen! +%d XP", xp)
+            if c.rewarded and runnerM >= 1000 then
+                say(runner.pid, "🏁 Entkommen! +%d XP", chaseReward(runner, C.chaseXpSurvive + minutes * C.chaseXpPerMin))
+            else
+                say(runner.pid, "🏁 Entkommen! (keine XP: zu wenig gefahren oder zu wenige Spieler mit Konto)")
+            end
         end
         sayAll("🏁 Verfolgungsjagd vorbei: %s ist entkommen!", c.runnerName)
     else
@@ -3846,6 +3947,11 @@ function BN.chaseTick()
         c.runner = list[BN.random(#list)]
         c.runnerName = BN.players[c.runner].name
         c.started, c.huntAt, c.hintAt = true, now + C.chaseHeadStartSec, now
+        c.runnerKm0 = drivenKm(BN.players[c.runner])
+        local accounts = 0
+        for _, p in ipairs(list) do if not BN.players[p].guest then accounts = accounts + 1 end end
+        c.rewarded = accounts >= 2
+        if not c.rewarded then chaseSay("Diese Jagd bringt keine XP (mindestens 2 Spieler mit BeamMP-Konto nötig).") end
         for pid in pairs(c.members) do
             if pid == c.runner then
                 say(pid, "🏃 Du bist der Flüchtige! %d s Vorsprung – halte %s durch.", C.chaseHeadStartSec, fmtClock(C.chaseMaxSec))
@@ -3933,6 +4039,13 @@ function commands.fangen(pid, arg)
             say(pid, "Bitte warte noch %d s, bevor du wieder eine Verfolgungsjagd startest.", 300 - (BN.now() - last))
             return
         end
+        -- Auch zwischen zwei Jagden auf diesem Server eine Pause (sonst wechseln sich zwei Spieler beim Starten ab).
+        local since = BN.now() - (BN.chaseEndedAt or -math.huge)
+        if since < C.chaseCooldownSec then
+            say(pid, "Die nächste Verfolgungsjagd geht in %d s.", C.chaseCooldownSec - since)
+            return
+        end
+        for k, t in pairs(BN.chaseStarts) do if BN.now() - t >= 300 then BN.chaseStarts[k] = nil end end
         BN.chaseStarts[key] = BN.now()
     end
     BN.chase = { by = pid, startAt = BN.now() + C.chaseJoinSec, members = { [pid] = true } }
@@ -3981,8 +4094,9 @@ function BN.communityGoal()
     if c and c.week == wk then return c.goal end
     local goal = C.communityKm
     local data = json.decode(readFile(communityFile()) or "")
-    if type(data) == "table" and data.week == wk and tonumber(data.goal) and data.goal > 0 then
-        goal = math.floor(data.goal)
+    local saved = type(data) == "table" and data.week == wk and tonumber(data.goal)
+    if saved and saved >= 1 and saved < 1e7 then
+        goal = math.floor(saved)
     else
         if goal <= 0 then
             local prev, last = weekKey(now - 7 * 86400), 0
@@ -4026,7 +4140,7 @@ function BN.communityCheck()
     for pid, s in pairs(BN.players) do
         if not s.guest and s.record.communityWeek ~= wk and s.pendingCommunity ~= wk
             and BN.totals(s).weekKm >= C.communityMinKm then
-            s.pendingCommunity = wk
+            s.pendingCommunity, s.pendingCommunityXp = wk, C.communityXp
             s.pendingBonus = s.pendingBonus + C.communityXp
             say(pid, "🎉 Danke fürs Mitfahren beim Wochenziel: +%d XP!", C.communityXp)
         end
@@ -4038,7 +4152,7 @@ function commands.ziel(pid)
     local km, goal = BN.communityProgress()
     local mine = BN.totals(s).weekKm
     say(pid, "Wochenziel für alle: %s von %s %s (%d %%)", fmtKm(km), fmtKm(goal), progressBar(km, goal),
-        math.min(100, math.floor(km / goal * 100)))
+        goal > 0 and math.min(100, math.floor(km / goal * 100)) or 100)
     if s.guest then return end
     if s.record.communityWeek == weekKey(BN.now()) or s.pendingCommunity == weekKey(BN.now()) then
         say(pid, "Dein Beitrag: %s – Belohnung schon bekommen.", fmtKm(mine))

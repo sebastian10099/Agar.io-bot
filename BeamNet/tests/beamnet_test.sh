@@ -553,8 +553,23 @@ lacks "$(cat "$T/actions")" "restart beammp-5" "slots: nur einmal am Tag"
 # Von Hand setzen und pruefen.
 contains "$("$TOOL" slots 5 99 2>&1)" "Plätze: 2 bis 64" "slots: Grenzen beim Setzen"
 contains "$("$TOOL" slots 5 abc 2>&1)" "Aufruf: beamnet slots <nr> <plätze>" "slots: nur Zahlen"
+contains "$("$TOOL" slots 5 010 2>&1)" "Aufruf: beamnet slots <nr> <plätze>" "slots: keine führende Null (wäre ungültiges TOML)"
 "$TOOL" slots 5 8 >/dev/null 2>&1 </dev/null
 contains "$(cat "$T/root/5/ServerConfig.toml")" "^MaxPlayers = 8$" "slots: von Hand gesetzt"
+# Von Hand gesetzt: die Automatik macht das 30 Tage lang nicht rueckgaengig.
+contains "$("$TOOL" slots 2>&1)" "Server 5: von Hand auf 8 gesetzt – Automatik 30 Tage aus" "slots: von Hand gesetzt angezeigt"
+rm -f "$T/watch/slots-"[0-9]*; : >"$T/actions"; status5 0
+BEAMNET_HOUR=07 "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/actions")" "restart beammp-5" "slots: von Hand gesenkt bleibt"
+"$TOOL" slots 5 auto >/dev/null 2>&1
+[[ ! -f $T/watch/slots-manual-5 ]] && pass || fail "slots: <nr> auto schaltet die Automatik wieder ein"
+# Map-Rotation und Plaetze am selben Morgen: nur ein Neustart in diesem Lauf.
+"$TOOL" rotation 5 italy utah >/dev/null 2>&1
+rm -f "$T/watch/slots-"[0-9]* "$T/watch/rotate-5"; : >"$T/actions"; status5 0
+BEAMNET_HOUR=07 "$TOOL" watch >/dev/null 2>&1
+[[ $(grep -c "restart beammp-5" "$T/actions") == 1 ]] && pass || fail "slots: kein zweiter Neustart direkt nach der Map-Rotation"
+"$TOOL" rotation 5 aus >/dev/null 2>&1
+"$TOOL" slots 5 8 >/dev/null 2>&1 </dev/null
 sed -i 's/^AUTO_SLOTS=.*/AUTO_SLOTS=0/' "$T/beamnet.conf"
 rm -f "$T/watch/slots-"*; : >"$T/actions"; status5 0
 BEAMNET_HOUR=07 "$TOOL" watch >/dev/null 2>&1

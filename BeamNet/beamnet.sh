@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.54"
+VERSION="1.55"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -35,6 +35,7 @@ KNOWN_MAPS="gridmap_v2 smallgrid west_coast_usa east_coast_usa italy utah jungle
 
 YES=0
 WARNINGS=0
+RESTARTED_NOW=""      # Server, die der Waechter in diesem Lauf schon neu gestartet hat
 PROBLEMS=0
 
 if [[ -t 1 ]]; then
@@ -134,7 +135,11 @@ def opendir(path):
                     nfd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
                 except OSError:
                     st = os.stat(part, dir_fd=fd, follow_symlinks=False)
-                    if not stat.S_ISLNK(st.st_mode) or st.st_uid != TRUST_LINK_UID:
+                    pst = os.fstat(fd)
+                    # Nur einem root-Symlink in einem root-Ordner, den sonst niemand beschreiben kann (und der kein
+                    # Hardlink ist – sonst koennte beammp ihn an eine andere Stelle verlinken).
+                    if (not stat.S_ISLNK(st.st_mode) or st.st_uid != TRUST_LINK_UID or st.st_nlink != 1
+                            or pst.st_uid != TRUST_LINK_UID or pst.st_mode & 0o022):
                         raise
                     restart = os.path.normpath(os.path.join(cur, os.readlink(part, dir_fd=fd), *parts[i + 1:]))
                     break
@@ -204,7 +209,7 @@ try:
         else:
             # Zahlenwert (z. B. MaxPlayers); nur Buchstaben als Schluessel, nur 1-3 Ziffern als Wert
             path, key, value, bdir = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
-            if not re.fullmatch(r"[A-Za-z]+", key) or not re.fullmatch(r"[0-9]{1,3}", value):
+            if not re.fullmatch(r"[A-Za-z]+", key) or not re.fullmatch(r"[1-9][0-9]{0,2}", value):
                 sys.exit(4)
         data, st = get(path)
         text = data.decode("utf-8", "surrogateescape")
@@ -1023,9 +1028,16 @@ for arg in sys.argv[5:]:
     print(nr, mp, cur, new, peak, full, round(pm_srv.get(nr, 0) / 60), "_".join(" · ".join(why).split()) or "-")
 PY
 
+slots_manual() {     # 0 = Server wurde in den letzten 30 Tagen von Hand eingestellt
+    local at
+    at=$(cat "$STATE_DIR/slots-manual-$1" 2>/dev/null)
+    [[ $at =~ ^[0-9]+$ ]] && (( $(date +%s) - at < 30 * 86400 ))
+}
+
 slots_plan() {
     local nr args=() cur mp
     for nr in $(servers); do
+        slots_manual "$nr" && continue
         cur=$(cfg "$nr" MaxPlayers)
         [[ $cur =~ ^[0-9]{1,3}$ ]] || continue
         mp=$(map_short "$(cfg "$nr" Map)")
@@ -1040,13 +1052,22 @@ slots_plan() {
 # beamnet slots [apply | <nr> <plaetze>]
 cmd_slots() {
     local nr mp cur new peak full hours why changed=0
+    if [[ ${1:-} =~ ^[0-9]+$ && ${2:-} == auto ]]; then
+        need_root slots
+        targets "$1" >/dev/null
+        rm -f "$STATE_DIR/slots-manual-$1"
+        ok "Server $1: Spielerplätze wieder automatisch."
+        return 0
+    fi
     if [[ ${1:-} =~ ^[0-9]+$ ]]; then
         need_root slots
-        [[ $# -eq 2 && $2 =~ ^[0-9]{1,3}$ ]] || die "Aufruf: beamnet slots <nr> <plätze>   (z. B. beamnet slots 3 16)"
+        [[ $# -eq 2 && $2 =~ ^[1-9][0-9]{0,2}$ ]] || die "Aufruf: beamnet slots <nr> <plätze>   (z. B. beamnet slots 3 16)"
         (( $2 >= 2 && $2 <= 64 )) || die "Plätze: 2 bis 64."
         targets "$1" >/dev/null
         write_slots "$1" "$2" || die "In $ROOT/$1/ServerConfig.toml steht keine MaxPlayers-Zeile."
-        ok "Server $1: $2 Plätze (alte Konfiguration gesichert in $BACKUP_DIR/config/$1)"
+        # Von Hand gesetzt: die Automatik laesst diesen Server 30 Tage in Ruhe (sonst macht sie eine Senkung rueckgaengig).
+        mkdir -p "$STATE_DIR" && date +%s >"$STATE_DIR/slots-manual-$1"
+        ok "Server $1: $2 Plätze (alte Konfiguration gesichert in $BACKUP_DIR/config/$1; Automatik hier 30 Tage aus)"
         echo "BeamMP liest MaxPlayers nur beim Start."
         if confirm "Server $1 jetzt neu starten?"; then
             clear_maintenance "$1"
@@ -1074,6 +1095,9 @@ cmd_slots() {
         (( new > cur )) && tip="→ $new (${why//_/ })"
         printf '  %-6s %-16s %6s %7s %5s %8s  %s\n' "$nr" "$mp" "$cur" "$peak" "$full" "$hours" "$tip"
     done < <(slots_plan)
+    for nr in $(servers); do
+        slots_manual "$nr" && echo "  Server $nr: von Hand auf $(cfg "$nr" MaxPlayers) gesetzt – Automatik 30 Tage aus (beamnet slots $nr auto schaltet sie wieder ein)"
+    done
     echo "Übernehmen: beamnet slots apply · selbst setzen: beamnet slots <nr> <plätze> · automatisch: AUTO_SLOTS=1 (Standard)"
 }
 
@@ -1096,6 +1120,8 @@ watch_slots() {
             echo "$today" >"$STATE_DIR/slots-$nr"
             continue
         fi
+        # Gerade fuer die Map neu gestartet: Lebenszeichen ist noch alt – beim naechsten Lauf (ohne zweiten Neustart jetzt).
+        [[ $RESTARTED_NOW == *" $nr "* ]] && continue
         pl=$(players_of "$(cfg "$nr" Port)")
         [[ $pl == 0/* ]] || continue        # nur leer – sonst beim naechsten Lauf erneut
         echo "$today" >"$STATE_DIR/slots-$nr"
@@ -1967,6 +1993,7 @@ watch_rotation() {
         echo "$today" >"$STATE_DIR/rotate-$nr"
         [[ $next == "$cur" ]] && continue
         write_map "$nr" "$next" || continue
+        RESTARTED_NOW+=" $nr "
         if systemctl restart "$(unit "$nr")"; then
             rout+=("🔄 Server $nr: Map des Tages ist jetzt $next (vorher $cur).")
         else
@@ -2355,7 +2382,9 @@ watch_telegram() {
     local botname=""
     if [[ ! -f $STATE_DIR/telegram-bot || -n $(find "$STATE_DIR/telegram-bot" -mmin +1440 2>/dev/null) ]]; then
         curl -fsS -m 10 -K <(printf 'url = "https://api.telegram.org/bot%s/getMe"\n' "$token") 2>/dev/null \
-            | grep -o '"username":"[A-Za-z0-9_]*"' | head -n1 | cut -d'"' -f4 >"$STATE_DIR/telegram-bot"
+            | grep -o '"username":"[A-Za-z0-9_]*"' | head -n1 | cut -d'"' -f4 >"$STATE_DIR/telegram-bot.new"
+        # Nur einen echten Namen merken; bei einem Fehler beim naechsten Lauf erneut fragen.
+        if [[ -s $STATE_DIR/telegram-bot.new ]]; then mv "$STATE_DIR/telegram-bot.new" "$STATE_DIR/telegram-bot"; else rm -f "$STATE_DIR/telegram-bot.new"; fi
     fi
     botname=$(head -c 64 "$STATE_DIR/telegram-bot" 2>/dev/null | tr -cd 'A-Za-z0-9_')
     raw=$(curl -fsS -m 10 -K <(printf 'url = "https://api.telegram.org/bot%s/getUpdates?offset=%s&timeout=0&allowed_updates=%%5B%%22message%%22%%5D"\n' "$token" "$offset") 2>/dev/null) || return 0
@@ -3753,7 +3782,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet maps                   Maps aller Server und verfügbare Vanilla-Maps
   beamnet set-map <nr> <map>     Map ändern (sichert die Konfiguration, fragt vor dem Neustart)
   beamnet rotation [<nr> <map> …|<nr> aus]  Tägliche Map-Rotation (Wechsel, wenn der Server leer ist)
-  beamnet slots [apply|<nr> <plätze>]      Spielerplätze: Auslastung 30 Tage, mehr Plätze für beliebte Server
+  beamnet slots [apply|<nr> <plätze>|<nr> auto]  Spielerplätze: Auslastung 30 Tage, mehr Plätze für beliebte Server
   beamnet logs <nr> [zeilen]     Letzte Zeilen des Server-Protokolls
   beamnet plugins                Installierte Server-Plugins je Server
   beamnet plugin-disable <name>  Plugin auf allen Servern abschalten (verschiebt nach Server.disabled)

@@ -2235,12 +2235,30 @@ do
     check(chatContains("🚑 Notfall! Bring den Patienten ins Krankenhaus St%. Marien – 1,0 km, 2:13 min Zeit", 96), "Auftrag: Notfall mit Entfernung und Zeit")
     say(96, "/auftrag")
     check(chatContains("Dein Auftrag: St%. Marien · noch 1,0 km", 96), "Auftrag: Stand abfragen")
-    -- Hinspringen zaehlt nicht.
+    -- Hinspringen beendet den Auftrag.
     players[96].vehicles[1].pos = { 20005, 0, 0 }; tick(1)
-    check(chatContains("ohne die Strecke zu fahren zählt der Auftrag nicht", 96) and BN.players[96].job ~= nil, "Auftrag: Springen zaehlt nicht")
+    check(chatContains("Sprung erkannt – der Auftrag nach St%. Marien ist abgebrochen", 96) and BN.players[96].job == nil, "Auftrag: Springen beendet ihn")
+    players[96].vehicles[1].pos = { 21000, 0, 0 }; tick(1)
+    say(96, "/auftrag")
     say(96, "/auftrag stop")
     check(chatContains("Auftrag abgebrochen", 96) and BN.players[96].job == nil, "Auftrag: abbrechen")
+    -- Zuruecksetzen ans Ziel (Home-Position) zaehlt nicht; Zuruecksetzen an Ort und Stelle schon.
+    say(96, "/auftrag")
+    BN.forgetVehicle(96, 1)
+    move(96, 1, -30, 0, 0); tick(1)
+    check(BN.players[96].job ~= nil, "Auftrag: Zuruecksetzen an Ort und Stelle ist in Ordnung")
+    BN.forgetVehicle(96, 1)
+    players[96].vehicles[1].pos = { 20000, 0, 0 }; tick(1)
+    check(BN.players[96].job == nil and chatContains("Sprung erkannt", 96), "Auftrag: Zuruecksetzen ans Ziel beendet ihn")
+    -- Ein anderes Fahrzeug am Ziel zaehlt nicht.
     players[96].vehicles[1].pos = { 21000, 0, 0 }; tick(1)
+    say(96, "/auftrag")
+    players[96].vehicles[2] = { pos = { 20000, 0, 0 }, tim = 0 }
+    tick(2)
+    check(BN.players[96].job ~= nil and not chatContains("✅ Auftrag erledigt", 96), "Auftrag: anderes Fahrzeug am Ziel zaehlt nicht")
+    players[96].vehicles[2] = nil
+    BN.forgetVehicle(96, 2)
+    say(96, "/auftrag stop")
     say(96, "/auftrag")
     local bonus0 = BN.players[96].pendingBonus
     for _ = 1, 50 do move(96, 1, -20, 0, 0); tick(1) end
@@ -2248,6 +2266,10 @@ do
     check(chatContains("✅ Auftrag erledigt: St%. Marien in 0:4%d – %+100 XP %(Blitzschnell! %+50 %%%)", 96), "Auftrag: erledigt, schnell = +50 %")
     eq(BN.players[96].pendingBonus - bonus0, 100, "Auftrag: XP gutgeschrieben")
     eq(BN.players[96].pendingJobs, 1, "Auftrag: gezaehlt")
+    -- Kurze Pause zwischen zwei Auftraegen.
+    say(96, "/auftrag")
+    check(chatContains("Nächster Auftrag in %d+ s", 96), "Auftrag: Pause zwischen zwei Auftraegen")
+    tick(C.jobCooldownSec)
     -- Nicht zweimal hintereinander dasselbe Ziel; zweiter Ort, Zeit abgelaufen.
     say(96, "/auftrag")
     check(chatContains("Gerade kein Auftrag frei", 96), "Auftrag: nicht zweimal dasselbe Ziel")
@@ -2258,6 +2280,7 @@ do
     check(chatContains("🚌 Schulbus: Bring die Kinder zur Schule Grundschule – 3,0 km, 7:25 min Zeit", 96), "Auftrag: Schulbus")
     tick(446)
     check(chatContains("⌛ Zu spät – der Auftrag nach Grundschule ist verfallen", 96) and BN.players[96].job == nil, "Auftrag: Zeit abgelaufen")
+    -- Kurzer Auftrag: kein fester Anteil, kein Schnell-Bonus.
     -- Mit Abholung: erst den Patienten an der Grundschule holen, dann ins Krankenhaus.
     BN.track(95, 0, { 26000, 0, 0 }, 60)
     say(95, "/ort neu ort Unfallstelle")
@@ -2347,6 +2370,20 @@ do
     local again = BN.players[97].pendingBonus
     BN.communityCheck()
     eq(BN.players[97].pendingBonus, again, "Wochenziel: nach dem Neuverbinden nicht noch einmal")
+    -- Schon auf einem anderen Server bekommen (die Datei kennt die Woche): beim Speichern nicht doppelt.
+    local s97 = BN.players[97]
+    local fileBefore = readJson(SHARED .. "/players/9797.json").bonusXp
+    s97.record.communityWeek = nil
+    s97.pendingBonus, s97.pendingCommunity, s97.pendingCommunityXp = C.communityXp, wk, C.communityXp
+    s97.dirty = true
+    BN.savePlayer(s97)
+    eq(readJson(SHARED .. "/players/9797.json").bonusXp, fileBefore, "Wochenziel: auf zwei Servern nicht doppelt")
+    -- Kaputtes Ziel in community.json (Text, 0,5): wird ignoriert.
+    for _, bad in ipairs({ "500", 0.5, -3 }) do
+        writeJson(SHARED .. "/community.json", { week = wk, goal = bad })
+        BN.communityCache = nil
+        check(pcall(BN.communityGoal) and BN.communityGoal() >= 1, "Wochenziel: ungueltiges Ziel ignoriert (" .. tostring(bad) .. ")")
+    end
     -- Automatisches Ziel: 10 % mehr als letzte Woche, mindestens 200, in 100er-Schritten.
     os.remove(SHARED .. "/community.json")
     BN.communityCache = nil
@@ -2379,6 +2416,48 @@ do
     os.remove(SHARED .. "/players/9494.json"); BN.savedRecently["9494"] = nil
 end
 
+-- --- Auftraege: kurze Strecken und Stundenlimit (gegen Pendeln zwischen zwei nahen Orten) ------------------------
+do
+    os.execute('rm -rf "' .. SHARED .. '/places"')
+    local savedAdmins, savedCap, savedRandom = C.admins, C.jobXpPerHour, BN.random
+    C.admins = { "Planer2" }
+    BN.random = function() return 1 end
+    players[106] = { name = "Planer2", ids = { beammp = "10606" }, vehicles = {} }
+    players[107] = { name = "Pendler", ids = { beammp = "10707" }, vehicles = { [1] = { pos = { 50000, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](106); _G[events.onPlayerJoin](107)
+    BN.track(106, 0, { 50000, 0, 0 }, 1); say(106, "/ort neu krankenhaus Nord")
+    BN.track(106, 0, { 50310, 0, 0 }, 2); say(106, "/ort neu krankenhaus Sued")
+    BN.jobLimits = {}
+    C.jobXpPerHour = 20
+    tick(1)
+    local dir = 1
+    local function shuttle()
+        say(107, "/auftrag")
+        for _ = 1, 10 do move(107, 1, 31 * dir, 0, 0); tick(1) end
+        dir = -dir
+        tick(C.jobCooldownSec)
+    end
+    chatLog = {}
+    shuttle()
+    check(chatContains("✅ Auftrag erledigt: Sued in 0:1%d – %+11 XP%. Nächster", 107), "Auftrag kurz: nur XP nach Entfernung, kein Schnell-Bonus")
+    shuttle()
+    check(chatContains("✅ Auftrag erledigt: Nord in 0:1%d – %+9 XP", 107) and chatContains("Stundenlimit für Auftrags%-XP erreicht", 107), "Auftrag: Stundenlimit")
+    shuttle()
+    check(chatContains("✅ Auftrag erledigt: Sued in 0:1%d – %+0 XP", 107), "Auftrag: ueber dem Limit keine XP")
+    -- Nach einer Stunde wieder XP.
+    tick(3600)
+    chatLog = {}
+    shuttle()
+    check(chatContains("%+11 XP", 107), "Auftrag: nach einer Stunde wieder XP")
+    C.jobXpPerHour, C.admins, BN.random = savedCap, savedAdmins, savedRandom
+    for _, pid in ipairs({ 106, 107 }) do
+        if BN.players[pid] then BN.players[pid].pendingBonus, BN.players[pid].pendingKm = 0, 0 end
+        _G[events.onPlayerDisconnect](pid); players[pid] = nil
+    end
+    for _, id in ipairs({ "10606", "10707" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+    os.execute('rm -rf "' .. SHARED .. '/places"')
+end
+
 -- --- Verfolgungsjagd (/fangen) --------------------------------------------------------------------------------
 do
     players[101] = { name = "Jaeger", ids = { beammp = "10101" }, vehicles = { [1] = { pos = { 40000, 0, 0 }, tim = 0 } } }
@@ -2405,7 +2484,8 @@ do
     check(chatContains("Flüchtiger Flucht: 500 m entfernt", 101), "Jagd: Entfernung fuer Jaeger")
     check(chatContains("Nächster Jäger: 500 m", 102), "Jagd: Entfernung fuer Fluechtigen")
     local b0 = BN.totals(BN.players[101]).bonusXp
-    for _ = 1, 49 do move(101, 1, 10, 0, 0); tick(1) end
+    -- Der Fluechtige faehrt mit 10 m/s davon, der Jaeger mit 20 m/s hinterher.
+    for _ = 1, 49 do move(102, 1, 10, 0, 0); move(101, 1, 20, 0, 0); tick(1) end
     check(chatContains("🚓 Gefangen! %+60 XP", 101), "Jagd: gefangen, XP fuer den Faenger")
     check(chatContains("🚓 Verfolgungsjagd vorbei: Jaeger hat Flucht nach 1:%d%d gefangen!", 102), "Jagd: Ergebnis an alle")
     eq(BN.totals(BN.players[101]).bonusXp - b0, 60, "Jagd: XP gutgeschrieben")
@@ -2414,23 +2494,56 @@ do
     check(chatContains("Bitte warte noch %d+ s, bevor du wieder eine Verfolgungsjagd startest", 101), "Jagd: Abklingzeit")
     -- Entkommen: 5 Minuten durchhalten.
     players[101].vehicles[1].pos = { 40000, 0, 0 }; players[102].vehicles[1].pos = { 45000, 0, 0 }
+    say(102, "/fangen")
+    check(chatContains("Die nächste Verfolgungsjagd geht in %d+ s", 102) and BN.chase == nil, "Jagd: Pause zwischen zwei Jagden")
+    tick(C.chaseCooldownSec)
     say(102, "/fangen"); say(101, "/fangen mit")
     local b1 = BN.totals(BN.players[102]).bonusXp
-    tick(31 + 20 + 300)
+    tick(31 + 20)
+    for _ = 1, 300 do move(102, 1, 5, 0, 0); tick(1) end
     check(chatContains("🏁 Entkommen! %+150 XP", 102), "Jagd: entkommen (100 + 5 min x 10)")
     eq(BN.totals(BN.players[102]).bonusXp - b1, 150, "Jagd: XP fuer den Fluechtigen")
+    -- Stehenbleiben bringt nichts: entkommen ohne Fahrt = keine XP.
+    BN.chaseStarts, BN.chaseEndedAt = {}, nil
+    say(101, "/fangen"); say(102, "/fangen mit")
+    tick(31 + 20 + 300)
+    check(chatContains("🏁 Entkommen! %(keine XP", 102), "Jagd: ohne Fahrt keine XP")
+    -- Gast-Zweitkonto: Jagd ohne XP.
+    players[108] = { name = "Gast108", ids = {}, vehicles = { [1] = { pos = { 40000, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](108)
+    BN.chaseStarts, BN.chaseEndedAt = {}, nil
+    chatLog = {}
+    say(101, "/fangen"); say(108, "/fangen mit")
+    tick(31)
+    check(chatContains("Diese Jagd bringt keine XP", 101), "Jagd: mit Gast-Zweitkonto keine XP")
+    say(101, "/fangen stop")
+    _G[events.onPlayerDisconnect](108); players[108] = nil
+    -- Tagesobergrenze je Konto.
+    local savedDay = C.chaseXpPerDay
+    C.chaseXpPerDay = 0
+    BN.chaseXpDay = {}
+    BN.chaseStarts, BN.chaseEndedAt = {}, nil
+    BN.random = function() return 1 end
+    players[101].vehicles[1].pos = { 40000, 0, 0 }; players[102].vehicles[1].pos = { 40500, 0, 0 }
+    tick(1)
+    say(102, "/fangen"); say(101, "/fangen mit")
+    tick(31 + 20 + 45)
+    for _ = 1, 49 do move(101, 1, -10, 0, 0); move(102, 1, -20, 0, 0); tick(1) end
+    check(chatContains("🚓 Gefangen! %+0 XP", 102), "Jagd: Tagesobergrenze")
+    C.chaseXpPerDay = savedDay
+    BN.random = function(n) return n end
     -- Allein: abgesagt; Starter kann stoppen.
-    BN.chaseStarts = {}
+    BN.chaseStarts, BN.chaseEndedAt = {}, nil
     say(101, "/fangen")
     tick(31)
     check(chatContains("Verfolgungsjagd abgesagt – zu wenige Mitspieler", 101) and BN.chase == nil, "Jagd: allein abgesagt")
-    BN.chaseStarts = {}
+    BN.chaseStarts, BN.chaseEndedAt = {}, nil
     say(101, "/fangen"); say(102, "/fangen stop")
     check(chatContains("Nur der Starter oder ein Admin", 102) and BN.chase ~= nil, "Jagd: nur Starter/Admin stoppt")
     say(101, "/fangen stop")
     check(BN.chase == nil and chatContains("Verfolgungsjagd abgesagt", 102), "Jagd: Starter stoppt")
     -- Fluechtiger geht: Jagd vorbei.
-    BN.chaseStarts = {}
+    BN.chaseStarts, BN.chaseEndedAt = {}, nil
     say(101, "/fangen"); say(102, "/fangen mit"); tick(31)
     _G[events.onPlayerDisconnect](102); players[102] = nil
     tick(1)
