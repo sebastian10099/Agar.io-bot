@@ -45,7 +45,9 @@ def resee_after(last: Optional[dict[str, Any]]) -> float:
     return RESEE_SECONDS
 VERSION = "0.9"
 APP_ID = "new-token-bot"      # marker in /api/state so starters can tell this bot from whatever else listens on the port
-TICK_KEEP_DAYS = 7       # price ticks of positions closed longer ago are dropped at start
+TICK_KEEP_DAYS = 7
+HISTORY_KEEP_DAYS = 30       # candidates and outcomes older than this are dropped at start
+REPORT_TTL = 10.0            # seconds: edge reports and breakdowns are recomputed at most this often       # price ticks of positions closed longer ago are dropped at start
 
 
 class Engine:
@@ -76,6 +78,20 @@ class Engine:
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._lock = threading.Lock()
+        self._reports: dict[str, tuple[float, Any, int]] = {}
+
+    def _report(self, key: str, fn: Callable[[], Any]) -> Any:
+        """The page polls every 2 s; the aggregate reports only need to move with the polls."""
+        now = time.time()
+        hit = self._reports.get(key)
+        if hit and now - hit[0] < REPORT_TTL and hit[2] == self.poll_count:
+            return hit[1]
+        value = fn()
+        self._reports[key] = (now, value, self.poll_count)
+        return value
+
+    def invalidate_reports(self) -> None:
+        self._reports.clear()
 
     # --- one cycle ------------------------------------------------------
     def poll_once(self) -> dict[str, int]:
@@ -173,6 +189,9 @@ class Engine:
         interval = float(self.cfg["poll_seconds"])
         self.store.log("info", f"engine started, mode={self.cfg['mode']}, every {interval:.0f}s")
         self.store.prune_ticks(self.clock() - TICK_KEEP_DAYS * 86400)
+        dropped = self.store.prune_history(self.clock() - HISTORY_KEEP_DAYS * 86400)
+        if dropped["candidates"]:
+            self.store.log("info", f"Verlauf aufgeräumt: {dropped['candidates']} Kandidaten älter als {HISTORY_KEEP_DAYS} Tage")
         while not self._stop.is_set():
             started = time.time()
             try:
@@ -231,6 +250,7 @@ class Engine:
             self.paper.close_manually(pos, price, self.clock())
             self.last_prices[pos["pair"]] = price
             self.store.tick(pid, self.clock(), price)
+            self.invalidate_reports()
             return {"ok": True, "position": self.store.position(pid)}
 
     def sell_position(self, pid: int, frac: Any) -> dict[str, Any]:
@@ -256,6 +276,7 @@ class Engine:
                 self.paper.sell_part(pos, frac, price, self.clock())
             self.last_prices[pos["pair"]] = price
             self.store.tick(pid, self.clock(), price)
+            self.invalidate_reports()
             return {"ok": True, "position": self.store.position(pid)}
 
     def reset(self, what: str, bankroll: Optional[float] = None) -> dict[str, Any]:
@@ -271,6 +292,7 @@ class Engine:
         with self._lock:
             self.store.reset(what)
             self.last_prices.clear()
+            self.invalidate_reports()
             if bankroll is not None:
                 self.cfg["bankroll_usd"] = bankroll
                 self.paper.initial = bankroll
@@ -410,14 +432,15 @@ class Engine:
             "daily_limit_hit": self.paper.daily_limit_hit(),
             "stats": self.store.stats(), "open_positions": open_positions,
             "closed": self.store.closed_positions(50), "candidates": self.store.candidates(80),
-            "edge": self.store.edge_report(), "events": self.store.events(60),
-            "edge_rules": self.store.edge_report("rule_decision"), "edge_ai": self.store.edge_report("ai_decision"),
-            "edge_source": self.store.edge_report("source"),
+            "edge": self._report("edge", self.store.edge_report), "events": self.store.events(60),
+            "edge_rules": self._report("edge_rules", lambda: self.store.edge_report("rule_decision")),
+            "edge_ai": self._report("edge_ai", lambda: self.store.edge_report("ai_decision")),
+            "edge_source": self._report("edge_source", lambda: self.store.edge_report("source")),
             "version": VERSION,
             "ai": self.advisor.status(),
             "sources": self.discovery.status(),
-            "exits_by_reason": self.store.exit_breakdown(),
-            "skip_reasons": self.store.skip_reasons(),
+            "exits_by_reason": self._report("exits", self.store.exit_breakdown),
+            "skip_reasons": self._report("why", self.store.skip_reasons),
             "rugcheck": self.rug.health() if hasattr(self.rug, "health") else {"calls": 0, "fails": 0, "last_error": "", "ok": None},
             "equity": self.store.equity_curve(),
             "config": settings.flat(self.cfg),

@@ -327,6 +327,16 @@ class Store:
         rows.reverse()
         return rows
 
+    def prune_history(self, before: float) -> dict[str, int]:
+        """Drop candidates and their outcomes seen before `before` (positions,
+        trades and events stay). Keeps the database and the per-poll reports
+        bounded on a bot that runs for months."""
+        with self._lock:
+            o = self._conn.execute("DELETE FROM outcomes WHERE candidate_id IN (SELECT id FROM candidates WHERE seen_at < ?)", (before,)).rowcount
+            c = self._conn.execute("DELETE FROM candidates WHERE seen_at < ?", (before,)).rowcount
+            self._conn.commit()
+        return {"candidates": c, "outcomes": o}
+
     def prune_ticks(self, before: float) -> int:
         """Drop ticks of positions closed before `before`; open ones keep theirs."""
         with self._lock:

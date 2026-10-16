@@ -606,3 +606,34 @@ class PresetTests(unittest.TestCase):
             self.assertIsNotNone(run["snapshot"]["age_min"]); self.assertTrue(run["snapshot"].get("age_from_feed"))
             self.assertEqual(run["decision"], "buy")      # instead of "age unknown"
             store.close()
+
+
+class HousekeepingTests(unittest.TestCase):
+    def test_reports_are_cached_between_polls_and_refreshed_after(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            eng = Engine(CFG, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            eng.poll_once()
+            calls = []
+            orig = store.exit_breakdown
+            store.exit_breakdown = lambda: (calls.append(1), orig())[1]
+            eng.state(); eng.state(); eng.state()
+            self.assertEqual(len(calls), 1)                       # three page refreshes, one computation
+            t[0] += 60; eng.poll_once(); eng.state()
+            self.assertEqual(len(calls), 2)                       # a new poll invalidates
+            eng.invalidate_reports(); eng.state()
+            self.assertEqual(len(calls), 3)
+            store.close()
+
+    def test_prune_history_drops_old_candidates_and_outcomes(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            eng = Engine(CFG, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            eng.poll_once()
+            n_before = len(store.candidates())
+            self.assertEqual(store.prune_history(dex.started - 1)["candidates"], 0)
+            dropped = store.prune_history(dex.started + 1)
+            self.assertEqual(dropped["candidates"], n_before); self.assertGreater(dropped["outcomes"], 0)
+            self.assertEqual(store.candidates(), [])
+            self.assertEqual(store._one("SELECT COUNT(*) AS n FROM outcomes")["n"], 0)
+            store.close()
