@@ -38,6 +38,13 @@ case $cmd in
     enable) touch "$S/$unit.enabled" ;;
 esac
 EOF
+cat >"$T/bin/timeout" <<'EOF'
+#!/usr/bin/env bash
+# Port-Pruefung des Waechters: "offen", ausser $FAKE/portdown existiert.
+[[ -f $FAKE/portdown ]] && exit 1
+exit 0
+EOF
+chmod +x "$T/bin/timeout"
 cat >"$T/bin/journalctl" <<'EOF'
 #!/usr/bin/env bash
 cat "$FAKE/journal.txt" 2>/dev/null
@@ -910,6 +917,57 @@ lines = open(sys.argv[1], encoding="utf-8").read().splitlines()[1:]
 sys.exit(0 if lines and all(len(l.split("\t")) == 13 for l in lines) else 1)
 PY
 rm -f "$P"/90[1-6].json "$T/fremd.json"
+
+# --- Haengende Server (hang_check) -----------------------------------------------------------------------------------
+cp "$T/beamnet.conf" "$T/conf.hang"
+sed -i 's/^AUTO_RESTART=.*/AUTO_RESTART=1/; s|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=|' "$T/beamnet.conf"
+mkdir -p "$T/root/2/Resources/Server/BeamNetCore"; touch "$T/root/2/Resources/Server/BeamNetCore/main.lua"
+touch "$T/state/beammp-2.service.active" "$T/state/beammp-2.service.enabled"
+rm -f "$T"/watch/restarts-2 "$T"/watch/hang-2 "$T"/watch/maintenance-2 "$T/portdown"
+echo up >"$T/watch/state-2"
+port2=$(grep -m1 '^Port' "$T/root/2/ServerConfig.toml" | grep -o '[0-9]*' | head -n1)
+old=$(( $(date +%s) - 600 ))
+hb2() { echo "{\"port\":$port2,\"players\":0,\"max\":8,\"updated\":$1}" >"$T/root/shared/beamnet/servers/$port2.json"; }
+hb2 "$old"
+date +%s >"$T/watch/upsince-2"
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+lacks "$out" "hängt|meldet sich nicht" "hang: frisch gestarteter Server bekommt Zeit"
+echo "$old" >"$T/watch/upsince-2"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🟠 Server 2 \(.*\) läuft, aber BeamNetCore meldet sich nicht mehr" "hang: Port antwortet – nur Plugin steht, Meldung"
+lacks "$(cat "$T/actions")" "restart beammp-2" "hang: Port antwortet – kein Neustart (Spieler fahren weiter)"
+out=$("$TOOL" watch 2>&1)
+lacks "$out" "meldet sich nicht" "hang: nur einmal gemeldet"
+rm -f "$T/watch/hang-2"; touch "$T/portdown"
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🟠 Server 2 \(.*\) hängt: Dienst läuft, aber kein Lebenszeichen und keine Antwort auf Port $port2" "hang: haengender Server gemeldet"
+contains "$(cat "$T/actions")" "^restart beammp-2.service$" "hang: mit AUTO_RESTART neu gestartet"
+contains "$out" "🟡 Server 2 \(.*\) nach dem Hängen automatisch neu gestartet" "hang: Neustart gemeldet"
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+lacks "$(cat "$T/actions")" "restart beammp-2" "hang: nach dem Neustart wieder Schonfrist"
+# Ohne AUTO_RESTART: nur melden.
+sed -i 's/^AUTO_RESTART=.*/AUTO_RESTART=0/' "$T/beamnet.conf"
+echo "$old" >"$T/watch/upsince-2"; rm -f "$T/watch/hang-2"
+: >"$T/actions"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "hängt" "hang: ohne AUTO_RESTART gemeldet"
+lacks "$(cat "$T/actions")" "restart beammp-2" "hang: ohne AUTO_RESTART kein Neustart"
+# Frisches Lebenszeichen: alles gut, Marker weg.
+hb2 "$(date +%s)"
+"$TOOL" watch >/dev/null 2>&1
+[[ ! -f $T/watch/hang-2 ]] && pass || fail "hang: frisches Lebenszeichen hebt den Zustand auf"
+# Ohne Plugin oder mit HANG_MIN=0: nie.
+hb2 "$old"; echo "$old" >"$T/watch/upsince-2"
+sed -i 's/^HANG_MIN=.*/HANG_MIN=0/' "$T/beamnet.conf"
+lacks "$("$TOOL" watch 2>&1)" "hängt|meldet sich nicht" "hang: HANG_MIN=0 schaltet ab"
+sed -i 's/^HANG_MIN=.*/HANG_MIN=3/' "$T/beamnet.conf"
+rm -rf "$T/root/2/Resources/Server/BeamNetCore"
+lacks "$("$TOOL" watch 2>&1)" "hängt|meldet sich nicht" "hang: ohne BeamNetCore keine Pruefung"
+rm -f "$T/portdown" "$T/root/shared/beamnet/servers/$port2.json" "$T"/watch/hang-2
+cp "$T/conf.hang" "$T/beamnet.conf"
 
 # --- Telegram und "Wer ist online" ----------------------------------------------------------------------------------
 sed -i 's/^TELEGRAM_TOKEN=.*/TELEGRAM_TOKEN=123456:ABCDEFghijklmnop_1234567890/; s/^TELEGRAM_CHAT=.*/TELEGRAM_CHAT=-1001234567890/; s/^ONLINE_REPORT=.*/ONLINE_REPORT=1/' "$T/beamnet.conf"

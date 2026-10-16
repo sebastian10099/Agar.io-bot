@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.21 / Plugin 1.13)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.22 / Plugin 1.14)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -10,9 +10,10 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
        Spielerdateien: bei 10 000 Spielern 0,07 s statt 1,4 s je Liste. Ohne frischen Index liest das Plugin wie
        früher alle Dateien (Plugin 1.13, Werkzeug 1.21).
 2. [x] Wochen- und Saisonwertung aus demselben Index (alle drei Listen teilen sich eine Lesung pro Minute).
-3. [ ] Gestaffeltes Speichern: nicht alle Spieler in derselben Sekunde, sondern verteilt über die Minute.
-4. [ ] Lebenszeichen nur schreiben, wenn sich etwas geändert hat, spätestens alle 60 s. Das bedeutet weniger
-       Schreibzugriffe bei 12 Servern.
+3. [x] Gestaffeltes Speichern: Jeder Spieler hat seine eigene Sekunde in der Minute. Bei 64 Spielern sind es
+       höchstens ein paar Dateien je Takt statt 64 auf einmal (Plugin 1.14).
+4. [–] Lebenszeichen seltener schreiben: geprüft und verworfen. 12 Server schreiben je 4 kleine Dateien pro Minute,
+       das ist vernachlässigbar, und Wächter, `/server` und Hänge-Erkennung brauchen ein frisches Lebenszeichen.
 5. [ ] Wächter misst CPU und RAM je Server (systemd) und warnt bei Dauerlast über 90 %.
 6. [ ] „Server voll“-Hilfe: Ein voller Server lässt niemanden mehr herein, das Plugin sieht diese Spieler also nicht.
        Machbar ist: `/server` und Statusseite markieren freie Server mit derselben Map, und bei 90 % Auslastung des
@@ -20,7 +21,9 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 7. [ ] Tägliche Sicherung des gemeinsamen Datenordners, 7 Tage aufbewahrt, mit `beamnet restore <datum>`.
 8. [ ] Der doctor prüft die Größe von Server.log und Journal und richtet eine Protokoll-Rotation ein.
 9. [ ] Lasttest in der CI mit echtem BeamMP-Server und vielen simulierten Spielerdateien.
-10. [ ] Der Wächter erkennt hängende Server (Prozess läuft, aber 3 Minuten kein Lebenszeichen) und startet sie neu.
+10. [x] Der Wächter erkennt hängende Server: Der Dienst läuft, aber BeamNetCore meldet sich seit 3 Minuten nicht
+        (`HANG_MIN`). Antwortet der Port auch nicht, folgt mit `AUTO_RESTART=1` ein Neustart. Antwortet er noch, gibt
+        es nur eine Meldung, denn dann können die Spieler weiterfahren (Werkzeug 1.22).
 
 **B. Community, Discord und Telegram**
 11. [ ] Telegram-Bot antwortet auf `/online`, `/top`, `/rekord` und `/server` (der Wächter liest neue Nachrichten jede
@@ -32,7 +35,7 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 16. [ ] Geplante Ansagen: `beamnet ansage "Event um 20 Uhr" --um 19:45`, auf allen Servern im Chat.
 17. [ ] Event-Modus: doppelte XP in einem Zeitfenster (z. B. Wochenende), angekündigt im Chat und in Discord.
 18. [ ] Begrüßung für neue Spieler beim ersten Besuch: kurze Regeln und die wichtigsten Befehle. 🤖
-19. [ ] `/wo <Name>`: Auf welchem Server fährt ein Freund gerade? 🤖
+19. [x] `/wo <Name>` (englisch `/where`): Auf welchem Server fährt ein Freund gerade? (Plugin 1.14)
 20. [ ] Wochenbericht montags mit Spielerrekord, aktivster Server, beliebteste Map und Neulinge.
 
 **C. Rennen und Spielspaß**

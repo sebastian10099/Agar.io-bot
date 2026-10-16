@@ -90,6 +90,9 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   „👥 Gerade online: 14 Spieler · Server 1 (italy): Ana, Max, Sebi · Server 3 (utah): …“ – nur, wenn jemand fährt und
   sich die Runde seit der letzten Meldung geändert hat. Dieselbe Übersicht im Terminal: `beamnet players`.
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
+- Er erkennt **hängende Server**: Der Dienst läuft, aber BeamNetCore meldet sich seit 3 Minuten nicht (`HANG_MIN`,
+  0 = aus). Antwortet der Server auch auf seinem Port nicht mehr, startet er ihn mit `AUTO_RESTART=1` neu. Antwortet er
+  noch, meldet er nur, dass das Plugin steht; die Spieler können dann weiterfahren und werden nicht rausgeworfen.
 - Er kämpft nicht gegen dich: Mit `beamnet stop` gestoppte Server gelten als Wartung (kein Alarm, kein Neustart), bis
   du sie mit `beamnet start` wieder startest.
 - Er kämpft nicht gegen OpenClaw: Hat der Agent einen Server gestoppt, meldet er das, startet aber nicht neu.
@@ -166,6 +169,7 @@ beamnet restart all
 | `/top [km \| xp \| woche \| vorwoche]` | Bestenliste (Top 5) – nach XP, Gesamtkilometern, Kilometern dieser oder der letzten Woche |
 | `/liga` | Alle Ligen und wie weit es bis zur nächsten ist |
 | `/server` | Alle BeamNet-Server mit Map und Spielerzahl (wechseln geht im BeamMP-Launcher) |
+| `/wo <Name>` | Auf welchem Server fährt ein Freund gerade? (Teil des Namens reicht; englisch `/where`) |
 | `/km` | Eigene Kilometer |
 | `/rennen` | Strecken dieser Map mit Rekord |
 | `/rennen <Name>` | Auf Zeit fahren: zum Start fahren, die Zeit läuft ab dem Verlassen des Startbereichs |

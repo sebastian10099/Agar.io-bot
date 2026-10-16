@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.21"
+VERSION="1.22"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -963,6 +963,41 @@ notify() {
     return $rc
 }
 
+# Nimmt der Server auf seinem Port Verbindungen an? (TCP auf 127.0.0.1, hoechstens 3 s)
+port_open() {
+    [[ $1 =~ ^[0-9]+$ ]] || return 0
+    timeout 3 bash -c ': </dev/tcp/127.0.0.1/'"$1" 2>/dev/null
+}
+
+# Sekunden seit dem letzten Lebenszeichen des Plugins (leer, wenn es keins gibt).
+heartbeat_age() {
+    local file="$SHARED/servers/$1.json" updated
+    [[ -f $file && ! -L $file ]] || return 0
+    updated=$(grep -o '"updated"[[:space:]]*:[[:space:]]*[0-9]*' "$file" | grep -o '[0-9]*$')
+    [[ -n $updated ]] && echo $(( $(date +%s) - updated ))
+}
+
+# Haengt ein laufender Server? Nur wenn BeamNetCore dort installiert ist, der Dienst schon HANG_MIN Minuten
+# (Standard 3) laeuft und das Lebenszeichen so lange fehlt. Neu gestartet wird nur, wenn er zusaetzlich auf seinem
+# Port nicht mehr antwortet (sonst koennen die Spieler noch fahren und nur das Plugin steht – das wird gemeldet).
+# Gibt "hung", "plugin" oder nichts aus.
+hang_check() {
+    local nr=$1 port age since now limit min
+    [[ -f $ROOT/$nr/Resources/Server/BeamNetCore/main.lua ]] || return 0
+    min=$(conf_get HANG_MIN)
+    [[ $min =~ ^[0-9]{1,3}$ ]] || min=3
+    (( 10#$min > 0 )) || return 0
+    limit=$(( 10#$min * 60 ))
+    now=$(date +%s)
+    since=$(cat "$STATE_DIR/upsince-$nr" 2>/dev/null)
+    [[ $since =~ ^[0-9]+$ ]] || return 0
+    (( now - since >= limit )) || return 0
+    port=$(cfg "$nr" Port)
+    age=$(heartbeat_age "$port")
+    [[ -n $age ]] && (( age >= limit )) || return 0
+    if port_open "$port"; then echo plugin; else echo hung; fi
+}
+
 # Wurde der Server in den letzten 15 Minuten vom Agenten gestoppt oder beendet?
 stopped_by_agent() {
     journalctl --since "-15min" --no-pager 2>/dev/null \
@@ -1159,7 +1194,7 @@ watch_peak() {
 
 watch_run() {
     mkdir -p "$STATE_DIR"
-    local nr state last name msgs=() auto
+    local nr state last name msgs=() auto hang
     auto=$(conf_get AUTO_RESTART)
     watch_heartbeat
     watch_votes msgs
@@ -1172,6 +1207,24 @@ watch_run() {
             [[ $last == down ]] && msgs+=("🟢 $name ist wieder online.")
             rm -f "$STATE_DIR/limit-$nr"
             clear_maintenance "$nr"   # laeuft wieder (egal wie gestartet) – Wartung vorbei
+            [[ $last == down || ! -f $STATE_DIR/upsince-$nr ]] && date +%s >"$STATE_DIR/upsince-$nr"
+            hang=$(hang_check "$nr")
+            if [[ -z $hang ]]; then
+                rm -f "$STATE_DIR/hang-$nr"
+            elif [[ $hang == plugin ]]; then
+                [[ -f $STATE_DIR/hang-$nr ]] || msgs+=("🟠 $name läuft, aber BeamNetCore meldet sich nicht mehr (Spieler können weiterfahren; Kilometer und Bestenliste stehen) – beamnet logs $nr.")
+                : >"$STATE_DIR/hang-$nr"
+            else
+                [[ -f $STATE_DIR/hang-$nr ]] || msgs+=("🟠 $name hängt: Dienst läuft, aber kein Lebenszeichen und keine Antwort auf Port $(cfg "$nr" Port).")
+                : >"$STATE_DIR/hang-$nr"
+                if [[ $auto == 1 ]] && restart_allowed "$nr"; then
+                    systemctl restart "$(unit "$nr")"
+                    date +%s >"$STATE_DIR/upsince-$nr"
+                    rm -f "$STATE_DIR/hang-$nr"
+                    if unit_active "$nr"; then msgs+=("🟡 $name nach dem Hängen automatisch neu gestartet.")
+                    else state=down; msgs+=("   Neustart von $name fehlgeschlagen (beamnet logs $nr)."); fi
+                fi
+            fi
         elif [[ -f $STATE_DIR/maintenance-$nr ]] || ! unit_enabled "$nr"; then
             :   # bewusst gestoppt oder ohne Autostart: kein Ausfall
         else
@@ -1478,6 +1531,9 @@ VOTE_MAPS=
 # DAILY_HOUR = ab dieser Stunde (Ortszeit, 0-23) einmal am Tag; ist heute niemand gefahren, kommt keine Meldung.
 DAILY_SUMMARY=1
 DAILY_HOUR=22
+# Haengt ein Server (Dienst laeuft, aber seit HANG_MIN Minuten kein Lebenszeichen von BeamNetCore)? Antwortet er auch
+# auf seinem Port nicht mehr, startet ihn der Waechter mit AUTO_RESTART=1 neu; sonst nur Meldung. 0 = aus.
+HANG_MIN=3
 EOF
         chmod 600 "$CONF"
     fi

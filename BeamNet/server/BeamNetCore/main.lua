@@ -8,8 +8,8 @@
 -- Installation: beamnet install-core  (oder diese Datei nach Resources/Server/BeamNetCore/main.lua kopieren)
 -- Anpassen ohne Code-Aenderung: <gemeinsamer Ordner>/config.json, z. B. {"publicHost": "1.2.3.4", "xpPerKm": 12}
 --
--- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche|vorwoche]  /liga  /server  /km  /lang de|en
--- (englisch: /help /stats /top [km|xp|week|lastweek] /league /server /km /race /records /lang)
+-- Chat-Befehle: /hilfe  /stats [Name]  /top [km|xp|woche|vorwoche]  /liga  /server  /wo <Name>  /km  /lang de|en
+-- (englisch: /help /stats /top [km|xp|week|lastweek] /league /server /where <name> /km /race /records /lang)
 --               /rennen [Name|stop]  /rekorde [Name]  /erfolge [Name]  /aufgabe  /saison  /vote map <Name>|ja|nein
 --               – Admins: /rennen neu|ziel|loeschen <Name>
 -- Moderation (Admins): /kick <Name> [Grund]  /ban <Name> [30m|2h|7d] [Grund]  /unban <Name>  /bans
@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.13"
+BN.VERSION = "1.14"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -520,8 +520,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /km · /race · /records · /achievements · /daily · /vote · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -564,6 +564,12 @@ local EN = {
     ["Du: %s mit %d XP – höchste Liga erreicht!"] = "You: %s with %d XP – top league reached!",
     ["Keine Serverliste verfügbar."] = "No server list available.",
     ["BeamNet-Server (wechseln im BeamMP-Launcher):"] = "BeamNet servers (switch in the BeamMP launcher):",
+    ["Aufruf: /wo <Name> – zeigt, auf welchem Server jemand gerade fährt."] =
+        "Usage: /where <name> – shows which server someone is driving on.",
+    ["Niemand mit „%s“ gerade im Netzwerk."] = "Nobody matching \"%s\" is in the network right now.",
+    ["%s ist hier auf diesem Server."] = "%s is here on this server.",
+    ["%s fährt auf %s (%s) · %s"] = "%s is driving on %s (%s) · %s",
+    ["… und %d weitere – bitte genauer schreiben."] = "… and %d more – please be more specific.",
     ["Port %s"] = "port %s",
     ["  ← hier"] = "  ← here",
     ["Auf %s gibt es noch keine Strecken."] = "No tracks on %s yet.",
@@ -2016,7 +2022,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage")
     end
@@ -2111,6 +2117,43 @@ function commands.server(pid)
     end
 end
 commands.servers = commands.server
+
+-- /wo <Name>: Auf welchem Server faehrt jemand gerade? Dieser Server live, die anderen aus ihren Lebenszeichen.
+function commands.wo(pid, arg)
+    local query = tostring(arg or ""):match("^%s*(.-)%s*$")
+    if query == "" then
+        say(pid, "Aufruf: /wo <Name> – zeigt, auf welchem Server jemand gerade fährt.")
+        return
+    end
+    local lower, lang, hits = query:lower(), BN.langOf(pid), {}
+    for _, s in pairs(BN.players) do
+        if s.name:lower():find(lower, 1, true) then hits[#hits + 1] = { name = s.name } end
+    end
+    for _, st in ipairs(BN.serverList()) do
+        if tonumber(st.port) ~= tonumber(BN.server.port) and type(st.names) == "table" then
+            for _, n in ipairs(st.names) do
+                n = tostring(n)
+                if n:lower():find(lower, 1, true) then hits[#hits + 1] = { name = n, st = st } end
+            end
+        end
+    end
+    if #hits == 0 then
+        say(pid, "Niemand mit „%s“ gerade im Netzwerk.", query)
+        return
+    end
+    table.sort(hits, function(a, b) return a.name:lower() < b.name:lower() end)
+    for i = 1, math.min(5, #hits) do
+        local h = hits[i]
+        if not h.st then
+            say(pid, "%s ist hier auf diesem Server.", h.name)
+        else
+            local addr = C.publicHost ~= "" and (C.publicHost .. ":" .. tostring(h.st.port)) or tr(lang, "Port %s", tostring(h.st.port))
+            say(pid, "%s fährt auf %s (%s) · %s", h.name, tostring(h.st.name or "?"), tostring(h.st.map or "?"), addr)
+        end
+    end
+    if #hits > 5 then say(pid, "… und %d weitere – bitte genauer schreiben.", #hits - 5) end
+end
+commands.where = commands.wo
 
 local function listTracks(pid, s)
     local data = BN.loadTracks()
@@ -2784,9 +2827,15 @@ function BN.tick()
     end
     guarded("Abgleich", BN.sync, false)
     if now - BN.lastStatus >= C.statusEverySec then guarded("Status", BN.writeStatus) end
-    if now - BN.lastSave >= C.saveEverySec then
-        for _, s in pairs(BN.players) do guarded("Speichern", BN.savePlayer, s) end
-        BN.lastSave = now
+    -- Gestaffelt speichern: jeder Spieler hat seine eigene Sekunde im Speicher-Abstand, damit bei vielen Spielern
+    -- nicht alle Dateien im selben Takt geschrieben werden (12 Server teilen sich einen Datenordner).
+    local every = C.saveEverySec
+    for pid, s in pairs(BN.players) do
+        if not s.lastSaveAt then s.lastSaveAt = now - ((tonumber(pid) or 0) * 7) % every end
+        if now - s.lastSaveAt >= every then
+            s.lastSaveAt = now
+            guarded("Speichern", BN.savePlayer, s)
+        end
     end
 end
 

@@ -292,6 +292,31 @@ check(chatContains("BeamNet | Server 1 · gridmap_v2 · 2/8 · Port 30814  ← h
 check(chatContains("BeamNet | Server 2 · west_coast_usa · 3/8 · Port 30815", 1), "/server zweiter Server")
 check(not chatContains("Server 3 · italy", 1), "/server ohne veraltete Server")
 
+-- /wo <Name>: dieser Server live, die anderen aus ihren Lebenszeichen, veraltete nicht.
+do
+    local fw = io.open(SHARED .. "/servers/30815.json", "w")
+    fw:write(json.encode({ name = "BeamNet | Server 2", port = 30815, map = "west_coast_usa", players = 3, max = 8,
+                           names = { "Maximilian", "Anna", "Zoe" }, updated = clock }))
+    fw:close()
+    fw = io.open(SHARED .. "/servers/30816.json", "w")
+    fw:write(json.encode({ name = "BeamNet | Server 3", port = 30816, map = "italy", players = 1, max = 8,
+                           names = { "Geist" }, updated = clock - 600 }))
+    fw:close()
+    local function wo(text) chatLog = {}; _G[events.onChatMessage](1, "Sebi", text) end
+    wo("/wo maxi")
+    check(chatContains("Maximilian fährt auf BeamNet | Server 2 %(west_coast_usa%) · Port 30815", 1), "/wo: Spieler auf anderem Server (Teilname, Gross/Klein egal)")
+    wo("/wo SEBI")
+    check(chatContains("Sebi ist hier auf diesem Server%.", 1), "/wo: Spieler auf diesem Server")
+    wo("/wo geist")
+    check(chatContains("Niemand mit „geist“ gerade im Netzwerk%.", 1), "/wo: veraltetes Lebenszeichen zaehlt nicht")
+    wo("/wo")
+    check(chatContains("Aufruf: /wo <Name>", 1), "/wo ohne Namen: Hilfe")
+    wo("/where zoe")
+    check(chatContains("Zoe fährt auf BeamNet | Server 2", 1), "/where: englischer Befehl")
+    wo("/wo .*")
+    check(chatContains("Niemand mit „%.%*“", 1), "/wo: Suchtext ist kein Muster")
+end
+
 -- --- Gast, unsichere ID, Abmelden, verschwundene Spieler -----------------------------------------------------------
 players[3] = { name = "Gast123", ids = { ip = "5.6.7.8" }, vehicles = { [1] = { pos = { 0, 0, 0 }, tim = 0 } } }
 players[4] = { name = "Boese", ids = { beammp = "../../etc/passwd" }, vehicles = {} }
@@ -1603,12 +1628,28 @@ do
                          vehicles = { [0] = { pos = { pid * 100, 0, 0 }, tim = 0 } } }
         _G[events.onPlayerJoin](pid)
     end
+    local realSave, savesNow, maxPerTick, savedBy = BN.savePlayer, 0, 0, {}
+    BN.savePlayer = function(s)
+        savesNow = savesNow + 1
+        savedBy[s.pid] = (savedBy[s.pid] or 0) + 1
+        return realSave(s)
+    end
     local t0 = os.clock()
     for _ = 1, 120 do
         for pid = first, first + count - 1 do move(pid, 0, 20) end
+        savesNow = 0
         tick(1)
+        maxPerTick = math.max(maxPerTick, savesNow)
     end
     local perTick = (os.clock() - t0) / 120
+    BN.savePlayer = realSave
+    -- Vorher: alle 64 (plus die uebrigen Sitzungen) im selben Takt.
+    check(maxPerTick <= 8, "64 Spieler: gestaffelt gespeichert (hoechstens 8 Dateien je Takt, war " .. maxPerTick .. ")")
+    local regular = true
+    for pid = first, first + count - 1 do
+        if (savedBy[pid] or 0) < 1 or (savedBy[pid] or 0) > 2 then regular = false end
+    end
+    check(regular, "64 Spieler: in 120 s wird jeder ein- bis zweimal gespeichert (alle 60 s)")
     print(string.format("  Last: %d Spieler fahren, %.1f ms je Takt (Takt = %d ms)", count, perTick * 1000, C.tickMs))
     check(perTick * 1000 < C.tickMs / 4, "64 Spieler: ein Takt braucht weniger als ein Viertel des Taktabstands")
     local kmOk, secOk, fileOk = 0, 0, 0
