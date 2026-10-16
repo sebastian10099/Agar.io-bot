@@ -118,7 +118,8 @@ ufw allow 8080/tcp         # nur nötig, wenn die Firewall ufw aktiv ist
 
 Danach ist sie unter `http://<IP-Adresse des Servers>:8080/` erreichbar – zum Teilen, z. B. in Discord. Sie zeigt alle
 Server mit Map, Spielerzahl und wer gerade fährt, die Bestenliste (Level, Liga, XP, Kilometer), die Kilometer dieser
-Woche, die Saison, die Streckenrekorde und die beliebtesten Maps (Kilometer je Map); hell oder dunkel je nach Gerät, auch fürs Handy. Ein Klick auf einen Namen
+Woche, die Saison, die Streckenrekorde, die beliebtesten Maps (Kilometer je Map) und ein Diagramm **Spieler je Stunde**
+der letzten 7 Tage (braucht den Wächter); hell oder dunkel je nach Gerät, auch fürs Handy. Ein Klick auf einen Namen
 öffnet die **Profilseite** des Fahrers: Level, Liga, Rang, Kilometer, Fahrzeit, Spitze, Saison-Platz, Lieblingsmap, Erfolge,
 Kilometer je Map und eigene Bestzeiten. Eigener Titel: `WEB_TITLE=…` in
 `/etc/beamnet.conf`. Der kleine Webserver läuft abgeschottet (eigener Benutzer, nur Lesezugriff auf die Seite).

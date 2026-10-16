@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.22"
+VERSION="1.23"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1185,9 +1185,23 @@ watch_peak() {
         best_at=$now
     fi
     echo "$best $best_at $last_note" >"$STATE_DIR/peak"
+    # Spitze je Stunde der letzten 7 Tage (fuer das Diagramm auf der Statusseite): "Stundenbeginn Spitze" je Zeile.
+    local hour=$(( now / 3600 * 3600 )) hours="" h m found=0
+    if [[ -f $STATE_DIR/hours ]]; then
+        while read -r h m; do
+            [[ $h =~ ^[0-9]+$ && $m =~ ^[0-9]+$ ]] || continue
+            (( h > now - 7 * 86400 && h <= hour )) || continue
+            if (( h == hour )); then (( online > m )) && m=$online; found=1; fi
+            hours+="$h $m"$'\n'
+        done <"$STATE_DIR/hours"
+    fi
+    (( found )) || hours+="$hour $online"$'\n'
+    printf '%s' "$hours" >"$STATE_DIR/hours"
     if [[ -d $SHARED && ! -L $SHARED ]]; then
-        printf '{"allTime":%s,"allTimeAt":%s,"today":%s,"online":%s,"updated":%s}\n' \
-            "$best" "$best_at" "$day_best" "$online" "$now" | safe put "$SHARED/peak.json" 644
+        printf '{"allTime":%s,"allTimeAt":%s,"today":%s,"online":%s,"updated":%s,"hours":[%s]}\n' \
+            "$best" "$best_at" "$day_best" "$online" "$now" \
+            "$(printf '%s' "$hours" | awk 'NF == 2 { printf "%s[%s,%s]", (n++ ? "," : ""), $1, $2 }')" \
+            | safe put "$SHARED/peak.json" 644
     fi
     return 0
 }
@@ -2024,6 +2038,57 @@ if isinstance(peak, dict) and num(peak.get("allTime")) > 0:
         peak_text += f" ({time.strftime('%d.%m.%Y', time.localtime(num(peak.get('allTimeAt'))))})"
 
 
+DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+
+
+def parse_hours():
+    """Spitze je Stunde der letzten 7 Tage aus peak.json (nur gueltige Ganzzahlen im Zeitfenster)."""
+    raw = peak.get("hours") if isinstance(peak, dict) else None
+    out = {}
+    if not isinstance(raw, list):
+        return out
+    end = int(now // 3600 * 3600)
+    for e in raw:
+        if isinstance(e, list) and len(e) == 2 and all(isinstance(v, int) and not isinstance(v, bool) for v in e):
+            if end - 167 * 3600 <= e[0] <= end and e[1] >= 0:
+                out[e[0]] = max(e[1], out.get(e[0], 0))
+    return out
+
+
+HOURS = parse_hours()
+
+
+def hours_chart():
+    """Balkendiagramm: Spitze je Stunde der letzten 7 Tage, als SVG ohne Skripte (Tooltip je Balken)."""
+    by_hour = HOURS
+    if not by_hour or max(by_hour.values()) == 0:
+        return ""
+    end = int(now // 3600 * 3600)
+    start = end - 167 * 3600
+    top = max(by_hour.values())
+    top_at = min(h for h, v in by_hour.items() if v == top)
+    w, hgt = 168 * 4, 120
+    bars, labels, days = [], [], []
+    for i in range(168):
+        h = start + i * 3600
+        lt = time.localtime(h)
+        if lt.tm_hour == 0:
+            labels.append(f'<line x1="{i * 4}" y1="0" x2="{i * 4}" y2="{hgt}" class=grid />')
+            days.append(f'<span style="left:{i / 168 * 100:.2f}%">{DAYS[lt.tm_wday]}<i> {lt.tm_mday}.</i></span>')
+        if h not in by_hour:
+            continue
+        v = by_hour[h]
+        bh = max(1, round(v / top * (hgt - 4))) if v else 0
+        tip = f"{DAYS[lt.tm_wday]} {time.strftime('%d.%m. %H', lt)} Uhr: {v} Spieler"
+        bars.append(f'<rect x="{i * 4}" y="{hgt - bh}" width="3" height="{bh}"><title>{tip}</title></rect>')
+    tl = time.localtime(top_at)
+    return (f'<section><h2>Spieler je Stunde (7 Tage)</h2>'
+            f'<svg class=chart viewBox="0 0 {w} {hgt}" role="img" aria-label="Spieler je Stunde">'
+            f'{"".join(labels)}{"".join(bars)}</svg><div class=days>{"".join(days)}</div>'
+            f'<p class=small>Spitze: <b>{top}</b> Spieler gleichzeitig ({DAYS[tl.tm_wday]} {time.strftime("%d.%m. %H", tl)} Uhr)'
+            f' · Balken = meiste Spieler in der Stunde</p></section>')
+
+
 def table(head, body, empty):
     """head: Spaltennamen; ein '#' am Ende markiert Zahlenspalten (rechtsbuendig)."""
     if not body:
@@ -2054,6 +2119,10 @@ a {{ color:inherit; text-decoration:none; border-bottom:1px dotted var(--muted);
 .stats {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin:0; }}
 .stats div {{ background:var(--bg); border-radius:8px; padding:10px 12px; }} .stats b {{ display:block; font-size:20px; }}
 .tags span {{ display:inline-block; background:var(--bg); border-radius:999px; padding:3px 10px; margin:0 6px 6px 0; font-size:13px; }}
+svg.chart {{ width:100%; height:auto; display:block; }} svg.chart rect {{ fill:var(--accent); }}
+svg.chart rect:hover {{ fill:var(--text); }} svg.chart .grid {{ stroke:var(--line); }}
+.days {{ position:relative; height:18px; font-size:12px; color:var(--muted); }} .days span {{ position:absolute; top:2px; padding-left:3px; }}
+.days i {{ font-style:normal; }} @media (max-width:560px) {{ .days i {{ display:none; }} }}
 </style>"""
 
 
@@ -2064,6 +2133,7 @@ page = f"""<!doctype html>
 <h1><span>{E(title)}</span> Status</h1>
 <div class=sub>{len(servers)} Server online · {online} Spieler{peak_text} · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))} (aktualisiert sich jede Minute)</div>
 <section><h2>Server</h2>{table(["Server", "Map", "Spieler#"], rows, "Gerade meldet sich kein Server.")}</section>
+{hours_chart()}
 <section><h2>Bestenliste</h2>{table(["#", "Name", "Level#", "Liga", "XP#", "Kilometer#", "Erfolge#"], top, "Noch keine Einträge – einfach losfahren!")}</section>
 <div class=grid>
 <section><h2>Diese Woche</h2>{table(["#", "Name", "Kilometer#"], weekly, "Diese Woche ist noch niemand gefahren.")}</section>
@@ -2108,7 +2178,8 @@ api = {
     "popularMaps": [{"map": m, "mapName": map_name(m), "km": round(v, 1), "drivers": d}
                     for m, (v, d) in sorted(popular.items(), key=lambda x: (-x[1][0], x[0]))[:10]],
     "peak": {"allTime": int(num(peak.get("allTime"))), "allTimeAt": int(num(peak.get("allTimeAt"))),
-             "today": int(num(peak.get("today")))} if isinstance(peak, dict) else None,
+             "today": int(num(peak.get("today"))),
+             "hours": [[h, v] for h, v in sorted(HOURS.items())]} if isinstance(peak, dict) else None,
 }
 write(os.path.join(os.path.dirname(out), "api.json"), json.dumps(api, ensure_ascii=False, indent=1) + "\n")
 
