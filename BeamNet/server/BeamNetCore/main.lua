@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.33"
+BN.VERSION = "1.34"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -101,6 +101,11 @@ local defaults = {
     jobXpPerKm = 25,
     jobRadiusM = 25,
     jobMinDistM = 300,
+    -- Wochenziel fuer alle (/ziel): Zusammen communityKm km pro Woche (0 = automatisch: 10 % mehr als letzte Woche,
+    -- mindestens 200). Ist es geschafft, bekommt jeder mit mindestens communityMinKm eigenen km communityXp Bonus-XP.
+    communityKm = 0,
+    communityXp = 100,
+    communityMinKm = 5,
     friendCheckSec = 15,
     -- Befehls-Bremse je Spieler (Admins ausgenommen).
     commandLimit = 6,
@@ -488,7 +493,8 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        spamMessages = true, commandLimit = true, tickMs = true, raceTickMs = true, levelBase = true,
                        mapVoteSec = true, joinLimit = true, filterStrikes = true, weeklyTrackXp = true,
                        groupRaceDelaySec = true, maxFriends = true, friendCheckSec = true,
-                       streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true }
+                       streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true,
+                       communityKm = true, communityXp = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
@@ -576,8 +582,8 @@ local EN = {
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
-    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /melden · /regeln · /lang"] =
-        "BeamNet commands: /stats [name] · /top [km|xp|speed|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /job · /places · /report · /rules · /lang",
+    ["BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /melden · /regeln · /lang"] =
+        "BeamNet commands: /stats [name] · /top [km|xp|speed|week|lastweek] · /league · /season · /server · /where <name> · /km · /race · /records · /achievements · /daily · /vote · /event · /team · /friend · /job · /places · /goal · /report · /rules · /lang",
     ["Map-Abstimmungen sind ausgeschaltet."] = "Map votes are turned off.",
     ["Gerade läuft keine Abstimmung."] = "There is no vote right now.",
     ["Stimme gezählt."] = "Vote counted.",
@@ -803,6 +809,16 @@ local EN = {
     ["Nur Admins können Teams löschen."] = "Only admins can delete teams.",
     ["Team %s gelöscht."] = "Team %s deleted.",
     ["Bitte warte noch %d s, bevor du wieder ein Gruppenrennen startest."] = "Please wait %d s before starting another group race.",
+    -- Wochenziel
+    ["🎉 Wochenziel geschafft: zusammen %s! Alle mit mindestens %s diese Woche bekommen +%d XP."] =
+        "🎉 Weekly goal reached: %s together! Everyone with at least %s this week gets +%d XP.",
+    ["🎉 Danke fürs Mitfahren beim Wochenziel: +%d XP!"] = "🎉 Thanks for helping with the weekly goal: +%d XP!",
+    ["Wochenziel für alle: %s von %s %s (%d %%)"] = "Weekly goal for everyone: %s of %s %s (%d %%)",
+    ["Dein Beitrag: %s – Belohnung schon bekommen."] = "Your share: %s – reward already received.",
+    ["Dein Beitrag: %s – du bist dabei: +%d XP, sobald das Ziel erreicht ist."] = "Your share: %s – you're in: +%d XP once the goal is reached.",
+    ["Dein Beitrag: %s – ab %s bist du dabei (+%d XP, wenn das Ziel erreicht ist)."] =
+        "Your share: %s – from %s you're in (+%d XP when the goal is reached).",
+    ["Wochenziel für alle: %s von %s – fahr mit! (/ziel)"] = "Weekly goal for everyone: %s of %s – join in! (/goal)",
     -- Auftraege
     ["Notfall! Bring den Patienten ins Krankenhaus %s"] = "Emergency! Take the patient to %s hospital",
     ["Schulbus: Bring die Kinder zur Schule %s"] = "School bus: take the children to %s school",
@@ -1245,6 +1261,7 @@ function BN.savePlayer(s)
     -- schnellen Wechsel die Wahl, die der Spieler inzwischen auf dem anderen Server getroffen hat.
     if s.langChanged and s.lang then rec.lang = s.lang end
     if s.pendingWeeklyTrack then rec.weeklyTrackWeek = s.pendingWeeklyTrack end
+    if s.pendingCommunity then rec.communityWeek = s.pendingCommunity end
     if s.friendsChanged then rec.friends = s.record.friends end
     rec.lastSeen = BN.now()
     rec.lastServer = BN.server.name or ""
@@ -1266,6 +1283,7 @@ function BN.savePlayer(s)
     s.langChanged = nil
     s.friendsChanged = nil
     s.pendingWeeklyTrack = nil
+    s.pendingCommunity = nil
     return true
 end
 
@@ -2573,7 +2591,7 @@ local function findPlayerByName(query)
 end
 
 function commands.hilfe(pid)
-    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /melden · /regeln · /lang")
+    say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /melden · /regeln · /lang")
     if BN.isAdmin(BN.players[pid]) then
         say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name>")
     end
@@ -3614,6 +3632,90 @@ commands.job = commands.auftrag
 commands.auftraege = commands.auftrag
 
 -- ---------------------------------------------------------------------------------------------------------------------
+-- Wochenziel fuer alle: alle Fahrer zusammen communityKm km in der Kalenderwoche. Das Ziel der Woche steht in
+-- community.json (der erste Server der Woche legt es fest, alle uebernehmen es). Fortschritt = Summe der Wochen-km
+-- aller Fahrer (Bestenliste, hoechstens eine Minute alt).
+
+local function communityFile() return C.sharedDir .. "/community.json" end
+
+function BN.communityGoal()
+    local now = BN.now()
+    local wk = weekKey(now)
+    local c = BN.communityCache
+    if c and c.week == wk then return c.goal end
+    local goal = C.communityKm
+    local data = json.decode(readFile(communityFile()) or "")
+    if type(data) == "table" and data.week == wk and tonumber(data.goal) and data.goal > 0 then
+        goal = math.floor(data.goal)
+    else
+        if goal <= 0 then
+            local prev, last = weekKey(now - 7 * 86400), 0
+            for _, rec in ipairs(BN.playerRecords(false)) do
+                if rec.week == prev then last = last + (tonumber(rec.weekKm) or 0)
+                elseif rec.lastWeek == prev then last = last + (tonumber(rec.lastWeekKm) or 0) end
+            end
+            goal = math.max(200, math.ceil(last * 1.1 / 100) * 100)
+        end
+        ensureDir(C.sharedDir)
+        writeFileAtomic(communityFile(), json.encode({ week = wk, goal = goal }))
+    end
+    BN.communityCache = { week = wk, goal = goal }
+    return goal
+end
+
+function BN.communityProgress()
+    local km = 0
+    for _, rec in ipairs(BN.refreshBoard(false)) do km = km + (tonumber(rec.weekKm) or 0) end
+    return km, BN.communityGoal()
+end
+
+local function progressBar(part, whole)
+    local n = whole > 0 and math.min(10, math.floor(part / whole * 10)) or 0
+    return string.rep("▰", n) .. string.rep("▱", 10 - n)
+end
+
+-- Einmal je Minute: geschafft? Dann Bonus fuer alle hier, die genug beigetragen haben (je Woche einmal).
+function BN.communityCheck()
+    if C.communityXp <= 0 then return end
+    local now = BN.now()
+    if now - (BN.lastCommunityCheck or -math.huge) < 60 then return end
+    BN.lastCommunityCheck = now
+    local km, goal = BN.communityProgress()
+    if km < goal then return end
+    local wk = weekKey(now)
+    if BN.communityAnnounced ~= wk then
+        BN.communityAnnounced = wk
+        sayEach(function(lang) return tr(lang, "🎉 Wochenziel geschafft: zusammen %s! Alle mit mindestens %s diese Woche bekommen +%d XP.", fmtKm(km), fmtKm(C.communityMinKm), C.communityXp) end)
+    end
+    for pid, s in pairs(BN.players) do
+        if not s.guest and s.record.communityWeek ~= wk and s.pendingCommunity ~= wk
+            and BN.totals(s).weekKm >= C.communityMinKm then
+            s.pendingCommunity = wk
+            s.pendingBonus = s.pendingBonus + C.communityXp
+            say(pid, "🎉 Danke fürs Mitfahren beim Wochenziel: +%d XP!", C.communityXp)
+        end
+    end
+end
+
+function commands.ziel(pid)
+    local s = session(pid)
+    local km, goal = BN.communityProgress()
+    local mine = BN.totals(s).weekKm
+    say(pid, "Wochenziel für alle: %s von %s %s (%d %%)", fmtKm(km), fmtKm(goal), progressBar(km, goal),
+        math.min(100, math.floor(km / goal * 100)))
+    if s.guest then return end
+    if s.record.communityWeek == weekKey(BN.now()) or s.pendingCommunity == weekKey(BN.now()) then
+        say(pid, "Dein Beitrag: %s – Belohnung schon bekommen.", fmtKm(mine))
+    elseif mine >= C.communityMinKm then
+        say(pid, "Dein Beitrag: %s – du bist dabei: +%d XP, sobald das Ziel erreicht ist.", fmtKm(mine), C.communityXp)
+    else
+        say(pid, "Dein Beitrag: %s – ab %s bist du dabei (+%d XP, wenn das Ziel erreicht ist).", fmtKm(mine), fmtKm(C.communityMinKm), C.communityXp)
+    end
+end
+commands.goal = commands.ziel
+commands.wochenziel = commands.ziel
+
+-- ---------------------------------------------------------------------------------------------------------------------
 -- Freundesliste: /freund <Name> fuegt hinzu, /freund weg <Name> entfernt, /freund zeigt, wer gerade wo faehrt.
 -- Gespeichert wird die BeamMP-ID (Name nur zur Anzeige). Kommt ein Freund irgendwo im Netzwerk online, bekommt man
 -- hier eine Nachricht (dieser Server live, die anderen ueber ihre Lebenszeichen, also mit bis zu einer Minute Verzug).
@@ -4170,6 +4272,7 @@ function BN.tick()
     guarded("Map-Wechsel", BN.mapChangeCheck)
     guarded("Gruppenrennen", BN.groupTick)
     guarded("Freunde", BN.friendTick)
+    guarded("Wochenziel", BN.communityCheck)
     if now - (BN.lastSeasonCheck or -math.huge) >= 3600 then
         BN.lastSeasonCheck = now
         guarded("Saisonarchiv", BN.ensureSeasonArchive)
@@ -4238,6 +4341,10 @@ function BN_onPlayerJoin(pid)
     end
     local ev = BN.activeEvent()
     if ev then say(pid, "XP-Event läuft: %s-fache XP bis %s Uhr.", fmtFactor(ev.factor), os.date("%H:%M", ev["until"])) end
+    if C.communityXp > 0 and not s.guest then
+        local km, goal = BN.communityProgress()
+        if km < goal then say(pid, "Wochenziel für alle: %s von %s – fahr mit! (/ziel)", fmtKm(km), fmtKm(goal)) end
+    end
     local streak = BN.streakOf(s.record)
     if C.streakXp > 0 and streak >= 1 and s.record.streakDay == dayNumber() - 1 then
         say(pid, "🔥 Deine Serie: %d Tage – fahr heute %s, dann gibt es +%d Bonus-XP.", streak, fmtKm(C.streakMinKm),

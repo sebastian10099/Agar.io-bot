@@ -2261,6 +2261,66 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Wochenziel fuer alle (/ziel) ------------------------------------------------------------------------------
+do
+    os.remove(SHARED .. "/community.json")
+    BN.communityCache, BN.communityAnnounced, BN.lastCommunityCheck = nil, nil, nil
+    for pid, name in pairs({ [97] = "Helfer", [98] = "Bummler" }) do
+        players[pid] = { name = name, ids = { beammp = tostring(9700 + pid) }, vehicles = {} }
+        _G[events.onPlayerJoin](pid)
+    end
+    BN.board = { at = -math.huge, list = {} }
+    local base = BN.communityProgress()
+    local wk = BN.weekKey(clock)
+    writeJson(SHARED .. "/community.json", { week = wk, goal = math.floor(base) + 100 })
+    BN.communityCache = nil
+    eq(BN.communityGoal(), math.floor(base) + 100, "Wochenziel: aus community.json (alle Server dasselbe)")
+    BN.players[97].pendingKm = 3
+    BN.board = { at = -math.huge, list = {} }
+    chatLog = {}
+    say(97, "/ziel")
+    check(chatContains("Wochenziel für alle: .* von .* [▰▱]+ %(%d+ %%%)", 97), "Wochenziel: Fortschritt mit Balken")
+    check(chatContains("ab 5%.0 km bist du dabei", 97), "Wochenziel: Hinweis auf eigenen Beitrag")
+    BN.players[97].pendingKm = 60; BN.players[98].pendingKm = 1
+    BN.board = { at = -math.huge, list = {} }
+    BN.communityCheck()
+    check(not chatContains("Wochenziel geschafft", 98), "Wochenziel: noch nicht erreicht")
+    BN.players[97].pendingKm = 120
+    BN.board = { at = -math.huge, list = {} }
+    BN.lastCommunityCheck = nil
+    local b97, b98 = BN.players[97].pendingBonus, BN.players[98].pendingBonus
+    chatLog = {}
+    BN.communityCheck()
+    check(chatContains("🎉 Wochenziel geschafft: zusammen", 98), "Wochenziel: Meldung an alle")
+    check(chatContains("Danke fürs Mitfahren beim Wochenziel: %+100 XP", 97), "Wochenziel: Belohnung fuer Mitfahrer")
+    eq(BN.players[97].pendingBonus - b97, 100, "Wochenziel: XP gutgeschrieben")
+    eq(BN.players[98].pendingBonus - b98, 0, "Wochenziel: unter der Mindeststrecke nichts")
+    BN.lastCommunityCheck = nil
+    chatLog = {}
+    BN.communityCheck()
+    check(not chatContains("Wochenziel", 97), "Wochenziel: nur einmal")
+    say(97, "/goal")
+    check(chatContains("Belohnung schon bekommen", 97), "Wochenziel: /goal zeigt erhalten")
+    BN.players[97].pendingKm, BN.players[98].pendingKm = 0, 0
+    _G[events.onPlayerDisconnect](97)
+    eq(readJson(SHARED .. "/players/9797.json").communityWeek, wk, "Wochenziel: Belohnung gespeichert")
+    _G[events.onPlayerJoin](97)
+    BN.lastCommunityCheck = nil
+    local again = BN.players[97].pendingBonus
+    BN.communityCheck()
+    eq(BN.players[97].pendingBonus, again, "Wochenziel: nach dem Neuverbinden nicht noch einmal")
+    -- Automatisches Ziel: 10 % mehr als letzte Woche, mindestens 200, in 100er-Schritten.
+    os.remove(SHARED .. "/community.json")
+    BN.communityCache = nil
+    local g = BN.communityGoal()
+    check(g >= 200 and g % 100 == 0 and readJson(SHARED .. "/community.json").goal == g, "Wochenziel: automatisch festgelegt und geteilt")
+    for _, pid in ipairs({ 97, 98 }) do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    for _, id in ipairs({ "9797", "9798" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+    os.remove(SHARED .. "/community.json")
+    BN.communityCache, BN.communityAnnounced = nil, nil
+    BN.board = { at = -math.huge, list = {} }
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }

@@ -3532,6 +3532,7 @@ COMMANDS = [
     ("/freund &lt;Name&gt;", "Freundesliste: Nachricht, sobald ein Freund irgendwo online kommt (/freund zeigt alle, /freund weg &lt;Name&gt; entfernt)"),
     ("/auftrag", "Fahrauftrag holen: Patient ins Krankenhaus, Kinder zur Schule, Taxi, Lieferung … mit Zeitlimit und XP (/auftrag stop bricht ab)"),
     ("/orte", "Alle Orte (Krankenhaus, Schule, Feuerwache …) auf dieser Map"),
+    ("/ziel", "Wochenziel für alle: zusammen Kilometer sammeln – wer mitfährt, bekommt Bonus-XP"),
     ("/km", "Kilometer dieser Sitzung"), ("/rennen &lt;Strecke&gt;", "Zeitrennen starten (Strecken: /rennen)"),
     ("/rekorde", "Streckenrekorde dieser Map"), ("/vote map &lt;Name&gt;", "Abstimmung über eine andere Map"),
     ("/event", "Läuft gerade ein XP-Event?"), ("/melden &lt;Name&gt; &lt;Grund&gt;", "Meldung an die Admins"),
