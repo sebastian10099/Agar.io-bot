@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.51"
+VERSION="1.52"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2337,19 +2337,29 @@ watch_online() {
 # Chats werden ignoriert. TELEGRAM_COMMANDS=0 schaltet ab.
 watch_telegram() {
     local token chat offset raw cmd reply n=0 total nr pl
-    [[ $(conf_get TELEGRAM_COMMANDS) == 0 ]] && return 0
+    # Nur, wenn ausdruecklich eingeschaltet: getUpdates "verbraucht" die Nachrichten – ein anderes Programm mit
+    # demselben Bot-Token bekaeme sie sonst nicht mehr (aeltere Konfigurationen ohne den Schluessel: aus).
+    [[ $(conf_get TELEGRAM_COMMANDS) == 1 ]] || return 0
     token=$(conf_get TELEGRAM_TOKEN)
     chat=$(conf_get TELEGRAM_CHAT)
     [[ $token =~ ^[0-9]{5,}:[A-Za-z0-9_-]{20,}$ && $chat =~ ^(-?[0-9]+|@[A-Za-z0-9_]{5,})$ ]] || return 0
     command -v python3 >/dev/null || return 0
     offset=$(cat "$STATE_DIR/telegram-offset" 2>/dev/null)
     [[ $offset =~ ^[0-9]+$ ]] || offset=0
+    # Eigener Bot-Name (einmal am Tag per getMe): "/online@AndererBot" in Gruppen ist nicht fuer uns.
+    local botname=""
+    if [[ ! -f $STATE_DIR/telegram-bot || -n $(find "$STATE_DIR/telegram-bot" -mmin +1440 2>/dev/null) ]]; then
+        curl -fsS -m 10 -K <(printf 'url = "https://api.telegram.org/bot%s/getMe"\n' "$token") 2>/dev/null \
+            | grep -o '"username":"[A-Za-z0-9_]*"' | head -n1 | cut -d'"' -f4 >"$STATE_DIR/telegram-bot"
+    fi
+    botname=$(head -c 64 "$STATE_DIR/telegram-bot" 2>/dev/null | tr -cd 'A-Za-z0-9_')
     raw=$(curl -fsS -m 10 -K <(printf 'url = "https://api.telegram.org/bot%s/getUpdates?offset=%s&timeout=0&allowed_updates=%%5B%%22message%%22%%5D"\n' "$token" "$offset") 2>/dev/null) || return 0
     while IFS=$'\t' read -r offset cmd; do
         [[ $offset =~ ^[0-9]+$ ]] || continue
+        # Hoechstens 5 Antworten je Lauf; weitere Befehle bleiben fuer den naechsten Lauf (Offset nicht weiter).
+        if [[ -n $cmd ]] && (( n >= 5 )); then break; fi
         echo "$offset" >"$STATE_DIR/telegram-offset"
         [[ -n $cmd ]] || continue
-        (( n < 5 )) || continue
         n=$(( n + 1 ))
         case $cmd in
             online)
@@ -2388,7 +2398,7 @@ PY
             *) reply="BeamNet-Bot: /online · /top · /rekord · /server" ;;
         esac
         NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$reply" || true
-    done < <(python3 -I -c "$TG_PARSE_PY" "$chat" <<<"$raw" 2>/dev/null)
+    done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" <<<"$raw" 2>/dev/null)
     return 0
 }
 
@@ -2396,6 +2406,7 @@ PY
 read -r -d '' TG_PARSE_PY <<'PY'
 import json, re, sys
 chat = sys.argv[1]
+bot = (sys.argv[2] if len(sys.argv) > 2 else "").lower()
 try:
     data = json.loads(sys.stdin.read())
 except Exception:
@@ -2411,7 +2422,7 @@ for u in data["result"][:100]:
     same = str(c.get("id")) == chat or (chat.startswith("@") and ("@" + str(c.get("username", ""))).lower() == chat.lower())
     text = m.get("text") if isinstance(m.get("text"), str) else ""
     hit = re.match(r"^/([a-z]+)(@[A-Za-z0-9_]+)?(\s|$)", text.strip().lower())
-    if same and hit:
+    if same and hit and not (bot and hit.group(2) and hit.group(2)[1:] != bot):
         word = hit.group(1)
         cmd = {"online": "online", "wer": "online", "top": "top", "bestenliste": "top", "rekord": "rekord",
                "record": "rekord", "server": "server", "servers": "server"}.get(word, "hilfe" if word in ("hilfe", "help", "start") else "")
@@ -3167,9 +3178,12 @@ def weeks_chart(r):
     for e in (r.get("weeks") if isinstance(r.get("weeks"), list) else [])[-12:]:
         if isinstance(e, dict) and isinstance(e.get("week"), str) and re.fullmatch(r"[0-9]{4}-W[0-9]{2}", e["week"]):
             rows.append((e["week"], max(0.0, num(e.get("km")))))
-    if r.get("week") == week and num(r.get("weekKm")) > 0:
-        rows.append((week, num(r.get("weekKm"))))
-    rows = rows[-12:]
+    # Laufende Woche – oder die zuletzt gefahrene, wenn der Spieler seitdem nicht da war (dann ist r["week"] alt).
+    rw = r.get("week")
+    if isinstance(rw, str) and re.fullmatch(r"[0-9]{4}-W[0-9]{2}", rw) and num(r.get("weekKm")) > 0 \
+            and all(wk != rw for wk, _ in rows):
+        rows.append((rw, num(r.get("weekKm"))))
+    rows = sorted(rows)[-12:]
     if len(rows) < 2 or max(v for _, v in rows) <= 0:
         return ""
     top = max(v for _, v in rows)
@@ -3181,7 +3195,7 @@ def weeks_chart(r):
         bars.append(f'<rect x="{x}" y="{h - 16 - bh}" width="{bw}" height="{bh}"><title>KW {int(wk[6:])}: {km(v)}</title></rect>'
                     f'<text x="{x + bw / 2}" y="{h - 3}" text-anchor="middle">{int(wk[6:])}</text>')
     return (f'<section><h2>Kilometer je Woche</h2><svg class=chart viewBox="0 0 {w} {h}" role="img" aria-label="Kilometer je Woche">'
-            f'{"".join(bars)}</svg><p class=small>Kalenderwochen, die letzte ist die laufende Woche.</p></section>')
+            f'{"".join(bars)}</svg><p class=small>Kalenderwochen{", die letzte ist die laufende Woche" if rows[-1][0] == week else ""}.</p></section>')
 servers = [s for s in (load(p) for p in glob.glob(os.path.join(shared, "servers", "*.json")))
            if isinstance(s, dict) and now - num(s.get("updated")) <= 90]
 servers.sort(key=lambda s: num(s.get("port")))

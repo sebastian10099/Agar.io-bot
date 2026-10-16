@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.34"
+BN.VERSION = "1.35"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1090,7 +1090,7 @@ function BN.normalizeSession(s)
     if type(s.vehicles) ~= "table" then s.vehicles = {} end
     if type(s.moved) ~= "table" then s.moved = {} end
     for _, k in ipairs({ "pendingKm", "pendingSeconds", "pendingTop", "pendingBonus", "pendingRaces", "pendingRecords",
-                         "sessionKm", "pendingJobs" }) do
+                         "sessionKm", "pendingJobs", "pendingEventXp" }) do
         s[k] = tonumber(s[k]) or 0
     end
     if type(s.unlocked) ~= "table" then s.unlocked = {} end
@@ -1146,6 +1146,12 @@ end
 
 -- Uebernimmt die seit dem letzten Aufruf gefahrene Strecke (BN.track sammelt sie je Fahrzeug in s.moved). Gezaehlt
 -- wird nur das Fahrzeug mit der groessten Strecke: Lkw mit Anhaenger oder mehrere Fahrzeuge zaehlen nicht mehrfach.
+-- XP-Event: Zusatz-XP genau fuer das, was waehrend des Events gefahren wird (nicht erst beim Speichern berechnet).
+function BN.eventGain(s, xp)
+    local ev = BN.activeEvent and BN.activeEvent()
+    if ev then s.pendingEventXp = (tonumber(s.pendingEventXp) or 0) + xp * (ev.factor - 1) end
+end
+
 local function flushMoved(s)
     if type(s.moved) ~= "table" then s.moved = {} return 0 end
     local best = 0
@@ -1154,6 +1160,7 @@ local function flushMoved(s)
     end
     s.moved = {}
     if best > 0 then
+        BN.eventGain(s, best / 1000 * C.xpPerKm)
         s.pendingKm = s.pendingKm + best / 1000
         s.sessionKm = s.sessionKm + best / 1000
         s.lastMoveAt = BN.now()
@@ -1211,15 +1218,11 @@ function BN.savePlayer(s)
         rec.dayMaps[map] = true
         rec.maps[map] = true
     end
-    -- XP-Event (/event): Zusatz-XP fuer die Strecke und Zeit seit dem letzten Speichern, als Bonus-XP.
-    local ev = BN.activeEvent()
-    if ev then
-        local gained = BN.xpFor(rec.km + s.pendingKm, rec.seconds + s.pendingSeconds) - BN.xpFor(rec.km, rec.seconds)
-        local extra = math.floor(gained * (ev.factor - 1))
-        if extra > 0 then
-            rec.bonusXp = rec.bonusXp + extra
-            rec.eventXp = (tonumber(rec.eventXp) or 0) + extra
-        end
+    -- XP-Event (/event): Zusatz-XP, die waehrend des Events beim Fahren gesammelt wurden (BN.eventGain), als Bonus-XP.
+    local eventExtra = math.floor(s.pendingEventXp or 0)
+    if eventExtra > 0 then
+        rec.bonusXp = rec.bonusXp + eventExtra
+        rec.eventXp = (tonumber(rec.eventXp) or 0) + eventExtra
     end
     rec.km = rec.km + s.pendingKm
     rec.weekKm = rec.weekKm + s.pendingKm
@@ -1276,6 +1279,7 @@ function BN.savePlayer(s)
         return false
     end
     s.record = rec
+    if eventExtra > 0 then s.pendingEventXp = s.pendingEventXp - eventExtra end   -- Bruchteile bleiben
     BN.savedRecently[s.id] = { at = BN.now(), rec = BN.slimRecord(rec) }
     s.pendingKm, s.pendingSeconds, s.pendingTop, s.pendingBonus, s.dirty = 0, 0, 0, 0, false
     s.pendingRaces, s.pendingRecords, s.unlocked, s.challengeReward = 0, 0, {}, nil
@@ -1450,11 +1454,11 @@ function BN.track(pid, vid, pos, tim, vel)
     local v = s.vehicles[vid]
     local counted = 0
     local jump = false
+    local d, dt
     if v then
-        local dt
         if tim and v.tim and tim > v.tim then dt = tim - v.tim else dt = math.max(1, now - v.at) end
         local dx, dy, dz = x - v.x, y - v.y, z - v.z
-        local d = math.sqrt(dx * dx + dy * dy + dz * dz)
+        d = math.sqrt(dx * dx + dy * dy + dz * dz)
         if d >= C.minStepM and dt > 0 and d / dt <= C.maxSpeedMps then
             -- Zaehlt erst ueber flushMoved (nur das Fahrzeug mit der groessten Strecke je Takt)
             counted = d
@@ -1469,8 +1473,16 @@ function BN.track(pid, vid, pos, tim, vel)
         local vx, vy, vz = tonumber(vel[1] or vel.x) or 0, tonumber(vel[2] or vel.y) or 0, tonumber(vel[3] or vel.z) or 0
         speed = math.sqrt(vx * vx + vy * vy + vz * vz)
     end
-    if speed and speed <= C.maxSpeedMps then s.pendingTop = math.max(s.pendingTop, speed * 3.6) end
-    s.vehicles[vid] = { x = x, y = y, z = z, tim = tim, at = now }
+    -- Hoechstgeschwindigkeit nur, wenn sie zur Bewegung passt (hoechstens 10 % ueber der Geschwindigkeit aus der
+    -- Positionsaenderung) und zwei Messungen hintereinander haelt: ein einzelner Physik-Ausreisser ("Kraken") oder ein
+    -- gemeldeter Wert ohne Bewegung zaehlt nicht.
+    local cand
+    if speed and d and dt and dt > 0 and dt <= 5 and not jump then
+        cand = math.min(speed, d / dt * 1.1)
+        local sustained = math.min(cand, v.cand or 0)
+        if sustained <= C.maxSpeedMps then s.pendingTop = math.max(s.pendingTop, sustained * 3.6) end
+    end
+    s.vehicles[vid] = { x = x, y = y, z = z, tim = tim, at = now, cand = cand }
     return counted
 end
 
@@ -1871,9 +1883,13 @@ end
 -- Hoechstens so viele Zwischenzeiten je Lauf.
 local MAX_SPLITS = 60
 
+-- Map als Dateiname (so heissen races/<Map>.json und places/<Map>.json).
+function BN.mapKey(map)
+    return (tostring(map or BN.server.map or "unbekannt"):gsub("[^%w_-]", "_"))
+end
+
 local function racesFile()
-    local map = tostring(BN.server.map or "unbekannt"):gsub("[^%w_-]", "_")
-    return racesDir() .. "/" .. map .. ".json"
+    return racesDir() .. "/" .. BN.mapKey() .. ".json"
 end
 
 function BN.loadTracks()
@@ -2765,15 +2781,25 @@ function BN.trackOfWeek()
     end
     table.sort(all, function(a, b) if a.map ~= b.map then return a.map < b.map end return a.name < b.name end)
     local pick = nil
-    if #all > 0 then
+    -- Die Wahl der Woche gilt die ganze Woche (wer zuerst waehlt, legt sie fest), solange es die Strecke noch gibt –
+    -- neue oder geloeschte Strecken aendern sie nicht mehr mitten in der Woche.
+    local saved = json.decode(readFile(C.sharedDir .. "/weekly-track.json") or "")
+    if type(saved) == "table" and saved.week == wk then
+        for _, t in ipairs(all) do
+            if t.map == saved.map and t.name == saved.name then pick = { map = t.map, name = t.name, week = wk } end
+        end
+    end
+    if not pick and #all > 0 then
+        -- Nur Maps, die gerade ein Server faehrt (sonst ist der Bonus nicht zu holen); ohne Serverliste alle.
+        local running, active = { [BN.mapKey()] = true }, {}
+        for _, st in ipairs(BN.serverList()) do running[BN.mapKey(st.map)] = true end
+        for _, t in ipairs(all) do if running[t.map] then active[#active + 1] = t end end
+        if #active == 0 then active = all end
         local year, num = wk:match("^(%d+)%-W(%d+)$")
         local n = (tonumber(year) or 0) * 53 + (tonumber(num) or 0)
-        pick = all[(n % #all) + 1]
-        pick = { map = pick.map, name = pick.name, week = wk }
-        local saved = json.decode(readFile(C.sharedDir .. "/weekly-track.json") or "")
-        if type(saved) ~= "table" or saved.week ~= wk or saved.map ~= pick.map or saved.name ~= pick.name then
-            writeFileAtomic(C.sharedDir .. "/weekly-track.json", json.encode({ week = wk, map = pick.map, name = pick.name, xp = C.weeklyTrackXp }))
-        end
+        local t = active[(n % #active) + 1]
+        pick = { map = t.map, name = t.name, week = wk }
+        writeFileAtomic(C.sharedDir .. "/weekly-track.json", json.encode({ week = wk, map = pick.map, name = pick.name, xp = C.weeklyTrackXp }))
     end
     BN.weeklyCache = { week = wk, at = now, pick = pick }
     return pick
@@ -2781,7 +2807,7 @@ end
 
 function BN.isTrackOfWeek(name)
     local w = BN.trackOfWeek()
-    return w ~= nil and w.map == tostring(BN.server.map) and w.name == name
+    return w ~= nil and w.map == BN.mapKey() and w.name == name
 end
 
 local function listTracks(pid, s)
@@ -4242,6 +4268,7 @@ local function tickPlayer(pid)
     flushMoved(s)
     if s.lastMoveAt and BN.now() - s.lastMoveAt < MOVING_WINDOW_SEC then
         s.pendingSeconds = s.pendingSeconds + C.tickMs / 1000
+        BN.eventGain(s, C.tickMs / 1000 / 60 * C.xpPerMinute)
     end
     if s.job then BN.jobTick(s) end
     checkProgress(s)
@@ -4336,7 +4363,7 @@ function BN_onPlayerJoin(pid)
         say(pid, "Heute: %s (/aufgabe)", tr(lang, ch.text, ch.goal))
     end
     local w = BN.trackOfWeek()
-    if w and w.map == tostring(BN.server.map) and s.record.weeklyTrackWeek ~= w.week then
+    if w and w.map == BN.mapKey() and s.record.weeklyTrackWeek ~= w.week then
         say(pid, "Strecke der Woche auf dieser Map: %s – %d Bonus-XP (/rennen %s)", w.name, C.weeklyTrackXp, w.name)
     end
     local ev = BN.activeEvent()

@@ -627,6 +627,18 @@ prof=$(cat "$T/web/p/1.html")
 contains "$prof" "<h2>Kilometer je Woche</h2>" "Profilseite: Wochen-Diagramm"
 contains "$prof" "<title>KW 40: 12.5 km</title>" "Profilseite: Woche mit Tooltip"
 [[ $(grep -o "<rect " <<<"$prof" | wc -l) == 3 ]] && pass || fail "Profilseite: drei Wochen (kaputter Eintrag ignoriert)"
+contains "$prof" "die letzte ist die laufende Woche" "Profilseite: laufende Woche beschriftet"
+# Seit Wochen nicht gefahren: die zuletzt gefahrene Woche fehlt nicht, ist aber nicht "die laufende".
+python3 - "$T/root/shared/beamnet/players/1.json" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+r["week"], r["weekKm"] = "2026-W39", 4
+json.dump(r, open(sys.argv[1], "w"))
+PY
+"$TOOL" web run >/dev/null 2>&1
+prof=$(cat "$T/web/p/1.html")
+contains "$prof" "<title>KW 39: 4.0 km</title>" "Profilseite: zuletzt gefahrene Woche im Diagramm"
+lacks "$prof" "laufende Woche" "Profilseite: alte Woche nicht als laufend beschriftet"
 mv "$T/p1.keep" "$T/root/shared/beamnet/players/1.json"
 # Saison-Titel auf der Profilseite (Platz 1-3 der archivierten Saisons, neueste zuerst; kaputte Archive ignoriert).
 mkdir -p "$T/root/shared/beamnet/seasons"
@@ -1516,10 +1528,13 @@ cat >"$T/tg-updates.json" <<'JSON'
  {"update_id":13,"message":{"chat":{"id":-1001234567890},"text":"/rekord"}},
  {"update_id":14,"message":{"chat":{"id":-1001234567890},"text":"hallo zusammen"}},
  {"update_id":15,"message":{"chat":{"id":-1001234567890},"text":"/hilfe"}},
- {"update_id":16,"message":{"chat":{"id":-1001234567890},"text":"/server"}}
+ {"update_id":16,"message":{"chat":{"id":-1001234567890},"text":"/server"}},
+ {"update_id":17,"message":{"chat":{"id":-1001234567890},"text":"/online@AndererBot"}},
+ {"update_id":18,"message":{"chat":{"id":-1001234567890},"text":"/online"}}
 ]}
 JSON
 rm -f "$T/watch/telegram-offset"
+echo "BeamNetBot" >"$T/watch/telegram-bot"
 : >"$T/curl.log"
 "$TOOL" watch >/dev/null 2>&1
 log=$(cat "$T/curl.log")
@@ -1529,10 +1544,11 @@ contains "$log" '"text":"🏁 Bestenliste \(XP\):\\n1\. Vorn – 1000050 XP · 9
 contains "$log" '"text":"🏆 Rekord: [0-9]+ Spieler gleichzeitig \([0-9.]+\) · heute bisher: [0-9]+"' "telegram: /rekord"
 contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server"' "telegram: /hilfe"
 contains "$log" '"text":"🖥️ Server:\\nServer 1 \(gridmap_v2\): ' "telegram: /server"
-[[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat und normaler Text ignoriert)"
-[[ $(cat "$T/watch/telegram-offset") == 17 ]] && pass || fail "telegram: Offset gemerkt"
+[[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat, anderer Bot und normaler Text ignoriert)"
+[[ $(cat "$T/watch/telegram-offset") == 18 ]] && pass || fail "telegram: Offset gemerkt (der 6. Befehl bleibt für den nächsten Lauf)"
+lacks "$log" "getMe" "telegram: Bot-Name nur einmal am Tag abgefragt"
 : >"$T/curl.log"; "$TOOL" watch >/dev/null 2>&1
-contains "$(cat "$T/curl.log")" "getUpdates\\?offset=17" "telegram: naechster Abruf ab dem Offset"
+contains "$(cat "$T/curl.log")" "getUpdates\\?offset=18" "telegram: naechster Abruf ab dem Offset"
 lacks "$(cat "$T/curl.argv")" "ABCDEFghijklmnop" "telegram: Token auch beim Abruf nie auf der Befehlszeile"
 sed -i 's/^TELEGRAM_COMMANDS=.*/TELEGRAM_COMMANDS=0/' "$T/beamnet.conf"
 : >"$T/curl.log"; "$TOOL" watch >/dev/null 2>&1

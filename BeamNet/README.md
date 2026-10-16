@@ -101,7 +101,10 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   Saisonsieger, Tageszusammenfassung, wer online ist) gehen an beide Wege, wenn beide eingetragen sind.
 - **Telegram-Bot mit Befehlen:** Im eingetragenen Chat beantwortet der Bot `/online` (wer fährt wo), `/top`
   (Bestenliste), `/rekord` (Spielerrekord) und `/server` (alle Server mit Map und Spielerzahl), innerhalb einer Minute.
-  Nachrichten aus anderen Chats ignoriert er. Abschalten: `TELEGRAM_COMMANDS=0`. Tipp: in @BotFather mit
+  Nachrichten aus anderen Chats und Befehle an andere Bots (`/online@AndererBot`) ignoriert er, höchstens 5 Antworten
+  je Minute (weitere folgen in der nächsten). An mit `TELEGRAM_COMMANDS=1` (neue Installationen: schon an; ältere
+  Konfigurationen ohne den Eintrag: aus, damit andere Programme mit demselben Bot-Token weiter ihre Nachrichten
+  bekommen). Abschalten: `TELEGRAM_COMMANDS=0`. Tipp: in @BotFather mit
   `/setcommands` die Befehle hinterlegen, dann schlägt Telegram sie vor.
 - **Wer ist online:** alle 60 Minuten (`ONLINE_REPORT=…`, 0 = aus) die Spieler je Server **mit Namen**, z. B.
   „👥 Gerade online: 14 Spieler · Server 1 (italy): Ana, Max, Sebi · Server 3 (utah): …“ – nur, wenn jemand fährt und

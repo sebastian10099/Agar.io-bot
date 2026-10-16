@@ -1842,10 +1842,25 @@ do
     chatLog = {}
     run(500)
     check(not chatContains("Strecke der Woche geschafft", 91), "Strecke der Woche: auch nach Wiederkommen nur einmal")
+    -- Neue Strecken mitten in der Woche aendern die Wahl nicht; Maps ohne laufenden Server werden nicht gewaehlt.
+    writeJson(SHARED .. "/races/aaa_insel.json", { tracks = { a = { finish = { x = 1, y = 1, z = 1 } }, b = { finish = { x = 1, y = 1, z = 1 } } } })
+    BN.weeklyCache = {}
+    local w2 = BN.trackOfWeek()
+    check(w2 and w2.map == "gridmap_v2" and w2.name == "woche", "Strecke der Woche: bleibt die ganze Woche gleich")
+    os.remove(SHARED .. "/weekly-track.json")
+    for i = 1, 6 do
+        BN.weeklyCache = {}
+        clock = clock + 7 * 86400 * (i == 1 and 0 or 1)
+        local w3 = BN.trackOfWeek()
+        check(w3 and w3.map == "gridmap_v2", "Strecke der Woche: nur Maps, die gerade laufen (Woche " .. i .. ")")
+    end
+    clock = clock - 5 * 7 * 86400
+    os.remove(SHARED .. "/races/aaa_insel.json")
     say(90, "/rennen loeschen woche")
     for pid = 90, 91 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
     C.admins = savedAdmins
     BN.weeklyCache = {}
+    os.remove(SHARED .. "/weekly-track.json")
 end
 
 -- --- Gruppenrennen ---------------------------------------------------------------------------------------------
@@ -2321,6 +2336,26 @@ do
     BN.board = { at = -math.huge, list = {} }
 end
 
+-- --- Hoechstgeschwindigkeit: nur passend zur Bewegung und gehalten ---------------------------------------------
+do
+    players[94] = { name = "Raser", ids = { beammp = "9494" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0, vel = { 20, 0, 0 } } } }
+    _G[events.onPlayerJoin](94)
+    local sp = BN.players[94]
+    local function step(v, dx) players[94].vehicles[0].vel = { v, 0, 0 }; move(94, 0, dx); tick(1) end
+    tick(1)
+    for _ = 1, 3 do step(20, 20) end
+    near(BN.totals(sp).topSpeedKmh, 72, 1e-6, "Spitze: normale Fahrt")
+    step(140, 20); step(20, 20)
+    near(BN.totals(sp).topSpeedKmh, 72, 1e-6, "Spitze: gemeldete Geschwindigkeit ohne Bewegung zaehlt nicht")
+    step(40, 40); step(20, 20)
+    near(BN.totals(sp).topSpeedKmh, 72, 1e-6, "Spitze: eine einzelne Messung zaehlt nicht")
+    step(40, 40); step(40, 40)
+    near(BN.totals(sp).topSpeedKmh, 144, 1e-6, "Spitze: gehaltene Geschwindigkeit zaehlt")
+    sp.pendingKm = 0
+    _G[events.onPlayerDisconnect](94); players[94] = nil
+    os.remove(SHARED .. "/players/9494.json"); BN.savedRecently["9494"] = nil
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }
@@ -2382,8 +2417,17 @@ do
     BN.savePlayer(s)
     local rec = readJson(SHARED .. "/players/9801.json")
     check(gained >= 10, "/event: Testfahrt bringt XP (" .. gained .. ")")
-    eq(rec.bonusXp - bonusBefore, gained, "/event: Zusatz-XP = gewonnene XP (Faktor 2)")
-    eq(rec.eventXp, gained, "/event: Event-XP mitgezaehlt")
+    check(math.abs(rec.bonusXp - bonusBefore - gained) <= 1, "/event: Zusatz-XP = gewonnene XP (Faktor 2)")
+    eq(rec.eventXp, rec.bonusXp - bonusBefore, "/event: Event-XP mitgezaehlt")
+    -- Strecke von vor dem Event, die erst waehrend des Events gespeichert wird, bekommt keinen Zuschlag (und umgekehrt).
+    local evKeep = BN.event
+    s.pendingEventXp = 0
+    BN.event = nil
+    s.moved = { [0] = 2000 }
+    BN.flushMoved(s)
+    BN.event = evKeep
+    BN.savePlayer(s)
+    eq(readJson(SHARED .. "/players/9801.json").eventXp, rec.eventXp, "/event: Fahrt vor dem Event bekommt keinen Zuschlag")
     say(98, "/event")
     check(chatContains("XP%-Event läuft: 2%-fache XP", 98), "/event: laufendes Event anzeigen")
     _G[events.onPlayerDisconnect](98)
