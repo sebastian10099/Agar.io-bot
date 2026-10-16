@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.34"
+VERSION="1.35"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1736,6 +1736,7 @@ watch_run() {
     watch_weekly msgs
     watch_season msgs
     watch_daily msgs
+    watch_telegram
     if (( ${#msgs[@]} > 0 )); then
         printf '%s\n' "${msgs[@]}"
         notify "$(printf '%s\n' "${msgs[@]}")"
@@ -1853,6 +1854,130 @@ watch_online() {
     echo "$now" >"$STATE_DIR/online-at"
     echo "$fingerprint" >"$STATE_DIR/online-who"
     return 0
+}
+
+# Telegram-Befehle: neue Nachrichten im eingetragenen Chat (TELEGRAM_CHAT) holen und /online, /top, /rekord,
+# /server, /hilfe beantworten (hoechstens 5 je Lauf; Antwort also innerhalb einer Minute). Nachrichten aus anderen
+# Chats werden ignoriert. TELEGRAM_COMMANDS=0 schaltet ab.
+watch_telegram() {
+    local token chat offset raw cmd reply n=0 total nr pl
+    [[ $(conf_get TELEGRAM_COMMANDS) == 0 ]] && return 0
+    token=$(conf_get TELEGRAM_TOKEN)
+    chat=$(conf_get TELEGRAM_CHAT)
+    [[ $token =~ ^[0-9]{5,}:[A-Za-z0-9_-]{20,}$ && $chat =~ ^(-?[0-9]+|@[A-Za-z0-9_]{5,})$ ]] || return 0
+    command -v python3 >/dev/null || return 0
+    offset=$(cat "$STATE_DIR/telegram-offset" 2>/dev/null)
+    [[ $offset =~ ^[0-9]+$ ]] || offset=0
+    raw=$(curl -fsS -m 10 -K <(printf 'url = "https://api.telegram.org/bot%s/getUpdates?offset=%s&timeout=0&allowed_updates=%%5B%%22message%%22%%5D"\n' "$token" "$offset") 2>/dev/null) || return 0
+    while IFS=$'\t' read -r offset cmd; do
+        [[ $offset =~ ^[0-9]+$ ]] || continue
+        echo "$offset" >"$STATE_DIR/telegram-offset"
+        [[ -n $cmd ]] || continue
+        (( n < 5 )) || continue
+        n=$(( n + 1 ))
+        case $cmd in
+            online)
+                total=0
+                for nr in $(servers); do
+                    pl=$(players_of "$(cfg "$nr" Port)")
+                    [[ $pl =~ ^([0-9]+)/ ]] && total=$(( total + BASH_REMATCH[1] ))
+                done
+                reply="👥 Gerade online: $total Spieler"
+                (( total > 0 )) && reply+=$'\n'"$(online_lines)"
+                ;;
+            server)
+                reply="🖥️ Server:"
+                for nr in $(servers); do
+                    reply+=$'\n'"Server $nr ($(map_short "$(cfg "$nr" Map)")): $(players_of "$(cfg "$nr" Port)")"
+                done
+                ;;
+            top) reply=$(telegram_top) ;;
+            rekord)
+                reply=$(python3 -I - "$SHARED/peak.json" <<'PY' 2>/dev/null
+import json, os, stat, sys, time
+try:
+    fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise OSError
+        p = json.loads(f.read(1 << 20).decode("utf-8", "replace"))
+    best, at, today = int(p.get("allTime", 0)), p.get("allTimeAt", 0), int(p.get("today", 0))
+except Exception:
+    print("Noch kein Spielerrekord gespeichert."); sys.exit(0)
+when = time.strftime("%d.%m.%Y", time.localtime(at)) if isinstance(at, (int, float)) and 0 < at < 4e9 else "?"
+print(f"🏆 Rekord: {best} Spieler gleichzeitig ({when}) · heute bisher: {today}")
+PY
+)
+                ;;
+            *) reply="BeamNet-Bot: /online · /top · /rekord · /server" ;;
+        esac
+        NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$reply" || true
+    done < <(python3 -I -c "$TG_PARSE_PY" "$chat" <<<"$raw" 2>/dev/null)
+    return 0
+}
+
+# Antwort von getUpdates -> "naechster Offset<TAB>Befehl" je Nachricht (Befehl leer, wenn nicht fuer uns).
+read -r -d '' TG_PARSE_PY <<'PY'
+import json, re, sys
+chat = sys.argv[1]
+try:
+    data = json.loads(sys.stdin.read())
+except Exception:
+    sys.exit(0)
+if not isinstance(data, dict) or data.get("ok") is not True or not isinstance(data.get("result"), list):
+    sys.exit(0)
+for u in data["result"][:100]:
+    if not isinstance(u, dict) or not isinstance(u.get("update_id"), int):
+        continue
+    nxt, cmd = u["update_id"] + 1, ""
+    m = u.get("message") if isinstance(u.get("message"), dict) else {}
+    c = m.get("chat") if isinstance(m.get("chat"), dict) else {}
+    same = str(c.get("id")) == chat or (chat.startswith("@") and ("@" + str(c.get("username", ""))).lower() == chat.lower())
+    text = m.get("text") if isinstance(m.get("text"), str) else ""
+    hit = re.match(r"^/([a-z]+)(@[A-Za-z0-9_]+)?(\s|$)", text.strip().lower())
+    if same and hit:
+        word = hit.group(1)
+        cmd = {"online": "online", "wer": "online", "top": "top", "bestenliste": "top", "rekord": "rekord",
+               "record": "rekord", "server": "server", "servers": "server"}.get(word, "hilfe" if word in ("hilfe", "help", "start") else "")
+    print(f"{nxt}\t{cmd}")
+PY
+
+
+# Top 5 nach XP fuer Telegram (aus dem Bestenlisten-Index, sonst nichts).
+telegram_top() {
+    python3 -I - "$SHARED/players-index.tsv" "$SHARED/config.json" <<'PY' 2>/dev/null || echo "Noch keine Bestenliste."
+import json, os, stat, sys
+def read(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise OSError
+        return f.read(64 << 20).decode("utf-8", "replace")
+try:
+    cfg = json.loads(read(sys.argv[2]))
+except Exception:
+    cfg = {}
+cfg = cfg if isinstance(cfg, dict) else {}
+def n(v, d):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else d
+per_km, per_min = n(cfg.get("xpPerKm"), 10), n(cfg.get("xpPerMinute"), 1)
+rows = []
+for line in read(sys.argv[1]).splitlines()[1:]:
+    f = line.split("\t")
+    if len(f) != 13:
+        continue
+    try:
+        km, sec, bonus = float(f[2] or 0), float(f[3] or 0), float(f[4] or 0)
+    except ValueError:
+        continue
+    rows.append((int(km * per_km + sec / 60 * per_min) + int(bonus), km, f[1][:32]))
+rows.sort(key=lambda r: (-r[0], r[2]))
+if not rows:
+    print("Noch keine Bestenliste."); sys.exit(0)
+print("🏁 Bestenliste (XP):")
+for i, (xp, km, name) in enumerate(rows[:5], 1):
+    print(f"{i}. {name} – {xp} XP · {km:.0f} km")
+PY
 }
 
 # Montags einmal die Wochensieger der Vorwoche nach Discord (braucht python3 und BeamNetCore-Daten).
@@ -2069,6 +2194,8 @@ DISCORD_WEBHOOK=
 # Gruppen haben eine negative ID; Kanaele gehen auch als @Kanalname. Leer = kein Telegram.
 TELEGRAM_TOKEN=
 TELEGRAM_CHAT=
+# Der Bot beantwortet im eingetragenen Chat /online, /top, /rekord und /server (innerhalb einer Minute). 0 = aus.
+TELEGRAM_COMMANDS=1
 # "Wer ist online" (Spieler je Server mit Namen) alle N Minuten an Discord/Telegram, wenn jemand faehrt und sich die
 # Runde geaendert hat. 0 = aus.
 ONLINE_REPORT=60

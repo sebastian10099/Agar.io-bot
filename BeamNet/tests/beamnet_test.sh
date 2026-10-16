@@ -293,6 +293,7 @@ while (( $# )); do
 done
 echo "$line" >>"$FAKE/curl.log"
 [[ -f $FAKE/curl.fail ]] && exit 22
+[[ $line == *getUpdates* && -f $FAKE/tg-updates.json ]] && cat "$FAKE/tg-updates.json"
 exit 0
 EOF
 chmod +x "$T/bin/curl"
@@ -872,7 +873,7 @@ rm -f "$T/watch/daily-$todaydate" "$P"/1.json
 out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
 lacks "$out" "Heute im Netzwerk" "daily: ohne Fahrer keine Meldung"
 [[ ! -f $T/watch/daily-$todaydate ]] && pass || fail "daily: ohne Fahrer nicht als erledigt markiert (spaetere Fahrer zaehlen noch)"
-[[ ! -s $T/curl.log ]] && pass || fail "daily: ohne Fahrer nichts an Discord"
+lacks "$(cat "$T/curl.log")" "sendMessage|discord.com" "daily: ohne Fahrer nichts an Discord/Telegram"
 # DAILY_SUMMARY=0 schaltet ab.
 rm -f "$T/watch/daily-$todaydate"
 echo "{\"name\":\"Sebi\",\"day\":$today,\"dayKm\":40.2}" >"$P/1.json"
@@ -1253,6 +1254,42 @@ out=$("$TOOL" watch test 2>&1); rc=$?
 [[ $rc -ne 0 ]] && pass || fail "watch test: falscher Token meldet Fehler"
 contains "$out" "sieht nicht wie ein Bot-Token" "watch test: Hinweis auf falschen Token"
 [[ ! -s $T/curl.log ]] && pass || fail "watch test: mit falschem Token wird nichts gesendet"
+# Telegram-Befehle: nur aus dem eingetragenen Chat, Antworten per sendMessage, Offset gemerkt.
+sed -i 's/^TELEGRAM_TOKEN=.*/TELEGRAM_TOKEN=123456:ABCDEFghijklmnop_1234567890/; s/^TELEGRAM_CHAT=.*/TELEGRAM_CHAT=-1001234567890/; s/^ONLINE_REPORT=.*/ONLINE_REPORT=0/' "$T/beamnet.conf"
+sed -i 's|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=|' "$T/beamnet.conf"
+# (Index und Rekord schreibt der Waechter im selben Lauf selbst – aus den Spielerdateien bzw. den Lebenszeichen.)
+echo '{"id":"9001","name":"Vorn","km":99999,"seconds":3600}' >"$T/root/shared/beamnet/players/9001.json"
+cat >"$T/tg-updates.json" <<'JSON'
+{"ok":true,"result":[
+ {"update_id":10,"message":{"chat":{"id":-1001234567890},"text":"/online"}},
+ {"update_id":11,"message":{"chat":{"id":555},"text":"/top"}},
+ {"update_id":12,"message":{"chat":{"id":-1001234567890},"text":"/top@BeamNetBot"}},
+ {"update_id":13,"message":{"chat":{"id":-1001234567890},"text":"/rekord"}},
+ {"update_id":14,"message":{"chat":{"id":-1001234567890},"text":"hallo zusammen"}},
+ {"update_id":15,"message":{"chat":{"id":-1001234567890},"text":"/hilfe"}},
+ {"update_id":16,"message":{"chat":{"id":-1001234567890},"text":"/server"}}
+]}
+JSON
+rm -f "$T/watch/telegram-offset"
+: >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+log=$(cat "$T/curl.log")
+contains "$log" "getUpdates\\?offset=0" "telegram: holt neue Nachrichten"
+contains "$log" '"text":"👥 Gerade online: [0-9]+ Spieler' "telegram: /online beantwortet"
+contains "$log" '"text":"🏁 Bestenliste \(XP\):\\n1\. Vorn – 1000050 XP · 99999 km"' "telegram: /top aus dem Index"
+contains "$log" '"text":"🏆 Rekord: [0-9]+ Spieler gleichzeitig \([0-9.]+\) · heute bisher: [0-9]+"' "telegram: /rekord"
+contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server"' "telegram: /hilfe"
+contains "$log" '"text":"🖥️ Server:\\nServer 1 \(gridmap_v2\): ' "telegram: /server"
+[[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat und normaler Text ignoriert)"
+[[ $(cat "$T/watch/telegram-offset") == 17 ]] && pass || fail "telegram: Offset gemerkt"
+: >"$T/curl.log"; "$TOOL" watch >/dev/null 2>&1
+contains "$(cat "$T/curl.log")" "getUpdates\\?offset=17" "telegram: naechster Abruf ab dem Offset"
+lacks "$(cat "$T/curl.argv")" "ABCDEFghijklmnop" "telegram: Token auch beim Abruf nie auf der Befehlszeile"
+sed -i 's/^TELEGRAM_COMMANDS=.*/TELEGRAM_COMMANDS=0/' "$T/beamnet.conf"
+: >"$T/curl.log"; "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/curl.log")" "getUpdates" "telegram: TELEGRAM_COMMANDS=0 schaltet ab"
+sed -i 's/^TELEGRAM_COMMANDS=.*/TELEGRAM_COMMANDS=1/' "$T/beamnet.conf"
+rm -f "$T/tg-updates.json" "$T/root/shared/beamnet/players/9001.json"
 sed -i 's/^TELEGRAM_TOKEN=.*/TELEGRAM_TOKEN=/; s/^TELEGRAM_CHAT=.*/TELEGRAM_CHAT=/; s/^ONLINE_REPORT=.*/ONLINE_REPORT=0/; s|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/abc|' "$T/beamnet.conf"
 contains "$("$TOOL" watch status 2>&1)" "^Wer-ist-online-Meldung: aus$" "watch status: Wer-ist-online aus"
 

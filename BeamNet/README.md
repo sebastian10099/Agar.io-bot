@@ -87,6 +87,10 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   `https://api.telegram.org/bot<TOKEN>/getUpdates` im Browser öffnen → `"chat":{"id":…}` als `TELEGRAM_CHAT=`
   (Gruppen haben eine negative ID, Kanäle gehen auch als `@Kanalname`). Alle Meldungen (Ausfälle, Rekorde, Wochen- und
   Saisonsieger, Tageszusammenfassung, wer online ist) gehen an beide Wege, wenn beide eingetragen sind.
+- **Telegram-Bot mit Befehlen:** Im eingetragenen Chat beantwortet der Bot `/online` (wer fährt wo), `/top`
+  (Bestenliste), `/rekord` (Spielerrekord) und `/server` (alle Server mit Map und Spielerzahl), innerhalb einer Minute.
+  Nachrichten aus anderen Chats ignoriert er. Abschalten: `TELEGRAM_COMMANDS=0`. Tipp: in @BotFather mit
+  `/setcommands` die Befehle hinterlegen, dann schlägt Telegram sie vor.
 - **Wer ist online:** alle 60 Minuten (`ONLINE_REPORT=…`, 0 = aus) die Spieler je Server **mit Namen**, z. B.
   „👥 Gerade online: 14 Spieler · Server 1 (italy): Ana, Max, Sebi · Server 3 (utah): …“ – nur, wenn jemand fährt und
   sich die Runde seit der letzten Meldung geändert hat. Dieselbe Übersicht im Terminal: `beamnet players`.

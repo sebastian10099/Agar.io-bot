@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.34 / Plugin 1.19)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.35 / Plugin 1.19)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -28,8 +28,9 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
         es nur eine Meldung, denn dann können die Spieler weiterfahren (Werkzeug 1.22).
 
 **B. Community, Discord und Telegram**
-11. [ ] Telegram-Bot antwortet auf `/online`, `/top`, `/rekord` und `/server` (der Wächter liest neue Nachrichten jede
-        Minute).
+11. [x] Telegram-Bot antwortet im eingetragenen Chat auf `/online`, `/top`, `/rekord`, `/server` und `/hilfe`.
+        Der Wächter holt jede Minute neue Nachrichten, beantwortet höchstens 5 pro Lauf und ignoriert fremde Chats
+        (Werkzeug 1.35).
 12. [ ] Discord-Meldungen als Embeds (farbig, mit Feldern) statt reinem Text.
 13. [x] Statusseite: Diagramm „Spieler je Stunde“ über die letzten 7 Tage, mit Tooltip je Stunde und
         Wochenspitze, ohne Skripte, hell/dunkel, fürs Handy. Steht auch in `api.json` (`peak.hours`, Werkzeug 1.23).
