@@ -16,10 +16,12 @@ xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
 touch "$DEST"
 echo "App liegt auf dem Schreibtisch: $DEST"
 
-# Anthropic-CLI fuer "Mit Claude anmelden" (einmalig, optional)
-if command -v ant >/dev/null 2>&1 || [ -x /opt/homebrew/bin/ant ] || [ -x /usr/local/bin/ant ]; then
+# Anthropic-CLI fuer "Mit Claude anmelden" (einmalig). Mit Homebrew per brew,
+# sonst direkt als Download von GitHub nach ~/NewTokenBot/bin/ant.
+ANT_DIR="$HOME/NewTokenBot/bin"
+if command -v ant >/dev/null 2>&1 || [ -x /opt/homebrew/bin/ant ] || [ -x /usr/local/bin/ant ] || [ -x "$ANT_DIR/ant" ]; then
   echo "Anthropic-CLI (ant) ist da."
-elif command -v brew >/dev/null 2>&1; then
+elif command -v brew >/dev/null 2>&1 && [ -z "${NEW_TOKEN_BOT_ANT_ZIP:-}" ]; then
   echo "Installiere die Anthropic-CLI (ant) fuer die Claude-Anmeldung ..."
   if brew install anthropics/tap/ant < /dev/null; then
     xattr -d com.apple.quarantine "$(brew --prefix)/bin/ant" 2>/dev/null || true
@@ -28,7 +30,21 @@ elif command -v brew >/dev/null 2>&1; then
     echo "ant konnte nicht installiert werden - 'Mit Claude anmelden' zeigt den Befehl spaeter noch einmal."
   fi
 else
-  echo "Hinweis: Homebrew fehlt. Fuer 'Mit Claude anmelden' spaeter: https://brew.sh  und dann  brew install anthropics/tap/ant"
+  echo "Lade die Anthropic-CLI (ant) fuer die Claude-Anmeldung ..."
+  ARCH="$(uname -m)"; case "$ARCH" in arm64|aarch64) ARCH=arm64 ;; *) ARCH=amd64 ;; esac
+  VER="$(curl -fsSL -o /dev/null -w '%{redirect_url}' https://github.com/anthropics/anthropic-cli/releases/latest 2>/dev/null | sed -n 's#.*/tag/v##p')"
+  [ -n "$VER" ] || VER="1.42.0"
+  ZIP="${NEW_TOKEN_BOT_ANT_ZIP:-https://github.com/anthropics/anthropic-cli/releases/download/v$VER/ant_${VER}_macos_${ARCH}.zip}"
+  TMPZ="${TMPDIR:-/tmp}/ant-download-$$.zip"
+  mkdir -p "$ANT_DIR"
+  if curl -fsSL -o "$TMPZ" "$ZIP" && unzip -q -o "$TMPZ" ant -d "$ANT_DIR"; then
+    chmod +x "$ANT_DIR/ant"; xattr -d com.apple.quarantine "$ANT_DIR/ant" 2>/dev/null || true
+    echo "ant $VER liegt in $ANT_DIR/ant"
+    "$ANT_DIR/ant" --version 2>/dev/null || echo "(Hinweis: ant liess sich hier nicht starten - die App versucht es beim Anmelden erneut)"
+  else
+    echo "Download von $ZIP fehlgeschlagen - 'Mit Claude anmelden' zeigt spaeter den Befehl zum Nachholen."
+  fi
+  rm -f "$TMPZ"
 fi
 
 /usr/bin/open -R "$DEST" 2>/dev/null || true

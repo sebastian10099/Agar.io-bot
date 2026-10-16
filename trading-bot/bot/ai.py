@@ -105,7 +105,8 @@ def ant_path() -> str:
     found = shutil.which("ant")
     if found:
         return found
-    for candidate in ("/opt/homebrew/bin/ant", "/usr/local/bin/ant"):   # launchd/.command shells have a short PATH
+    for candidate in ("/opt/homebrew/bin/ant", "/usr/local/bin/ant",     # launchd/.command shells have a short PATH
+                      os.path.expanduser("~/NewTokenBot/bin/ant")):     # install-app.sh without Homebrew
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
     return ""

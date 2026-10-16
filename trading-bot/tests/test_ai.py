@@ -126,3 +126,16 @@ class LoginTests(unittest.TestCase):
                 os.makedirs(os.path.join(d, "credentials")); open(os.path.join(d, "credentials", "default.json"), "w").write("{}")
                 self.assertTrue(ai.has_profile()); self.assertEqual(ai.credential_source(), "profile")
                 self.assertTrue(ai.start_login(runner=calls.append)["already"]); self.assertEqual(len(calls), 1)
+
+
+class AntPathTests(unittest.TestCase):
+    def test_ant_in_newtokenbot_bin_is_found(self):
+        import os, tempfile
+        from unittest import mock
+        from bot import ai
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"HOME": d, "PATH": "/nonexistent"}):
+            self.assertEqual(ai.ant_path(), "")
+            os.makedirs(os.path.join(d, "NewTokenBot", "bin"))
+            exe = os.path.join(d, "NewTokenBot", "bin", "ant")
+            open(exe, "w").write("#!/bin/sh\n"); os.chmod(exe, 0o755)
+            self.assertEqual(ai.ant_path(), exe)

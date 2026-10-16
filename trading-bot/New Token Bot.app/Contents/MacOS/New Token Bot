@@ -39,7 +39,7 @@ fi
 
 cd "$PROJECT" || exit 1
 : > "$LOG"
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"   # Finder-Start hat einen kurzen PATH; ant/brew liegen hier
+export PATH="$HOME/NewTokenBot/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"   # Finder-Start hat einen kurzen PATH; ant liegt hier
 # NEW_TOKEN_BOT_ARGS="--demo" startet den Demo-Markt statt des echten
 # shellcheck disable=SC2086
 nohup /bin/bash ./launch.sh --no-open --port "$PORT" ${NEW_TOKEN_BOT_ARGS:-} >> "$LOG" 2>&1 < /dev/null &

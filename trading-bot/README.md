@@ -30,8 +30,8 @@ rechts. Läuft der Bot schon, öffnet ein Doppelklick nur die Seite. Das Log
 liegt in `~/Library/Application Support/NewTokenBot/bot.log`; startet der Bot
 nicht, zeigt die App die letzten Logzeilen in einem Dialog. `install-app.sh`
 kopiert die App auf den Schreibtisch, merkt sich den Projektordner und
-installiert, falls Homebrew da ist, die Anthropic-CLI für „Mit Claude
-anmelden“. Das Icon entsteht mit `python3 tools/make_icon.py` ohne
+installiert die Anthropic-CLI für „Mit Claude anmelden“ – per Homebrew,
+oder ohne Homebrew als Download nach `~/NewTokenBot/bin/ant`. Das Icon entsteht mit `python3 tools/make_icon.py` ohne
 Zusatzpakete.
 | Terminal | `python3 -m bot.main` bzw. `python3 -m bot.main --demo` |
 
