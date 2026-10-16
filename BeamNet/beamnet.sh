@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.62"
+VERSION="1.63"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1913,6 +1913,74 @@ PY
 
 # Moderation an Discord/Telegram: neue Zeilen aus modlog.jsonl (Bann, Kick, Stummschaltung, Verwarnung). Position
 # im Zustand (Inode + Byte); beim ersten Lauf ab dem Ende (keine alte Geschichte). MODLOG_NOTIFY=0 schaltet ab.
+# Neue Streckenrekorde sofort melden (RECORD_NOTIFY=0 schaltet ab). Der erste Lauf merkt sich nur den Stand.
+watch_records() {
+    local -n recout=$1
+    local line
+    [[ $(conf_get RECORD_NOTIFY) == 0 ]] && return 0
+    [[ -d $SHARED/races && ! -L $SHARED/races && ! -L $SHARED ]] || return 0
+    while IFS= read -r line; do
+        [[ -n $line ]] && recout+=("$line")
+    done < <(python3 -I - "$SHARED/races" "$STATE_DIR/records.json" <<'PY' 2>/dev/null
+import json, os, re, stat, sys
+races, state = sys.argv[1], sys.argv[2]
+OK = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+def load(name):
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
+    except OSError:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                return None
+            return json.loads(f.read(4 << 20).decode("utf-8", "replace"))
+    except Exception:
+        return None
+def c(v, n=32):
+    return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(v)).split())[:n] or "?"
+def t(v):
+    m, s = divmod(float(v), 60)
+    return f"{int(m)}:{s:04.1f}"
+dfd = os.open(races, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+best = {}
+for name in sorted(os.listdir(dfd)):
+    if not name.endswith(".json") or not OK.match(name[:-5]):
+        continue
+    data = load(name)
+    tracks = data.get("tracks") if isinstance(data, dict) else None
+    for tn, tr in (tracks.items() if isinstance(tracks, dict) else []):
+        recs = tr.get("records") if isinstance(tr, dict) else None
+        b = recs[0] if isinstance(recs, list) and recs and isinstance(recs[0], dict) else None
+        tm = b.get("time") if b else None
+        if OK.match(str(tn)) and isinstance(tm, (int, float)) and not isinstance(tm, bool) and 0 < tm < 1e6:
+            best[name[:-5] + "/" + str(tn)] = {"time": tm, "name": c(b.get("name"))}
+try:
+    old = json.load(open(state))
+    first = not isinstance(old, dict)
+except Exception:
+    old, first = {}, True
+MAPS = {"gridmap_v2": "Grid Map", "west_coast_usa": "West Coast, USA", "east_coast_usa": "East Coast, USA",
+        "italy": "Italy", "utah": "Utah, USA", "jungle_rock_island": "Jungle Rock Island", "industrial": "Industrial",
+        "small_island": "Small Island", "johnson_valley": "Johnson Valley", "automation_test_track": "Automation Test Track"}
+if not first:
+    for key, b in sorted(best.items()):
+        o = old.get(key) if isinstance(old.get(key), dict) else None
+        if o and isinstance(o.get("time"), (int, float)) and b["time"] < o["time"] - 1e-6:
+            m, tn = key.split("/", 1)
+            prev = f" (vorher {c(o.get('name'))} {t(o['time'])})" if o.get("name") != b["name"] else f" (vorher {t(o['time'])})"
+            print(f"🏆 Neuer Streckenrekord auf {tn} ({MAPS.get(m, m)}): {b['name']} {t(b['time'])}{prev}")
+        elif not o:
+            m, tn = key.split("/", 1)
+            print(f"🏁 Erste Zeit auf {tn} ({MAPS.get(m, m)}): {b['name']} {t(b['time'])} – wer ist schneller?")
+with open(state + ".tmp", "w") as f:
+    json.dump(best, f)
+os.replace(state + ".tmp", state)
+PY
+)
+    return 0
+}
+
 # Wiederholungstaeter: einmal je Stunde das Moderationsprotokoll der letzten 7 Tage zaehlen. Wer mindestens REPEAT_WARN
 # Mal (Standard 3) gemeldet, stummgeschaltet, verwarnt oder gekickt wurde, wird den Admins einmal je Woche genannt.
 watch_repeat() {
@@ -2232,6 +2300,7 @@ watch_run() {
     watch_reports msgs
     watch_modlog msgs
     watch_repeat msgs
+    watch_records msgs
     for nr in $(servers); do
         unit_exists "$nr" || continue
         if unit_active "$nr"; then state=up; else state=down; fi
@@ -2919,6 +2988,8 @@ SLOTS_HOUR=6
 # Haengt ein Server (Dienst laeuft, aber seit HANG_MIN Minuten kein Lebenszeichen von BeamNetCore)? Antwortet er auch
 # auf seinem Port nicht mehr, startet ihn der Waechter mit AUTO_RESTART=1 neu; sonst nur Meldung. 0 = aus.
 HANG_MIN=3
+# Neue Streckenrekorde sofort an Discord/Telegram melden: 1 = an, 0 = aus.
+RECORD_NOTIFY=1
 # Wiederholungstaeter: wer in 7 Tagen so oft gemeldet, stummgeschaltet, verwarnt oder gekickt wurde, wird gemeldet. 0 = aus.
 REPEAT_WARN=3
 EOF

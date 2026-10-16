@@ -114,6 +114,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
 - Er meldet **Moderation** an Discord/Telegram: Bann (mit Dauer), Kick, Stummschaltung (auch automatisch wegen Spam)
   und Verwarnung, jeweils mit Admin, Grund und Server; dazu `/melden` aus dem Spiel. Abschalten: `MODLOG_NOTIFY=0`.
+- **Neue Streckenrekorde sofort:** „🏆 Neuer Streckenrekord auf sprint (Italy): Sebi 0:49.1 (vorher Max 0:51.0)“, dazu
+  „🏁 Erste Zeit auf …“ für neue Strecken. Abschalten: `RECORD_NOTIFY=0`.
 - **Wiederholungstäter:** Wer in 7 Tagen mindestens 3-mal gemeldet, stummgeschaltet, verwarnt oder gekickt wurde, wird
   den Admins einmal je Woche genannt („⚠️ Wiederholt aufgefallen: … – 2× gemeldet · 1× stumm (Wortfilter)“).
   Schwelle: `REPEAT_WARN=3` (0 = aus).

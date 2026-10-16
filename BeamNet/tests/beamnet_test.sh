@@ -1778,6 +1778,21 @@ contains "$out" "⚠️ Wiederholt aufgefallen: Stoerer – 2× gemeldet · 1× 
 lacks "$out" "aufgefallen: Brav" "repeat: alte Vorfälle zählen nicht"
 rm -f "$T/watch/repeat-at"
 lacks "$("$TOOL" watch 2>&1)" "aufgefallen: Stoerer" "repeat: nur einmal je Woche"
+# Neue Streckenrekorde: erster Lauf merkt sich nur den Stand, danach Meldung bei neuem Rekord und neuer Strecke.
+mkdir -p "$S/races"
+echo '{"tracks":{"sprint":{"records":[{"name":"Max","time":51.0}]}}}' >"$S/races/italy.json"
+rm -f "$T/watch/records.json"
+lacks "$("$TOOL" watch 2>&1)" "Streckenrekord" "records: erster Lauf meldet nichts"
+echo '{"tracks":{"sprint":{"records":[{"name":"Sebi\u001b[31m","time":49.06},{"name":"Max","time":51.0}]},"neu":{"records":[{"name":"Ana","time":80}]}}}' >"$S/races/italy.json"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🏆 Neuer Streckenrekord auf sprint \\(Italy\\): Sebi \\[31m 0:49\\.1 \\(vorher Max 0:51\\.0\\)" "records: neuer Rekord gemeldet (ohne Steuerzeichen)"
+contains "$out" "🏁 Erste Zeit auf neu \\(Italy\\): Ana 1:20\\.0 – wer ist schneller\\?" "records: neue Strecke gemeldet"
+lacks "$("$TOOL" watch 2>&1)" "Streckenrekord|Erste Zeit" "records: nur einmal"
+sed -i 's/^RECORD_NOTIFY=.*/RECORD_NOTIFY=0/' "$T/beamnet.conf"
+echo '{"tracks":{"sprint":{"records":[{"name":"Zoe","time":40}]},"neu":{"records":[{"name":"Ana","time":80}]}}}' >"$S/races/italy.json"
+lacks "$("$TOOL" watch 2>&1)" "Streckenrekord" "records: RECORD_NOTIFY=0 schaltet ab"
+sed -i 's/^RECORD_NOTIFY=.*/RECORD_NOTIFY=1/' "$T/beamnet.conf"
+echo '{"tracks":{}}' >"$S/races/italy.json"
 # Rotation: doppelte Maps und "all" werden abgelehnt.
 contains "$("$TOOL" rotation 5 italy utah italy 2>&1)" "Jede Map nur einmal" "rotation: doppelte Maps abgelehnt"
 contains "$("$TOOL" rotation all italy utah 2>&1)" "eine Server-Nummer" "rotation: nur eine Server-Nummer"
