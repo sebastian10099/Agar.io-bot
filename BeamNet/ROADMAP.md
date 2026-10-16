@@ -1,20 +1,22 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.20 / Plugin 1.12)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.21 / Plugin 1.13)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
 
 **A. Stabil bei vielen Spielern**
-1. [ ] Bestenliste aus einem Index (`players/index.jsonl`) statt aus allen Spielerdateien. Heute kostet sie bei
-       3000 Dateien 0,4 s, bei 10 000 Dateien 1,4 s, je Server alle 60 s.
-2. [ ] Wochen- und Saisonwertung aus demselben Index.
+1. [x] Bestenliste aus einem Index (`players-index.tsv`, schreibt der Wächter jede Minute) statt aus allen
+       Spielerdateien: bei 10 000 Spielern 0,07 s statt 1,4 s je Liste. Ohne frischen Index liest das Plugin wie
+       früher alle Dateien (Plugin 1.13, Werkzeug 1.21).
+2. [x] Wochen- und Saisonwertung aus demselben Index (alle drei Listen teilen sich eine Lesung pro Minute).
 3. [ ] Gestaffeltes Speichern: nicht alle Spieler in derselben Sekunde, sondern verteilt über die Minute.
 4. [ ] Lebenszeichen nur schreiben, wenn sich etwas geändert hat, spätestens alle 60 s. Das bedeutet weniger
        Schreibzugriffe bei 12 Servern.
 5. [ ] Wächter misst CPU und RAM je Server (systemd) und warnt bei Dauerlast über 90 %.
-6. [ ] „Server voll“-Hilfe: Wer einem vollen Server beitreten will, bekommt im Chat den freien Server mit derselben
-       Map genannt. Bei 90 % Auslastung des ganzen Netzwerks geht eine Meldung an Discord/Telegram.
+6. [ ] „Server voll“-Hilfe: Ein voller Server lässt niemanden mehr herein, das Plugin sieht diese Spieler also nicht.
+       Machbar ist: `/server` und Statusseite markieren freie Server mit derselben Map, und bei 90 % Auslastung des
+       ganzen Netzwerks geht eine Meldung an Discord/Telegram („Server 7 hat noch Platz“).
 7. [ ] Tägliche Sicherung des gemeinsamen Datenordners, 7 Tage aufbewahrt, mit `beamnet restore <datum>`.
 8. [ ] Der doctor prüft die Größe von Server.log und Journal und richtet eine Protokoll-Rotation ein.
 9. [ ] Lasttest in der CI mit echtem BeamMP-Server und vielen simulierten Spielerdateien.

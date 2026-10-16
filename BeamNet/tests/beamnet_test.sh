@@ -887,6 +887,30 @@ python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["peak"]["a
 rm -f "$S"/servers/*.json
 cp "$T/conf.peak" "$T/beamnet.conf"
 
+# --- Bestenlisten-Index (watch_index) -------------------------------------------------------------------------------
+P="$T/root/shared/beamnet/players"
+mkdir -p "$P"
+printf '{"id":"901","name":"Tab\\tName\\nZeile","km":12.5,"seconds":60,"bonusXp":5,"week":"2025-W41","weekKm":3,"month":"2025-10","monthXp":40}' >"$P/901.json"
+echo '{"id":"902","name":"Alt","km":1,"seconds":0,"xp":500,"month":"2025-10","monthStartXp":430}' >"$P/902.json"
+echo '{"id":"../böse","name":"Pfad","km":1}' >"$P/903.json"
+echo '{"id":"904","name":"Woche","km":1,"week":"x\ty"}' >"$P/904.json"
+echo '{kaputt' >"$P/905.json"
+echo '{"id":"906","name":"Fremd","km":99999}' >"$T/fremd.json"; ln -sf "$T/fremd.json" "$P/906.json"
+"$TOOL" watch >/dev/null 2>&1
+idx=$(cat "$T/root/shared/beamnet/players-index.tsv" 2>/dev/null)
+contains "$idx" "^# beamnet-index 1 [0-9]+$" "index: Kopfzeile mit Zeitstempel"
+contains "$idx" $'^901\tTabNameZeile\t12\.5\t60\t5\t2025-W41\t3\t\t\t2025-10\t40\t\t$' "index: Zeile ohne Tabulatoren und Umbrueche im Namen"
+contains "$idx" $'^902\tAlt\t1\t0\t\t\t\t\t\t2025-10\t70\t\t$' "index: Saison-XP fuer Datensaetze von 1.8"
+contains "$idx" $'^904\tWoche\t1\t\t\t\t' "index: ungueltige Wochenangabe leer"
+lacks "$idx" "Pfad|Fremd|99999|kaputt" "index: unsichere IDs, Symlinks und kaputte Dateien fehlen"
+[[ $(stat -c %a "$T/root/shared/beamnet/players-index.tsv") == 644 ]] && pass || fail "index: lesbar fuer das Plugin (644)"
+python3 - "$T/root/shared/beamnet/players-index.tsv" <<'PY' && pass || fail "index: jede Zeile hat genau 13 Felder"
+import sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()[1:]
+sys.exit(0 if lines and all(len(l.split("\t")) == 13 for l in lines) else 1)
+PY
+rm -f "$P"/90[1-6].json "$T/fremd.json"
+
 # --- Telegram und "Wer ist online" ----------------------------------------------------------------------------------
 sed -i 's/^TELEGRAM_TOKEN=.*/TELEGRAM_TOKEN=123456:ABCDEFghijklmnop_1234567890/; s/^TELEGRAM_CHAT=.*/TELEGRAM_CHAT=-1001234567890/; s/^ONLINE_REPORT=.*/ONLINE_REPORT=1/' "$T/beamnet.conf"
 rm -f "$T"/watch/online-* "$T"/watch/daily-* "$T"/watch/peak*

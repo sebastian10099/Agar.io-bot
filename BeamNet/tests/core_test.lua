@@ -1086,6 +1086,7 @@ do
     writeJson(SHARED .. "/players/3434.json", { id = "3434", name = "Umsteiger", km = 500, seconds = 0, bonusXp = 0,
         xp = 5000, month = month, monthStartXp = 4930 })
     BN.seasonCache = {}
+    BN.recordsCache = { at = -math.huge, list = {} }     -- neue Dateien sofort sehen (sonst nach 60 s)
     local found = {}
     for _, e in ipairs(BN.seasonRanking(month)) do found[e.id] = e.xp end
     eq(found["3333"], 100, "Saisonwertung nutzt den Zaehler")
@@ -1529,6 +1530,67 @@ do
 
     for pid = 60, 64 do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
     C.admins = savedAdmins
+end
+
+-- --- Bestenlisten-Index (players-index.tsv vom Waechter) -------------------------------------------------------------
+do
+    local indexPath = SHARED .. "/players-index.tsv"
+    local function writeIndex(updated, lines)
+        local f = io.open(indexPath, "wb")
+        f:write("# beamnet-index 1 " .. tostring(updated) .. "\n" .. table.concat(lines, "\n") .. "\n")
+        f:close()
+    end
+    local function fresh() BN.recordsCache = { at = -math.huge, list = {} }; BN.seasonCache = {}; BN.weekCache = {} end
+    local function boardHas(id)
+        for _, rec in ipairs(BN.refreshBoard(true)) do if rec.id == id then return rec end end
+    end
+    local wk, mk = BN.weekKey(clock), BN.monthKey()
+    writeIndex(clock - 30, {
+        table.concat({ "8801", "Nur Im Index ä😀", "9999.5", "3600", "10", wk, "77", "", "", mk, "4321", "", "" }, "\t"),
+        table.concat({ "8802", "Zu kurz", "5" }, "\t"),
+        table.concat({ "../x", "Pfad", "5", "0", "0", "", "", "", "", "", "", "", "" }, "\t"),
+        table.concat({ "8803", "Zu lang", "5", "0", "0", "", "", "", "", "", "", "", "", "extra" }, "\t"),
+    })
+    fresh()
+    local r = boardHas("8801")
+    check(r ~= nil and BN.boardSource == "index", "Index: Bestenliste liest den Index")
+    check(r and r.km == 9999.5 and r.weekKm == 77 and r.name == "Nur Im Index ä😀", "Index: Werte und Name (UTF-8) uebernommen")
+    check(r and r.xp == BN.xpFor(9999.5, 3600) + 10, "Index: XP berechnet")
+    check(not boardHas("8802") and not boardHas("../x") and not boardHas("8803"), "Index: kaputte Zeilen und unsichere IDs ignoriert")
+    local inWeek, inSeason
+    for _, e in ipairs(BN.weekRanking(wk)) do if e.name == "Nur Im Index ä😀" then inWeek = e.km end end
+    for _, e in ipairs(BN.seasonRanking(mk)) do if e.id == "8801" then inSeason = e.xp end end
+    eq(inWeek, 77, "Index: Wochenwertung")
+    eq(inSeason, 4321, "Index: Saisonwertung")
+    -- Was dieser Server nach dem Index gespeichert hat, gewinnt (Spieler gerade gegangen).
+    players[90] = { name = "Gerade Weg", ids = { beammp = "8804" }, vehicles = { [0] = { pos = { 0, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](90)
+    for _ = 1, 10 do move(90, 0, 20); tick(1) end
+    _G[events.onPlayerDisconnect](90); players[90] = nil
+    writeIndex(clock - 20, { table.concat({ "8804", "Gerade Weg", "0.001", "0", "0", "", "", "", "", "", "", "", "" }, "\t") })
+    fresh()
+    r = boardHas("8804")
+    near(r and r.km or -1, 0.18, 1e-9, "Index: eigene neuere Speicherung ersetzt die alte Index-Zeile")
+    clock = clock + 60
+    writeIndex(clock, { table.concat({ "8804", "Gerade Weg", "5", "0", "0", "", "", "", "", "", "", "", "" }, "\t") })
+    fresh()
+    eq(boardHas("8804") and boardHas("8804").km, 5, "Index: neuerer Index gewinnt gegen aeltere eigene Speicherung")
+    -- Veraltet oder unbekanntes Format: wie frueher alle Dateien lesen.
+    writeIndex(clock - BN.INDEX_MAX_AGE - 1, { table.concat({ "8801", "Alt", "1", "0", "0", "", "", "", "", "", "", "", "" }, "\t") })
+    fresh()
+    check(not boardHas("8801") and BN.boardSource == "files", "Index: veralteter Index wird nicht benutzt")
+    check(boardHas("8804") ~= nil, "Index: ohne Index weiter aus den Dateien")
+    local f = io.open(indexPath, "wb"); f:write("# beamnet-index 2 " .. clock .. "\n"); f:close()
+    fresh()
+    check(BN.refreshBoard(true) and BN.boardSource == "files", "Index: unbekannte Version wird nicht benutzt")
+    -- Die geteilte Liste wird von der Bestenliste nicht veraendert.
+    writeIndex(clock, { table.concat({ "8805", "Alte Woche", "3", "0", "0", "2000-W01", "50", "", "", "", "", "", "" }, "\t") })
+    fresh()
+    eq(boardHas("8805").weekKm, 0, "Index: Kilometer einer alten Woche zaehlen nicht")
+    eq(BN.playerRecords(false)[1].weekKm, 50, "Index: Rohdaten bleiben unveraendert")
+    os.remove(indexPath)
+    fresh()
+    BN.board = { at = -math.huge, list = {} }
 end
 
 -- --- Last: volles Netzwerk (64 Spieler gleichzeitig) ---------------------------------------------------------------

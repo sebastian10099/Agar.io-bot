@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.20"
+VERSION="1.21"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1196,6 +1196,7 @@ watch_run() {
         echo "$state" >"$STATE_DIR/state-$nr"
     done
     watch_rotation msgs
+    watch_index
     watch_peak msgs
     watch_online msgs
     watch_weekly msgs
@@ -1205,6 +1206,64 @@ watch_run() {
         printf '%s\n' "${msgs[@]}"
         notify "$(printf '%s\n' "${msgs[@]}")"
     fi
+    return 0
+}
+
+# Bestenlisten-Index fuer das Plugin (ab 1.13): eine Zeile je Spieler in players-index.tsv. So liest jeder Server
+# einmal pro Minute eine kleine Datei statt aller Spielerdateien (bei 10 000 Spielern 0,07 s statt 1,4 s je Liste).
+# Nur regulaere Dateien, keinen Symlinks folgen; Namen ohne Tabulatoren und Steuerzeichen.
+watch_index() {
+    [[ -d $SHARED/players && ! -L $SHARED/players && ! -L $SHARED ]] || return 0
+    command -v python3 >/dev/null || return 0
+    local idx
+    idx=$(python3 -I - "$SHARED" <<'PY'
+import glob, json, math, os, re, stat, sys, time
+shared = sys.argv[1]
+ID_OK = re.compile(r"[A-Za-z0-9_-]{1,64}")
+KEY_OK = re.compile(r"[A-Za-z0-9-]{1,16}")
+
+def load(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                return None
+            r = json.loads(f.read(4 * 1024 * 1024).decode("utf-8"))
+    except Exception:
+        return None
+    return r if isinstance(r, dict) else None
+
+def num(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return ""
+    return repr(v) if isinstance(v, float) else str(v)
+
+def key(v):
+    return v if isinstance(v, str) and KEY_OK.fullmatch(v) else ""
+
+def text(v):
+    return re.sub(r"[\x00-\x1f\x7f]", "", str(v))[:64]
+
+out = [f"# beamnet-index 1 {int(time.time())}"]
+for path in sorted(glob.glob(os.path.join(shared, "players", "*.json"))):
+    r = load(path)
+    if not r or not isinstance(r.get("id"), str) or not ID_OK.fullmatch(r["id"]):
+        continue
+    month_xp = r.get("monthXp")
+    if month_xp is None and all(isinstance(r.get(k), (int, float)) for k in ("xp", "monthStartXp")):
+        month_xp = r["xp"] - r["monthStartXp"]       # Datensatz von 1.8
+    out.append("\t".join([r["id"], text(r.get("name", "?")), num(r.get("km")), num(r.get("seconds")),
+                          num(r.get("bonusXp")), key(r.get("week")), num(r.get("weekKm")), key(r.get("lastWeek")),
+                          num(r.get("lastWeekKm")), key(r.get("month")), num(month_xp), key(r.get("lastMonth")),
+                          num(r.get("lastMonthXp"))]))
+sys.stdout.write("\n".join(out) + "\n")
+PY
+)
+    # Nur einen vollstaendigen Index schreiben (bei einem Fehler bleibt der alte; das Plugin erkennt veraltete).
+    [[ $idx == "# beamnet-index 1 "* ]] && printf '%s\n' "$idx" | safe put "$SHARED/players-index.tsv" 644
     return 0
 }
 
