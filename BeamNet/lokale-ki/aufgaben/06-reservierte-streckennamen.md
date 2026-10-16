@@ -6,7 +6,7 @@ Fehler: `/rennen neu stop` legt eine Strecke "stop" an, die man nie starten kann
 beendet. Dasselbe gilt für andere Wörter, die `/rennen` selbst benutzt.
 
 In BeamNet/server/BeamNetCore/main.lua in `local function trackName(name)`: Lehne diese Namen ab (Rückgabe nil):
-stop, neu, new, ziel, finish, ende, end, quit, loeschen, delete, remove, liste, list.
+stop, neu, new, ziel, finish, ende, end, quit, loeschen, delete, remove, liste, list, gruppe, group, mit, join.
 Am einfachsten mit einer Tabelle `local RESERVED = { stop = true, ... }` direkt über der Funktion und
 `if RESERVED[name] then return nil end` nach dem Kleinschreiben.
 
