@@ -103,6 +103,14 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
         return f"{mint[:8]}… Score {r['score']:.0f} · {len(r['danger'])} danger · {len(r['warn'])} warn"
     out.append(_check("RugCheck", rugcheck))
 
+    def sdk() -> str:
+        from .preflight import sdk_version
+        v = sdk_version()
+        if not v:
+            raise RuntimeError("Anthropic-SDK fehlt – der nächste Start über die App oder launch.sh installiert es (pip install --user anthropic)")
+        return f"anthropic {v}"
+    out.append(_check("Anthropic-SDK", sdk))
+
     def ai_key() -> str:
         from .ai import credential_source
         src = credential_source()

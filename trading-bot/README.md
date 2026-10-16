@@ -17,6 +17,12 @@ eine Kante hat. Läuft als lokale Mac-App, ohne Abhängigkeiten außer Python 3.
 | Live-Markt, Spielgeld | Doppelklick auf **Start Trading Bot.command** |
 | Offline-Demo, Zeitraffer | Doppelklick auf **Start Demo.command** |
 
+**Vorab-Check beim Start** (`bot/preflight.py`, von `launch.sh` und der App
+aufgerufen): prüft HTTPS mit dem gewählten Python und installiert bei
+`CERTIFICATE_VERIFY_FAILED` einmalig `certifi`, dazu das Anthropic-SDK, wenn
+es fehlt – beides per `pip install --user`, ohne dass du ein Terminal brauchst.
+Klappt HTTPS mit keinem Python, steht die Abhilfe im Log und im Dialog.
+
 **Die App** (`New Token Bot.app`) startet den Bot im Hintergrund, öffnet die
 Steuerseite im Browser und beendet sich über den Knopf **Beenden** oben
 rechts. Läuft der Bot schon, öffnet ein Doppelklick nur die Seite. Das Log
@@ -282,14 +288,15 @@ bot/
   live.py        Schnittstelle für Echtgeld — bewusst nicht implementiert
   discovery.py   Discovery-Quellen zusammenführen, Status je Quelle
   doctor.py      Selbsttest: Erreichbarkeit und Parser aller Quellen
+  preflight.py   Startcheck: HTTPS/CA-Zertifikate und Anthropic-SDK, repariert per pip
   sources/       DexScreener, GeckoTerminal, RugCheck
-tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources
+tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
 ```
 
 ## Tests
 
 ```bash
-python3 -m unittest -v tests.test_bot tests.test_control tests.test_ai tests.test_sources
+python3 -m unittest -v tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
 ```
 
 Strategie-Entscheidungen, alle Exit-Regeln, der Tracker, ein kompletter
