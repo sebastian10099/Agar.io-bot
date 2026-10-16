@@ -583,6 +583,17 @@ rm -f "$T/watch/usage-"* "$T/watch/slots-"*
 out=$("$TOOL" doctor 2>&1)
 contains "$out" "Wächter läuft \\(zuletzt vor [0-9]+ s\\)" "doctor: Wächter läuft"
 contains "$out" "Server 3: tägliche Map-Rotation \\(italy utah\\)" "doctor: Rotation"
+if compgen -G "$T/root/*/Resources/Server/BeamNetCore/main.lua" >/dev/null; then
+    contains "$out" "Keine Orte für Fahraufträge \\(/auftrag\\) auf: " "doctor: fehlende Orte für Aufträge"
+    for m in $(for f in "$T"/root/*/Resources/Server/BeamNetCore/main.lua; do n=${f#"$T"/root/}; n=${n%%/*}; grep -m1 '^Map' "$T/root/$n/ServerConfig.toml" | sed -E 's#.*/levels/([^/]+)/.*#\1#'; done | sort -u); do
+        mkdir -p "$T/root/shared/beamnet/places"
+        echo '{"places":[{"type":"krankenhaus","name":"A","x":1,"y":1,"z":1}]}' >"$T/root/shared/beamnet/places/$m.json"
+    done
+    lacks "$("$TOOL" doctor 2>&1)" "Keine Orte für Fahraufträge" "doctor: mit Orten kein Hinweis"
+    rm -rf "$T/root/shared/beamnet/places"
+else
+    pass; pass
+fi
 "$TOOL" rotation 3 aus >/dev/null 2>&1
 echo "{\"at\":$(( $(date +%s) - 1200 )),\"mapVote\":true,\"maps\":[]}" >"$T/root/shared/beamnet/watch.json"
 out=$("$TOOL" doctor 2>&1)

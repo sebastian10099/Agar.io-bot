@@ -724,11 +724,25 @@ check_watch() {
         ok "Wächter läuft (zuletzt vor ${age} s)"
     fi
     [[ $(conf_get MAP_VOTE) == 0 ]] || ok "Map-Abstimmung an ($(vote_maps | wc -w) Maps)"
-    local nr list
+    local nr list m missing=""
     for nr in $(servers); do
         list=$(conf_get "ROTATE_$nr")
         [[ -n $list ]] && ok "Server $nr: tägliche Map-Rotation ($list)"
     done
+    # Fahrauftraege brauchen Orte je Map (places/<Map>.json, im Spiel mit /ort neu angelegt).
+    if [[ -d $SHARED && ! -L $SHARED ]]; then
+        for m in $(for nr in $(servers); do
+                       [[ -f $ROOT/$nr/Resources/Server/BeamNetCore/main.lua ]] && map_short "$(cfg "$nr" Map)" && echo
+                   done | sort -u); do
+            [[ $m =~ ^[A-Za-z0-9_-]+$ ]] || continue
+            [[ $(safe get "$SHARED/places/$m.json" 2>/dev/null | head -c 1048576 | grep -o '"type"' | wc -l) -gt 0 ]] \
+                || missing+="${missing:+, }$m"
+        done
+        if [[ -n $missing ]]; then
+            warn "Keine Orte für Fahraufträge (/auftrag) auf: $missing"
+            hint "Im Spiel als Admin an die Stelle fahren: /ort neu krankenhaus <Name> (auch schule, feuerwehr, tankstelle …)"
+        fi
+    fi
     return 0
 }
 
