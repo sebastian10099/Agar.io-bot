@@ -58,10 +58,16 @@ export PATH="$HOME/NewTokenBot/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"   # F
 # shellcheck disable=SC2086
 nohup /bin/bash ./launch.sh --no-open --port "$PORT" ${NEW_TOKEN_BOT_ARGS:-} >> "$LOG" 2>&1 < /dev/null &
 
-for _ in $(seq 1 40); do
+# The first start may install certifi and the Anthropic SDK (pip), which
+# takes a while: wait up to 5 minutes as long as the process is alive.
+BOT_PID=$!
+notify() { /usr/bin/osascript -e "display notification \"$1\" with title \"New Token Bot\"" >/dev/null 2>&1; }
+for i in $(seq 1 600); do
   sleep 0.5
   ours "$PORT" && { /usr/bin/open "$URL"; exit 0; }
-  if ! kill -0 $! 2>/dev/null; then break; fi
+  if ! kill -0 "$BOT_PID" 2>/dev/null; then break; fi
+  [ "$i" -eq 16 ] && notify "Bot startet … beim ersten Mal werden Python-Pakete installiert, das dauert etwas."
+  [ "$i" -eq 240 ] && notify "Immer noch am Starten – Log: $LOG"
 done
 
 TAIL="$(tail -n 6 "$LOG" | tr '"' "'" | tr '\\' '/')"
