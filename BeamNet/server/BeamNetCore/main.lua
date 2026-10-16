@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.23"
+BN.VERSION = "1.24"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -546,6 +546,8 @@ local EN = {
     ["Am Start von %s. Los geht's, sobald du den Startbereich verlässt!"] = "At the start of %s. The clock starts when you leave the start area!",
     ["Zeit läuft! Ziel ist %.0f m entfernt."] = "Clock is running! The finish is %.0f m away.",
     ["Zwischenzeit %d: %s (%s)"] = "Split %d: %s (%s)",
+    ["Zwischenzeit %d: %s (%s, Rekord %s)"] = "Split %d: %s (%s, record %s)",
+    ["Zwischenzeit %d: %s (Rekord %s)"] = "Split %d: %s (record %s)",
     ["[Ansage] %s"] = "[Announcement] %s",
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
@@ -1677,7 +1679,7 @@ function BN.raceInvalid(s, why)
     local lang = BN.langOf(s.pid)
     chat(s.pid, tr(lang, "%s – Lauf ungültig. Neuer Versuch: zurück zum Start von %s.", tr(lang, why), r.name))
     r.state, r.vid, r.startT, r.leftFinish = "armed", nil, nil, false
-    r.runDist, r.splits, r.bestSplits = nil, nil, nil
+    r.runDist, r.splits, r.bestSplits, r.recordSplits = nil, nil, nil, nil
 end
 
 -- Zwischenzeiten der eigenen Bestzeit auf einer Strecke (nil fuer Gaeste oder ohne Bestzeit).
@@ -1693,6 +1695,16 @@ local function bestSplits(s, name)
         end
     end
     return nil
+end
+
+-- Zwischenzeiten des Streckenrekords, wenn er von jemand anderem ist (sonst ist die eigene Bestzeit der Rekord).
+local function recordSplits(s, name)
+    local track = BN.loadTracks().tracks[name]
+    if type(track) ~= "table" or type(track.records) ~= "table" then return nil end
+    local best = track.records[1]
+    if type(best) ~= "table" or (best.id and best.id == s.id) then return nil end
+    if type(best.splits) ~= "table" or tonumber(best.splitM) ~= tonumber(C.raceSplitM) then return nil end
+    return best.splits
 end
 
 -- Mindest-Fahrstrecke eines Laufs (m). Ein Rundkurs braucht die bekannte Laenge (track.lengthM) oder sonst
@@ -1730,8 +1742,13 @@ local function raceSplits(s, prev, cur, t0, t1, finishT)
         if finishT and t >= finishT then break end
         r.splits[n] = t
         local best = r.bestSplits and tonumber(r.bestSplits[n])
-        if best then
+        local rec = r.recordSplits and tonumber(r.recordSplits[n])
+        if best and rec then
+            say(s.pid, "Zwischenzeit %d: %s (%s, Rekord %s)", n, BN.fmtRaceTime(t), BN.fmtSplitDiff(t - best), BN.fmtSplitDiff(t - rec))
+        elseif best then
             say(s.pid, "Zwischenzeit %d: %s (%s)", n, BN.fmtRaceTime(t), BN.fmtSplitDiff(t - best))
+        elseif rec then
+            say(s.pid, "Zwischenzeit %d: %s (Rekord %s)", n, BN.fmtRaceTime(t), BN.fmtSplitDiff(t - rec))
         end
     end
 end
@@ -1797,7 +1814,7 @@ local function finishRace(s, time)
         say(s.pid, "+%d XP (nur für diese Sitzung)", C.raceFinishXp)
     end
     r.state, r.vid, r.startT, r.leftFinish = "armed", nil, nil, false
-    r.runDist, r.splits, r.bestSplits = nil, nil, nil
+    r.runDist, r.splits, r.bestSplits, r.recordSplits = nil, nil, nil, nil
     say(s.pid, "Für einen neuen Versuch zurück zum Start – beenden mit /rennen stop.")
 end
 
@@ -1828,7 +1845,7 @@ function BN.raceUpdate(s, vid, prev, cur, jump)
             r.state = "running"
             -- Fahrstrecke ab dem Verlassen des Startbereichs (Anteil des Abschnitts nach dem Start)
             r.runDist = t1 > t0 and dist(prev, cur) * (t1 - r.startT) / (t1 - t0) or 0
-            r.splits, r.bestSplits = {}, bestSplits(s, r.name)
+            r.splits, r.bestSplits, r.recordSplits = {}, bestSplits(s, r.name), recordSplits(s, r.name)
             r.leftFinish = dist(cur, r.finish) > BN.leaveDistance()
             say(s.pid, "Zeit läuft! Ziel ist %.0f m entfernt.", dist(cur, r.finish))
         end

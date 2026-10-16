@@ -602,6 +602,20 @@ check(chatContains("Neuer Streckenrekord auf zwischen: Splitter mit 0:50%.2!", 8
 sp = mySplits()
 check(type(sp) == "table" and #sp == 3, "Neue Bestzeit mit drei Zwischenzeiten")
 near(sp and sp[1], 13.1, 1e-6, "Zwischenzeiten der neuen Bestzeit")
+-- Ein anderer Fahrer sieht zusaetzlich den Abstand zum Streckenrekord (ohne eigene Bestzeit nur den).
+players[9] = { name = "Jaeger", ids = { beammp = "9009" }, vehicles = {} }
+_G[events.onPlayerJoin](9)
+say(9, "/rennen zwischen")
+at(9, 3000, 900); at(9, 3010, 901); at(9, 3020, 902)
+tim = drive(9, 3020, 4980, 20, 902)
+check(chatContains("^Zwischenzeit 1: 0:25%.4 %(Rekord %+12%.3 s%)$", 9), "Zwischenzeit gegen den Rekord (ohne eigene Bestzeit)")
+at(9, 5000, tim + 1)
+at(9, 3000, 1100); at(9, 3010, 1101); at(9, 3020, 1102)
+tim = drive(9, 3020, 3540, 40, 1102)
+check(chatContains("^Zwischenzeit 1: 0:13%.1 %(%-12%.3 s, Rekord %+0%.0 s%)$", 9), "Zwischenzeit gegen eigene Bestzeit und Rekord")
+eq(BN.tr("en", "Zwischenzeit %d: %s (%s, Rekord %s)", 1, "0:13.1", "-1.0 s", "+0.5 s"), "Split 1: 0:13.1 (-1.0 s, record +0.5 s)", "Rekord-Abstand auf Englisch")
+say(9, "/rennen stop")
+_G[events.onPlayerDisconnect](9); players[9] = nil
 -- Englisch
 say(8, "/lang en")
 tim = startRun(1000)
