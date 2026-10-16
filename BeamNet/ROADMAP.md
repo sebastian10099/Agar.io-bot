@@ -21,7 +21,8 @@
 - [x] Saison-Rückblick beim ersten Besuch im neuen Monat (1.45), Aufstiegsmeldungen in der Bestenliste (1.46).
 - [x] Ansagen aus Telegram für `TELEGRAM_ADMINS` (1.61), „Demnächst“ auf der Statusseite (1.62), neue
       Streckenrekorde sofort an Discord/Telegram (1.63).
-- [ ] Sechste Sicherheitsprüfung (läuft).
+- [x] Sechste Sicherheitsprüfung: 10 Funde (Duell-Sperre, Rekord-Flut, Streckenseiten, Telegram-Feinheiten …), behoben
+      (Plugin 1.47, Werkzeug 1.64).
 - [ ] Erfolge für Aufträge und Verfolgungsjagden (nach der Werkstatt-Aufgabe 07, damit es keine Konflikte gibt).
 
 ## Die nächsten 40 Punkte (Stand Werkzeug 1.48 / Plugin 1.29)

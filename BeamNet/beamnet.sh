@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.63"
+VERSION="1.64"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -396,9 +396,7 @@ def check(archive):
                         raise ValueError
                 except Exception:
                     broken += 1
-    if broken:
-        raise ValueError(f"{broken} Spielerdatei(en) im Archiv sind kaputt")
-    print(f"{files} {players}")
+    print(f"{files} {players} {broken}")
 
 try:
     if sys.argv[1] == "save":
@@ -1278,7 +1276,8 @@ if when:
     if t.timestamp() <= now:
         t += datetime.timedelta(days=1)
     at = int(t.timestamp())
-lst.append({"id": f"{now}-konsole-{random.randint(100000, 999999)}", "text": text, "by": "Konsole", "at": at})
+by = clean(os.environ.get("ANSAGE_BY") or "Konsole", 40)
+lst.append({"id": f"{now}-konsole-{random.randint(100000, 999999)}", "text": text, "by": by, "at": at})
 # Kuerzen wie im Plugin: erst laengst angesagte (aelter als 2 Minuten), dann die aeltesten.
 while len(lst) > 20:
     old = next((i for i, a in enumerate(lst) if a["at"] < now - 120), 0)
@@ -1324,8 +1323,10 @@ cmd_restore() {
         file="$BACKUP_DIR/daten-$day.tgz"
         [[ -f $file && ! -L $file ]] || die "Keine Datensicherung vom $day."
         if out=$(data_tool check "$file" 2>&1); then
-            read -r files players <<<"$out"
+            local broken
+            read -r files players broken <<<"$out"
             ok "Sicherung vom $day ist in Ordnung: $files Dateien, $players Spieler."
+            [[ ${broken:-0} -gt 0 ]] && warn "$broken Spielerdatei(en) darin sind kaputt (so wie im Spielordner) – beim Zurückspielen fängt das Plugin für diese Spieler neu an."
             return 0
         fi
         die "Sicherung vom $day ist NICHT in Ordnung: ${out##*$'\n'}"
@@ -1977,16 +1978,22 @@ except Exception:
 MAPS = {"gridmap_v2": "Grid Map", "west_coast_usa": "West Coast, USA", "east_coast_usa": "East Coast, USA",
         "italy": "Italy", "utah": "Utah, USA", "jungle_rock_island": "Jungle Rock Island", "industrial": "Industrial",
         "small_island": "Small Island", "johnson_valley": "Johnson Valley", "automation_test_track": "Automation Test Track"}
+lines = []
 if not first:
     for key, b in sorted(best.items()):
         o = old.get(key) if isinstance(old.get(key), dict) else None
         if o and isinstance(o.get("time"), (int, float)) and b["time"] < o["time"] - 1e-6:
             m, tn = key.split("/", 1)
             prev = f" (vorher {c(o.get('name'))} {t(o['time'])})" if o.get("name") != b["name"] else f" (vorher {t(o['time'])})"
-            print(f"🏆 Neuer Streckenrekord auf {tn} ({MAPS.get(m, m)}): {b['name']} {t(b['time'])}{prev}")
+            lines.append(f"🏆 Neuer Streckenrekord auf {tn} ({MAPS.get(m, m)}): {b['name']} {t(b['time'])}{prev}")
         elif not o:
             m, tn = key.split("/", 1)
-            print(f"🏁 Erste Zeit auf {tn} ({MAPS.get(m, m)}): {b['name']} {t(b['time'])} – wer ist schneller?")
+            lines.append(f"🏁 Erste Zeit auf {tn} ({MAPS.get(m, m)}): {b['name']} {t(b['time'])} – wer ist schneller?")
+# Hoechstens 5 Zeilen: viele (auch untergeschobene) Strecken duerfen wichtige Meldungen nicht verdraengen.
+for line in lines[:5]:
+    print(line)
+if len(lines) > 5:
+    print(f"   … und {len(lines) - 5} weitere neue Zeiten")
 with open(state + ".tmp", "w") as f:
     json.dump(best, f)
 os.replace(state + ".tmp", state)
@@ -2026,7 +2033,7 @@ LABEL = {"melden": "gemeldet", "mute": "stummgeschaltet", "spam-mute": "stumm (S
          "warn": "verwarnt", "kick": "gekickt"}
 def c(v, n=32):
     return re.sub(r"[\x00-\x1f\x7f]", " ", str(v)).strip()[:n] or "?"
-counts, names = {}, {}
+counts, names, reporters = {}, {}, {}
 for raw in data.split(b"\n"):
     try:
         e = json.loads(raw.decode("utf-8", "replace"))
@@ -2042,7 +2049,15 @@ for raw in data.split(b"\n"):
     if key == "name:?":
         continue
     counts.setdefault(key, {})
-    counts[key][e["action"]] = counts[key].get(e["action"], 0) + 1
+    if e["action"] == "melden":
+        # Meldungen zaehlen nur mit Ziel-Konto und je Melder einmal (einer allein kann niemanden zum Taeter machen).
+        if not key.startswith("id:"):
+            continue
+        rep = e.get("byId") or ("name:" + c(e.get("by")).lower())
+        reporters.setdefault(key, set()).add(str(rep))
+        counts[key]["melden"] = len(reporters[key])
+    else:
+        counts[key][e["action"]] = counts[key].get(e["action"], 0) + 1
     names[key] = c(e.get("target"))
 try:
     seen = json.load(open(state))
@@ -2052,6 +2067,8 @@ except Exception:
 seen = {k: v for k, v in seen.items() if isinstance(v, (int, float)) and now - v < 30 * 86400}
 for key in sorted(counts, key=lambda k: -sum(counts[k].values())):
     total = sum(counts[key].values())
+    if counts[key].get("melden", 0) == 1:
+        total -= 1                                  # ein einzelner Melder zaehlt nicht
     if total < need or now - seen.get(key, 0) < 7 * 86400:
         continue
     seen[key] = now
@@ -2628,9 +2645,20 @@ watch_telegram() {
             top) reply=$(telegram_top) ;;
             ansage)
                 # Nur Telegram-Konten aus TELEGRAM_ADMINS (der Parser prueft den Absender); Text wie bei beamnet ansage.
-                if [[ -z $arg ]]; then
+                local first="" rest="" sender=${arg%%$'\x1f'*}
+                arg=${arg#*$'\x1f'}
+                read -r first rest <<<"$arg"
+                if [[ $first =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+                    if [[ -z $rest ]]; then
+                        reply="Aufruf: /ansage [HH:MM] <Text>"
+                    elif (YES=1 ANSAGE_BY="Telegram $sender" cmd_ansage "$first" "$rest") >/dev/null 2>&1; then
+                        reply="📢 Ansage für $first Uhr geplant: ${rest:0:300}"
+                    else
+                        reply="Ansage fehlgeschlagen – bitte beamnet doctor prüfen."
+                    fi
+                elif [[ -z $arg ]]; then
                     reply="Aufruf: /ansage [HH:MM] <Text>"
-                elif (YES=1 cmd_ansage "$arg") >/dev/null 2>&1; then
+                elif (YES=1 ANSAGE_BY="Telegram $sender" cmd_ansage "$arg") >/dev/null 2>&1; then
                     reply="📢 Ansage an alle Server: ${arg:0:300}"
                 else
                     reply="Ansage fehlgeschlagen – bitte beamnet doctor prüfen."
@@ -2663,7 +2691,7 @@ PY
 
 # Antwort von getUpdates -> "naechster Offset<TAB>Befehl" je Nachricht (Befehl leer, wenn nicht fuer uns).
 read -r -d '' TG_PARSE_PY <<'PY'
-import json, re, sys
+import json, re, sys, time
 chat = sys.argv[1]
 bot = (sys.argv[2] if len(sys.argv) > 2 else "").lower()
 admins = set(a for a in (sys.argv[3] if len(sys.argv) > 3 else "").split(",") if a.isdigit())
@@ -2689,10 +2717,14 @@ for u in data["result"][:100]:
                "record": "rekord", "server": "server", "servers": "server"}.get(word, "hilfe" if word in ("hilfe", "help", "start") else "")
         if word in ("ansage", "announce"):
             sender = m.get("from") if isinstance(m.get("from"), dict) else {}
-            if str(sender.get("id")) in admins and not sender.get("is_bot"):
+            forwarded = any(k in m for k in ("forward_origin", "forward_from", "forward_from_chat", "forward_date", "is_automatic_forward"))
+            fresh = isinstance(m.get("date"), int) and abs(time.time() - m["date"]) <= 600
+            if str(sender.get("id")) in admins and not sender.get("is_bot") and not forwarded and fresh:
                 cmd = "ansage"
-                # Text nach dem Befehl (Original-Schreibweise), ohne Steuerzeichen und Tabulatoren, hoechstens 300 Zeichen
-                arg = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", text.strip().split(None, 1)[1] if len(text.strip().split(None, 1)) > 1 else "").split())[:300]
+                # Absender-ID, Trennzeichen 0x1f, dann der Text nach dem Befehl (Original-Schreibweise), ohne Steuerzeichen
+                # und Tabulatoren, hoechstens 300 Zeichen.
+                body = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", text.strip().split(None, 1)[1] if len(text.strip().split(None, 1)) > 1 else "").split())[:300]
+                arg = str(sender.get("id")) + "\x1f" + body
             else:
                 cmd = "nichtadmin"
     print(f"{nxt}\t{cmd}\t{arg}")
@@ -3532,7 +3564,7 @@ if os.path.isdir(pl_dir) and not os.path.islink(pl_dir):
             continue
         counts = {}
         for p in places[:100]:
-            if isinstance(p, dict) and p.get("type") in PLACE_ICONS:
+            if isinstance(p, dict) and isinstance(p.get("type"), str) and p["type"] in PLACE_ICONS:
                 counts[p["type"]] = counts.get(p["type"], 0) + 1
         if counts:
             kinds = " ".join(f"{PLACE_ICONS[k]} {n}" for k, n in sorted(counts.items(), key=lambda x: (-x[1], x[0])))
@@ -3629,9 +3661,9 @@ popular_rows = [f"<tr><td>{E(map_name(m))}</td><td class=n>{km(v)}</td><td class
                 for m, (v, d) in sorted(popular.items(), key=lambda x: (-x[1][0], x[0]))[:10]]
 TRACK_OK = __import__("re").compile(r"^[A-Za-z0-9_-]{1,64}$")
 def track_link(m, n):
-    """Streckenname als Link auf die Streckenseite (nur bei unbedenklichen Namen)."""
+    """Streckenname als Link auf die Streckenseite t/<Map>/<Strecke>.html (nur bei unbedenklichen Namen)."""
     if TRACK_OK.match(m) and TRACK_OK.match(str(n)):
-        return f'<a href="t/{m}-{n}.html">{E(str(n))}</a>'
+        return f'<a href="t/{m}/{n}.html">{E(str(n))}</a>'
     return E(str(n))
 records = [f"<tr><td>{E(map_name(m))}</td><td>{track_link(m, n)}</td><td>{E(str(b.get('name', '?')))}</td><td class=n>{race_time(b.get('time'))}</td></tr>"
            for m, n, b in races]
@@ -3894,24 +3926,31 @@ for old in glob.glob(os.path.join(pdir, "*.html")):
         os.remove(old)
 
 # --- Streckenseite je Strecke: Top 10, Laenge, Zahl der Fahrer -------------------------------------------------------
+# t/<Map>/<Strecke>.html; hoechstens 200 Strecken je Map und 2000 insgesamt (gegen untergeschobene Riesenlisten).
 tdir = os.path.join(os.path.dirname(out), "t")
 os.makedirs(tdir, exist_ok=True)
 twritten = set()
-for path in sorted(glob.glob(os.path.join(shared, "races", "*.json"))):
+races_dir = os.path.join(shared, "races")
+race_files = [] if os.path.islink(races_dir) else sorted(glob.glob(os.path.join(races_dir, "*.json")))
+for path in race_files:
     m = os.path.basename(path)[:-5]
     data = load(path)
     tracks = data.get("tracks") if isinstance(data, dict) else None
     if not TRACK_OK.match(m) or not isinstance(tracks, dict):
         continue
+    per_map = 0
     for n, t in sorted(tracks.items()):
         if not isinstance(t, dict) or not TRACK_OK.match(str(n)):
             continue
+        per_map += 1
+        if per_map > 200 or len(twritten) >= 2000:
+            break
         recs = [r for r in (t.get("records") if isinstance(t.get("records"), list) else []) if isinstance(r, dict)][:50]
         rows = []
         for i, r in enumerate(recs[:10], 1):
             at = num(r.get("at"))
             when = time.strftime("%d.%m.%Y", time.localtime(at)) if 0 < at < 4e9 else "–"
-            rows.append(f"<tr><td class=n>{i}</td><td>{link(r, '../')}</td><td class=n>{race_time(r.get('time'))}</td><td>{when}</td></tr>")
+            rows.append(f"<tr><td class=n>{i}</td><td>{link(r, '../../')}</td><td class=n>{race_time(r.get('time'))}</td><td>{when}</td></tr>")
         length = num(t.get("lengthM"))
         info = [f"Map {E(map_name(m))}"]
         if 0 < length < 1e6:
@@ -3921,18 +3960,22 @@ for path in sorted(glob.glob(os.path.join(shared, "races", "*.json"))):
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="60"><title>{E(str(n))} – {E(title)}</title>
 {STYLE}</head><body><main>
-<div class=sub><a href="../index.html">← {E(title)} Status</a></div>
+<div class=sub><a href="../../index.html">← {E(title)} Status</a></div>
 <h1>{E(str(n))}</h1>
 <div class=sub>{" · ".join(info)}</div>
 <section><h2>Bestenliste</h2>{table(["#", "Name", "Zeit#", "Am"], rows, "Noch keine Zeit – im Spiel: /rennen " + E(str(n)))}</section>
 <footer>Im Spiel starten: <b>/rennen {E(str(n))}</b> · gemeinsam: <b>/rennen gruppe {E(str(n))}</b> · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))}</footer>
 </main></body></html>
 """
-        write(os.path.join(tdir, f"{m}-{n}.html"), page_t)
-        twritten.add(f"{m}-{n}.html")
-for old in glob.glob(os.path.join(tdir, "*.html")):
-    if os.path.basename(old) not in twritten:
+        os.makedirs(os.path.join(tdir, m), exist_ok=True)
+        write(os.path.join(tdir, m, f"{n}.html"), page_t)
+        twritten.add(f"{m}/{n}.html")
+for old in glob.glob(os.path.join(tdir, "*.html")) + glob.glob(os.path.join(tdir, "*", "*.html")):
+    if os.path.relpath(old, tdir) not in twritten:
         os.remove(old)
+for d in glob.glob(os.path.join(tdir, "*")):
+    if os.path.isdir(d) and not os.path.islink(d) and not os.listdir(d):
+        os.rmdir(d)
 
 # Hilfeseite fuer Spieler: Befehle, XP, Ligen, Erfolge, Regeln (eigene Regeln aus config.json wie im Plugin).
 RULES = ["Fair fahren: kein absichtliches Rammen oder Blockieren.", "Freundlich im Chat – keine Beleidigungen, kein Spam.",

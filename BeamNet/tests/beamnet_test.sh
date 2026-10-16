@@ -622,13 +622,17 @@ mkdir -p "$T/root/shared/beamnet/races"
 echo '{"tracks":{"sprint":{"lengthM":1520,"records":[{"id":"1","name":"Sebi","time":49.0667,"at":1760000000}]},"leer":{"records":[]},"<b>x":{"records":[{"name":"Y","time":5}]}}}' >"$T/root/shared/beamnet/races/italy.json"
 "$TOOL" web run >/dev/null 2>&1
 page=$(cat "$T/web/index.html")
-contains "$page" '<td><a href="t/italy-sprint.html">sprint</a></td>' "Statusseite: Strecke verlinkt"
-lacks "$page" 'href="t/italy-&lt;' "Statusseite: unsichere Streckennamen nicht verlinkt"
-track=$(cat "$T/web/t/italy-sprint.html" 2>/dev/null)
+contains "$page" '<td><a href="t/italy/sprint.html">sprint</a></td>' "Statusseite: Strecke verlinkt"
+lacks "$page" 'href="t/italy/&lt;' "Statusseite: unsichere Streckennamen nicht verlinkt"
+track=$(cat "$T/web/t/italy/sprint.html" 2>/dev/null)
 contains "$track" "<h1>sprint</h1>" "Streckenseite: erzeugt"
 contains "$track" "Map Italy · Länge 1,5 km · 1 Fahrer mit Zeit" "Streckenseite: Map, Länge, Fahrer"
-contains "$track" '<td class=n>1</td><td><a href="../p/1.html">Sebi</a></td><td class=n>0:49\.1</td>' "Streckenseite: Bestenliste mit Profil-Link"
-[[ -f $T/web/t/italy-leer.html && ! -e "$T/web/t/italy-<b>x.html" ]] && pass || fail "Streckenseite: auch ohne Zeiten, nie mit unsicherem Namen"
+contains "$track" '<td class=n>1</td><td><a href="../../p/1.html">Sebi</a></td><td class=n>0:49\.1</td>' "Streckenseite: Bestenliste mit Profil-Link"
+[[ -f $T/web/t/italy/leer.html && ! -e "$T/web/t/italy/<b>x.html" ]] && pass || fail "Streckenseite: auch ohne Zeiten, nie mit unsicherem Namen"
+# Kaputte Orte-Datei (Typ als Liste) bricht die Statusseite nicht.
+mkdir -p "$T/root/shared/beamnet/places"; echo '{"places":[{"type":["a"]},{"type":{"b":1}}]}' >"$T/root/shared/beamnet/places/x.json"
+contains "$("$TOOL" web run 2>&1)" "Statusseite erzeugt" "Statusseite: fremde Typen in places/*.json brechen nichts"
+rm -rf "$T/root/shared/beamnet/places"
 echo '{"tracks":{"sprint":{"records":[{"id":"1","name":"Sebi","time":49.0667}]},"leer":{"records":[]}}}' >"$T/root/shared/beamnet/races/italy.json"
 out=$("$TOOL" web run 2>&1)
 contains "$out" "Statusseite erzeugt" "web run"
@@ -776,7 +780,7 @@ cp "$T/server-ids.bak" "$T/root/shared/beamnet/servers/30814.json"
 "$TOOL" web run >/dev/null 2>&1
 page=$(cat "$T/web/index.html")
 contains "$page" "<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td class=n>33.3 km</td>" "Statusseite: Woche"
-contains "$page" "<td>Italy</td><td><a href=\"t/italy-sprint.html\">sprint</a></td><td>Sebi</td><td class=n>0:49.1</td>" "Statusseite: Rekorde"
+contains "$page" "<td>Italy</td><td><a href=\"t/italy/sprint.html\">sprint</a></td><td>Sebi</td><td class=n>0:49.1</td>" "Statusseite: Rekorde"
 contains "$page" "<h2>Saison [A-Za-zä]+ [0-9]{4}</h2>.*<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td class=n>500</td>" "Statusseite: Saison"
 contains "$page" "<td class=n>2</td><td><a href=\"p/4.html\">Zaehler</a></td><td class=n>321</td>" "Statusseite: Saison-Zaehler (1.9)"
 contains "$page" "<th class=n>XP</th>" "Statusseite: Zahlenspalten rechtsbuendig"
@@ -1354,7 +1358,9 @@ with tarfile.open(sys.argv[2], "w:gz") as t:
     add(t, "../etc/passwd", b"x")
 PY
 cp "$T/kaputt.tgz" "$B/daten-2000-02-01.tgz"; cp "$T/boese.tgz" "$B/daten-2000-02-02.tgz"
-contains "$("$TOOL" restore check 2000-02-01 2>&1)" "NICHT in Ordnung: .*1 Spielerdatei\\(en\\) im Archiv sind kaputt" "restore check: kaputte Spielerdatei erkannt"
+out=$("$TOOL" restore check 2000-02-01 2>&1)
+contains "$out" "in Ordnung: 2 Dateien, 2 Spieler" "restore check: Sicherung mit kaputter Spielerdatei ist trotzdem verwendbar"
+contains "$out" "1 Spielerdatei\\(en\\) darin sind kaputt" "restore check: kaputte Spielerdatei als Hinweis"
 contains "$("$TOOL" restore check 2000-02-02 2>&1)" "NICHT in Ordnung: .*unsicherer Pfad" "restore check: unsicherer Eintrag erkannt"
 contains "$("$TOOL" restore check 2000-13-99x 2>&1)" "Aufruf: beamnet restore check" "restore check: Datum geprüft"
 rm -f "$B/daten-2000-02-01.tgz" "$B/daten-2000-02-02.tgz"
@@ -1640,11 +1646,14 @@ lacks "$log" "getMe" "telegram: Bot-Name nur einmal am Tag abgefragt"
 contains "$(cat "$T/curl.log")" "getUpdates\\?offset=18" "telegram: naechster Abruf ab dem Offset"
 lacks "$(cat "$T/curl.argv")" "ABCDEFghijklmnop" "telegram: Token auch beim Abruf nie auf der Befehlszeile"
 # /ansage aus Telegram: nur fuer Konten aus TELEGRAM_ADMINS.
-cat >"$T/tg-updates.json" <<'JSON'
+now=$(date +%s)
+cat >"$T/tg-updates.json" <<JSON
 {"ok":true,"result":[
- {"update_id":30,"message":{"chat":{"id":-1001234567890},"from":{"id":42},"text":"/ansage Heute 20 Uhr Gruppenrennen!\tTab"}},
- {"update_id":31,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"text":"/ansage Fremder Text"}},
- {"update_id":32,"message":{"chat":{"id":-1001234567890},"from":{"id":42,"is_bot":true},"text":"/ansage Bot"}}
+ {"update_id":30,"message":{"chat":{"id":-1001234567890},"from":{"id":42},"date":$now,"text":"/ansage Heute 20 Uhr Gruppenrennen!\tTab"}},
+ {"update_id":31,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/ansage Fremder Text"}},
+ {"update_id":32,"message":{"chat":{"id":-1001234567890},"from":{"id":42,"is_bot":true},"date":$now,"text":"/ansage Bot"}},
+ {"update_id":33,"message":{"chat":{"id":-1001234567890},"from":{"id":42},"date":$now,"forward_origin":{"type":"user"},"text":"/ansage Weitergeleitet"}},
+ {"update_id":34,"message":{"chat":{"id":-1001234567890},"from":{"id":42},"date":$((now - 3600)),"text":"/ansage Uralt"}}
 ]}
 JSON
 sed -i 's/^TELEGRAM_ADMINS=.*/TELEGRAM_ADMINS=42/' "$T/beamnet.conf"
@@ -1655,7 +1664,18 @@ log=$(cat "$T/curl.log")
 contains "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" '"text": "Heute 20 Uhr Gruppenrennen! Tab"' "telegram /ansage: Admin schickt eine Ansage an alle Server"
 contains "$log" '"text":"📢 Ansage an alle Server: Heute 20 Uhr Gruppenrennen! Tab"' "telegram /ansage: Bestätigung"
 contains "$log" '"text":"Ansagen nur für Admins' "telegram /ansage: Fremde werden abgewiesen"
-lacks "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" "Fremder Text|\"Bot\"" "telegram /ansage: nur von Admins, nicht von Bots"
+lacks "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" "Fremder Text|\"Bot\"|Weitergeleitet|Uralt" "telegram /ansage: nur von Admins, nicht von Bots, nicht weitergeleitet, nicht alt"
+contains "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" '"by": "Telegram 42"' "telegram /ansage: Absender im Protokoll"
+# Geplant: /ansage 18:00 Text
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":40,"message":{"chat":{"id":-1001234567890},"from":{"id":42},"date":$now,"text":"/ansage 18:00 Turnier"}},
+ {"update_id":41,"message":{"chat":{"id":-1001234567890},"from":{"id":42},"date":$now,"text":"/ansage 18:00"}}]}
+JSON
+rm -f "$T/watch/telegram-offset" "$T/root/shared/beamnet/announcements.json"; : >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+contains "$(cat "$T/curl.log")" '"text":"📢 Ansage für 18:00 Uhr geplant: Turnier"' "telegram /ansage: mit Uhrzeit geplant"
+contains "$(cat "$T/curl.log")" '"text":"Aufruf: /ansage \[HH:MM\] <Text>"' "telegram /ansage: Uhrzeit ohne Text"
+contains "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" '"text": "Turnier"' "telegram /ansage: Text ohne die Uhrzeit"
 sed -i 's/^TELEGRAM_ADMINS=.*/TELEGRAM_ADMINS=/' "$T/beamnet.conf"
 rm -f "$T/root/shared/beamnet/announcements.json"
 sed -i 's/^TELEGRAM_COMMANDS=.*/TELEGRAM_COMMANDS=0/' "$T/beamnet.conf"
@@ -1782,11 +1802,15 @@ now=$(date +%s)
     echo "{\"action\":\"warn\",\"by\":\"Admin\",\"target\":\"Brav\",\"targetId\":\"8888\",\"at\":$((now - 600))}"
     echo "{\"action\":\"kick\",\"by\":\"Admin\",\"target\":\"Brav\",\"targetId\":\"8888\",\"at\":$((now - 9 * 86400))}"
     echo "{\"action\":\"melden\",\"target\":\"Brav\",\"targetId\":\"8888\",\"at\":$((now - 8 * 86400))}"
+    for i in 1 2 3; do echo "{\"action\":\"melden\",\"by\":\"Neider\",\"byId\":\"5555\",\"target\":\"Opfer\",\"targetId\":\"6666\",\"at\":$((now - i * 60))}"; done
+    for i in 1 2 3; do echo "{\"action\":\"melden\",\"by\":\"X$i\",\"target\":\"Fantasie\",\"at\":$((now - i * 60))}"; done
 } >>"$S/modlog.jsonl"
 rm -f "$T/watch/repeat-at" "$T/watch/repeat.json"
 out=$("$TOOL" watch 2>&1)
 contains "$out" "⚠️ Wiederholt aufgefallen: Stoerer – 2× gemeldet · 1× stumm \\(Wortfilter\\) in 7 Tagen" "repeat: Wiederholungstäter gemeldet"
 lacks "$out" "aufgefallen: Brav" "repeat: alte Vorfälle zählen nicht"
+lacks "$out" "aufgefallen: Opfer" "repeat: ein einzelner Melder reicht nicht"
+lacks "$out" "aufgefallen: Fantasie" "repeat: Meldungen ohne Konto zählen nicht"
 rm -f "$T/watch/repeat-at"
 lacks "$("$TOOL" watch 2>&1)" "aufgefallen: Stoerer" "repeat: nur einmal je Woche"
 # Neue Streckenrekorde: erster Lauf merkt sich nur den Stand, danach Meldung bei neuem Rekord und neuer Strecke.
@@ -1803,6 +1827,14 @@ sed -i 's/^RECORD_NOTIFY=.*/RECORD_NOTIFY=0/' "$T/beamnet.conf"
 echo '{"tracks":{"sprint":{"records":[{"name":"Zoe","time":40}]},"neu":{"records":[{"name":"Ana","time":80}]}}}' >"$S/races/italy.json"
 lacks "$("$TOOL" watch 2>&1)" "Streckenrekord" "records: RECORD_NOTIFY=0 schaltet ab"
 sed -i 's/^RECORD_NOTIFY=.*/RECORD_NOTIFY=1/' "$T/beamnet.conf"
+# Viele neue Strecken auf einmal: hoechstens 5 Zeilen (wichtige Meldungen duerfen nicht verdraengt werden).
+python3 - "$S/races/italy.json" <<'PY'
+import json, sys
+json.dump({"tracks": {f"t{i}": {"records": [{"name": "Spam", "time": 10 + i}]} for i in range(40)}}, open(sys.argv[1], "w"))
+PY
+out=$("$TOOL" watch 2>&1)
+[[ $(grep -c "Erste Zeit auf" <<<"$out") == 5 ]] && pass || fail "records: höchstens 5 Zeilen je Lauf"
+contains "$out" "… und 35 weitere neue Zeiten" "records: Rest zusammengefasst"
 echo '{"tracks":{}}' >"$S/races/italy.json"
 # Rotation: doppelte Maps und "all" werden abgelehnt.
 contains "$("$TOOL" rotation 5 italy utah italy 2>&1)" "Jede Map nur einmal" "rotation: doppelte Maps abgelehnt"

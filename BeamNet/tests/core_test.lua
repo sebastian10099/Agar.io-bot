@@ -1967,6 +1967,24 @@ do
     check(not chatContains("Duell auf duellbahn", 112), "Duell: Ergebnis nicht an alle")
     check(chatContains("Duell gewonnen: %+30 Bonus%-XP", 111), "Duell: Sieger bekommt XP")
     check(BN.totals(BN.players[111]).bonusXp - b0 >= 30 and BN.group == nil, "Duell: XP gutgeschrieben, vorbei")
+    -- Gleich noch einmal: dieselbe Sperre wie bei Gruppenrennen (fuer beide).
+    BN.players[110].lastDuelAt = nil
+    say(110, "/duell gefordert duellbahn"); say(111, "/duell ja")
+    check(BN.group == nil and chatContains("Bitte warte noch %d+ s, bevor ihr wieder ein Rennen startet", 111), "Duell: Sperre wie beim Gruppenrennen")
+    -- Herausforderer geht, ein Neuer bekommt seine Nummer: die Einladung gilt nicht fuer ihn.
+    BN.groupStarts = {}
+    BN.players[110].lastDuelAt = nil
+    say(110, "/duell gefordert duellbahn")
+    _G[events.onPlayerDisconnect](110)
+    check(BN.duelInvites[111] == nil, "Duell: Einladung verfaellt beim Verlassen")
+    players[110] = { name = "Neuer110", ids = { beammp = "99110" }, vehicles = {} }
+    _G[events.onPlayerJoin](110)
+    BN.duelInvites[111] = { from = 110, fromId = "11110", fromName = "Fordernd", toId = "11111", toName = "Gefordert", track = "duellbahn", at = clock }
+    say(111, "/duell ja")
+    check(BN.group == nil and chatContains("Keine offene Herausforderung", 111), "Duell: neue Sitzung mit alter Nummer zaehlt nicht")
+    _G[events.onPlayerDisconnect](110)
+    players[110] = { name = "Fordernd", ids = { beammp = "11110" }, vehicles = {} }
+    _G[events.onPlayerJoin](110)
     -- Ablehnen
     BN.players[110].lastDuelAt = nil
     say(110, "/duell gefordert duellbahn"); say(111, "/duell nein")
@@ -2738,6 +2756,11 @@ do
     clock = clock + 60
     BN.rankTick()
     check(not chatContains("Platz", 115), "Rang: Abstieg wird nicht gemeldet")
+    -- Kopf an Kopf: wieder Platz 1 innerhalb von 30 Minuten wird nicht erneut an alle gesagt.
+    board({ "11515", "a" })
+    clock = clock + 60
+    BN.rankTick()
+    check(not chatContains("👑", 116), "Rang: kein Flattern bei Kopf-an-Kopf-Rennen")
     BN.refreshBoard = savedBoard
     for _, pid in ipairs({ 115, 116 }) do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
     for _, id in ipairs({ "11515", "11616" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end

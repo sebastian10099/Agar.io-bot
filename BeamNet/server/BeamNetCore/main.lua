@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.46"
+BN.VERSION = "1.47"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -850,6 +850,8 @@ local EN = {
     ["⚔️ %s fordert dich zum Duell auf %s heraus! Annehmen: /duell ja · ablehnen: /duell nein (60 s)"] =
         "⚔️ %s challenges you to a duel on %s! Accept: /duel yes · decline: /duel no (60 s)",
     ["Herausforderung an %s gesendet."] = "Challenge sent to %s.",
+    ["Erst das laufende Rennen beenden (/rennen stop)."] = "Finish the current race first (/race stop).",
+    ["Bitte warte noch %d s, bevor ihr wieder ein Rennen startet."] = "Please wait %d s before you start another race.",
     ["📅 Dein Rückblick %s: %d XP%s – neue Saison, neues Glück!"] = "📅 Your %s recap: %d XP%s – new season, new chances!",
     [" · Platz %d"] = " · rank %d",
     ["👑 %s ist jetzt Platz 1 der Bestenliste!"] = "👑 %s is now number 1 on the leaderboard!",
@@ -1929,12 +1931,15 @@ function BN.rankTick()
     for i, rec in ipairs(BN.refreshBoard(false)) do
         local s = here[rec.id]
         if s then
-            if s.lastRank and i < s.lastRank and i <= 10 then
-                if i == 1 then
+            -- Nur ein neuer bester Platz dieser Sitzung (Kopf-an-Kopf-Rennen ueber zwei Server flattert sonst).
+            if s.lastRank and i < s.lastRank and i <= 10 and i < (s.bestRankSaid or math.huge) then
+                if i == 1 and now - (s.firstSaidAt or -math.huge) >= 1800 then
+                    s.firstSaidAt = now
                     sayAll("👑 %s ist jetzt Platz 1 der Bestenliste!", s.name)
-                else
+                elseif i > 1 then
                     say(s.pid, "📈 Du bist jetzt Platz %d der Bestenliste (vorher %d)!", i, s.lastRank)
                 end
+                s.bestRankSaid = i
             end
             s.lastRank = i
         end
@@ -2962,10 +2967,26 @@ function commands.duell(pid, arg)
         local inv = BN.duelInvites[pid]
         BN.duelInvites[pid] = nil
         local from = inv and BN.players[inv.from]
-        if not inv or not from or now - inv.at > 60 then
+        -- Die Einladung gilt nur fuer genau diese beiden Sitzungen (Spielernummern werden neu vergeben).
+        if not inv or not from or now - inv.at > 60 or from.id ~= inv.fromId or s.id ~= inv.toId
+            or from.name ~= inv.fromName or s.name ~= inv.toName then
             say(pid, "Keine offene Herausforderung.")
             return
         end
+        -- Ein laufender Lauf wird nicht einfach ueberschrieben (eine nur vorbereitete Strecke schon).
+        if (from.race and from.race.state == "running") or (s.race and s.race.state == "running") then
+            say(pid, "Erst das laufende Rennen beenden (/rennen stop).")
+            return
+        end
+        -- Wie beim Gruppenrennen: hoechstens alle 3 Minuten je Spieler (beide), auch ueber Neuverbinden hinweg.
+        for _, p in ipairs({ from, s }) do
+            local last = BN.groupStarts[p.id or ("ip:" .. tostring(p.ip or p.pid))]
+            if last and now - last < 180 then
+                say(pid, "Bitte warte noch %d s, bevor ihr wieder ein Rennen startet.", 180 - (now - last))
+                return
+            end
+        end
+        for _, p in ipairs({ from, s }) do BN.groupStarts[p.id or ("ip:" .. tostring(p.ip or p.pid))] = now end
         if BN.group then
             say(pid, "Gerade läuft schon ein Gruppenrennen – bitte gleich noch einmal herausfordern.")
             return
@@ -3011,7 +3032,8 @@ function commands.duell(pid, arg)
     end
     if BN.group then say(pid, "Gerade läuft ein Gruppenrennen – danach geht's.") return end
     s.lastDuelAt = now
-    BN.duelInvites[target.pid] = { from = pid, track = name, at = now }
+    BN.duelInvites[target.pid] = { from = pid, fromId = s.id, fromName = s.name, toId = target.id, toName = target.name,
+                                   track = name, at = now }
     say(target.pid, "⚔️ %s fordert dich zum Duell auf %s heraus! Annehmen: /duell ja · ablehnen: /duell nein (60 s)", s.name, name)
     say(pid, "Herausforderung an %s gesendet.", target.name)
 end
@@ -3697,7 +3719,7 @@ function commands.melden(pid, arg)
     for _, a in pairs(BN.players) do
         if a.pid ~= pid and BN.isAdmin(a) then say(a.pid, "Meldung von %s über %s: %s", s.name, targetName, reason) end
     end
-    modlog({ action = "melden", by = s.name, target = targetName, targetId = target and target.id or nil, reason = reason })
+    modlog({ action = "melden", by = s.name, byId = s.id or ("ip:" .. tostring(s.ip or "?")), target = targetName, targetId = target and target.id or nil, reason = reason })
     say(pid, "Danke – deine Meldung über %s ist bei den Admins.", targetName)
 end
 commands.report = commands.melden
@@ -4874,6 +4896,7 @@ function BN.tick()
             guarded("Speichern", BN.savePlayer, s)
             BN.players[pid] = nil
             guarded("Abstimmung", BN.voteForget, pid)
+            guarded("Duell", BN.forgetDuel, pid)
         end
     end
     local now = BN.now()
@@ -4983,6 +5006,12 @@ function BN_onPlayerJoin(pid)
     BN.writeStatus()
 end
 
+-- Offene Duell-Einladungen von und an diese Sitzung verfallen.
+function BN.forgetDuel(pid)
+    BN.duelInvites[pid] = nil
+    for to, inv in pairs(BN.duelInvites) do if inv.from == pid then BN.duelInvites[to] = nil end end
+end
+
 function BN_onPlayerDisconnect(pid)
     local s = BN.players[pid]
     if s then
@@ -4991,6 +5020,7 @@ function BN_onPlayerDisconnect(pid)
     end
     BN.players[pid] = nil
     guarded("Abstimmung", BN.voteForget, pid)
+    guarded("Duell", BN.forgetDuel, pid)
     BN.writeStatus()
 end
 
