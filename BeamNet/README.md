@@ -185,7 +185,7 @@ beamnet restart all
 |---|---|
 | `/hilfe` | Liste der Befehle |
 | `/stats [Name]` | Level, Liga, XP, Kilometer, Fahrzeit, Höchstgeschwindigkeit, Rang, XP bis zum nächsten Level |
-| `/top [km \| xp \| woche \| vorwoche]` | Bestenliste (Top 5) – nach XP, Gesamtkilometern, Kilometern dieser oder der letzten Woche |
+| `/top [km \| xp \| speed \| woche \| vorwoche]` | Bestenliste (Top 5) – nach XP, Gesamtkilometern, Höchstgeschwindigkeit, Kilometern dieser oder der letzten Woche |
 | `/liga` | Alle Ligen und wie weit es bis zur nächsten ist |
 | `/server` | Alle BeamNet-Server mit Map und Spielerzahl (wechseln geht im BeamMP-Launcher) |
 | `/regeln` | Regeln des Netzwerks (englisch `/rules`). Eigene Regeln: `"rules": ["…", "…"]` in `config.json` (höchstens 10 Zeilen). Neue Spieler bekommen beim ersten Besuch eine Begrüßung mit den Regeln und werden den anderen vorgestellt (`"welcomeNew": false` schaltet ab) |

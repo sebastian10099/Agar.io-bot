@@ -1829,9 +1829,27 @@ do
     fresh()
     check(not boardHas("8801") and BN.boardSource == "files", "Index: veralteter Index wird nicht benutzt")
     check(boardHas("8804") ~= nil, "Index: ohne Index weiter aus den Dateien")
-    local f = io.open(indexPath, "wb"); f:write("# beamnet-index 2 " .. clock .. "\n"); f:close()
+    local f = io.open(indexPath, "wb"); f:write("# beamnet-index 9 " .. clock .. "\n"); f:close()
     fresh()
     check(BN.refreshBoard(true) and BN.boardSource == "files", "Index: unbekannte Version wird nicht benutzt")
+    -- Format 2 (mit Hoechstgeschwindigkeit) und /top speed.
+    local function writeIndex2(lines)
+        local f2 = io.open(indexPath, "wb")
+        f2:write("# beamnet-index 2 " .. tostring(clock) .. "\n" .. table.concat(lines, "\n") .. "\n")
+        f2:close()
+    end
+    writeIndex2({
+        table.concat({ "8811", "Raser", "10", "0", "0", "", "", "", "", "", "", "", "", "412.4" }, "\t"),
+        table.concat({ "8812", "Bummler", "500", "0", "0", "", "", "", "", "", "", "", "", "88" }, "\t"),
+        table.concat({ "8813", "Alt13", "5", "0", "0", "", "", "", "", "", "", "", "" }, "\t"),
+    })
+    fresh()
+    local raser = boardHas("8811")
+    check(BN.boardSource == "index" and raser and raser.topSpeedKmh == 412.4, "Index 2: Hoechstgeschwindigkeit gelesen")
+    check(not boardHas("8813"), "Index 2: Zeile mit 13 Feldern ist im Format 2 ungueltig")
+    chatLog = {}
+    say(1, "/top speed")
+    check(chatContains("Bestenliste Höchstgeschwindigkeit:", 1) and chatContains("^1%. Raser – 412 km/h", 1), "/top speed: schnellster zuerst")
     -- Die geteilte Liste wird von der Bestenliste nicht veraendert.
     writeIndex(clock, { table.concat({ "8805", "Alte Woche", "3", "0", "0", "2000-W01", "50", "", "", "", "", "", "" }, "\t") })
     fresh()

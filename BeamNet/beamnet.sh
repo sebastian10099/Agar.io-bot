@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.38"
+VERSION="1.39"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1810,7 +1810,8 @@ watch_run() {
     return 0
 }
 
-# Bestenlisten-Index fuer das Plugin (ab 1.13): eine Zeile je Spieler in players-index.tsv. So liest jeder Server
+# Bestenlisten-Index fuer das Plugin (ab 1.13; Format 2 mit Hoechstgeschwindigkeit ab Plugin 1.21 – aeltere Plugins
+# erkennen Format 2 nicht und lesen dann wie frueher alle Dateien): eine Zeile je Spieler in players-index.tsv. So liest jeder Server
 # einmal pro Minute eine kleine Datei statt aller Spielerdateien (bei 10 000 Spielern 0,07 s statt 1,4 s je Liste).
 # Nur regulaere Dateien, keinen Symlinks folgen; Namen ohne Tabulatoren und Steuerzeichen.
 watch_index() {
@@ -1848,7 +1849,7 @@ def key(v):
 def text(v):
     return re.sub(r"[\x00-\x1f\x7f]", "", str(v))[:64]
 
-out = [f"# beamnet-index 1 {int(time.time())}"]
+out = [f"# beamnet-index 2 {int(time.time())}"]
 try:
     pdir = os.open(os.path.join(shared, "players"), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 except OSError:
@@ -1878,12 +1879,12 @@ for name in sorted(n for n in os.listdir(pdir) if n.endswith(".json")):
     out.append("\t".join([r["id"], text(r.get("name", "?")), num(r.get("km")), num(r.get("seconds")),
                           num(r.get("bonusXp")), key(r.get("week")), num(r.get("weekKm")), key(r.get("lastWeek")),
                           num(r.get("lastWeekKm")), key(r.get("month")), num(month_xp), key(r.get("lastMonth")),
-                          num(r.get("lastMonthXp"))]))
+                          num(r.get("lastMonthXp")), num(r.get("topSpeedKmh"))]))
 sys.stdout.write("\n".join(out) + "\n")
 PY
 )
     # Nur einen vollstaendigen Index schreiben (bei einem Fehler bleibt der alte; das Plugin erkennt veraltete).
-    [[ $idx == "# beamnet-index 1 "* ]] && printf '%s\n' "$idx" | safe put "$SHARED/players-index.tsv" 644
+    [[ $idx == "# beamnet-index 2 "* ]] && printf '%s\n' "$idx" | safe put "$SHARED/players-index.tsv" 644
     return 0
 }
 
@@ -2030,7 +2031,7 @@ per_km, per_min = n(cfg.get("xpPerKm"), 10), n(cfg.get("xpPerMinute"), 1)
 rows = []
 for line in read(sys.argv[1]).splitlines()[1:]:
     f = line.split("\t")
-    if len(f) != 13:
+    if len(f) not in (13, 14):
         continue
     try:
         km, sec, bonus = float(f[2] or 0), float(f[3] or 0), float(f[4] or 0)
@@ -2800,6 +2801,10 @@ for r in players:
     for m, v in map_km(r).items():
         tot, drivers = popular.get(m, (0.0, 0))
         popular[m] = (tot + v, drivers + 1)
+fastest = sorted([r for r in players if 0 < num(r.get("topSpeedKmh")) <= 600],
+                 key=lambda r: (-num(r.get("topSpeedKmh")), str(r.get("name", ""))))[:10]
+speed_rows = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{int(round(num(r.get('topSpeedKmh'))))} km/h</td></tr>"
+              for i, r in enumerate(fastest, 1)]
 popular_rows = [f"<tr><td>{E(map_name(m))}</td><td class=n>{km(v)}</td><td class=n>{d}</td></tr>"
                 for m, (v, d) in sorted(popular.items(), key=lambda x: (-x[1][0], x[0]))[:10]]
 records = [f"<tr><td>{E(map_name(m))}</td><td>{E(n)}</td><td>{E(str(b.get('name', '?')))}</td><td class=n>{race_time(b.get('time'))}</td></tr>"
@@ -2916,6 +2921,7 @@ page = f"""<!doctype html>
 <section><h2>Saison {E(season_title)}</h2>{table(["#", "Name", "XP#"], season_rows, "In dieser Saison noch keine Punkte.")}</section>
 <section><h2>Streckenrekorde</h2>{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>
 <section><h2>Beliebteste Maps</h2>{table(["Map", "Kilometer#", "Fahrer#"], popular_rows, "Noch keine Kilometer je Map.")}</section>
+<section><h2>Schnellste Fahrer</h2>{table(["#", "Name", "Spitze#"], speed_rows, "Noch keine Geschwindigkeiten.")}</section>
 </div>
 <footer><a href="hilfe.html">Hilfe, Befehle &amp; Regeln</a> · Chat-Befehle im Spiel: /hilfe · /stats · /top · /wo · /event · /regeln · /lang en · <a href="api.json">api.json</a></footer>
 </main></body></html>

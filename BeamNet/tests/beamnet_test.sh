@@ -530,6 +530,15 @@ contains "$page" "1 Server online · 2 Spieler" "Statusseite: Zusammenfassung"
 contains "$page" "<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td class=n>8</td><td>Silber</td><td class=n>1500</td><td class=n>120 km</td><td class=n>0</td>" "Statusseite: Bestenliste"
 contains "$page" "&lt;b&gt;Hacker&lt;/b&gt;" "Statusseite: Namen werden maskiert"
 lacks "$page" "<b>Hacker</b>" "Statusseite: kein HTML aus Spielernamen"
+# Schnellste Fahrer: Hoechstgeschwindigkeit, unplausible Werte (> 600 km/h) nicht.
+echo '{"id":"61","name":"Raser","km":3,"topSpeedKmh":312.6}' >"$T/root/shared/beamnet/players/61.json"
+echo '{"id":"62","name":"Cheater","km":3,"topSpeedKmh":9999}' >"$T/root/shared/beamnet/players/62.json"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" '<h2>Schnellste Fahrer</h2>.*<td><a href="p/61.html">Raser</a></td><td class=n>313 km/h</td>' "Statusseite: schnellste Fahrer"
+lacks "$(cat "$T/web/index.html")" "9999 km/h" "Statusseite: unplausible Geschwindigkeit nicht gezeigt"
+rm -f "$T/root/shared/beamnet/players/61.json" "$T/root/shared/beamnet/players/62.json"
+"$TOOL" web run >/dev/null 2>&1
+page=$(cat "$T/web/index.html")
 # Hilfeseite: Befehle, Regeln (eigene aus config.json, maskiert), Ligen, Erfolge; verlinkt von der Statusseite.
 contains "$page" '<a href="hilfe.html">Hilfe, Befehle &amp; Regeln</a>' "Hilfeseite: verlinkt"
 help=$(cat "$T/web/hilfe.html")
@@ -961,7 +970,7 @@ cp "$T/conf.peak" "$T/beamnet.conf"
 # --- Bestenlisten-Index (watch_index) -------------------------------------------------------------------------------
 P="$T/root/shared/beamnet/players"
 mkdir -p "$P"
-printf '{"id":"901","name":"Tab\\tName\\nZeile","km":12.5,"seconds":60,"bonusXp":5,"week":"2025-W41","weekKm":3,"month":"2025-10","monthXp":40}' >"$P/901.json"
+printf '{"id":"901","name":"Tab\\tName\\nZeile","km":12.5,"seconds":60,"bonusXp":5,"week":"2025-W41","weekKm":3,"month":"2025-10","monthXp":40,"topSpeedKmh":231.5}' >"$P/901.json"
 echo '{"id":"902","name":"Alt","km":1,"seconds":0,"xp":500,"month":"2025-10","monthStartXp":430}' >"$P/902.json"
 echo '{"id":"../böse","name":"Pfad","km":1}' >"$P/903.json"
 echo '{"id":"904","name":"Woche","km":1,"week":"x\ty"}' >"$P/904.json"
@@ -969,16 +978,16 @@ echo '{kaputt' >"$P/905.json"
 echo '{"id":"906","name":"Fremd","km":99999}' >"$T/fremd.json"; ln -sf "$T/fremd.json" "$P/906.json"
 "$TOOL" watch >/dev/null 2>&1
 idx=$(cat "$T/root/shared/beamnet/players-index.tsv" 2>/dev/null)
-contains "$idx" "^# beamnet-index 1 [0-9]+$" "index: Kopfzeile mit Zeitstempel"
-contains "$idx" $'^901\tTabNameZeile\t12\.5\t60\t5\t2025-W41\t3\t\t\t2025-10\t40\t\t$' "index: Zeile ohne Tabulatoren und Umbrueche im Namen"
-contains "$idx" $'^902\tAlt\t1\t0\t\t\t\t\t\t2025-10\t70\t\t$' "index: Saison-XP fuer Datensaetze von 1.8"
+contains "$idx" "^# beamnet-index 2 [0-9]+$" "index: Kopfzeile mit Format 2 und Zeitstempel"
+contains "$idx" $'^901\tTabNameZeile\t12\.5\t60\t5\t2025-W41\t3\t\t\t2025-10\t40\t\t\t231\.5$' "index: Zeile ohne Tabulatoren und Umbrueche im Namen, mit Spitze"
+contains "$idx" $'^902\tAlt\t1\t0\t\t\t\t\t\t2025-10\t70\t\t\t$' "index: Saison-XP fuer Datensaetze von 1.8"
 contains "$idx" $'^904\tWoche\t1\t\t\t\t' "index: ungueltige Wochenangabe leer"
 lacks "$idx" "Pfad|Fremd|99999|kaputt" "index: unsichere IDs, Symlinks und kaputte Dateien fehlen"
 [[ $(stat -c %a "$T/root/shared/beamnet/players-index.tsv") == 644 ]] && pass || fail "index: lesbar fuer das Plugin (644)"
-python3 - "$T/root/shared/beamnet/players-index.tsv" <<'PY' && pass || fail "index: jede Zeile hat genau 13 Felder"
+python3 - "$T/root/shared/beamnet/players-index.tsv" <<'PY' && pass || fail "index: jede Zeile hat genau 14 Felder"
 import sys
 lines = open(sys.argv[1], encoding="utf-8").read().splitlines()[1:]
-sys.exit(0 if lines and all(len(l.split("\t")) == 13 for l in lines) else 1)
+sys.exit(0 if lines and all(len(l.split("\t")) == 14 for l in lines) else 1)
 PY
 rm -f "$P"/90[1-6].json "$T/fremd.json"
 
