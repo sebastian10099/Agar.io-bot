@@ -234,6 +234,7 @@
       <button class="btn" id="b-notify" aria-pressed="false">🔔</button>
       <button class="btn" id="b-poll" title="Sofort neue Tokens holen (Taste r)">Jetzt pollen</button>
       <button class="btn primary" id="b-toggle" title="Taste p">Pause</button>
+      <button class="btn" id="b-quit" title="Bot und Steuerseite beenden">Beenden</button>
     </div>
   </div>
   <div id="offline" class="offline" role="alert" hidden><b>Keine Verbindung zum Bot.</b> Läuft er? Auf dem Mac <code>Start Trading Bot.command</code> starten, dann hier <button class="btn sm" id="b-retry">Erneut versuchen</button> <span id="offline-since" class="reasons"></span></div>
@@ -1077,6 +1078,13 @@ $('b-toggle').onclick = () => busy($('b-toggle'), async () => {
   const r = await api('/api/control', {action: state && state.paused ? 'resume' : 'pause'});
   toast(r.paused ? 'Pausiert – keine neuen Einstiege, Exits laufen weiter' : 'Fortgesetzt'); refresh();
 });
+let quitting = false;
+$('b-quit').onclick = () => busy($('b-quit'), async () => {
+  if (!await confirmDialog('Bot beenden?', 'Offene Paper-Positionen bleiben gespeichert und laufen beim nächsten Start weiter. Zum Neustart die App „New Token Bot“ öffnen.')) return;
+  await api('/api/quit', {}); quitting = true;
+  $('offline').hidden = false; $('offline').innerHTML = '<b>Bot beendet.</b> Zum Neustart die App „New Token Bot“ oder <code>Start Trading Bot.command</code> öffnen.';
+  toast('Bot beendet');
+});
 $('b-poll').onclick = () => busy($('b-poll'), async () => { await api('/api/control', {action: 'poll'}); toast('Poll angestoßen'); setTimeout(refresh, 1500); });
 document.querySelectorAll('nav [role=tab]').forEach((b) => b.onclick = () => {
   document.querySelectorAll('nav [role=tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
@@ -1099,6 +1107,7 @@ async function refresh() {
     if (!$('offline').hidden) { $('offline').hidden = true; offlineSince = null; toast('Verbindung wieder da'); }
   } catch (e) {
     $('conn').className = 'dot bad'; $('conn').title = 'keine Verbindung zum Bot'; $('k-poll').textContent = 'keine Verbindung';
+    if (quitting) return;                       // deliberately stopped: keep the "beendet" banner as it is
     offlineSince = offlineSince || Date.now();
     $('offline-since').textContent = `seit ${dur((Date.now() - offlineSince) / 1000)}`;
     $('offline').hidden = false;

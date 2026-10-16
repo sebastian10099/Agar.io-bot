@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -400,3 +401,45 @@ class EdgeBySourceTests(unittest.TestCase):
             self.assertEqual(eng.state()["edge_source"], rows)
             self.assertEqual(eng.state()["version"], "0.9")
             store.close()
+
+
+class AppBundleTests(unittest.TestCase):
+    def test_bundle_files_and_icon(self):
+        import struct
+        app = ROOT / "New Token Bot.app" / "Contents"
+        self.assertTrue((app / "MacOS" / "New Token Bot").is_file())
+        self.assertTrue(os.access(app / "MacOS" / "New Token Bot", os.X_OK))
+        plist = (app / "Info.plist").read_text()
+        for needle in ("<string>New Token Bot</string>", "<string>AppIcon</string>", "LSUIElement"):
+            self.assertIn(needle, plist)
+        d = (app / "Resources" / "AppIcon.icns").read_bytes()
+        self.assertEqual(d[:4], b"icns"); self.assertEqual(struct.unpack(">I", d[4:8])[0], len(d))
+        sizes = []
+        i = 8
+        while i < len(d):
+            tag, ln = d[i:i + 4], struct.unpack(">I", d[i + 4:i + 8])[0]
+            body = d[i + 8:i + ln]
+            self.assertEqual(body[:8], b"\x89PNG\r\n\x1a\n", tag)
+            sizes.append(struct.unpack(">I", body[16:20])[0]); i += ln
+        self.assertEqual(set(sizes), {16, 32, 64, 128, 256, 512, 1024})
+        self.assertTrue((ROOT / "install-app.sh").is_file())
+
+    def test_quit_route_stops_the_engine(self):
+        from bot.server import make_server
+        import http.client, threading, time as _t
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex()
+            eng = Engine(CFG, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            server = make_server(eng, "127.0.0.1", 0)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            try:
+                c = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+                c.request("POST", "/api/quit", body="{}", headers={"Content-Type": "application/json"})
+                r = c.getresponse(); self.assertEqual((r.status, json.loads(r.read())["ok"]), (200, True))
+                for _ in range(30):
+                    if eng._stop.is_set(): break
+                    _t.sleep(0.05)
+                self.assertTrue(eng._stop.is_set())
+                self.assertIn("beendet", store.events(3)[0]["message"])
+            finally:
+                c.close(); server.shutdown(); server.server_close(); store.close()

@@ -449,6 +449,18 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
     await p.screenshot({ path: SHOTS + `/09-phone-${tab}.png`, fullPage: true });
   }
   await ctx.close();
+  // --- Beenden: ganz am Ende, danach ist der Demo-Server weg ---
+  console.log('\n== Beenden ==');
+  [ctx, p] = await page({ viewport: { width: 1200, height: 800 } });
+  await p.goto(URL); await p.waitForFunction(() => document.querySelector('#k-bankroll').textContent !== '–');
+  await p.click('#b-quit'); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
+  await p.waitForFunction(() => document.querySelector('#offline').textContent.includes('beendet'));
+  ok(true, 'Beenden: Bestätigung, Banner „Bot beendet“');
+  let down = false;
+  for (let i = 0; i < 20; i++) { try { await p.request.get(URL + 'api/state', { timeout: 1000 }); } catch { down = true; break; } await new Promise((r) => setTimeout(r, 250)); }
+  ok(down, 'Server nach Beenden nicht mehr erreichbar');
+  ok(!(await p.textContent('#offline')).includes('Keine Verbindung'), 'Banner bleibt „beendet“, kein Verbindungsfehler');
+  await ctx.close();
   await browser.close();
 
   console.log('\n' + (problems.length ? 'PROBLEME:\n - ' + problems.join('\n - ') : 'Keine Probleme, keine Konsolenfehler.'));

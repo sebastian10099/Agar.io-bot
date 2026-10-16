@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import threading
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -138,6 +139,10 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             elif self.path == "/api/positions/open":
                 result = engine.open_from_candidate(int(body.get("candidate_id") or 0))
                 self._json(result, 200 if result["ok"] else 409)
+            elif self.path == "/api/quit":
+                engine.store.log("info", "dashboard: Bot beendet")
+                self._json({"ok": True})
+                threading.Timer(0.3, engine.stop).start()      # answer first, then stop the loop; main shuts the server down
             elif self.path == "/api/doctor":
                 self._json(engine.doctor())
             elif self.path == "/api/reset":

@@ -13,8 +13,19 @@ eine Kante hat. Läuft als lokale Mac-App, ohne Abhängigkeiten außer Python 3.
 
 | Was | Wie |
 | --- | --- |
-| Live-Markt, Spielgeld | Doppelklick auf **Start Trading Bot.command** (oder `TradingBot.app`) |
+| Als App auf dem Schreibtisch | einmal `bash install-app.sh` im Ordner `trading-bot`, danach Doppelklick auf **New Token Bot** |
+| Live-Markt, Spielgeld | Doppelklick auf **Start Trading Bot.command** |
 | Offline-Demo, Zeitraffer | Doppelklick auf **Start Demo.command** |
+
+**Die App** (`New Token Bot.app`) startet den Bot im Hintergrund, öffnet die
+Steuerseite im Browser und beendet sich über den Knopf **Beenden** oben
+rechts. Läuft der Bot schon, öffnet ein Doppelklick nur die Seite. Das Log
+liegt in `~/Library/Application Support/NewTokenBot/bot.log`; startet der Bot
+nicht, zeigt die App die letzten Logzeilen in einem Dialog. `install-app.sh`
+kopiert die App auf den Schreibtisch, merkt sich den Projektordner und
+installiert, falls Homebrew da ist, die Anthropic-CLI für „Mit Claude
+anmelden“. Das Icon entsteht mit `python3 tools/make_icon.py` ohne
+Zusatzpakete.
 | Terminal | `python3 -m bot.main` bzw. `python3 -m bot.main --demo` |
 
 Das Dashboard öffnet sich unter http://127.0.0.1:8765 — nur lokal erreichbar.
@@ -114,6 +125,7 @@ nutzen kannst (nur von `127.0.0.1` erreichbar):
 | GET | `/api/candidates/12` | Kandidat mit Snapshot, RugCheck, KI-Urteil und Renditen je Horizont |
 | GET | `/api/sweep?horizon=15` | Rückblick-Analyse der Filterwerte |
 | POST | `/api/doctor` `{}` | Selbsttest aller Quellen, Parser und Zugänge |
+| POST | `/api/quit` `{}` | Bot und Dashboard beenden |
 | POST | `/api/reset` `{"what": "positions"\|"all", "bankroll": 500}` | Paper-Konto zurücksetzen, optional mit neuem Startkapital |
 | GET/POST | `/api/profiles` · `/api/profiles/apply` · `/api/profiles/delete` | Parameter-Profile verwalten |
 | GET | `/api/export/positions.csv` · `trades.csv` · `candidates.csv` | Export (Semikolon-CSV, UTF-8 mit BOM) |

@@ -1,0 +1,55 @@
+#!/bin/bash
+# "New Token Bot" – Doppelklick-Start.
+#
+# Startet den Bot im Hintergrund (Paper-Modus, echter Markt) und oeffnet die
+# Steuerseite im Browser. Laeuft er schon, wird nur die Seite geoeffnet.
+# Beenden: Knopf "Beenden" oben rechts auf der Steuerseite.
+# Log: ~/Library/Application Support/NewTokenBot/bot.log
+#
+# Der Projektordner steht in Contents/Resources/project.path (schreibt
+# install-app.sh); ohne die Datei gilt der Ordner, in dem das Bundle liegt.
+set -u
+BUNDLE="$(cd "$(dirname "$0")/../.." && pwd)"
+if [ -f "$BUNDLE/Contents/Resources/project.path" ]; then
+  PROJECT="$(head -n 1 "$BUNDLE/Contents/Resources/project.path")"
+else
+  PROJECT="$(cd "$BUNDLE/.." && pwd)"
+fi
+PORT="${NEW_TOKEN_BOT_PORT:-8765}"
+URL="http://127.0.0.1:$PORT/"
+DATA="$HOME/Library/Application Support/NewTokenBot"
+LOG="$DATA/bot.log"
+mkdir -p "$DATA"
+
+say_error() {
+  /usr/bin/osascript -e "display dialog \"$1\" with title \"New Token Bot\" buttons {\"OK\"} default button 1 with icon stop" >/dev/null 2>&1
+}
+
+alive() { /usr/bin/curl -s -m 2 -o /dev/null "$URL/api/state"; }
+
+if alive; then
+  /usr/bin/open "$URL"
+  exit 0
+fi
+
+if [ ! -f "$PROJECT/launch.sh" ]; then
+  say_error "Projektordner nicht gefunden: $PROJECT. Bitte install-app.sh im Ordner trading-bot erneut ausfuehren."
+  exit 1
+fi
+
+cd "$PROJECT" || exit 1
+: > "$LOG"
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"   # Finder-Start hat einen kurzen PATH; ant/brew liegen hier
+# NEW_TOKEN_BOT_ARGS="--demo" startet den Demo-Markt statt des echten
+# shellcheck disable=SC2086
+nohup /bin/bash ./launch.sh --no-open --port "$PORT" ${NEW_TOKEN_BOT_ARGS:-} >> "$LOG" 2>&1 < /dev/null &
+
+for _ in $(seq 1 40); do
+  sleep 0.5
+  alive && { /usr/bin/open "$URL"; exit 0; }
+  if ! kill -0 $! 2>/dev/null; then break; fi
+done
+
+TAIL="$(tail -n 6 "$LOG" | tr '"' "'" | tr '\\' '/')"
+say_error "Der Bot ist nicht gestartet. Letzte Zeilen aus dem Log: ${TAIL}  (Log: $LOG)"
+exit 1
