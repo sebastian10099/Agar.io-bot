@@ -108,6 +108,31 @@ class EngineControlTests(unittest.TestCase):
         self.assertEqual(self.store.candidates(), [])
         self.assertFalse(self.engine.reset("everything")["ok"])
 
+    def test_manual_entry_from_candidate(self):
+        self.engine.poll_once()
+        watch = next(c for c in self.store.candidates() if c["decision"] == "watch")
+        r = self.engine.open_from_candidate(watch["id"])
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["position"]["symbol"], watch["symbol"])
+        self.assertEqual(self.engine.open_from_candidate(watch["id"])["error"], "Nicht eröffnet: already holding")
+        self.assertFalse(self.engine.open_from_candidate(99999)["ok"])
+        detail = self.engine.position_detail(r["position"]["id"])
+        self.assertTrue(detail["ok"])
+        self.assertEqual([t["side"] for t in detail["trades"]], ["buy"])
+        self.assertTrue(any("MANUAL BUY" in e["message"] for e in self.store.events()))
+
+    def test_reset_with_bankroll(self):
+        self.engine.poll_once()
+        r = self.engine.reset("positions", "2500")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(self.engine.paper.initial, 2500.0)
+        self.assertEqual(self.cfg["bankroll_usd"], 2500.0)
+        self.assertIn({"bankroll_usd": 2500.0}, self.saved)
+        self.assertEqual(self.store.open_positions(), [])
+        self.assertFalse(self.engine.reset("positions", 1)["ok"])
+        self.assertFalse(self.engine.reset("positions", "abc")["ok"])
+        self.assertEqual(self.engine.paper.initial, 2500.0)
+
     def test_paused_engine_does_not_open(self):
         self.engine.set_paused(True)
         counts = self.engine.poll_once()
@@ -174,6 +199,25 @@ class ControlApiTests(unittest.TestCase):
         status, state = self.call("GET", "/api/state")
         self.assertIn("paper.fee_pct", state["config"])
         self.assertIn("started_at", state)
+
+    def test_manual_open_detail_and_bankroll_routes(self):
+        self.engine.poll_once()
+        watch = next(c for c in self.store.candidates() if c["decision"] == "watch")
+        status, r = self.call("POST", "/api/positions/open", {"candidate_id": watch["id"]})
+        self.assertEqual(status, 200, r)
+        pid = r["position"]["id"]
+        status, r = self.call("POST", "/api/positions/open", {"candidate_id": watch["id"]})
+        self.assertEqual(status, 409)
+        status, d = self.call("GET", f"/api/positions/{pid}")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(d["trades"]), 1)
+        status, d = self.call("GET", "/api/positions/424242")
+        self.assertEqual(status, 404)
+        status, r = self.call("POST", "/api/reset", {"what": "positions", "bankroll": 750})
+        self.assertEqual(status, 200)
+        self.assertEqual(r["initial"], 750.0)
+        status, r = self.call("POST", "/api/reset", {"what": "positions", "bankroll": 0})
+        self.assertEqual(status, 400)
 
 
 if __name__ == "__main__":

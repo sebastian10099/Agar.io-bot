@@ -85,8 +85,9 @@
   .scroll { max-height:420px; overflow:auto; -webkit-overflow-scrolling:touch; }
   .scroll.x { max-height:none; }
   .scroll table { min-width:640px; }
-  #cands table { min-width:900px; }
-  #cands td:last-child { min-width:260px; white-space:normal; }
+  #cands table { min-width:1120px; }
+  #cands td:nth-last-child(2) { min-width:300px; white-space:normal; }
+  #cands td:last-child { white-space:nowrap; }
   .pos { color:var(--green); } .neg { color:var(--red); }
   .d-buy { color:var(--green); font-weight:600; } .d-watch { color:var(--amber); } .d-skip { color:var(--dim); }
   .reasons { color:var(--dim); font-size:12px; }
@@ -169,6 +170,7 @@
   .toast.err { background:var(--red); color:#fff; }
 
   dialog { border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--fg); padding:20px; max-width:420px; }
+  dialog#detail { max-width:min(680px, 92vw); width:100%; }
   dialog::backdrop { background:rgba(0,0,0,.45); }
   dialog h3 { margin:0 0 8px; font-size:15px; } dialog p { margin:0 0 14px; color:var(--dim); }
   dialog .row { display:flex; gap:8px; justify-content:flex-end; }
@@ -245,10 +247,12 @@
     <section>
       <h2>Paper-Konto</h2>
       <div class="formbar" style="margin-top:0">
+        <label for="bankroll" class="status">Startkapital beim Zurücksetzen</label>
+        <span class="ctl"><input type="number" id="bankroll" min="10" max="1000000000" step="10" inputmode="decimal" style="width:120px;background:var(--muted);border:1px solid var(--line-strong);border-radius:7px;padding:6px 8px;text-align:right"> <span class="unit">$</span></span>
         <button class="btn danger" id="b-reset-pos">Positionen zurücksetzen</button>
         <button class="btn danger" id="b-reset-all">Alles zurücksetzen (inkl. Edge-Daten)</button>
-        <span class="status">Startkapital <b id="k-initial">–</b> · läuft seit <b id="k-uptime">–</b> · Polls <b id="k-polls">–</b> · Fehler <b id="k-errors">–</b></span>
       </div>
+      <p class="note">Aktuell <b id="k-initial">–</b> Startkapital · läuft seit <b id="k-uptime">–</b> · Polls <b id="k-polls">–</b> · Fehler <b id="k-errors">–</b></p>
     </section>
   </div>
 
@@ -273,6 +277,8 @@
 </main>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<dialog id="detail" aria-labelledby="d-title"><h3 id="d-title"></h3><p id="d-sub"></p><div id="d-body" class="scroll" style="max-height:50vh"></div>
+  <div class="row" style="margin-top:14px"><button class="btn" id="d-close">Schließen</button></div></dialog>
 <dialog id="confirm"><h3 id="c-title"></h3><p id="c-text"></p><div class="row">
   <button class="btn" id="c-no">Abbrechen</button><button class="btn danger" id="c-yes">Ja, ausführen</button></div></dialog>
 
@@ -358,8 +364,9 @@ function renderOverview(s) {
     {h: 'Stop', f: (r) => { const g = targets(r, s.config); return `<span class="neg">${px(g.stop)}</span>` + (g.trailPrice ? `<div class="reasons" title="Trailing-Stop, scharf">↑ ${px(g.trailPrice)}</div>` : ''); }, num: true},
     {h: 'Nächstes Ziel', f: (r) => { const g = targets(r, s.config); return g.next ? `<span class="pos">${px(g.next.price)}</span><div class="reasons">+${g.next.pct}% · ${Math.round(g.next.frac * 100)}% verkaufen</div>` : '<span class="reasons">Leiter fertig</span>'; }, num: true},
     {h: 'Zeit', f: (r) => { const g = targets(r, s.config); return dur(r.age_min * 60) + `<div class="reasons">${g.left > 0 ? 'noch ' + dur(g.left * 60) : 'Zeit-Stop fällig'}</div>`; }, num: true},
-    {h: '<span class="sr">Aktion</span>', f: (r) => `<button class="btn sm danger" data-close="${r.id}" aria-label="${esc(r.symbol)} schließen">Schließen</button>`, num: true},
+    {h: '<span class="sr">Aktion</span>', f: (r) => `<button class="btn sm" data-detail="${r.id}" aria-label="${esc(r.symbol)} Details">Details</button> <button class="btn sm danger" data-close="${r.id}" aria-label="${esc(r.symbol)} schließen">Schließen</button>`, num: true},
   ], 'Keine offene Position.');
+  $('open').querySelectorAll('[data-detail]').forEach((b) => b.onclick = () => busy(b, () => showDetail(Number(b.dataset.detail))));
   $('open').querySelectorAll('[data-close]').forEach((b) => b.onclick = () => busy(b, async () => {
     const id = Number(b.dataset.close);
     const p = s.open_positions.find((x) => x.id === id);
@@ -388,7 +395,9 @@ function renderOverview(s) {
     {h: 'Größe', f: (r) => usd(r.size_usd), num: true},
     {h: 'P&L', f: (r) => usd(r.realized_usd) + `<div class="bar-pnl"><i style="width:${Math.min(100, Math.abs(r.realized_usd) / r.size_usd * 100)}%;background:var(--${r.realized_usd >= 0 ? 'green' : 'red'})"></i></div>`, num: true, cls: (r) => cls(r.realized_usd)},
     {h: 'Dauer', f: (r) => dur(r.closed_at - r.opened_at), num: true},
+    {h: '<span class="sr">Aktion</span>', f: (r) => `<button class="btn sm" data-detail="${r.id}" aria-label="${esc(r.symbol)} Details">Details</button>`, num: true},
   ], 'Noch nichts geschlossen.');
+  $('closed').querySelectorAll('[data-detail]').forEach((b) => b.onclick = () => busy(b, () => showDetail(Number(b.dataset.detail))));
 }
 
 function renderCandidates(s) {
@@ -408,7 +417,15 @@ function renderCandidates(s) {
     {h: 'Δ 5m', sort: 'change', f: (r) => pct(r.snapshot.change_m5), num: true, cls: (r) => cls(r.snapshot.change_m5)},
     {h: 'Alter', sort: 'age', f: (r) => r.snapshot.age_min == null ? '–' : Math.round(r.snapshot.age_min) + ' min', num: true},
     {h: 'Gründe', f: (r) => `<span class="reasons">${esc(r.reasons.join(' · '))}</span>`},
+    {h: '<span class="sr">Aktion</span>', f: (r) => `<button class="btn sm" data-buy="${r.id}" aria-label="${esc(r.symbol)} manuell kaufen" title="Als Paper-Position eröffnen, unabhängig vom Bot-Urteil">Kaufen</button>`, num: true},
   ], s.candidates.length ? 'Nichts passt zum Filter.' : 'Noch keine Kandidaten gesehen.');
+  $('cands').querySelectorAll('[data-buy]').forEach((b) => b.onclick = () => busy(b, async () => {
+    const c = s.candidates.find((x) => x.id === Number(b.dataset.buy));
+    if (!await confirmDialog(`${c.symbol} manuell kaufen?`, `Eröffnet eine Paper-Position zum aktuellen Kurs mit der normalen Positionsgröße. Der Bot hatte entschieden: ${c.decision}. Der Tracker merkt sich das – so siehst du später, ob dein Urteil besser war.`)) return;
+    const r = await api('/api/positions/open', {candidate_id: c.id});
+    if (!r.ok) throw new Error(r.error);
+    toast(`${c.symbol} gekauft · ${usd(r.position.size_usd)} @ ${px(r.position.entry_price)}`); refresh();
+  }));
   $('cands').querySelectorAll('th.sortable button').forEach((b) => b.onclick = () => {
     const k = b.parentElement.dataset.sort;
     sort = sort.key === k ? { key: k, dir: -sort.dir } : { key: k, dir: k === 'symbol' || k === 'decision' ? 1 : -1 };
@@ -517,6 +534,7 @@ function renderHeader(s) {
   $('conn').setAttribute('aria-label', 'Verbindung: ' + ({ok: 'verbunden', warn: 'noch kein Poll', bad: 'keine Daten seit ' + dur(since)})[connState] + (s.errors ? `, ${s.errors} Fehler` : ''));
   $('conn').title = $('conn').getAttribute('aria-label');
   $('k-initial').textContent = usd(s.initial); $('k-uptime').textContent = dur(s.now - s.started_at);
+  if (document.activeElement !== $('bankroll') && !$('bankroll').value) $('bankroll').value = s.initial;
   $('k-polls').textContent = s.polls; $('k-errors').textContent = s.errors;
 }
 
@@ -598,19 +616,41 @@ $('form').onsubmit = (ev) => { ev.preventDefault(); busy($('b-save'), async () =
   if (!r.ok) { errors = r.errors; Object.keys(errors).forEach(paintField); toast('Nicht gespeichert – bitte Fehler prüfen', true); return; }
   loadForm(r.config); toast('Gespeichert – gilt ab sofort'); refresh();
 }); };
+$('d-close').onclick = () => $('detail').close();
+async function showDetail(id) {
+  const d = await api('/api/positions/' + id);
+  if (!d.ok) throw new Error(d.error);
+  const p = d.position;
+  $('d-title').textContent = `${p.symbol} · ${p.status === 'open' ? 'offen' : 'geschlossen (' + p.exit_reason + ')'}`;
+  $('d-sub').textContent = `Einstieg ${px(p.entry_price)} · Größe ${usd(p.size_usd)} · Hoch ${pct((p.peak_price / p.entry_price - 1) * 100)} · realisiert ${usd(p.realized_usd)}` + (d.price ? ` · Kurs ${px(d.price)}` : '');
+  $('d-body').innerHTML = table(d.trades, [
+    {h: 'Zeit', f: (r) => hhmm(r.at)},
+    {h: 'Seite', f: (r) => r.side === 'buy' ? '<span class="pos">Kauf</span>' : '<span class="neg">Verkauf</span>'},
+    {h: 'Grund', f: (r) => esc(r.reason)},
+    {h: 'Kurs', f: (r) => px(r.price), num: true},
+    {h: 'Anteil', f: (r) => Math.round(r.frac * 100) + '%', num: true},
+    {h: 'Betrag', f: (r) => usd(r.usd), num: true},
+  ], 'Keine Fills.');
+  $('detail').showModal();
+}
 $('b-revert').onclick = () => loadForm(loaded);
 $('b-defaults').onclick = async () => {
   if (!await confirmDialog('Standardwerte laden?', 'Alle Felder werden auf die Werte aus bot/config.json gesetzt. Gespeichert wird erst mit „Speichern“.')) return;
   const d = await api('/api/defaults'); draft = JSON.parse(JSON.stringify(d.config)); errors = {};
   schema.fields.forEach((f) => paintField(f.path)); paintFormBar();
 };
+const bankrollArg = () => { const v = Number(String($('bankroll').value).replace(',', '.')); return v && state && v !== state.initial ? v : undefined; };
 $('b-reset-pos').onclick = () => busy($('b-reset-pos'), async () => {
-  if (!await confirmDialog('Positionen zurücksetzen?', 'Alle offenen und geschlossenen Paper-Positionen werden gelöscht. Kandidaten und Edge-Daten bleiben.')) return;
-  await api('/api/reset', {what: 'positions'}); toast('Paper-Konto zurückgesetzt'); refresh();
+  const b = bankrollArg();
+  if (!await confirmDialog('Positionen zurücksetzen?', 'Alle offenen und geschlossenen Paper-Positionen werden gelöscht. Kandidaten und Edge-Daten bleiben.' + (b ? ` Startkapital wird ${usd(b)}.` : ''))) return;
+  const r = await api('/api/reset', {what: 'positions', bankroll: b}); if (r.error) throw new Error(r.error);
+  toast('Paper-Konto zurückgesetzt' + (b ? ` · Startkapital ${usd(r.initial)}` : '')); $('bankroll').value = ''; refresh();
 });
 $('b-reset-all').onclick = () => busy($('b-reset-all'), async () => {
-  if (!await confirmDialog('Wirklich alles zurücksetzen?', 'Positionen, Kandidaten und der komplette Edge-Report werden gelöscht. Das lässt sich nicht rückgängig machen.')) return;
-  await api('/api/reset', {what: 'all'}); toast('Alles zurückgesetzt'); refresh();
+  const b = bankrollArg();
+  if (!await confirmDialog('Wirklich alles zurücksetzen?', 'Positionen, Kandidaten und der komplette Edge-Report werden gelöscht. Das lässt sich nicht rückgängig machen.' + (b ? ` Startkapital wird ${usd(b)}.` : ''))) return;
+  const r = await api('/api/reset', {what: 'all', bankroll: b}); if (r.error) throw new Error(r.error);
+  toast('Alles zurückgesetzt' + (b ? ` · Startkapital ${usd(r.initial)}` : '')); $('bankroll').value = ''; refresh();
 });
 
 // ---------- header actions, tabs, filters ----------

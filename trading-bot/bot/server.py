@@ -36,6 +36,10 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                 self._json(settings.schema_for_client())
             elif self.path == "/api/config":
                 self._json({"config": settings.flat(engine.cfg)})
+            elif self.path.startswith("/api/positions/"):
+                tail = self.path.rsplit("/", 1)[-1]
+                result = engine.position_detail(int(tail)) if tail.isdigit() else {"ok": False, "error": "not found"}
+                self._json(result, 200 if result["ok"] else 404)
             elif self.path == "/api/defaults":
                 bundled = json.loads((Path(__file__).parent / "config.json").read_text())
                 self._json({"config": settings.flat(bundled)})
@@ -65,8 +69,11 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             elif self.path == "/api/positions/close":
                 result = engine.close_position(int(body.get("id") or 0))
                 self._json(result, 200 if result["ok"] else 409)
+            elif self.path == "/api/positions/open":
+                result = engine.open_from_candidate(int(body.get("candidate_id") or 0))
+                self._json(result, 200 if result["ok"] else 409)
             elif self.path == "/api/reset":
-                result = engine.reset(str(body.get("what") or "positions"))
+                result = engine.reset(str(body.get("what") or "positions"), body.get("bankroll"))
                 self._json(result, 200 if result["ok"] else 400)
             else:
                 self._json({"error": "not found"}, 404)

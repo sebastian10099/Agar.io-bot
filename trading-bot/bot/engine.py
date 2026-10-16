@@ -152,14 +152,57 @@ class Engine:
             self.last_prices[pos["pair"]] = price
             return {"ok": True, "position": self.store.position(pid)}
 
-    def reset(self, what: str) -> dict[str, Any]:
+    def reset(self, what: str, bankroll: Optional[float] = None) -> dict[str, Any]:
         if what not in ("positions", "all"):
             return {"ok": False, "error": "what muss 'positions' oder 'all' sein"}
+        if bankroll is not None:
+            try:
+                bankroll = float(str(bankroll).replace(",", "."))
+            except ValueError:
+                return {"ok": False, "error": "Startkapital ist keine Zahl"}
+            if not 10 <= bankroll <= 1e9:
+                return {"ok": False, "error": "Startkapital muss zwischen 10 und 1.000.000.000 liegen"}
         with self._lock:
             self.store.reset(what)
             self.last_prices.clear()
-            self.store.log("info", "dashboard: reset " + what)
-        return {"ok": True}
+            if bankroll is not None:
+                self.cfg["bankroll_usd"] = bankroll
+                self.paper.initial = bankroll
+                if self.persist:
+                    try:
+                        self.persist({"bankroll_usd": bankroll})
+                    except OSError as error:
+                        self.store.log("error", f"config not saved: {error}")
+            self.store.log("info", "dashboard: reset " + what + (f", Startkapital ${bankroll:,.2f}" if bankroll is not None else ""))
+        return {"ok": True, "initial": self.paper.initial}
+
+    def open_from_candidate(self, cid: int) -> dict[str, Any]:
+        """Manual paper entry on a token the bot evaluated. The tracker keeps the
+        original decision, so manual picks can be compared against the rules."""
+        with self._lock:
+            c = self.store.candidate(cid)
+            if c is None:
+                return {"ok": False, "error": "Kandidat nicht gefunden"}
+            blocked = self.paper.can_open(c["chain"], c["token"])
+            if blocked:
+                return {"ok": False, "error": "Nicht eröffnet: " + blocked}
+            fresh = self.dex.pair(c["chain"], c["pair"])
+            price = fresh["price_usd"] if fresh and fresh["price_usd"] > 0 else None
+            if not price:
+                return {"ok": False, "error": "Kein aktueller Kurs für diesen Token"}
+            p = {"chain": c["chain"], "token": c["token"], "pair": c["pair"], "symbol": c["symbol"], "price_usd": price}
+            pid = self.paper.open(p, self.clock())
+            self.last_prices[c["pair"]] = price
+            self.store.log("trade", f"MANUAL BUY {c['symbol']} via Dashboard (Bot-Urteil: {c['decision']})")
+            self._wake.set()
+            return {"ok": True, "position": self.store.position(pid)}
+
+    def position_detail(self, pid: int) -> dict[str, Any]:
+        pos = self.store.position(pid)
+        if pos is None:
+            return {"ok": False, "error": "Position nicht gefunden"}
+        return {"ok": True, "position": pos, "trades": self.store.trades_for(pid),
+                "price": self.last_prices.get(pos["pair"])}
 
     # --- state for the dashboard ---------------------------------------
     def state(self) -> dict[str, Any]:

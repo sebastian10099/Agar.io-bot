@@ -221,6 +221,16 @@ class Store:
         return self._one("SELECT 1 FROM positions WHERE status='open' AND chain=? AND token=?",
                          (chain, token)) is not None
 
+    def candidate(self, cid: int) -> Optional[dict[str, Any]]:
+        row = self._one("SELECT * FROM candidates WHERE id=?", (cid,))
+        if row:
+            row["reasons"] = json.loads(row["reasons"] or "[]")
+            row["snapshot"] = json.loads(row["snapshot"] or "{}")
+        return row
+
+    def trades_for(self, pid: int) -> list[dict[str, Any]]:
+        return self._rows("SELECT * FROM trades WHERE position_id=? ORDER BY id", (pid,))
+
     def trades(self, limit: int = 200) -> list[dict[str, Any]]:
         return self._rows("SELECT * FROM trades ORDER BY id DESC LIMIT ?", (limit,))
 

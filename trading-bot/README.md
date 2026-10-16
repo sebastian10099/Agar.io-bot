@@ -35,16 +35,20 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   **Zielkursen** (Stop, nächste Leiterstufe, Trailing sobald scharf, Restzeit bis
   zum Zeit-Stop) und einem Knopf zum manuellen Schließen; die **Kapitalkurve**
   (realisierter Stand nach jedem Exit, mit Fadenkreuz und Tastaturablesung);
-  Edge-Report mit Balken; geschlossene Positionen.
+  Edge-Report mit Balken; geschlossene Positionen. Jede Position hat einen
+  **Details**-Dialog mit ihren einzelnen Fills.
 - **Steuerung** – jeder Parameter der Strategie als Formular, gruppiert nach
   Allgemein / Risiko / Filter / Strategie / Exits. Geänderte Felder werden
   markiert, Fehler stehen direkt am Feld, „Speichern“ gilt **sofort** für den
   laufenden Bot und landet in `~/Library/Application Support/NewTokenBot/config.json`.
   Dazu: Standardwerte laden, Paper-Konto zurücksetzen (nur Positionen, oder
-  alles inklusive Edge-Daten).
+  alles inklusive Edge-Daten), wahlweise mit neuem Startkapital.
 - **Kandidaten** – alle bewerteten Tokens mit Score, Kennzahlen und den
   Gründen für die Entscheidung; filterbar nach buy/watch/skip und Suchtext,
-  sortierbar per Klick auf die Spaltenköpfe.
+  sortierbar per Klick auf die Spaltenköpfe. **Kaufen** eröffnet einen Token
+  als Paper-Position unabhängig vom Bot-Urteil – der Tracker behält die
+  ursprüngliche Entscheidung, so lässt sich das eigene Urteil gegen die Regeln
+  messen.
 - **Protokoll** – was der Bot getan hat, inklusive jeder Änderung über die Seite.
 
 Oben rechts: **Jetzt pollen** (sofort neue Tokens holen) und **Pause**.
@@ -69,7 +73,9 @@ nutzen kannst (nur von `127.0.0.1` erreichbar):
 | POST | `/api/config` `{"patch": {"exits.stop_loss_pct": -25}}` | Parameter ändern, validiert, 422 bei Fehlern |
 | POST | `/api/control` `{"action": "pause"\|"resume"\|"poll"}` | Steuern |
 | POST | `/api/positions/close` `{"id": 3}` | Position zum letzten Kurs schließen |
-| POST | `/api/reset` `{"what": "positions"\|"all"}` | Paper-Konto zurücksetzen |
+| POST | `/api/positions/open` `{"candidate_id": 12}` | Kandidaten manuell als Paper-Position kaufen |
+| GET | `/api/positions/3` | Position mit allen Fills |
+| POST | `/api/reset` `{"what": "positions"\|"all", "bankroll": 500}` | Paper-Konto zurücksetzen, optional mit neuem Startkapital |
 
 Ein neuer Parameter ist ein Eintrag in `bot/settings.py` – Validierung und
 Formular entstehen daraus automatisch.

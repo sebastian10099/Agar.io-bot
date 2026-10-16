@@ -196,12 +196,31 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok(log.includes('dashboard') && log.includes('manual'), 'Protokoll enthält Dashboard-Aktionen');
   await p.screenshot({ path: SHOTS + '/06-log.png' });
 
-  // --- Reset + Reload merkt Reiter ---
+  // --- manueller Kauf eines watch-Kandidaten ---
+  await p.click('nav [data-tab="candidates"]');
+  const openBefore = (await (await p.request.get(URL + 'api/state')).json()).open_positions.length;
+  const watchRow = await p.$('#cands tbody tr:has(.d-watch) [data-buy]');
+  ok(!!watchRow, 'Kaufen-Knopf an einem watch-Kandidaten');
+  await watchRow.click(); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('gekauft'));
+  const openAfter = (await (await p.request.get(URL + 'api/state')).json()).open_positions.length;
+  ok(openAfter === openBefore + 1, `manueller Kauf eröffnet Position (${openBefore} → ${openAfter})`);
+  // --- Details-Dialog zeigt die Fills ---
+  await p.click('nav [data-tab="overview"]');
+  await p.click('#open [data-detail]'); await p.waitForSelector('dialog#detail[open]');
+  ok((await p.$$('#d-body tbody tr')).length >= 1 && (await p.textContent('#d-body')).includes('Kauf'), 'Details-Dialog listet den Kauf-Fill');
+  await p.keyboard.press('Escape'); ok(!(await p.$('dialog#detail[open]')), 'Details-Dialog schließt per Escape');
+  // --- Reset mit neuem Startkapital ---
   await p.click('nav [data-tab="control"]');
+  await p.fill('#bankroll', '500');
   await p.click('#b-reset-pos');
-  await p.waitForSelector('dialog[open]');
+  await p.waitForSelector('dialog#confirm[open]');
+  ok((await p.textContent('#c-text')).includes('500'), 'Bestätigung nennt das neue Startkapital');
   await p.click('#c-yes');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('zurückgesetzt'));
+  await p.waitForFunction(() => document.querySelector('#k-initial').textContent.includes('500'));
+  ok(true, 'Startkapital nach Reset $500');
+  await p.request.post(URL + 'api/reset', { data: { what: 'positions', bankroll: 1000 } });
   await p.reload();
   await p.waitForSelector('#groups .field', { state: 'attached' });
   ok(!(await p.$eval('#tab-control', (e) => e.hidden)), 'Reiter nach Reload gemerkt');
