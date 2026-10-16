@@ -100,7 +100,7 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   (Gruppen haben eine negative ID, Kanäle gehen auch als `@Kanalname`). Alle Meldungen (Ausfälle, Rekorde, Wochen- und
   Saisonsieger, Tageszusammenfassung, wer online ist) gehen an beide Wege, wenn beide eingetragen sind.
 - **Telegram-Bot mit Befehlen:** Im eingetragenen Chat beantwortet der Bot `/online` (wer fährt wo), `/top`
-  (Bestenliste), `/rekord` (Spielerrekord) und `/server` (alle Server mit Map und Spielerzahl), innerhalb einer Minute.
+  (Bestenliste), `/rekord` (Spielerrekord) und `/server` (Netzwerk-Übersicht: Spieler je Server und Auslastung je Map), innerhalb einer Minute.
   Nachrichten aus anderen Chats und Befehle an andere Bots (`/online@AndererBot`) ignoriert er, höchstens 5 Antworten
   je Minute (weitere folgen in der nächsten). An mit `TELEGRAM_COMMANDS=1` (neue Installationen: schon an; ältere
   Konfigurationen ohne den Eintrag: aus, damit andere Programme mit demselben Bot-Token weiter ihre Nachrichten
@@ -108,9 +108,18 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   (Telegram-Zahlen-IDs, z. B. über @userinfobot) dürfen `/ansage [HH:MM] <Text>` schreiben – die Ansage geht an alle
   Server; andere bekommen einen Hinweis, Bots werden ignoriert. Tipp: in @BotFather mit
   `/setcommands` die Befehle hinterlegen, dann schlägt Telegram sie vor.
-- **Wer ist online:** alle 60 Minuten (`ONLINE_REPORT=…`, 0 = aus) die Spieler je Server **mit Namen**, z. B.
-  „👥 Gerade online: 14 Spieler · Server 1 (italy): Ana, Max, Sebi · Server 3 (utah): …“ – nur, wenn jemand fährt und
-  sich die Runde seit der letzten Meldung geändert hat. Dieselbe Übersicht im Terminal: `beamnet players`.
+- **Netzwerk-Übersicht:** alle 10 Minuten (`NETWORK_REPORT=…`, 0 = aus), solange jemand spielt:
+  ```
+  📊 BeamNet: 14 Spieler · 3 von 12 Servern belegt
+     Server 1 · italy: 9/10 🔥 – Ana, Max, Sebi +2 Gäste
+     Server 3 · utah: 4/10 – Ben, Lena, Tom, Ufuk
+     Leer: Server 2, 4, 5, …
+     🗺️ Maps: italy 9/10 (90 % 🔥) · utah 4/10 (40 %) · gridmap_v2 1/10 (10 %)
+  ```
+  Spieler mit BeamMP-Konto stehen mit Namen da, Gäste werden nur gezählt. 🔥 heißt: ab 80 % voll. Bleibt alles gleich,
+  kommt die Übersicht höchstens alle 30 Minuten; wird das Netzwerk leer, einmal „gerade niemand online“. Dieselbe
+  Übersicht schickt der Bot auf `/server` in Telegram; im Terminal: `beamnet players`. (Ältere Konfigurationen mit
+  `ONLINE_REPORT=…` bekommen automatisch die neue Übersicht alle 10 Minuten; `ONLINE_REPORT=0` schaltet sie weiter ab.)
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
 - Er meldet **Moderation** an Discord/Telegram: Bann (mit Dauer), Kick, Stummschaltung (auch automatisch wegen Spam)
   und Verwarnung, jeweils mit Admin, Grund und Server; dazu `/melden` aus dem Spiel. Abschalten: `MODLOG_NOTIFY=0`.

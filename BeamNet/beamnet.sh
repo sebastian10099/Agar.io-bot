@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.67"
+VERSION="1.68"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -535,14 +535,23 @@ if not isinstance(st, dict) or not isinstance(st.get("names"), list):
 upd = st.get("updated")
 if not isinstance(upd, (int, float)) or time.time() - upd > 90:
     sys.exit(0)
-clean = []
-for n in st["names"]:
+# Mit Konto-IDs (Plugin 1.14+): Spieler mit BeamMP-Konto mit Namen, Gaeste nur gezaehlt (ihre Namen sagen nichts).
+ids = st.get("ids") if isinstance(st.get("ids"), list) and len(st.get("ids")) == len(st["names"]) else None
+clean, guests = [], 0
+for i, n in enumerate(st["names"]):
+    if ids is not None and not (isinstance(ids[i], str) and ids[i]):
+        guests += 1
+        continue
     n = re.sub(r"[\x00-\x1f\x7f]", "", str(n)).strip()[:32]
     if n:
         clean.append(n)
 clean.sort(key=str.lower)
 more = len(clean) - 30
-print(", ".join(clean[:30]) + (f" +{more} weitere" if more > 0 else ""))
+text = ", ".join(clean[:30]) + (f" +{more} weitere" if more > 0 else "")
+if guests:
+    g = "1 Gast" if guests == 1 else f"{guests} Gäste"
+    text = f"{text} +{g}" if text else g
+print(text)
 EOF
 }
 
@@ -2560,18 +2569,70 @@ watch_capacity() {
     return 0
 }
 
-# Abstand der "Wer ist online"-Meldung in Minuten (ONLINE_REPORT; 0 = aus, fehlt = 60).
+# Abstand der Netzwerk-Uebersicht in Minuten: NETWORK_REPORT (0 = aus); fehlt er, gilt 10 – ausser die alte
+# Wer-ist-online-Meldung wurde mit ONLINE_REPORT=0 abgeschaltet.
 online_report_min() {
     local m
+    m=$(conf_get NETWORK_REPORT)
+    if [[ $m =~ ^[0-9]{1,4}$ ]]; then echo $(( 10#$m )); return; fi
     m=$(conf_get ONLINE_REPORT)
-    if [[ $m =~ ^[0-9]{1,4}$ ]]; then echo $(( 10#$m )); else echo 60; fi
+    if [[ $m =~ ^0+$ ]]; then echo 0; else echo 10; fi
 }
 
-# "Wer ist online": alle ONLINE_REPORT Minuten die Spieler je Server mit Namen melden – nur, wenn jemand faehrt und
-# sich die Runde seit der letzten Meldung geaendert hat (sonst wiederholt sich die Meldung nur).
+# Netzwerk-Uebersicht: Kopfzeile mit Gesamtzahl, je belegtem Server Spieler/Plaetze und Namen (Gaeste gezaehlt), leere
+# Server und Server ohne Lebenszeichen in je einer Zeile, Auslastung je Map (am vollsten zuerst, 🔥 ab 80 %).
+network_lines() {
+    local nr port pl cur mx mxs map names total=0 busy=0 count=0 empty="" silent="" body="" pct m maprows=""
+    local -A map_pl=() map_mx=()
+    for nr in $(servers); do
+        count=$(( count + 1 ))
+        port=$(cfg "$nr" Port)
+        pl=$(players_of "$port")
+        map=$(map_short "$(cfg "$nr" Map)")
+        map=${map:-?}
+        if [[ ! $pl =~ ^([0-9]+)/([0-9]*) ]]; then
+            silent+="${silent:+, }$nr"
+            continue
+        fi
+        cur=${BASH_REMATCH[1]}
+        mxs=${BASH_REMATCH[2]:-?}
+        mx=${BASH_REMATCH[2]:-0}
+        total=$(( total + cur ))
+        map_pl[$map]=$(( ${map_pl[$map]:-0} + cur ))
+        map_mx[$map]=$(( ${map_mx[$map]:-0} + mx ))
+        if (( cur == 0 )); then
+            empty+="${empty:+, }$nr"
+            continue
+        fi
+        busy=$(( busy + 1 ))
+        names=$(names_of "$port")
+        body+="Server $nr · $map: $cur/$mxs"
+        (( mx > 0 && cur * 100 >= mx * 80 )) && body+=" 🔥"
+        [[ -n $names ]] && body+=" – $names"
+        body+=$'\n'
+    done
+    printf '📊 BeamNet: %s Spieler · %s von %s Servern belegt\n' "$total" "$busy" "$count"
+    printf '%s' "$body"
+    [[ -n $empty ]] && printf 'Leer: Server %s\n' "$empty"
+    [[ -n $silent ]] && printf 'Ohne Lebenszeichen: Server %s\n' "$silent"
+    for m in "${!map_pl[@]}"; do
+        if (( map_mx[$m] > 0 )); then
+            pct=$(( (map_pl[$m] * 100 + map_mx[$m] / 2) / map_mx[$m] ))
+            maprows+="$pct"$'\t'"$m ${map_pl[$m]}/${map_mx[$m]} ($pct %$( (( pct >= 80 )) && printf ' 🔥'))"$'\n'
+        else
+            maprows+="0"$'\t'"$m ${map_pl[$m]} Spieler"$'\n'
+        fi
+    done
+    if [[ -n $maprows ]]; then
+        printf '🗺️ Maps: %s\n' "$(printf '%s' "$maprows" | sort -t$'\t' -k1,1nr -k2,2 | head -n 8 | cut -f2- | awk '{ printf "%s%s", (NR > 1 ? " · " : ""), $0 }')"
+    fi
+}
+
+# Netzwerk-Uebersicht an Discord/Telegram: alle NETWORK_REPORT Minuten (Standard 10), solange jemand spielt. Ist sie
+# unveraendert, kommt sie hoechstens alle dreifachen Abstand; wird das Netzwerk leer, einmal "niemand online".
 watch_online() {
     local -n oout=$1
-    local every now last=0 lines total=0 nr pl fingerprint line
+    local every now last=0 lines total=0 fingerprint line head
     every=$(online_report_min)
     (( every > 0 )) || return 0
     notify_configured || return 0
@@ -2579,17 +2640,23 @@ watch_online() {
     last=$(cat "$STATE_DIR/online-at" 2>/dev/null)
     [[ $last =~ ^[0-9]+$ ]] || last=0
     (( now - last >= every * 60 )) || return 0
-    for nr in $(servers); do
-        pl=$(players_of "$(cfg "$nr" Port)")
-        [[ $pl =~ ^([0-9]+)/ ]] && total=$(( total + BASH_REMATCH[1] ))
-    done
-    (( total > 0 )) || return 0
-    lines=$(online_lines)
-    [[ -n $lines ]] || return 0
+    lines=$(network_lines)
+    head=${lines%%$'\n'*}
+    [[ $head =~ BeamNet:\ ([0-9]+)\ Spieler ]] && total=${BASH_REMATCH[1]}
+    if (( total == 0 )); then
+        # Nur einmal melden, dass es leer geworden ist (nicht die ganze Nacht).
+        [[ $(cat "$STATE_DIR/online-who" 2>/dev/null) == leer || ! -s $STATE_DIR/online-who ]] && return 0
+        oout+=("📊 BeamNet: gerade niemand online.")
+        echo "$now" >"$STATE_DIR/online-at"
+        echo leer >"$STATE_DIR/online-who"
+        return 0
+    fi
     fingerprint=$(printf '%s' "$lines" | cksum)
-    [[ $fingerprint == "$(cat "$STATE_DIR/online-who" 2>/dev/null)" ]] && return 0
-    oout+=("👥 Gerade online: $total Spieler")
-    while IFS= read -r line; do [[ -n $line ]] && oout+=("   $line"); done <<<"$lines"
+    if [[ $fingerprint == "$(cat "$STATE_DIR/online-who" 2>/dev/null)" ]] && (( now - last < 3 * every * 60 )); then
+        return 0
+    fi
+    oout+=("$head")
+    while IFS= read -r line; do [[ -n $line ]] && oout+=("   $line"); done < <(printf '%s\n' "$lines" | tail -n +2)
     echo "$now" >"$STATE_DIR/online-at"
     echo "$fingerprint" >"$STATE_DIR/online-who"
     return 0
@@ -2639,12 +2706,7 @@ watch_telegram() {
                 reply="👥 Gerade online: $total Spieler"
                 (( total > 0 )) && reply+=$'\n'"$(online_lines)"
                 ;;
-            server)
-                reply="🖥️ Server:"
-                for nr in $(servers); do
-                    reply+=$'\n'"Server $nr ($(map_short "$(cfg "$nr" Map)")): $(players_of "$(cfg "$nr" Port)")"
-                done
-                ;;
+            server) reply=$(network_lines) ;;
             top) reply=$(telegram_top) ;;
             ansage)
                 # Nur Telegram-Konten aus TELEGRAM_ADMINS (der Parser prueft den Absender); Text wie bei beamnet ansage.
@@ -2999,9 +3061,9 @@ TELEGRAM_CHAT=
 TELEGRAM_COMMANDS=1
 # Telegram-Konten (Zahlen-IDs, mit Komma), die im Chat /ansage [HH:MM] <Text> an alle Server schicken duerfen.
 TELEGRAM_ADMINS=
-# "Wer ist online" (Spieler je Server mit Namen) alle N Minuten an Discord/Telegram, wenn jemand faehrt und sich die
-# Runde geaendert hat. 0 = aus.
-ONLINE_REPORT=60
+# Netzwerk-Uebersicht alle N Minuten an Discord/Telegram, solange jemand spielt: Spieler je Server (Konten mit Namen,
+# Gaeste gezaehlt), leere Server und Auslastung je Map. 0 = aus.
+NETWORK_REPORT=10
 # 1 = ausgefallene Server automatisch neu starten (hoechstens 3x pro Stunde; nicht, wenn mit "beamnet stop"
 # gestoppt oder von OpenClaw gestoppt). 0 = nur melden.
 AUTO_RESTART=0
@@ -3094,8 +3156,8 @@ cmd_watch() {
             if [[ -n $(conf_get TELEGRAM_TOKEN) && -n $(conf_get TELEGRAM_CHAT) ]]; then echo "Telegram: an"; else echo "Telegram: aus"; fi
             if [[ $(conf_get DATA_BACKUP) == 0 ]]; then echo "Datensicherung: aus"
             else echo "Datensicherung: täglich ab $(backup_hour) Uhr ($(find "$BACKUP_DIR" -maxdepth 1 -name 'daten-*.tgz' 2>/dev/null | wc -l) vorhanden, beamnet restore)"; fi
-            if (( $(online_report_min) > 0 )) && notify_configured; then echo "Wer-ist-online-Meldung: alle $(online_report_min) Minuten"
-            else echo "Wer-ist-online-Meldung: aus"; fi
+            if (( $(online_report_min) > 0 )) && notify_configured; then echo "Netzwerk-Übersicht: alle $(online_report_min) Minuten"
+            else echo "Netzwerk-Übersicht: aus"; fi
             if [[ $(conf_get AUTO_RESTART) == 1 ]]; then echo "Automatischer Neustart: an"; else echo "Automatischer Neustart: aus"; fi
             if [[ $(conf_get MAP_VOTE) == 0 ]]; then echo "Map-Abstimmung: aus"; else echo "Map-Abstimmung: an ($(vote_maps | wc -w) Maps)"; fi
             if [[ $(conf_get DAILY_SUMMARY) == 0 ]] || ! notify_configured; then echo "Tageszusammenfassung: aus"

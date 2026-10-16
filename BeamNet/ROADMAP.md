@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.67 / Plugin 1.56)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.68 / Plugin 1.56)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -38,6 +38,8 @@
       nicht übernommen und müssen neu vorgeschlagen werden.
 - [x] Konvoi-Bonus `/konvoi`: zusammen fahren gibt Bonus-XP, `/konvoi` zeigt, wer in der Nähe ist; Konvoi-Kilometer
       im Profil der Statusseite (Plugin 1.56, Werkzeug 1.67).
+- [x] Netzwerk-Übersicht alle 10 Minuten an Telegram/Discord: Spieler je Server (Konten mit Namen, Gäste gezählt),
+      leere Server, Auslastung je Map mit 🔥 ab 80 %; auch auf `/server` im Telegram-Chat (Werkzeug 1.68).
 - [ ] Erfolge für Aufträge und Verfolgungsjagden (nach der Werkstatt-Aufgabe 07, damit es keine Konflikte gibt).
 
 ## Die nächsten 40 Punkte (Stand Werkzeug 1.48 / Plugin 1.29)
