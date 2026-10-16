@@ -894,6 +894,7 @@ local EN = {
     ["Verfolgungsjagd: /fangen – einer flüchtet, alle jagen ihn"] = "Chase: /chase – one runs, everyone hunts them",
     ["Duell: /duell <Name> <Strecke> – Zeitrennen gegen einen Freund"] = "Duel: /duel <name> <track> – time trial against a friend",
     ["Rennserien: /serie – mehrere Strecken nacheinander, die Zeiten zählen zusammen"] = "Race series: /series – several tracks in a row, the times add up",
+    ["Orte vorschlagen: /ort vorschlag krankenhaus <Name> – für neue Fahraufträge"] = "Suggest places: /place suggest hospital <name> – for new driving jobs",
     -- Einsteiger-Pfad
     ["Fahr deinen ersten Kilometer"] = "Drive your first kilometer",
     ["Erledige einen Auftrag: /auftrag"] = "Finish a job: /job",
@@ -2018,6 +2019,7 @@ BN.NEWS = {
     { "1.38", "Verfolgungsjagd: /fangen – einer flüchtet, alle jagen ihn" },
     { "1.44", "Duell: /duell <Name> <Strecke> – Zeitrennen gegen einen Freund" },
     { "1.51", "Rennserien: /serie – mehrere Strecken nacheinander, die Zeiten zählen zusammen" },
+    { "1.52", "Orte vorschlagen: /ort vorschlag krankenhaus <Name> – für neue Fahraufträge" },
 }
 
 local function versionNum(v)
