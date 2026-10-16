@@ -1,19 +1,20 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.51 / Plugin 1.34)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.53 / Plugin 1.38)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
-- [x] Vierte Sicherheitsprüfung: 14 Funde, die wichtigen behoben (Plugin 1.32, Werkzeug 1.50).
+- [x] Vierte Sicherheitsprüfung: 14 Funde, alle bearbeitet (Plugin 1.32/1.35, Werkzeug 1.50/1.52).
 - [x] Spielerplätze nach Beliebtheit: `beamnet slots`, der Wächter erhöht MaxPlayers für oft volle Server und die
       beliebtesten Maps automatisch, nur wenn der Server leer ist (Werkzeug 1.51).
 - [x] Fahraufträge `/auftrag`: Krankenhaus, Schule, Feuerwache, Polizei, Taxi, Lieferungen – Orte legen Admins mit
-      `/ort neu` an; Zeitlimit und XP nach Entfernung, nur echte Fahrt zählt (1.33).
+      `/ort neu` an; Zeitlimit und XP nach Entfernung, nur echte Fahrt zählt (1.33), mit Abholung (1.36).
 - [x] Wochenziel für alle `/ziel`: gemeinsam Kilometer sammeln, alle Mitfahrer bekommen Bonus-XP (1.34).
-- [ ] Rest der vierten Prüfung: Höchstgeschwindigkeit gegen die Positionsänderung prüfen, XP-Event je Takt statt
-      beim Speichern, Strecke der Woche stabil halten, Wochen-Diagramm, Telegram-Feinheiten.
-- [ ] Aufträge mit Abholung (erst zum Patienten, dann ins Krankenhaus) und Auftrags-Bestenliste.
-- [ ] Wochenziel und Aufträge auf der Statusseite.
+- [x] Aufträge-Bestenliste `/top auftraege`, Statusseite mit „Meiste Aufträge“ und Wochenziel-Balken (1.37 / 1.53).
+- [x] Verfolgungsjagd `/fangen`: einer flüchtet, alle jagen ihn – XP fürs Fangen und Entkommen (1.38).
+- [ ] Fünfte Sicherheitsprüfung über alles Neue (läuft).
+- [ ] Admin-Befehl, um eine falsche Höchstgeschwindigkeit zurückzusetzen.
+- [ ] Erfolge für Aufträge und Verfolgungsjagden (nach der Werkstatt-Aufgabe 07, damit es keine Konflikte gibt).
 
 ## Die nächsten 40 Punkte (Stand Werkzeug 1.48 / Plugin 1.29)
 
