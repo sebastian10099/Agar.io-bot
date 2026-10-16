@@ -102,7 +102,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
 - Er kämpft nicht gegen dich: Mit `beamnet stop` gestoppte Server gelten als Wartung (kein Alarm, kein Neustart), bis
   du sie mit `beamnet start` wieder startest.
 - Er kämpft nicht gegen OpenClaw: Hat der Agent einen Server gestoppt, meldet er das, startet aber nicht neu.
-- Montags postet er die **Wochensieger** der Vorwoche nach Discord, am 1. jedes Monats die **Saisonsieger**.
+- Montags postet er die **Wochensieger** der Vorwoche und die Zahlen der Woche (Fahrer, Kilometer, Spitze gleichzeitig,
+  neue Fahrer) nach Discord/Telegram, am 1. jedes Monats die **Saisonsieger**.
 - Er schreibt jede Minute den **Bestenlisten-Index** (`players-index.tsv`): Die Server lesen dann eine kleine Datei
   statt aller Spielerdateien – wichtig bei vielen Spielern (10 000 Spieler: 0,07 s statt 1,4 s je Liste). Ohne
   Wächter funktioniert alles weiter wie bisher, nur langsamer.

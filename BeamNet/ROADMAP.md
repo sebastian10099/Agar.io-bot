@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.28 / Plugin 1.16)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.29 / Plugin 1.16)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -40,7 +40,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 17. [ ] Event-Modus: doppelte XP in einem Zeitfenster (z. B. Wochenende), angekündigt im Chat und in Discord.
 18. [ ] Begrüßung für neue Spieler beim ersten Besuch: kurze Regeln und die wichtigsten Befehle. 🤖
 19. [x] `/wo <Name>` (englisch `/where`): Auf welchem Server fährt ein Freund gerade? (Plugin 1.14)
-20. [ ] Wochenbericht montags mit Spielerrekord, aktivster Server, beliebteste Map und Neulinge.
+20. [x] Wochenbericht montags: Sieger plus „📈 Die Woche: Fahrer · km · Spitze gleichzeitig (Tag, Uhrzeit) · neue
+        Fahrer“ (Werkzeug 1.29). Aktivster Server und Map der Woche brauchen Wochenwerte je Server/Map im Plugin – später.
 
 **C. Rennen und Spielspaß**
 21. [ ] Geister-Vergleich: Zwischenzeiten auch gegen den Streckenrekord, nicht nur gegen die eigene Bestzeit.

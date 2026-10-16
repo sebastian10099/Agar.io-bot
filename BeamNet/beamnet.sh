@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.28"
+VERSION="1.29"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1704,31 +1704,75 @@ watch_online() {
 # Montags einmal die Wochensieger der Vorwoche nach Discord (braucht python3 und BeamNetCore-Daten).
 watch_weekly() {
     local -n out=$1
-    local week line dow
+    local week dow
     dow=${BEAMNET_DOW:-$(date -u +%u)}
     [[ $dow == 1 && -d $SHARED/players ]] && notify_configured || return 0
     command -v python3 >/dev/null || return 0
     week=$(date -u -d '7 days ago' +%G-W%V)
     [[ -f $STATE_DIR/weekly-$week ]] && return 0
     : >"$STATE_DIR/weekly-$week"
-    line=$(python3 -I - "$week" "$SHARED/players" <<'PY'
-import glob, json, sys
-week, folder = sys.argv[1], sys.argv[2]
-rows = []
-for path in glob.glob(folder + "/*.json"):
+    # Zeile 1: Sieger; Zeile 2: Zahlen der Woche (Fahrer, km, Spitze gleichzeitig, Neue). Nur regulaere Dateien,
+    # keinen Symlinks folgen (der Ordner gehoert beammp).
+    local lines=() l
+    while IFS= read -r l; do lines+=("$l"); done < <(python3 -I - "$week" "$SHARED/players" "$STATE_DIR/hours" <<'PY'
+import datetime, glob, json, os, stat, sys, time
+week, folder, hours_file = sys.argv[1], sys.argv[2], sys.argv[3]
+year, wk = (int(x) for x in week.split("-W"))
+start = datetime.datetime.fromisocalendar(year, wk, 1).replace(tzinfo=datetime.timezone.utc).timestamp()
+end = start + 7 * 86400
+
+def load(path):
     try:
-        with open(path, encoding="utf-8") as f:
-            r = json.load(f)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                return None
+            r = json.loads(f.read(4 * 1024 * 1024).decode("utf-8"))
     except Exception:
+        return None
+    return r if isinstance(r, dict) else None
+
+def number(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+rows, new = [], 0
+for path in glob.glob(folder + "/*.json"):
+    r = load(path)
+    if not r:
         continue
     km = r.get("weekKm") if r.get("week") == week else r.get("lastWeekKm") if r.get("lastWeek") == week else None
-    if isinstance(km, (int, float)) and km > 0:
+    km = number(km)
+    if km and km > 0:
         rows.append((km, str(r.get("name", "?"))))
+    first = number(r.get("firstSeen"))
+    if first and start <= first < end:
+        new += 1
 rows.sort(key=lambda x: (-x[0], x[1]))
 print(" · ".join(f"{i + 1}. {n} ({k:.1f} km)" for i, (k, n) in enumerate(rows[:3])))
+peak, peak_at = 0, 0
+try:
+    for line in open(hours_file):
+        h, m = (int(x) for x in line.split())
+        if start <= h < end and m > peak:
+            peak, peak_at = m, h
+except Exception:
+    pass
+if rows:
+    days = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+    parts = [f"{len(rows)} Fahrer", f"{sum(k for k, _ in rows):.0f} km"]
+    if peak > 0:
+        lt = time.localtime(peak_at)
+        parts.append(f"Spitze {peak} Spieler gleichzeitig ({days[lt.tm_wday]} {lt.tm_hour} Uhr)")
+    if new > 0:
+        parts.append(f"{new} {'neue Fahrer' if new != 1 else 'neuer Fahrer'}")
+    print("📈 Die Woche: " + " · ".join(parts))
 PY
 )
-    [[ -n $line ]] && out+=("🏁 Wochensieger ${week/-W/ KW }: $line")
+    [[ -n ${lines[0]:-} ]] && out+=("🏁 Wochensieger ${week/-W/ KW }: ${lines[0]}")
+    [[ -n ${lines[1]:-} ]] && out+=("${lines[1]}")
     return 0
 }
 
