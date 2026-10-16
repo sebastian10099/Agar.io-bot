@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.72 / Plugin 1.60)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.72 / Plugin 1.61)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -120,7 +120,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
        hat, selbst umgesetzt (Plugin 1.60).
 27. [x] Saison-Titel: Die Top 3 jeder Saison tragen „Saisonsieger / Saison-Zweiter / Saison-Dritter <Monat>“ in
         `/stats` und auf ihrer Profilseite (Plugin 1.25, Werkzeug 1.44).
-28. [ ] Tagesaufgabe „X km auf einer Map“ – als Aufgabe 09 für die lokale KI vorbereitet. 🤖
+28. [x] Tagesaufgabe „X km auf einer Map“ (`mapkm`, in `challengeTypes` einschalten) – Aufgabe 09, selbst umgesetzt
+       (Plugin 1.61).
 
 **D. Moderation und Sicherheit**
 29. [~] Zeitlich begrenzter Bann gibt es schon (`/ban <Name> 2h`, auch `m`/`d`). Feinschliff (`2H`, `1w`, riesige

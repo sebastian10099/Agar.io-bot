@@ -3516,6 +3516,24 @@ do
     check(next(BN.players) == nil or BN.players[first] == nil, "64 Spieler: Sitzungen nach Abmeldung weg")
 end
 
+-- --- Tagesaufgabe km auf einer Map (Werkstatt-Aufgabe 09) -------------------------------------------------------
+do
+    local ch = BN.CHALLENGES.mapkm
+    check(ch ~= nil and ch.goals[1] == 5 and ch.goals[2] == 8 and ch.goals[3] == 12, "Tagesaufgabe Map: vorhanden mit Zielen 5/8/12")
+    players[177] = { name = "Mapfahrer", ids = { beammp = "17777" }, vehicles = {} }
+    _G[events.onPlayerJoin](177)
+    local s = BN.players[177]
+    s.pendingKm = 6
+    check(BN.dayTotals(s).mapKm >= 6, "Tagesaufgabe Map: Kilometer heute auf dieser Map")
+    BN.savePlayer(s)
+    local rec = readJson(SHARED .. "/players/17777.json")
+    near(rec.dayMapKm and rec.dayMapKm.gridmap_v2 or 0, 6, 1e-6, "Tagesaufgabe Map: in der Spielerdatei")
+    check(BN.dayTotals(s).mapKm >= 6, "Tagesaufgabe Map: nach dem Speichern weiter gezaehlt")
+    eq(ch.value(BN.dayTotals(s)), BN.dayTotals(s).mapKm, "Tagesaufgabe Map: Wert der Aufgabe")
+    _G[events.onPlayerDisconnect](177); players[177] = nil
+    os.remove(SHARED .. "/players/17777.json"); BN.savedRecently["17777"] = nil
+end
+
 -- --- Neue Erfolge (Werkstatt-Aufgabe 07) -----------------------------------------------------------------------
 do
     local byId = {}
