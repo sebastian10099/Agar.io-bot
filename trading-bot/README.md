@@ -41,8 +41,10 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   Allgemein / Risiko / Filter / Strategie / Exits. Geänderte Felder werden
   markiert, Fehler stehen direkt am Feld, „Speichern“ gilt **sofort** für den
   laufenden Bot und landet in `~/Library/Application Support/NewTokenBot/config.json`.
-  Dazu: Standardwerte laden, Paper-Konto zurücksetzen (nur Positionen, oder
-  alles inklusive Edge-Daten), wahlweise mit neuem Startkapital.
+  Dazu: **Profile** (Parametersätze unter Namen speichern, laden, löschen – zum
+  Vergleichen von Strategien), Standardwerte laden, Paper-Konto zurücksetzen
+  (nur Positionen, oder alles inklusive Edge-Daten), wahlweise mit neuem
+  Startkapital, und CSV-Export von Positionen, Fills und Kandidaten.
 - **Kandidaten** – alle bewerteten Tokens mit Score, Kennzahlen und den
   Gründen für die Entscheidung; filterbar nach buy/watch/skip und Suchtext,
   sortierbar per Klick auf die Spaltenköpfe. **Kaufen** eröffnet einen Token
@@ -76,6 +78,8 @@ nutzen kannst (nur von `127.0.0.1` erreichbar):
 | POST | `/api/positions/open` `{"candidate_id": 12}` | Kandidaten manuell als Paper-Position kaufen |
 | GET | `/api/positions/3` | Position mit allen Fills |
 | POST | `/api/reset` `{"what": "positions"\|"all", "bankroll": 500}` | Paper-Konto zurücksetzen, optional mit neuem Startkapital |
+| GET/POST | `/api/profiles` · `/api/profiles/apply` · `/api/profiles/delete` | Parameter-Profile verwalten |
+| GET | `/api/export/positions.csv` · `trades.csv` · `candidates.csv` | Export (Semikolon-CSV, UTF-8 mit BOM) |
 
 Ein neuer Parameter ist ein Eintrag in `bot/settings.py` – Validierung und
 Formular entstehen daraus automatisch.

@@ -133,6 +133,22 @@ class EngineControlTests(unittest.TestCase):
         self.assertFalse(self.engine.reset("positions", "abc")["ok"])
         self.assertEqual(self.engine.paper.initial, 2500.0)
 
+    def test_profiles_roundtrip(self):
+        self.assertTrue(self.engine.apply_config({"scoring.min_score": 70})["ok"])
+        r = self.engine.save_profile("Streng")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["profiles"]["Streng"]["scoring.min_score"], 70)
+        self.engine.apply_config({"scoring.min_score": 40})
+        self.assertEqual(self.cfg["scoring"]["min_score"], 40)
+        self.assertTrue(self.engine.apply_profile("Streng")["ok"])
+        self.assertEqual(self.cfg["scoring"]["min_score"], 70)
+        self.assertFalse(self.engine.apply_profile("gibt es nicht")["ok"])
+        self.assertFalse(self.engine.save_profile("")["ok"])
+        self.assertFalse(self.engine.save_profile("Kaputt", {"poll_seconds": 0})["ok"])
+        self.assertTrue(self.engine.delete_profile("Streng")["ok"])
+        self.assertEqual(self.engine.profiles(), {})
+        self.assertFalse(self.engine.delete_profile("Streng")["ok"])
+
     def test_paused_engine_does_not_open(self):
         self.engine.set_paused(True)
         counts = self.engine.poll_once()
@@ -199,6 +215,28 @@ class ControlApiTests(unittest.TestCase):
         status, state = self.call("GET", "/api/state")
         self.assertIn("paper.fee_pct", state["config"])
         self.assertIn("started_at", state)
+
+    def test_profiles_and_export_routes(self):
+        status, r = self.call("POST", "/api/profiles", {"name": "Test"})
+        self.assertEqual(status, 200, r)
+        status, r = self.call("GET", "/api/profiles")
+        self.assertIn("Test", r["profiles"])
+        status, r = self.call("POST", "/api/profiles/apply", {"name": "Test"})
+        self.assertEqual(status, 200)
+        status, r = self.call("POST", "/api/profiles/apply", {"name": "nope"})
+        self.assertEqual(status, 404)
+        status, r = self.call("POST", "/api/profiles/delete", {"name": "Test"})
+        self.assertEqual(status, 200)
+        self.engine.poll_once()
+        for path, needle in (("/api/export/trades.csv", "position_id"), ("/api/export/positions.csv", "entry_price"),
+                             ("/api/export/candidates.csv", "decision")):
+            self.c.request("GET", path)
+            resp = self.c.getresponse()
+            text = resp.read().decode("utf-8-sig")
+            self.assertEqual(resp.status, 200)
+            self.assertTrue(resp.getheader("Content-Type").startswith("text/csv"))
+            self.assertIn(needle, text.splitlines()[0])
+            self.assertGreater(len(text.splitlines()), 1, path)
 
     def test_manual_open_detail_and_bankroll_routes(self):
         self.engine.poll_once()

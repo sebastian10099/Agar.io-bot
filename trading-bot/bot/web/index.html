@@ -50,6 +50,7 @@
   .btn.primary:hover:not(:disabled) { filter:brightness(1.08); }
   .btn.danger { color:var(--red); border-color:color-mix(in srgb, var(--red) 40%, var(--line)); }
   .btn.sm { padding:4px 9px; font-size:12px; border-radius:6px; }
+  select.btn { padding-right:28px; appearance:auto; min-width:160px; }
 
   nav { display:flex; gap:2px; padding:0 20px; border-top:1px solid var(--line); overflow-x:auto; }
   nav button { background:none; border:0; border-bottom:2px solid transparent; padding:10px 12px;
@@ -87,7 +88,7 @@
   .scroll table { min-width:640px; }
   #cands table { min-width:1120px; }
   #cands td:nth-last-child(2) { min-width:300px; white-space:normal; }
-  #cands td:last-child { white-space:nowrap; }
+  #cands td:last-child, #cands td:nth-child(9) { white-space:nowrap; }
   .pos { color:var(--green); } .neg { color:var(--red); }
   .d-buy { color:var(--green); font-weight:600; } .d-watch { color:var(--amber); } .d-skip { color:var(--dim); }
   .reasons { color:var(--dim); font-size:12px; }
@@ -235,6 +236,13 @@
   <div id="tab-control" class="grid" role="tabpanel" aria-labelledby="tabbtn-control" hidden>
     <section>
       <h2>Parameter <span class="spacer"></span><span class="note" style="margin:0">Änderungen gelten sofort und werden gespeichert.</span></h2>
+      <div class="formbar profiles" style="margin:0 0 12px">
+        <label for="profile" class="status">Profil</label>
+        <select id="profile" class="btn" aria-label="Gespeichertes Parameter-Profil"><option value="">– keins gewählt –</option></select>
+        <button type="button" class="btn" id="b-prof-load" disabled>Laden</button>
+        <button type="button" class="btn" id="b-prof-save">Aktuelle Werte speichern als…</button>
+        <button type="button" class="btn danger" id="b-prof-del" disabled>Löschen</button>
+      </div>
       <form id="form" autocomplete="off" novalidate><div class="groups" id="groups"></div>
         <div class="formbar">
           <button type="submit" class="btn primary" id="b-save" disabled>Speichern</button>
@@ -253,6 +261,7 @@
         <button class="btn danger" id="b-reset-all">Alles zurücksetzen (inkl. Edge-Daten)</button>
       </div>
       <p class="note">Aktuell <b id="k-initial">–</b> Startkapital · läuft seit <b id="k-uptime">–</b> · Polls <b id="k-polls">–</b> · Fehler <b id="k-errors">–</b></p>
+      <p class="note">Export (CSV, Semikolon, für Excel/Numbers): <a href="/api/export/positions.csv" download="positionen.csv">Positionen</a> · <a href="/api/export/trades.csv" download="trades.csv">Fills</a> · <a href="/api/export/candidates.csv" download="kandidaten.csv">Kandidaten mit Kennzahlen</a></p>
     </section>
   </div>
 
@@ -277,6 +286,9 @@
 </main>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<dialog id="ask" aria-labelledby="a-title"><h3 id="a-title"></h3><p id="a-text"></p>
+  <input type="text" id="a-input" maxlength="40" style="width:100%;background:var(--muted);border:1px solid var(--line-strong);border-radius:7px;padding:7px 9px;margin-bottom:14px" aria-labelledby="a-title">
+  <div class="row"><button class="btn" id="a-no">Abbrechen</button><button class="btn primary" id="a-yes">Speichern</button></div></dialog>
 <dialog id="detail" aria-labelledby="d-title"><h3 id="d-title"></h3><p id="d-sub"></p><div id="d-body" class="scroll" style="max-height:50vh"></div>
   <div class="row" style="margin-top:14px"><button class="btn" id="d-close">Schließen</button></div></dialog>
 <dialog id="confirm"><h3 id="c-title"></h3><p id="c-text"></p><div class="row">
@@ -403,6 +415,7 @@ function renderOverview(s) {
 function renderCandidates(s) {
   const q = query.trim().toLowerCase();
   const rows = s.candidates.filter((r) => filters[r.decision] && (!q || (r.symbol || '').toLowerCase().includes(q) || r.reasons.join(' ').toLowerCase().includes(q)));
+  const holding = new Set(s.open_positions.map((p) => p.token));
   const key = sortKeys[sort.key] || sortKeys.seen_at;
   rows.sort((a, b) => { const x = key(a), y = key(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir || b.seen_at - a.seen_at; });
   $('n-cands').textContent = s.candidates.length ? `(${s.candidates.length})` : '';
@@ -417,7 +430,7 @@ function renderCandidates(s) {
     {h: 'Δ 5m', sort: 'change', f: (r) => pct(r.snapshot.change_m5), num: true, cls: (r) => cls(r.snapshot.change_m5)},
     {h: 'Alter', sort: 'age', f: (r) => r.snapshot.age_min == null ? '–' : Math.round(r.snapshot.age_min) + ' min', num: true},
     {h: 'Gründe', f: (r) => `<span class="reasons">${esc(r.reasons.join(' · '))}</span>`},
-    {h: '<span class="sr">Aktion</span>', f: (r) => `<button class="btn sm" data-buy="${r.id}" aria-label="${esc(r.symbol)} manuell kaufen" title="Als Paper-Position eröffnen, unabhängig vom Bot-Urteil">Kaufen</button>`, num: true},
+    {h: '<span class="sr">Aktion</span>', f: (r) => holding.has(r.token) ? `<span class="reasons" title="bereits im Bestand">im Bestand</span>` : `<button class="btn sm" data-buy="${r.id}" aria-label="${esc(r.symbol)} manuell kaufen" title="Als Paper-Position eröffnen, unabhängig vom Bot-Urteil">Kaufen</button>`, num: true},
   ], s.candidates.length ? 'Nichts passt zum Filter.' : 'Noch keine Kandidaten gesehen.');
   $('cands').querySelectorAll('[data-buy]').forEach((b) => b.onclick = () => busy(b, async () => {
     const c = s.candidates.find((x) => x.id === Number(b.dataset.buy));
@@ -617,6 +630,44 @@ $('form').onsubmit = (ev) => { ev.preventDefault(); busy($('b-save'), async () =
   loadForm(r.config); toast('Gespeichert – gilt ab sofort'); refresh();
 }); };
 $('d-close').onclick = () => $('detail').close();
+function askDialog(title, text, value = '') {
+  return new Promise((resolve) => {
+    $('a-title').textContent = title; $('a-text').textContent = text; $('a-input').value = value;
+    const d = $('ask'); d.showModal(); $('a-input').focus();
+    const done = (v) => { d.close(); $('a-yes').onclick = $('a-no').onclick = null; $('a-input').onkeydown = null; resolve(v); };
+    $('a-yes').onclick = () => done($('a-input').value.trim()); $('a-no').onclick = () => done(null);
+    $('a-input').onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); done($('a-input').value.trim()); } };
+    d.oncancel = () => done(null);
+  });
+}
+let profiles = {};
+function paintProfiles() {
+  const sel = $('profile'), cur = sel.value;
+  sel.replaceChildren(new Option('– keins gewählt –', ''));
+  Object.keys(profiles).sort((a, b) => a.localeCompare(b, 'de')).forEach((n) => sel.append(new Option(n, n)));
+  sel.value = profiles[cur] ? cur : '';
+  $('b-prof-load').disabled = $('b-prof-del').disabled = !sel.value;
+}
+async function loadProfiles() { try { profiles = (await api('/api/profiles')).profiles || {}; paintProfiles(); } catch (e) { toast('Profile nicht ladbar: ' + e.message, true); } }
+$('profile').onchange = () => { $('b-prof-load').disabled = $('b-prof-del').disabled = !$('profile').value; };
+$('b-prof-save').onclick = () => busy($('b-prof-save'), async () => {
+  const name = await askDialog('Profil speichern', 'Die aktuell gespeicherten Parameter werden unter diesem Namen abgelegt. Ungespeicherte Änderungen im Formular zuerst speichern.', $('profile').value);
+  if (!name) return;
+  const r = await api('/api/profiles', {name}); if (!r.ok) throw new Error(r.error);
+  profiles = r.profiles; paintProfiles(); $('profile').value = name; $('profile').onchange(); toast(`Profil „${name}“ gespeichert`);
+});
+$('b-prof-load').onclick = () => busy($('b-prof-load'), async () => {
+  const name = $('profile').value; if (!name) return;
+  if (Object.keys(changedPatch()).length && !await confirmDialog('Profil laden?', 'Ungespeicherte Änderungen im Formular gehen verloren.')) return;
+  const r = await api('/api/profiles/apply', {name}); if (!r.ok) throw new Error(r.error || 'Profil enthält ungültige Werte');
+  loadForm(r.config); toast(`Profil „${name}“ geladen – gilt ab sofort`); refresh();
+});
+$('b-prof-del').onclick = () => busy($('b-prof-del'), async () => {
+  const name = $('profile').value; if (!name) return;
+  if (!await confirmDialog(`Profil „${name}“ löschen?`, 'Die aktuellen Parameter bleiben unverändert, nur die gespeicherte Vorlage verschwindet.')) return;
+  const r = await api('/api/profiles/delete', {name}); if (!r.ok) throw new Error(r.error);
+  profiles = r.profiles; paintProfiles(); toast(`Profil „${name}“ gelöscht`);
+});
 async function showDetail(id) {
   const d = await api('/api/positions/' + id);
   if (!d.ok) throw new Error(d.error);
@@ -682,6 +733,7 @@ async function refresh() {
 }
 (async () => {
   try { schema = await api('/api/schema'); buildForm(); } catch (e) { toast('Schema nicht ladbar: ' + e.message, true); }
+  loadProfiles();
   try { const t = localStorage.getItem('tab'); if (t) document.querySelector(`nav [data-tab="${t}"]`)?.click(); } catch {}
   try { const sv = JSON.parse(localStorage.getItem('sort') || 'null'); if (sv && sortKeys[sv.key]) sort = sv; } catch {}
   await refresh();

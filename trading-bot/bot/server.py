@@ -1,7 +1,10 @@
 """Local dashboard: static page + JSON state, bound to localhost only."""
 from __future__ import annotations
 
+import csv
+import io
 import json
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -9,6 +12,17 @@ from typing import Any
 from . import settings
 
 WEB = Path(__file__).parent / "web"
+
+
+def _csv(rows: list, columns: list) -> bytes:
+    out = io.StringIO()
+    w = csv.writer(out, delimiter=";")
+    w.writerow(columns)
+    for r in rows:
+        w.writerow(["" if r.get(c) is None else
+                    (datetime.fromtimestamp(r[c]).isoformat(timespec="seconds") if c.endswith("_at") or c == "at" else r[c])
+                    for c in columns])
+    return ("\ufeff" + out.getvalue()).encode("utf-8")
 
 
 def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
@@ -36,6 +50,23 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                 self._json(settings.schema_for_client())
             elif self.path == "/api/config":
                 self._json({"config": settings.flat(engine.cfg)})
+            elif self.path == "/api/profiles":
+                self._json({"profiles": engine.profiles()})
+            elif self.path == "/api/export/trades.csv":
+                rows = engine.store.trades(100000)
+                body = _csv(rows, ["id", "position_id", "at", "side", "price", "usd", "frac", "reason"])
+                self._send(200, body, "text/csv; charset=utf-8")
+            elif self.path == "/api/export/positions.csv":
+                rows = engine.store.closed_positions(100000) + engine.store.open_positions()
+                body = _csv(rows, ["id", "status", "symbol", "chain", "token", "pair", "opened_at", "closed_at",
+                                   "entry_price", "size_usd", "remaining_frac", "peak_price", "realized_usd", "exit_reason"])
+                self._send(200, body, "text/csv; charset=utf-8")
+            elif self.path == "/api/export/candidates.csv":
+                rows = [{**c, "reasons": " | ".join(c["reasons"]), **{"snap_" + k: v for k, v in c["snapshot"].items()
+                         if isinstance(v, (int, float, str))}} for c in engine.store.candidates(100000)]
+                cols = ["id", "seen_at", "chain", "symbol", "token", "pair", "decision", "score", "price_usd", "reasons",
+                        "snap_liquidity_usd", "snap_volume_m5", "snap_buys_m5", "snap_sells_m5", "snap_change_m5", "snap_age_min", "snap_fdv"]
+                self._send(200, _csv(rows, cols), "text/csv; charset=utf-8")
             elif self.path.startswith("/api/positions/"):
                 tail = self.path.rsplit("/", 1)[-1]
                 result = engine.position_detail(int(tail)) if tail.isdigit() else {"ok": False, "error": "not found"}
@@ -69,6 +100,15 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             elif self.path == "/api/positions/close":
                 result = engine.close_position(int(body.get("id") or 0))
                 self._json(result, 200 if result["ok"] else 409)
+            elif self.path == "/api/profiles":
+                result = engine.save_profile(str(body.get("name") or ""), body.get("config"))
+                self._json(result, 200 if result["ok"] else 400)
+            elif self.path == "/api/profiles/apply":
+                result = engine.apply_profile(str(body.get("name") or ""))
+                self._json(result, 200 if result["ok"] else (422 if "errors" in result else 404))
+            elif self.path == "/api/profiles/delete":
+                result = engine.delete_profile(str(body.get("name") or ""))
+                self._json(result, 200 if result["ok"] else 404)
             elif self.path == "/api/positions/open":
                 result = engine.open_from_candidate(int(body.get("candidate_id") or 0))
                 self._json(result, 200 if result["ok"] else 409)

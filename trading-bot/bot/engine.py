@@ -197,6 +197,41 @@ class Engine:
             self._wake.set()
             return {"ok": True, "position": self.store.position(pid)}
 
+    # --- named parameter profiles --------------------------------------
+    def profiles(self) -> dict[str, dict[str, Any]]:
+        return self.store.get("profiles", {}) or {}
+
+    def save_profile(self, name: str, flat: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        name = (name or "").strip()
+        if not name or len(name) > 40:
+            return {"ok": False, "error": "Name fehlt oder ist länger als 40 Zeichen"}
+        flat = flat if flat is not None else settings.flat(self.cfg)
+        clean, errors = settings.validate(flat)
+        if errors:
+            return {"ok": False, "error": "Profil enthält ungültige Werte: " + ", ".join(errors)}
+        profiles = self.profiles()
+        profiles[name] = clean
+        self.store.set("profiles", profiles)
+        self.store.log("info", f"dashboard: Profil „{name}“ gespeichert")
+        return {"ok": True, "profiles": profiles}
+
+    def apply_profile(self, name: str) -> dict[str, Any]:
+        profile = self.profiles().get(name)
+        if profile is None:
+            return {"ok": False, "error": "Profil nicht gefunden"}
+        result = self.apply_config(profile)
+        if result["ok"]:
+            self.store.log("info", f"dashboard: Profil „{name}“ geladen")
+        return result
+
+    def delete_profile(self, name: str) -> dict[str, Any]:
+        profiles = self.profiles()
+        if name not in profiles:
+            return {"ok": False, "error": "Profil nicht gefunden"}
+        del profiles[name]
+        self.store.set("profiles", profiles)
+        return {"ok": True, "profiles": profiles}
+
     def position_detail(self, pid: int) -> dict[str, Any]:
         pos = self.store.position(pid)
         if pos is None:

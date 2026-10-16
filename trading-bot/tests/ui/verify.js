@@ -109,6 +109,29 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   const cfg = await (await p.request.get(URL + 'api/config')).json();
   ok(JSON.stringify(cfg.config.chains) === '["solana","base"]' && cfg.config['filters.allow_rugcheck_unknown'] === true, 'Chips/Schalter serverseitig übernommen');
 
+  // --- Profile: speichern, Wert ändern, laden stellt wieder her, löschen ---
+  await p.locator('input[data-path="scoring.min_score"]').fill('66'); await p.click('#b-save');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
+  await p.click('#b-prof-save'); await p.waitForSelector('dialog#ask[open]');
+  await p.fill('#a-input', 'Streng'); await p.keyboard.press('Enter');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Profil'));
+  ok((await p.$$eval('#profile option', (o) => o.map((x) => x.value))).includes('Streng'), 'Profil gespeichert und im Menü');
+  await p.locator('input[data-path="scoring.min_score"]').fill('45'); await p.click('#b-save');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
+  await p.selectOption('#profile', 'Streng'); await p.click('#b-prof-load');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('geladen'));
+  ok((await p.inputValue('input[data-path="scoring.min_score"]')) === '66', 'Profil laden stellt min_score 66 wieder her');
+  await p.click('#b-prof-del'); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('gelöscht'));
+  ok(!(await p.$$eval('#profile option', (o) => o.map((x) => x.value))).includes('Streng'), 'Profil gelöscht');
+  await p.locator('input[data-path="scoring.min_score"]').fill('60'); await p.click('#b-save');
+  await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
+  // --- Export-Routen liefern CSV ---
+  for (const f of ['positions', 'trades', 'candidates']) {
+    const r = await p.request.get(URL + 'api/export/' + f + '.csv');
+    ok(r.status() === 200 && (r.headers()['content-type'] || '').startsWith('text/csv') && (await r.text()).includes(';'), `Export ${f}.csv`);
+  }
+
   // --- Standardwerte ---
   await p.click('#b-defaults');
   await p.waitForSelector('dialog[open]');
@@ -201,6 +224,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   const openBefore = (await (await p.request.get(URL + 'api/state')).json()).open_positions.length;
   const watchRow = await p.$('#cands tbody tr:has(.d-watch) [data-buy]');
   ok(!!watchRow, 'Kaufen-Knopf an einem watch-Kandidaten');
+  ok((await p.textContent('#cands')).includes('im Bestand'), 'Token im Bestand zeigt „im Bestand“ statt Kaufen');
   await watchRow.click(); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('gekauft'));
   const openAfter = (await (await p.request.get(URL + 'api/state')).json()).open_positions.length;
