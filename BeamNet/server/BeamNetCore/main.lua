@@ -72,6 +72,8 @@ local defaults = {
     raceRadiusM = 12,
     raceTickMs = 250,
     raceMaxMinutes = 30,
+    -- Mindest-Fahrstrecke (m) einer Runde auf einem Rundkurs, solange die Strecke noch keine bekannte Laenge hat.
+    raceMinLapM = 400,
     -- Zwischenzeiten alle raceSplitM Meter Fahrstrecke eines Laufs (0 = aus).
     raceSplitM = 500,
     -- Bonus-XP fuer Rennen: gueltiger Lauf, persoenliche Bestzeit, Streckenrekord.
@@ -506,6 +508,7 @@ local EN = {
     ["Fahrzeug zurückgesetzt"] = "Vehicle reset",
     ["Sprung (Teleport)"] = "Jump (teleport)",
     ["Zeitlimit überschritten"] = "Time limit exceeded",
+    ["Strecke abgekürzt"] = "Track cut short",
     ["Ziel! %s: %s"] = "Finish! %s: %s",
     ["Neuer Streckenrekord auf %s: %s mit %s!"] = "New track record on %s: %s with %s!",
     ["Persönliche Bestzeit! Platz %d von %d."] = "Personal best! Rank %d of %d.",
@@ -584,6 +587,10 @@ local EN = {
     ["Strecke %s gibt es nicht – zuerst /rennen neu %s"] = "Track %s does not exist – first /race new %s",
     ["Ziel von %s gesetzt – Rundkurs (Start = Ziel). Starten: /rennen %s"] = "Finish of %s set – lap course (start = finish). Start: /race %s",
     ["Ziel von %s gesetzt (%.0f m Luftlinie). Starten: /rennen %s"] = "Finish of %s set (%.0f m straight line). Start: /race %s",
+    ["Streckenlänge %.0f m (von dir gefahren) – deutlich kürzere Läufe sind ungültig."] =
+        "Track length %.0f m (as you drove it) – runs that are much shorter are invalid.",
+    ["Streckenlänge unbekannt – der erste gültige Lauf legt sie fest."] =
+        "Track length unknown – the first valid run sets it.",
     ["Strecke \"%s\" gibt es auf dieser Map nicht. Liste: /rennen"] = "Track \"%s\" does not exist on this map. List: /race",
     ["Strecke %s hat noch kein Ziel."] = "Track %s has no finish yet.",
     ["Rennen %s: Fahr zum Start (%.0f m entfernt)."] = "Race %s: drive to the start (%.0f m away).",
@@ -830,6 +837,7 @@ end
 -- Ergaenzt Felder, die eine aeltere Plugin-Version in laufenden Sitzungen noch nicht angelegt hat.
 function BN.normalizeSession(s)
     if type(s.vehicles) ~= "table" then s.vehicles = {} end
+    if type(s.moved) ~= "table" then s.moved = {} end
     for _, k in ipairs({ "pendingKm", "pendingSeconds", "pendingTop", "pendingBonus", "pendingRaces", "pendingRecords",
                          "sessionKm" }) do
         s[k] = tonumber(s[k]) or 0
@@ -874,6 +882,26 @@ local function session(pid)
     return BN.players[pid] or BN.addPlayer(pid)
 end
 
+-- Uebernimmt die seit dem letzten Aufruf gefahrene Strecke (BN.track sammelt sie je Fahrzeug in s.moved). Gezaehlt
+-- wird nur das Fahrzeug mit der groessten Strecke: Lkw mit Anhaenger oder mehrere Fahrzeuge zaehlen nicht mehrfach.
+local function flushMoved(s)
+    if type(s.moved) ~= "table" then s.moved = {} return 0 end
+    local best = 0
+    for _, d in pairs(s.moved) do
+        if d > best then best = d end
+    end
+    s.moved = {}
+    if best > 0 then
+        s.pendingKm = s.pendingKm + best / 1000
+        s.sessionKm = s.sessionKm + best / 1000
+        s.lastMoveAt = BN.now()
+        -- Neue Strecke eines Admins: gefahrene Laenge zwischen /rennen neu und /rennen ziel
+        if s.trackDraft then s.trackDraft.dist = s.trackDraft.dist + best end
+    end
+    return best
+end
+BN.flushMoved = flushMoved
+
 -- Erfolge und Tagesaufgabe, die die Datei noch nicht kennt: XP gesamt und davon nachtraeglich vergebene XP.
 local function pendingRewards(s)
     local rec, xp, retro = s.record, 0, 0
@@ -894,6 +922,7 @@ end
 -- einem schnellen Wechsel auf beiden Servern.
 function BN.savePlayer(s)
     if not s or s.guest then return true end
+    flushMoved(s)
     if s.pendingKm == 0 and s.pendingSeconds == 0 and s.pendingTop == 0 and s.pendingBonus == 0 and not s.dirty
         and s.pendingRaces == 0 and s.pendingRecords == 0 and next(s.unlocked) == nil and not s.challengeReward then
         return true
@@ -1134,9 +1163,9 @@ function BN.track(pid, vid, pos, tim, vel)
         local dx, dy, dz = x - v.x, y - v.y, z - v.z
         local d = math.sqrt(dx * dx + dy * dy + dz * dz)
         if d >= C.minStepM and dt > 0 and d / dt <= C.maxSpeedMps then
+            -- Zaehlt erst ueber flushMoved (nur das Fahrzeug mit der groessten Strecke je Takt)
             counted = d
-            s.pendingKm = s.pendingKm + d / 1000
-            s.sessionKm = s.sessionKm + d / 1000
+            s.moved[vid] = (s.moved[vid] or 0) + d
         elseif dt > 0 and d / dt > C.maxSpeedMps then
             jump = true
         end
@@ -1391,6 +1420,8 @@ end
 -- Spieler starten mit "/rennen <Name>": Die Zeit laeuft ab dem Verlassen des Startbereichs und endet beim Erreichen
 -- des Zielbereichs. Gemessen wird mit der Spieluhr des Fahrzeugs; der Zeitpunkt des Ueberfahrens wird zwischen zwei
 -- Messpunkten eingerechnet (Genauigkeit etwa eine Zehntelsekunde). Start = Ziel ergibt einen Rundkurs.
+-- Was der Admin zwischen "neu" und "ziel" faehrt, ist die Streckenlaenge (sonst legt sie der erste gueltige Lauf fest);
+-- ein Lauf mit deutlich kuerzerer Fahrstrecke ist ungueltig (siehe BN.raceMinDist).
 -- Strecken und Rekorde: <gemeinsamer Ordner>/races/<Map>.json
 
 local function point(t)
@@ -1498,16 +1529,32 @@ local function bestSplits(s, name)
     return nil
 end
 
+-- Mindest-Fahrstrecke eines Laufs (m). Ein Rundkurs braucht die bekannte Laenge (track.lengthM) oder sonst
+-- C.raceMinLapM, eine Strecke von A nach B zusaetzlich die Luftlinie; jeweils 80 %, damit Ideallinie und Messung
+-- Spielraum haben. Gemessen wird erst ab dem Verlassen des Startbereichs bis zum Zielbereich, daher ohne die Radien.
+function BN.raceMinDist(start, finish, lengthM)
+    local radius = C.raceRadiusM
+    local straight = dist(start, finish)
+    lengthM = tonumber(lengthM)
+    local need
+    if straight <= radius then
+        need = lengthM or C.raceMinLapM
+    else
+        need = math.max(straight, lengthM or 0)
+    end
+    return math.max(0, 0.8 * need - 2 * radius)
+end
+
 -- Waehrend eines Laufs: Fahrstrecke aufsummieren, an jeder Marke (alle C.raceSplitM Meter) die Laufzeit merken und
 -- mit der Zwischenzeit der eigenen Bestzeit vergleichen. Der Zeitpunkt wird wie beim Ziel im Abschnitt eingerechnet.
 -- finishT: Laufzeit im Ziel, falls der Lauf in diesem Abschnitt endet – Marken ab dort zaehlen nicht mehr.
 local function raceSplits(s, prev, cur, t0, t1, finishT)
     local r = s.race
-    local step = tonumber(C.raceSplitM) or 0
-    if step <= 0 then return end
     local seg = dist(prev, cur)
     local d0 = r.runDist or 0
-    r.runDist = d0 + seg
+    r.runDist = d0 + seg               -- auch ohne Zwischenzeiten: Mindeststrecke im Ziel
+    local step = tonumber(C.raceSplitM) or 0
+    if step <= 0 then return end
     r.splits = r.splits or {}
     while #r.splits < MAX_SPLITS and (#r.splits + 1) * step <= r.runDist do
         local n = #r.splits + 1
@@ -1530,6 +1577,12 @@ local function finishRace(s, time)
         local data = BN.loadTracks()
         local track = data.tracks[r.name]
         if track then
+            -- Strecke ohne bekannte Laenge (aeltere Strecke, Ziel ohne Fahrt gesetzt): der erste gueltige Lauf legt sie fest.
+            local changed = false
+            if not tonumber(track.lengthM) then
+                track.lengthM = math.floor((r.runDist or 0) + 2 * C.raceRadiusM + 0.5)
+                changed = true
+            end
             track.records = type(track.records) == "table" and track.records or {}
             local previousBest = track.records[1] and tonumber(track.records[1].time)
             local mine
@@ -1555,8 +1608,8 @@ local function finishRace(s, time)
             end
             table.sort(track.records, function(a, b) return (tonumber(a.time) or math.huge) < (tonumber(b.time) or math.huge) end)
             while #track.records > 50 do table.remove(track.records) end
+            if improved or changed then saveTracks(data) end
             if improved then
-                saveTracks(data)
                 local rank
                 for i, rec in ipairs(track.records) do if rec.id == s.id then rank = i end end
                 bonus = bonus + C.racePersonalBestXp
@@ -1629,7 +1682,16 @@ function BN.raceUpdate(s, vid, prev, cur, jump)
         if d > BN.leaveDistance() then r.leftFinish = true end
         return
     end
-    if finishT then finishRace(s, finishT) end
+    if finishT then
+        -- Zu kurz gefahren (z. B. auf einem Rundkurs nur kurz raus und zurueck): kein gueltiger Lauf.
+        local track = BN.loadTracks().tracks[r.name]
+        local lengthM = type(track) == "table" and track.lengthM or nil
+        if (r.runDist or 0) < BN.raceMinDist(r.start, r.finish, lengthM) then
+            BN.raceInvalid(s, "Strecke abgekürzt")
+            return
+        end
+        finishRace(s, finishT)
+    end
 end
 
 -- Schnelle Abtastung nur fuer Spieler mit laufendem Rennen.
@@ -2059,17 +2121,37 @@ function commands.rennen(pid, arg)
             if track then say(pid, "Strecke %s gibt es schon.", name) return end
             data.tracks[name] = { start = point(pos), by = s.name, created = BN.now(), records = {} }
             saveTracks(data)
+            -- Ab jetzt die gefahrene Strecke bis /rennen ziel mitzaehlen (Streckenlaenge)
+            flushMoved(s)
+            s.trackDraft = { name = name, dist = 0 }
             say(pid, "Start von %s gesetzt. Jetzt zum Ziel fahren und /rennen ziel %s schreiben.", name, name)
         else
             if not track then say(pid, "Strecke %s gibt es nicht – zuerst /rennen neu %s", name, name) return end
             track.finish = point(pos)
             track.records = {}           -- neues Ziel: alte Zeiten passen nicht mehr
-            saveTracks(data)
             local d = dist(point(pos), point(track.start))
-            if d <= C.raceRadiusM then
+            -- Streckenlaenge: was der Admin seit /rennen neu gefahren ist, wenn das plausibel ist (Rundkurs: weiter als
+            -- hin und zurueck aus dem Zielbereich, sonst etwa die Luftlinie); sonst legt der erste gueltige Lauf sie fest.
+            flushMoved(s)
+            local draft = s.trackDraft
+            s.trackDraft = nil
+            local driven = draft and draft.name == name and draft.dist or 0
+            local lap = d <= C.raceRadiusM
+            if driven > 0 and driven >= (lap and 2 * BN.leaveDistance() or 0.9 * d) then
+                track.lengthM = math.floor(driven + 0.5)
+            else
+                track.lengthM = nil
+            end
+            saveTracks(data)
+            if lap then
                 say(pid, "Ziel von %s gesetzt – Rundkurs (Start = Ziel). Starten: /rennen %s", name, name)
             else
                 say(pid, "Ziel von %s gesetzt (%.0f m Luftlinie). Starten: /rennen %s", name, d, name)
+            end
+            if track.lengthM then
+                say(pid, "Streckenlänge %.0f m (von dir gefahren) – deutlich kürzere Läufe sind ungültig.", track.lengthM)
+            else
+                say(pid, "Streckenlänge unbekannt – der erste gültige Lauf legt sie fest.")
             end
         end
         return
@@ -2586,15 +2668,21 @@ local function guarded(where, fn, ...)
 end
 BN.guarded = guarded
 
+-- Fahrzeit zaehlt nur, wer sich in den letzten so vielen Sekunden bewegt hat (Parken oder Zuschauen bringt keine XP).
+local MOVING_WINDOW_SEC = 30
+
 local function tickPlayer(pid)
     local s = session(pid)
-    s.pendingSeconds = s.pendingSeconds + C.tickMs / 1000
     local vehicles = MP.GetPlayerVehicles and MP.GetPlayerVehicles(pid) or nil
     if type(vehicles) == "table" then
         for vid in pairs(vehicles) do
             local ok, raw = pcall(MP.GetPositionRaw, pid, vid)
             if ok and type(raw) == "table" and raw.pos then BN.track(pid, vid, raw.pos, tonumber(raw.tim), raw.vel) end
         end
+    end
+    flushMoved(s)
+    if s.lastMoveAt and BN.now() - s.lastMoveAt < MOVING_WINDOW_SEC then
+        s.pendingSeconds = s.pendingSeconds + C.tickMs / 1000
     end
     checkProgress(s)
 end
