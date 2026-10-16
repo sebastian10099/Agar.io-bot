@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.14"
+BN.VERSION = "1.15"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1466,11 +1466,20 @@ function BN.writeStatus()
     if not BN.server.port or BN.server.port == 0 then return end
     ensureDir(C.sharedDir)
     ensureDir(serversDir())
-    local names = {}
-    for _, s in pairs(BN.players) do names[#names + 1] = s.name end
-    table.sort(names)
+    -- Namen alphabetisch; ids an derselben Stelle (Gaeste: "") fuer die Profil-Links der Statusseite.
+    local list = {}
+    for _, s in pairs(BN.players) do list[#list + 1] = s end
+    table.sort(list, function(a, b)
+        if a.name ~= b.name then return a.name < b.name end
+        return tostring(a.pid) < tostring(b.pid)
+    end)
+    local names, ids = {}, {}
+    for i, s in ipairs(list) do
+        names[i] = s.name
+        ids[i] = (not s.guest and s.id) or ""
+    end
     local status = { name = BN.server.name, port = BN.server.port, map = BN.server.map, players = #names,
-                     max = BN.server.maxPlayers, names = names, updated = BN.now(), version = BN.VERSION,
+                     max = BN.server.maxPlayers, names = names, ids = ids, updated = BN.now(), version = BN.VERSION,
                      board = BN.boardSource,
                      api = BN.capabilities(), lua = _VERSION }
     writeFileAtomic(serversDir() .. "/" .. tostring(BN.server.port) .. ".json", json.encode(status))

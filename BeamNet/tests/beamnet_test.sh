@@ -511,6 +511,17 @@ contains "$page" "1 Server online · 2 Spieler" "Statusseite: Zusammenfassung"
 contains "$page" "<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td class=n>8</td><td>Silber</td><td class=n>1500</td><td class=n>120 km</td><td class=n>0</td>" "Statusseite: Bestenliste"
 contains "$page" "&lt;b&gt;Hacker&lt;/b&gt;" "Statusseite: Namen werden maskiert"
 lacks "$page" "<b>Hacker</b>" "Statusseite: kein HTML aus Spielernamen"
+# Mit IDs (BeamNetCore 1.14+): Namen mit Profilseite verlinkt, Gaeste/unsichere IDs/ohne Profil nicht.
+cp "$T/root/shared/beamnet/servers/30814.json" "$T/server-ids.bak"
+echo "{\"name\":\"BeamNet | Server 1\",\"port\":30814,\"map\":\"gridmap_v2\",\"players\":4,\"max\":8,\"names\":[\"Sebi\",\"<b>Hacker</b>\",\"Gast\",\"Neu\"],\"ids\":[\"1\",\"2\",\"\",\"777\"],\"updated\":$(date +%s)}" >"$T/root/shared/beamnet/servers/30814.json"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" '<div class=small><a href="p/1.html">Sebi</a>, <a href="p/2.html">&lt;b&gt;Hacker&lt;/b&gt;</a>, Gast, Neu</div>' "Statusseite: Online-Namen verlinken aufs Profil"
+echo "{\"name\":\"BeamNet | Server 1\",\"port\":30814,\"map\":\"gridmap_v2\",\"players\":2,\"max\":8,\"names\":[\"Sebi\",\"X\"],\"ids\":[\"1\"],\"updated\":$(date +%s)}" >"$T/root/shared/beamnet/servers/30814.json"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" '<div class=small>Sebi, X</div>' "Statusseite: IDs mit falscher Laenge werden ignoriert"
+cp "$T/server-ids.bak" "$T/root/shared/beamnet/servers/30814.json"
+"$TOOL" web run >/dev/null 2>&1
+page=$(cat "$T/web/index.html")
 contains "$page" "<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td class=n>33.3 km</td>" "Statusseite: Woche"
 contains "$page" "<td>Italy</td><td>sprint</td><td>Sebi</td><td class=n>0:49.1</td>" "Statusseite: Rekorde"
 contains "$page" "<h2>Saison [A-Za-zä]+ [0-9]{4}</h2>.*<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td class=n>500</td>" "Statusseite: Saison"

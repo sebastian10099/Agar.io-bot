@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.23 / Plugin 1.14)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.24 / Plugin 1.15)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -31,7 +31,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 12. [ ] Discord-Meldungen als Embeds (farbig, mit Feldern) statt reinem Text.
 13. [x] Statusseite: Diagramm „Spieler je Stunde“ über die letzten 7 Tage, mit Tooltip je Stunde und
         Wochenspitze, ohne Skripte, hell/dunkel, fürs Handy. Steht auch in `api.json` (`peak.hours`, Werkzeug 1.23).
-14. [ ] Statusseite: Block „Gerade online“ mit Namen je Server, verlinkt auf die Profile.
+14. [x] Statusseite: Die Namen unter jedem Server sind auf die Profile verlinkt (Plugin 1.15 meldet die IDs mit;
+        Gäste und Neue ohne Profil bleiben ohne Link; Werkzeug 1.24).
 15. [ ] Profilseite: Kilometer je Woche als kleines Diagramm, letzte Rekorde.
 16. [ ] Geplante Ansagen: `beamnet ansage "Event um 20 Uhr" --um 19:45`, auf allen Servern im Chat.
 17. [ ] Event-Modus: doppelte XP in einem Zeitfenster (z. B. Wochenende), angekündigt im Chat und in Discord.

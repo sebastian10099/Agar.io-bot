@@ -336,6 +336,8 @@ check(BN.players[2] == nil, "Abmelden entfernt Sitzung")
 near(readJson(SHARED .. "/players/2002.json").km, 5, 1e-6, "Abmelden speichert")
 st = readJson(SHARED .. "/servers/30814.json")
 eq(st.players, 2, "Status nach Abmelden (Sebi und Boese)")
+eq(table.concat(st.names, ","), "Boese,Sebi", "Status: Namen alphabetisch")
+eq(table.concat(st.ids, ","), ",1001", "Status: IDs an derselben Stelle, Gast/unsichere ID leer")
 
 for _ = 1, 10 do move(1, 0, 20); tick(1) end
 players[1] = nil                                   -- ohne Abmeldung verschwunden

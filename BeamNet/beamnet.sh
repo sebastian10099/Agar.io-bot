@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.23"
+VERSION="1.24"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1970,19 +1970,6 @@ for path in sorted(glob.glob(os.path.join(shared, "races", "*.json"))):
         if isinstance(recs, list) and recs and isinstance(recs[0], dict):
             races.append((os.path.basename(path)[:-5], name, recs[0]))
 
-online = sum(int(num(s.get("players"))) for s in servers)
-rows = []
-for s in servers:
-    names = s.get("names") if isinstance(s.get("names"), list) else []
-    who = E(", ".join(str(n) for n in names))
-    rows.append(f"<tr><td><b>{E(str(s.get('name', '?')))}</b>" + (f"<div class=small>{who}</div>" if who else "") +
-                f"</td><td>{E(map_name(s.get('map', '?')))}</td>"
-                f"<td class=n>{int(num(s.get('players')))}/{int(num(s.get('max')))}</td></tr>")
-def achievements(r):
-    a = r.get("achievements")
-    return len(a) if isinstance(a, dict) else 0
-
-
 ID_OK = __import__("re").compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
@@ -1991,6 +1978,23 @@ def link(r, prefix=""):
     name = E(str(r.get("name", "?")))
     rid = str(r.get("id", ""))
     return f'<a href="{prefix}p/{rid}.html">{name}</a>' if ID_OK.fullmatch(rid) else name
+
+
+online = sum(int(num(s.get("players"))) for s in servers)
+profile_ids = {str(r.get("id")) for r in players if ID_OK.fullmatch(str(r.get("id", "")))}
+rows = []
+for s in servers:
+    names = s.get("names") if isinstance(s.get("names"), list) else []
+    ids = s.get("ids") if isinstance(s.get("ids"), list) and len(s.get("ids")) == len(names) else [""] * len(names)
+    # Namen mit Profilseite (BeamNetCore 1.14+ meldet die IDs) werden verlinkt, Gaeste und Neue nicht.
+    who = ", ".join(link({"name": n, "id": i}) if isinstance(i, str) and i in profile_ids else E(str(n))
+                    for n, i in zip(names, ids))
+    rows.append(f"<tr><td><b>{E(str(s.get('name', '?')))}</b>" + (f"<div class=small>{who}</div>" if who else "") +
+                f"</td><td>{E(map_name(s.get('map', '?')))}</td>"
+                f"<td class=n>{int(num(s.get('players')))}/{int(num(s.get('max')))}</td></tr>")
+def achievements(r):
+    a = r.get("achievements")
+    return len(a) if isinstance(a, dict) else 0
 
 
 top = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{level_of(xp_of(r))}</td>"
