@@ -1006,15 +1006,15 @@ python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["peak"]["a
 hr=$(tail -n1 "$T/watch/hours" | cut -d' ' -f1)      # Stunde aus der Datei (sonst wackelt der Test zur vollen Stunde)
 (( hr % 3600 == 0 && $(date +%s) - hr < 7200 )) && pass || fail "hours: Stundenbeginn der laufenden Stunde"
 contains "$(cat "$T/watch/hours")" "^$hr 14$" "hours: Spitze der laufenden Stunde"
-contains "$(cat "$S/peak.json")" "\"hours\":\\[\\[$hr,14\\]\\]" "hours: in peak.json"
+contains "$(cat "$S/peak.json")" "\\[$hr,14\\]\\]\\}$" "hours: in peak.json (laufende Stunde zuletzt)"
 contains "$(cat "$T/web/index.html")" "Spieler je Stunde \\(7 Tage\\)" "hours: Diagramm auf der Statusseite"
 contains "$(cat "$T/web/index.html")" "Spitze: <b>14</b> Spieler gleichzeitig" "hours: Wochenspitze unter dem Diagramm"
 contains "$(cat "$T/web/index.html")" "<title>[A-Z][a-z] [0-9]{2}\\.[0-9]{2}\\. [0-9]{2} Uhr: 14 Spieler</title>" "hours: Tooltip je Balken"
 lacks "$(cat "$T/web/index.html")" "<script" "hours: Diagramm ohne Skripte"
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["peak"]["hours"] == [[int(sys.argv[2]), 14]]' "$T/web/api.json" "$hr" && pass || fail "hours: in api.json"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["peak"]["hours"][-1] == [int(sys.argv[2]), 14]' "$T/web/api.json" "$hr" && pass || fail "hours: in api.json"
 printf '%s 3\nquatsch\n%s 9 x\n%s 6\n%s 14\n' "$(( hr - 8 * 86400 ))" "$(( hr - 3600 ))" "$(( hr - 7200 ))" "$hr" >"$T/watch/hours"
 "$TOOL" watch >/dev/null 2>&1
-[[ $(cat "$T/watch/hours") == "$(( hr - 7200 )) 6"$'\n'"$hr 14" ]] && pass || fail "hours: alte Stunden und kaputte Zeilen entfernt"
+[[ $(head -n2 "$T/watch/hours") == "$(( hr - 7200 )) 6"$'\n'"$hr 14" ]] && pass || fail "hours: alte Stunden und kaputte Zeilen entfernt"
 echo '{"allTime":1,"hours":[[1,2],"x",[true,5],[99999999999,1]]}' >"$S/peak.json"
 "$TOOL" web run >/dev/null 2>&1
 lacks "$(cat "$T/web/index.html")" "Spieler je Stunde" "hours: ohne gueltige Stunden kein Diagramm"
