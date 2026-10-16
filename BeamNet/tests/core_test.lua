@@ -2784,6 +2784,20 @@ do
     say(160, "/auftrag")
     check(chatContains("📦 Liefere das Paket nach Lieferpunkt %d+ – ", 160) and BN.players[160].job ~= nil, "Lieferpunkte: Auftrag ohne Orte")
     say(160, "/auftrag stop")
+    -- Feste Nummern: bleiben beim Speichern und Neuladen gleich.
+    local idsBefore = {}
+    for _, p in ipairs(BN.roadPointList()) do idsBefore[p.x .. "," .. p.y] = p.id end
+    BN.roadPoints.loadedAt = clock - 301
+    local same = true
+    for _, p in ipairs(BN.roadPointList()) do
+        if idsBefore[p.x .. "," .. p.y] and idsBefore[p.x .. "," .. p.y] ~= p.id then same = false end
+    end
+    check(same, "Lieferpunkte: Nummern bleiben nach dem Neuladen gleich")
+    -- Herunterfahren speichert neue Punkte sofort.
+    for _ = 1, 15 do move(160, 1, 20); tick(1) end
+    check(BN.roadPoints.dirty, "Lieferpunkte: neue Punkte noch nicht gespeichert")
+    BN.saveRoadPoints()
+    check(not BN.roadPoints.dirty and #readJson(SHARED .. "/roadpoints/gridmap_v2.json").points == #BN.roadPointList(), "Lieferpunkte: beim Speichern alle in der Datei")
     -- Kaputte Datei: nichts wird ueberschrieben.
     local fh = io.open(SHARED .. "/roadpoints/gridmap_v2.json", "w"); fh:write("{kaputt"); fh:close()
     BN.roadPoints = nil
@@ -2792,6 +2806,11 @@ do
     for _ = 1, 6 do move(160, 1, 20); tick(1) end
     fh = io.open(SHARED .. "/roadpoints/gridmap_v2.json", "r"); local body = fh:read("*a"); fh:close()
     eq(body, "{kaputt", "Lieferpunkte: kaputte Datei bleibt unberuehrt")
+    -- Wieder in Ordnung: nach dem naechsten Neuladen wird weiter gesammelt.
+    writeJson(SHARED .. "/roadpoints/gridmap_v2.json", { points = { { x = 1, y = 2, z = 3, id = 5 } } })
+    BN.roadPoints.loadedAt = clock - 301
+    for _ = 1, 15 do move(160, 1, 20); tick(1) end
+    check(not BN.roadPoints.broken and #BN.roadPointList() >= 2, "Lieferpunkte: nach reparierter Datei geht es weiter")
     for _, pid in ipairs({ 160, 161 }) do
         if BN.players[pid] then BN.players[pid].pendingBonus, BN.players[pid].pendingKm = 0, 0 end
         _G[events.onPlayerDisconnect](pid); players[pid] = nil

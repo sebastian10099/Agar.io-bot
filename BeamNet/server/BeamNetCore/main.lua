@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.62"
+BN.VERSION = "1.63"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -4584,10 +4584,23 @@ local function cleanPoints(src, max)
     for _, p in ipairs(type(src) == "table" and src or {}) do
         if #list >= max then break end
         if type(p) == "table" and tonumber(p.x) and tonumber(p.y) and tonumber(p.z) then
-            list[#list + 1] = { x = tonumber(p.x), y = tonumber(p.y), z = tonumber(p.z) }
+            local id = tonumber(p.id)
+            list[#list + 1] = { x = tonumber(p.x), y = tonumber(p.y), z = tonumber(p.z),
+                                id = id and id >= 1 and id < 1e6 and math.floor(id) or nil }
         end
     end
     return list
+end
+
+-- Feste Nummern (fuer "Lieferpunkt 17"): vorhandene bleiben, doppelte und fehlende bekommen die naechste freie.
+local function assignIds(list)
+    local used, maxId = {}, 0
+    for _, p in ipairs(list) do
+        if p.id and not used[p.id] then used[p.id], maxId = true, math.max(maxId, p.id) else p.id = nil end
+    end
+    for _, p in ipairs(list) do
+        if not p.id then maxId = maxId + 1; p.id = maxId end
+    end
 end
 
 local function nearPoint(list, pos, d)
@@ -4604,6 +4617,7 @@ function BN.roadPointList()
         local raw = readListFile(roadFile(), "points")
         rp = { map = BN.mapKey(), list = cleanPoints(raw, C.roadPointsMax), loadedAt = now, dirty = false,
                broken = raw == nil, savedAt = rp and rp.savedAt or now }
+        assignIds(rp.list)
         BN.roadPoints = rp
     end
     return rp.list
@@ -4623,20 +4637,33 @@ function BN.roadTick()
             and s.vehicles[s.tickVid]
         if type(v) == "table" and tonumber(v.x) and not nearPoint(list, v, C.roadPointSpacingM) then
             list[#list + 1] = { x = math.floor(v.x + 0.5), y = math.floor(v.y + 0.5), z = math.floor(v.z + 0.5) }
+            assignIds(list)
             rp.dirty = true
         end
     end
-    if rp.dirty and now - (rp.savedAt or 0) >= 300 then
-        rp.savedAt = now
-        local raw = readListFile(roadFile(), "points")
-        if not raw then rp.broken = true return end
-        for _, p in ipairs(cleanPoints(raw, C.roadPointsMax)) do
-            if #list < C.roadPointsMax and not nearPoint(list, p, C.roadPointSpacingM) then list[#list + 1] = p end
-        end
-        ensureDir(C.sharedDir)
-        ensureDir(roadDir())
-        if writeFileAtomic(roadFile(), json.encode({ points = list })) then rp.dirty, rp.loadedAt = false, now end
+    if rp.dirty and now - (rp.savedAt or 0) >= 300 then BN.saveRoadPoints() end
+end
+
+-- Neue Punkte speichern (zusammen mit denen der anderen Server). Ist die Datei gerade kaputt: nichts schreiben, die
+-- ungespeicherten Punkte verwerfen und in 5 Minuten neu lesen (sonst bliebe die Sammlung bis zum Neustart stehen).
+function BN.saveRoadPoints()
+    local rp = BN.roadPoints
+    if not rp or not rp.dirty or rp.broken or rp.map ~= BN.mapKey() then return end
+    local now = BN.now()
+    rp.savedAt = now
+    local raw = readListFile(roadFile(), "points")
+    if not raw then
+        rp.broken, rp.dirty, rp.loadedAt = true, false, now
+        return
     end
+    local list = rp.list
+    for _, p in ipairs(cleanPoints(raw, C.roadPointsMax)) do
+        if #list < C.roadPointsMax and not nearPoint(list, p, C.roadPointSpacingM) then list[#list + 1] = p end
+    end
+    assignIds(list)
+    ensureDir(C.sharedDir)
+    ensureDir(roadDir())
+    if writeFileAtomic(roadFile(), json.encode({ points = list })) then rp.dirty, rp.loadedAt = false, now end
 end
 
 -- Richtung zum Ziel relativ zur Fahrtrichtung (aus den letzten Positionen des Auftragsfahrzeugs), nil ohne Fahrt.
@@ -4678,9 +4705,9 @@ function BN.startJob(s)
     end
     -- Ohne passende Orte: Lieferung zu einem Lieferpunkt (bis 3 km), damit es auf jeder Map Auftraege gibt.
     if #choices == 0 and C.roadPointsMax > 0 then
-        for i, p in ipairs(BN.roadPointList()) do
+        for _, p in ipairs(BN.roadPointList()) do
             local d = dist(pos, p)
-            local name = tr(lang, "Lieferpunkt %d", i)
+            local name = tr(lang, "Lieferpunkt %d", p.id)
             if d >= C.jobMinDistM and d <= 3000 and name ~= s.lastJobPlace then
                 choices[#choices + 1] = { place = { type = "ort", name = name, x = p.x, y = p.y, z = p.z }, d = d }
             end
@@ -6064,6 +6091,7 @@ function BN_onVehicleDeleted(pid, vid)
 end
 
 function BN_onShutdown()
+    guarded("Lieferpunkte", BN.saveRoadPoints)
     for _, s in pairs(BN.players) do guarded("Speichern", BN.savePlayer, s) end
     guarded("Status", BN.writeStatus)
 end
