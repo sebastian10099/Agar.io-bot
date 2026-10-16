@@ -1016,6 +1016,46 @@ contains "$("$TOOL" restore 1999-01-01 2>&1)" "Keine Datensicherung vom 1999-01-
 contains "$("$TOOL" restore gestern 2>&1)" "Aufruf: beamnet restore" "restore: falsches Format"
 rm -rf "$S".vor-wiederherstellung-* "$B"/daten-*.tgz "$T/geheim2.json" "$T/501.vorher" "$S/players/501.json"
 
+# --- Moderation an Discord/Telegram (watch_modlog) ------------------------------------------------------------------
+M="$T/root/shared/beamnet/modlog.jsonl"
+port1=$(grep -m1 '^Port' "$T/root/1/ServerConfig.toml" | grep -o '[0-9]*' | head -n1)
+rm -f "$T/watch/modlog-pos"
+echo '{"action":"kick","by":"Alt","target":"Vorher","at":1,"server":1}' >"$M"
+out=$("$TOOL" watch 2>&1)
+lacks "$out" "Vorher" "modlog: beim ersten Lauf keine alte Geschichte"
+now=$(date +%s)
+{
+    printf '{"action":"ban","by":"Sebi","target":"Rambo\\nRacer","targetId":"9","reason":"rammt","until":%s,"at":%s,"server":%s}\n' "$((now + 3600))" "$now" "$port1"
+    printf '{"action":"ban","by":"Sebi","target":"Troll","reason":"","at":%s,"server":99999}\n' "$now"
+    printf '{"action":"spam-mute","target":"Spammer","seconds":60,"at":%s,"server":%s}\n' "$now" "$port1"
+    printf '{"action":"warn","by":"Max","target":"Ana","reason":"bitte rechts fahren","at":%s,"server":%s}\n' "$now" "$port1"
+    printf '{"action":"ansage","by":"Max","reason":"Event","at":%s}\n' "$now"
+    echo 'kaputt'
+    printf '{"action":"kick","by":"Max","target":"Halb"'
+} >>"$M"
+: >"$T/curl.log"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🛡️ Sebi hat Rambo Racer gebannt bis [0-9]{2}\\.[0-9]{2}\\. [0-9]{2}:[0-9]{2} – rammt \\(Server 1\\)" "modlog: Bann mit Dauer, Grund und Server"
+contains "$out" "🛡️ Sebi hat Troll gebannt dauerhaft \\(Port 99999\\)" "modlog: dauerhafter Bann, unbekannter Port"
+contains "$out" "🔇 Spammer wurde wegen Spam für 60 s stummgeschaltet \\(Server 1\\)" "modlog: Spam-Stummschaltung"
+contains "$out" "⚠️ Max hat Ana verwarnt – bitte rechts fahren \\(Server 1\\)" "modlog: Verwarnung"
+lacks "$out" "Event|kaputt|Halb" "modlog: Ansage, kaputte und halbe Zeilen nicht gemeldet"
+printf ',"server":%s}\n' "$port1" >>"$M"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🛡️ Max hat Halb vom Server geworfen \\(Server 1\\)" "modlog: halbe Zeile kommt, sobald sie vollstaendig ist"
+lacks "$out" "Rambo|Troll" "modlog: nichts doppelt"
+for i in $(seq 1 12); do printf '{"action":"kick","by":"A","target":"K%s","at":%s,"server":%s}\n' "$i" "$now" "$port1"; done >>"$M"
+out=$("$TOOL" watch 2>&1)
+[[ $(grep -c "vom Server geworfen" <<<"$out") == 10 ]] && pass || fail "modlog: hoechstens 10 je Lauf"
+contains "$out" "… und 2 weitere \\(beamnet modlog\\)" "modlog: Rest zusammengefasst"
+echo '{"action":"kick","by":"Neu","target":"Datei","at":1,"server":1}' >"$M.neu"; mv "$M.neu" "$M"
+contains "$("$TOOL" watch 2>&1)" "Neu hat Datei vom Server geworfen" "modlog: neue Datei (anderer Inode) von vorn"
+sed -i 's/^MODLOG_NOTIFY=.*/MODLOG_NOTIFY=0/' "$T/beamnet.conf"
+printf '{"action":"kick","by":"Aus","target":"X","at":1,"server":1}\n' >>"$M"
+lacks "$("$TOOL" watch 2>&1)" "Aus hat" "modlog: MODLOG_NOTIFY=0 schaltet ab"
+sed -i 's/^MODLOG_NOTIFY=.*/MODLOG_NOTIFY=1/' "$T/beamnet.conf"
+rm -f "$M" "$T/watch/modlog-pos"
+
 # --- Meldungen aus dem Spiel (watch_reports) --------------------------------------------------------------------------
 R="$T/root/shared/beamnet/reports"
 mkdir -p "$R"

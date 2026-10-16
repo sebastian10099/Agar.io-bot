@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.26"
+VERSION="1.27"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1329,6 +1329,87 @@ PY
     return 0
 }
 
+# Moderation an Discord/Telegram: neue Zeilen aus modlog.jsonl (Bann, Kick, Stummschaltung, Verwarnung). Position
+# im Zustand (Inode + Byte); beim ersten Lauf ab dem Ende (keine alte Geschichte). MODLOG_NOTIFY=0 schaltet ab.
+watch_modlog() {
+    local -n modout=$1
+    local line nr map=()
+    [[ $(conf_get MODLOG_NOTIFY) == 0 ]] && return 0
+    [[ -f $SHARED/modlog.jsonl && ! -L $SHARED/modlog.jsonl && ! -L $SHARED ]] || return 0
+    command -v python3 >/dev/null || return 0
+    for nr in $(servers); do map+=("$(cfg "$nr" Port)=$nr"); done
+    while IFS= read -r line; do
+        [[ -n $line ]] && modout+=("$line")
+    done < <(python3 -I - "$SHARED/modlog.jsonl" "$STATE_DIR/modlog-pos" "${map[@]}" <<'PY' 2>/dev/null
+import json, os, re, stat, sys, time
+path, state = sys.argv[1], sys.argv[2]
+servers = dict(a.split("=", 1) for a in sys.argv[3:] if "=" in a)
+try:
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+except OSError:
+    sys.exit(0)
+with os.fdopen(fd, "rb") as f:
+    st = os.fstat(f.fileno())
+    if not stat.S_ISREG(st.st_mode):
+        sys.exit(0)
+    try:
+        ino, pos = (int(x) for x in open(state).read().split()[:2])
+    except Exception:
+        ino, pos = st.st_ino, st.st_size          # erster Lauf: ab dem Ende
+    if ino != st.st_ino or pos > st.st_size:
+        pos = 0                                   # neue oder gekuerzte Datei
+    f.seek(pos)
+    chunk = f.read(256 * 1024)
+end = chunk.rfind(b"\n") + 1                    # nur vollstaendige Zeilen
+with open(state + ".tmp", "w") as out:
+    out.write(f"{st.st_ino} {pos + end}\n")
+os.replace(state + ".tmp", state)
+
+def c(v, n=40):
+    v = re.sub(r"[\x00-\x1f\x7f]", " ", str(v if v is not None else "?")).strip()
+    return (v[:n] + "…") if len(v) > n else v
+
+def where(e):
+    port = str(e.get("server", ""))
+    return f"Server {servers[port]}" if port in servers else f"Port {c(port, 6)}"
+
+lines = []
+for raw in chunk[:end].splitlines():
+    try:
+        e = json.loads(raw.decode("utf-8"))
+    except Exception:
+        continue
+    if not isinstance(e, dict):
+        continue
+    a, by, who = e.get("action"), c(e.get("by", "System")), c(e.get("target"))
+    reason = f" – {c(e['reason'], 150)}" if e.get("reason") else ""
+    if a == "ban":
+        u = e.get("until")
+        span = f" bis {time.strftime('%d.%m. %H:%M', time.localtime(u))}" if isinstance(u, (int, float)) and u > 0 else " dauerhaft"
+        lines.append(f"🛡️ {by} hat {who} gebannt{span}{reason} ({where(e)})")
+    elif a == "unban":
+        lines.append(f"🛡️ {by} hat den Bann von {who} aufgehoben")
+    elif a == "kick":
+        lines.append(f"🛡️ {by} hat {who} vom Server geworfen{reason} ({where(e)})")
+    elif a == "mute":
+        m = e.get("minutes")
+        span = f" für {int(m)} min" if isinstance(m, (int, float)) and m > 0 else ""
+        lines.append(f"🔇 {by} hat {who} stummgeschaltet{span} ({where(e)})")
+    elif a == "spam-mute":
+        sec = e.get("seconds")
+        span = f" für {int(sec)} s" if isinstance(sec, (int, float)) and sec > 0 else ""
+        lines.append(f"🔇 {who} wurde wegen Spam{span} stummgeschaltet ({where(e)})")
+    elif a == "warn":
+        lines.append(f"⚠️ {by} hat {who} verwarnt{reason} ({where(e)})")
+for l in lines[:10]:
+    print(l)
+if len(lines) > 10:
+    print(f"   … und {len(lines) - 10} weitere (beamnet modlog)")
+PY
+)
+    return 0
+}
+
 # Taegliche Map-Rotation (ROTATE_<nr>="italy utah ..."): ab ROTATE_HOUR (Ortszeit, Standard 6) einmal am Tag zur
 # naechsten Map der Liste – nur wenn der Server leer ist (laut BeamNetCore), sonst beim naechsten Lauf erneut.
 watch_rotation() {
@@ -1459,6 +1540,7 @@ watch_run() {
     watch_heartbeat
     watch_votes msgs
     watch_reports msgs
+    watch_modlog msgs
     for nr in $(servers); do
         unit_exists "$nr" || continue
         if unit_active "$nr"; then state=up; else state=down; fi
@@ -1793,6 +1875,8 @@ VOTE_MAPS=
 # DAILY_HOUR = ab dieser Stunde (Ortszeit, 0-23) einmal am Tag; ist heute niemand gefahren, kommt keine Meldung.
 DAILY_SUMMARY=1
 DAILY_HOUR=22
+# Moderation (Bann, Kick, Stummschaltung, Verwarnung) an Discord/Telegram melden: 1 = an, 0 = aus.
+MODLOG_NOTIFY=1
 # Taegliche Datensicherung der Spielerdaten nach /root/beamnet-backups/daten-<Datum>.tgz: ab BACKUP_HOUR Uhr,
 # BACKUP_KEEP Tage aufbewahren (zurueckholen: beamnet restore). DATA_BACKUP=0 schaltet ab.
 DATA_BACKUP=1
