@@ -60,6 +60,10 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok((await p.$$('#groups .field')).length >= 20, 'Formular aus Schema gebaut (' + (await p.$$('#groups .field')).length + ' Felder)');
   ok(await p.$eval('#conn', (e) => e.classList.contains('ok')), 'Verbindungspunkt grün');
   ok((await p.$$('#open tbody tr')).length >= 1, 'offene Position angezeigt');
+  const head = await p.$$eval('#open thead th', (ths) => ths.map((t) => t.textContent.trim()));
+  ok(head.includes('Stop') && head.includes('Nächstes Ziel') && head.includes('Zeit'), 'Zielkurse-Spalten vorhanden');
+  const stopCell = await p.$eval('#open tbody tr', (tr) => tr.children[Array.from(tr.parentElement.parentElement.querySelectorAll('thead th')).findIndex((t) => t.textContent.trim() === 'Stop')].textContent);
+  ok(/\d/.test(stopCell), 'Stop-Kurs berechnet (' + stopCell.trim().slice(0, 12) + ')');
   await p.screenshot({ path: SHOTS + '/01-overview-dark.png', fullPage: true });
 
   // --- Steuerung: gültige Änderung ---
@@ -145,7 +149,26 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok((await p.$$('#cands tbody tr')).length >= 1 && (await p.textContent('#cands')).includes('RUN'), 'Suche findet RUN');
   await p.fill('#q', '');
   await p.click('.filterbar .chip[data-f="skip"]');
+  // sorting: click Score twice -> descending then ascending
+  await p.click('#cands th[data-sort="score"] button');
+  const scoresDesc = await p.$$eval('#cands tbody tr td:nth-child(4)', (tds) => tds.map((t) => parseFloat(t.textContent) || 0));
+  ok(scoresDesc.every((v, i) => i === 0 || v <= scoresDesc[i - 1]), 'Sortierung nach Score absteigend (' + scoresDesc.slice(0, 4).join(', ') + ')');
+  await p.click('#cands th[data-sort="score"] button');
+  const scoresAsc = await p.$$eval('#cands tbody tr td:nth-child(4)', (tds) => tds.map((t) => parseFloat(t.textContent) || 0));
+  ok(scoresAsc.every((v, i) => i === 0 || v >= scoresAsc[i - 1]), 'zweiter Klick dreht die Sortierung um');
+  ok((await p.getAttribute('#cands th[data-sort="score"]', 'aria-sort')) === 'ascending', 'aria-sort gesetzt');
+  await p.click('#cands th[data-sort="seen_at"] button');
   await p.screenshot({ path: SHOTS + '/05-candidates.png', fullPage: true });
+  // shortcuts: 1-4 switch tabs, / focuses search, p pauses (not while typing)
+  await p.keyboard.press('Escape'); await p.evaluate(() => document.activeElement.blur());
+  await p.keyboard.press('1'); ok(!(await p.$eval('#tab-overview', (e) => e.hidden)), 'Taste 1 -> Übersicht');
+  await p.keyboard.press('4'); ok(!(await p.$eval('#tab-log', (e) => e.hidden)), 'Taste 4 -> Protokoll');
+  await p.keyboard.press('/'); ok(await p.evaluate(() => document.activeElement.id === 'q'), 'Taste / springt in die Suche');
+  await p.keyboard.type('p'); ok((await p.inputValue('#q')) === 'p' && (await p.$eval('#paused', (e) => e.hidden)), 'p im Suchfeld tippt, pausiert nicht');
+  await p.fill('#q', ''); await p.evaluate(() => document.activeElement.blur());
+  await p.keyboard.press('p'); await p.waitForFunction(() => !document.querySelector('#paused').hidden);
+  ok(true, 'Taste p pausiert');
+  await p.keyboard.press('p'); await p.waitForFunction(() => document.querySelector('#paused').hidden);
 
   // --- Protokoll ---
   await p.click('nav [data-tab="log"]');
