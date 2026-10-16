@@ -529,6 +529,24 @@ contains "$page" "1 Server online · 2 Spieler" "Statusseite: Zusammenfassung"
 contains "$page" "<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td class=n>8</td><td>Silber</td><td class=n>1500</td><td class=n>120 km</td><td class=n>0</td>" "Statusseite: Bestenliste"
 contains "$page" "&lt;b&gt;Hacker&lt;/b&gt;" "Statusseite: Namen werden maskiert"
 lacks "$page" "<b>Hacker</b>" "Statusseite: kein HTML aus Spielernamen"
+# Hilfeseite: Befehle, Regeln (eigene aus config.json, maskiert), Ligen, Erfolge; verlinkt von der Statusseite.
+contains "$page" '<a href="hilfe.html">Hilfe, Befehle &amp; Regeln</a>' "Hilfeseite: verlinkt"
+help=$(cat "$T/web/hilfe.html")
+contains "$help" "<b>/wo &lt;Name&gt;</b>" "Hilfeseite: Chat-Befehle"
+contains "$help" "<li>Fair fahren: kein absichtliches Rammen oder Blockieren.</li>" "Hilfeseite: Standardregeln"
+contains "$help" "<td>Gold</td><td class=n>ab 2000 XP</td>" "Hilfeseite: Ligen"
+contains "$help" "<span>Erste 10 km</span>" "Hilfeseite: Erfolge"
+contains "$help" "10 XP je Kilometer und 1 XP je Minute" "Hilfeseite: XP-Regeln"
+cp "$T/root/shared/beamnet/config.json" "$T/cfg.help" 2>/dev/null
+echo '{"rules":["Kein <script>alert(1)</script>","Linksverkehr"],"xpPerKm":12}' >"$T/root/shared/beamnet/config.json"
+"$TOOL" web run >/dev/null 2>&1
+help=$(cat "$T/web/hilfe.html")
+contains "$help" "<li>Kein &lt;script&gt;alert\\(1\\)&lt;/script&gt;</li><li>Linksverkehr</li>" "Hilfeseite: eigene Regeln, maskiert"
+lacks "$help" "<script>" "Hilfeseite: kein HTML aus der Konfiguration"
+contains "$help" "12 XP je Kilometer" "Hilfeseite: XP aus config.json"
+rm -f "$T/root/shared/beamnet/config.json"; [[ -f $T/cfg.help ]] && mv "$T/cfg.help" "$T/root/shared/beamnet/config.json"
+"$TOOL" web run >/dev/null 2>&1
+page=$(cat "$T/web/index.html")
 # Mit IDs (BeamNetCore 1.14+): Namen mit Profilseite verlinkt, Gaeste/unsichere IDs/ohne Profil nicht.
 cp "$T/root/shared/beamnet/servers/30814.json" "$T/server-ids.bak"
 echo "{\"name\":\"BeamNet | Server 1\",\"port\":30814,\"map\":\"gridmap_v2\",\"players\":4,\"max\":8,\"names\":[\"Sebi\",\"<b>Hacker</b>\",\"Gast\",\"Neu\"],\"ids\":[\"1\",\"2\",\"\",\"777\"],\"updated\":$(date +%s)}" >"$T/root/shared/beamnet/servers/30814.json"

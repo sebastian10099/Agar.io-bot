@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Die nächsten 40 Punkte (Stand Werkzeug 1.36 / Plugin 1.20)
+## Die nächsten 40 Punkte (Stand Werkzeug 1.37 / Plugin 1.20)
 
 Reihenfolge = Priorität. Zuerst kommt, was bei 30+ Spielern gleichzeitig am meisten bringt. Danach folgen Community,
 Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (Werkstatt); ich prüfe dann nur noch.
@@ -78,7 +78,8 @@ Rennen, Moderation und Betrieb. Punkte mit 🤖 eignen sich für die lokale KI (
 37. [ ] `metrics.txt` (Prometheus-Format) für Grafana: Spieler, km/h, Fehler und Neustarts je Server.
 38. [ ] Werkstatt: Die CI prüft `lokal/*`-Branches automatisch (Tests, shellcheck) vor meiner Durchsicht. 🤖
 39. [ ] README und Befehlshilfe auch auf Englisch (für internationale Admins). 🤖
-40. [ ] Spieler-Hilfeseite auf der Statusseite: alle Chatbefehle, Ligen, Erfolge und Regeln. 🤖
+40. [x] Hilfeseite `hilfe.html` mit Regeln (auch eigene aus `config.json`), allen Chat-Befehlen, XP-Regeln, Ligen
+        und Erfolgen, verlinkt von der Statusseite (Werkzeug 1.37).
 
 Außerdem, sobald der Server-Zugang steht: `beamnet doctor` auf dem echten Server, Ausgabe prüfen, Reparaturen
 übernehmen.

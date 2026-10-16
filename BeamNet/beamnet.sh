@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.36"
+VERSION="1.37"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2827,7 +2827,7 @@ th {{ color:var(--muted); font-weight:600; font-size:13px; }}
 td.n, th.n {{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }}
 td b {{ font-weight:600; }}
 .small {{ font-size:13px; color:var(--muted); }} .empty {{ color:var(--muted); margin:0; }}
-.grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }} .grid section {{ margin:0; }}
+.grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; margin-bottom:16px; }} .grid section {{ margin:0; }}
 footer {{ color:var(--muted); font-size:12px; margin-top:24px; }}
 a {{ color:inherit; text-decoration:none; border-bottom:1px dotted var(--muted); }} a:hover {{ color:var(--accent); }}
 .stats {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin:0; }}
@@ -2855,7 +2855,7 @@ page = f"""<!doctype html>
 <section><h2>Streckenrekorde</h2>{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>
 <section><h2>Beliebteste Maps</h2>{table(["Map", "Kilometer#", "Fahrer#"], popular_rows, "Noch keine Kilometer je Map.")}</section>
 </div>
-<footer>Chat-Befehle im Spiel: /hilfe · /stats · /top · /liga · /saison · /aufgabe · /erfolge · /server · /rennen · /rekorde · /lang en · <a href="api.json">api.json</a></footer>
+<footer><a href="hilfe.html">Hilfe, Befehle &amp; Regeln</a> · Chat-Befehle im Spiel: /hilfe · /stats · /top · /wo · /event · /regeln · /lang en · <a href="api.json">api.json</a></footer>
 </main></body></html>
 """
 def write(path, text):
@@ -2972,6 +2972,49 @@ for rank, r in enumerate(ranked, 1):
 for old in glob.glob(os.path.join(pdir, "*.html")):
     if os.path.basename(old) not in written:
         os.remove(old)
+
+# Hilfeseite fuer Spieler: Befehle, XP, Ligen, Erfolge, Regeln (eigene Regeln aus config.json wie im Plugin).
+RULES = ["Fair fahren: kein absichtliches Rammen oder Blockieren.", "Freundlich im Chat – keine Beleidigungen, kein Spam.",
+         "Den Anweisungen der Admins folgen."]
+rules = cfg.get("rules")
+if not (isinstance(rules, list) and len(rules) <= 10 and all(isinstance(r, str) and len(r.encode()) <= 200 for r in rules)):
+    rules = RULES
+COMMANDS = [
+    ("/hilfe", "Alle Befehle im Chat"), ("/stats [Name]", "Deine Werte oder die eines anderen Fahrers"),
+    ("/top [km|woche|vorwoche]", "Bestenliste (XP, Kilometer, diese oder letzte Woche)"),
+    ("/liga", "Ligen und was dir bis zur nächsten fehlt"), ("/saison", "Saisonwertung des Monats"),
+    ("/aufgabe", "Tagesaufgabe mit Bonus-XP"), ("/erfolge", "Deine Erfolge"),
+    ("/server", "Alle BeamNet-Server mit Map und Spielerzahl"), ("/wo &lt;Name&gt;", "Auf welchem Server fährt jemand gerade?"),
+    ("/km", "Kilometer dieser Sitzung"), ("/rennen &lt;Strecke&gt;", "Zeitrennen starten (Strecken: /rennen)"),
+    ("/rekorde", "Streckenrekorde dieser Map"), ("/vote map &lt;Name&gt;", "Abstimmung über eine andere Map"),
+    ("/event", "Läuft gerade ein XP-Event?"), ("/melden &lt;Name&gt; &lt;Grund&gt;", "Meldung an die Admins"),
+    ("/regeln", "Die Regeln"), ("/lang en", "English (zurück: /lang de)"),
+]
+cmd_rows = [f"<tr><td><b>{c}</b></td><td>{d}</td></tr>" for c, d in COMMANDS]
+league_rows = [f"<tr><td>{E(str(l.get('name', '?')))}</td><td class=n>ab {int(num(l.get('xp')))} XP</td></tr>"
+               for l in leagues if isinstance(l, dict)]
+rule_items = "".join(f"<li>{E(r)}</li>" for r in rules)
+ach_tags = "".join(f"<span>{E(v)}</span>" for v in ACH.values())
+help_page = f"""<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hilfe – {E(title)}</title>
+{STYLE}</head><body><main>
+<div class=sub><a href="index.html">← {E(title)} Status</a></div>
+<h1>Hilfe &amp; <span>Regeln</span></h1>
+<div class=sub>Alles, was du im BeamNet wissen musst – Kilometer und XP zählen auf allen Servern.</div>
+<section><h2>Regeln</h2>{"<ol>" + rule_items + "</ol>" if rule_items else "<p class=empty>Keine Regeln eingetragen.</p>"}</section>
+<section><h2>Chat-Befehle</h2>{table(["Befehl", "Was er macht"], cmd_rows, "")}</section>
+<div class=grid>
+<section><h2>So bekommst du XP</h2><p>{num(xp_km):g} XP je Kilometer und {num(xp_min):g} XP je Minute Fahrzeit
+(nur in Bewegung). Dazu Bonus-XP für Erfolge, die Tagesaufgabe, Rennen und Streckenrekorde. Bei einem
+<b>XP-Event</b> gibt es ein Vielfaches – schau mit <b>/event</b> nach.</p></section>
+<section><h2>Ligen</h2>{table(["Liga", "XP#"], league_rows, "")}</section>
+</div>
+<section><h2>Erfolge ({len(ACH)})</h2><div class=tags>{ach_tags}</div></section>
+<footer>Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))}</footer>
+</main></body></html>
+"""
+write(os.path.join(os.path.dirname(out), "hilfe.html"), help_page)
 PY
 }
 
