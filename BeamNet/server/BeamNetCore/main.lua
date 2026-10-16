@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.38"
+BN.VERSION = "1.39"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -617,8 +617,8 @@ local EN = {
     ["Abstimmung für %s abgelehnt (%d:%d)."] = "Vote for %s failed (%d:%d).",
     ["Der Map-Wechsel auf %s hat nicht geklappt – bitte einem Admin melden."] =
         "The switch to %s did not work – please tell an admin.",
-    ["Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name>"] =
-        "Admin: /kick · /ban <name> [30m|2h|7d] [reason] · /unban · /bans · /warn · /mute · /announce · /place new <type> <name>",
+    ["Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name> · /resetspeed"] =
+        "Admin: /kick · /ban <name> [30m|2h|7d] [reason] · /unban · /bans · /warn · /mute · /announce · /place new <type> <name> · /resetspeed",
     ["Du bist %s gefahren (diese Woche %s)."] = "You have driven %s (this week %s).",
     ["Kein Spieler online mit dem Namen \"%s\"."] = "No player online named \"%s\".",
     ["%s: Level %d · Liga %s · %d XP · %s · %s Fahrzeit · Spitze %.0f km/h"] = "%s: level %d · %s league · %d XP · %s · %s driving · top speed %.0f km/h",
@@ -821,6 +821,9 @@ local EN = {
     ["Nur Admins können Teams löschen."] = "Only admins can delete teams.",
     ["Team %s gelöscht."] = "Team %s deleted.",
     ["Bitte warte noch %d s, bevor du wieder ein Gruppenrennen startest."] = "Please wait %d s before starting another group race.",
+    ["Aufruf: /resetspeed <Name> – Spieler muss auf diesem Server online sein."] = "Usage: /resetspeed <name> – the player must be online on this server.",
+    ["Höchstgeschwindigkeit von %s zurückgesetzt (war %d km/h)."] = "Top speed of %s reset (was %d km/h).",
+    ["Deine Höchstgeschwindigkeit wurde von %s zurückgesetzt."] = "Your top speed was reset by %s.",
     -- Verfolgungsjagd
     ["Verfolgungsjagd abgesagt – %s"] = "Chase cancelled – %s",
     ["🚓 Gefangen! +%d XP"] = "🚓 Caught! +%d XP",
@@ -1274,7 +1277,7 @@ function BN.savePlayer(s)
     local here = BN.server.map
     if here and here ~= "?" and s.pendingKm > 0 then rec.mapKm[here] = (rec.mapKm[here] or 0) + s.pendingKm end
     rec.seconds = rec.seconds + s.pendingSeconds
-    rec.topSpeedKmh = math.max(rec.topSpeedKmh, s.pendingTop)
+    rec.topSpeedKmh = s.resetTop and s.pendingTop or math.max(rec.topSpeedKmh, s.pendingTop)
     rec.bonusXp = rec.bonusXp + s.pendingBonus
     rec.racesFinished = rec.racesFinished + s.pendingRaces
     rec.recordsSet = rec.recordsSet + s.pendingRecords
@@ -1330,6 +1333,7 @@ function BN.savePlayer(s)
     s.pendingJobs = 0
     s.langChanged = nil
     s.friendsChanged = nil
+    s.resetTop = nil
     s.pendingWeeklyTrack = nil
     s.pendingCommunity = nil
     return true
@@ -2653,7 +2657,7 @@ end
 function commands.hilfe(pid)
     say(pid, "BeamNet-Befehle: /stats [Name] · /top [km|xp|speed|auftraege|woche|vorwoche] · /liga · /saison · /server · /wo <Name> · /km · /rennen · /rekorde · /erfolge · /aufgabe · /vote · /event · /team · /freund · /auftrag · /orte · /ziel · /fangen · /melden · /regeln · /lang")
     if BN.isAdmin(BN.players[pid]) then
-        say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name>")
+        say(pid, "Admin: /kick · /ban <Name> [30m|2h|7d] [Grund] · /unban · /bans · /warn · /mute · /ansage · /ort neu <Typ> <Name> · /resetspeed")
     end
 end
 commands.help = commands.hilfe
@@ -3178,6 +3182,25 @@ function commands.warn(pid, arg)
     say(target.online.pid, "Verwarnung von %s: %s", admin.name, text)
     say(pid, "Verwarnung an %s gesendet.", target.name)
     modlog({ action = "warn", by = admin.name, target = target.name, targetId = target.id, reason = text })
+end
+
+-- /resetspeed <Name>: falsche Hoechstgeschwindigkeit (Physik-Ausreisser, Mod-Fahrzeug) eines Spielers hier auf 0.
+function commands.resetspeed(pid, arg)
+    local admin = adminOnly(pid)
+    if not admin then return end
+    local target = findTarget(splitArgs(arg)[1])
+    if not target or not target.online or target.online.guest then
+        say(pid, "Aufruf: /resetspeed <Name> – Spieler muss auf diesem Server online sein.")
+        return
+    end
+    local t = target.online
+    local old = math.max(tonumber(t.record.topSpeedKmh) or 0, t.pendingTop or 0)
+    t.resetTop, t.pendingTop, t.dirty = true, 0, true
+    t.record.topSpeedKmh = 0
+    for _, v in pairs(t.vehicles) do v.cand = nil end
+    say(pid, "Höchstgeschwindigkeit von %s zurückgesetzt (war %d km/h).", t.name, math.floor(old + 0.5))
+    say(t.pid, "Deine Höchstgeschwindigkeit wurde von %s zurückgesetzt.", admin.name)
+    modlog({ action = "speed-reset", by = admin.name, target = t.name, targetId = t.id, kmh = math.floor(old + 0.5) })
 end
 
 function commands.mute(pid, arg)

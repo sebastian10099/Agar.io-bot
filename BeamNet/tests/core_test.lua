@@ -2443,6 +2443,36 @@ do
     BN.savedRecently["10101"], BN.savedRecently["10202"] = nil, nil
 end
 
+-- --- /resetspeed (Admin) ----------------------------------------------------------------------------------------
+do
+    local savedAdmins = C.admins
+    C.admins = { "Waechter" }
+    players[103] = { name = "Waechter", ids = { beammp = "10303" }, vehicles = {} }
+    players[104] = { name = "Krakenopfer", ids = { beammp = "10404" }, vehicles = {} }
+    _G[events.onPlayerJoin](103); _G[events.onPlayerJoin](104)
+    local v = BN.players[104]
+    v.pendingTop = 530
+    check(BN.savePlayer(v), "resetspeed: vorher gespeichert")
+    eq(readJson(SHARED .. "/players/10404.json").topSpeedKmh, 530, "resetspeed: falscher Wert in der Datei")
+    chatLog = {}
+    say(104, "/resetspeed Waechter")
+    check(chatContains("Nur für Admins", 104), "resetspeed: nur Admins")
+    say(103, "/resetspeed krakenopfer")
+    check(chatContains("Höchstgeschwindigkeit von Krakenopfer zurückgesetzt %(war 530 km/h%)", 103), "resetspeed: Rueckmeldung")
+    check(chatContains("Deine Höchstgeschwindigkeit wurde von Waechter zurückgesetzt", 104), "resetspeed: Spieler bekommt Bescheid")
+    eq(BN.totals(v).topSpeedKmh, 0, "resetspeed: sofort 0")
+    check(BN.savePlayer(v), "resetspeed: speichern")
+    eq(readJson(SHARED .. "/players/10404.json").topSpeedKmh, 0, "resetspeed: in der Datei 0")
+    v.pendingTop = 120
+    BN.savePlayer(v)
+    eq(readJson(SHARED .. "/players/10404.json").topSpeedKmh, 120, "resetspeed: danach zaehlt wieder normal")
+    say(103, "/resetspeed niemand")
+    check(chatContains("Aufruf: /resetspeed <Name>", 103), "resetspeed: unbekannter Name")
+    for _, pid in ipairs({ 103, 104 }) do _G[events.onPlayerDisconnect](pid); players[pid] = nil end
+    for _, id in ipairs({ "10303", "10404" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+    C.admins = savedAdmins
+end
+
 -- --- Wochenverlauf (Profil-Diagramm) --------------------------------------------------------------------------
 do
     players[79] = { name = "Wochen", ids = { beammp = "7979" }, vehicles = {} }

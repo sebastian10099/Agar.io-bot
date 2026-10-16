@@ -1925,6 +1925,10 @@ for raw in chunk[:end].splitlines():
         lines.append(f"🎉 {by} hat das XP-Event beendet")
     elif a == "team-loeschen":
         lines.append(f"🛡️ {by} hat das Team {who} gelöscht")
+    elif a == "speed-reset":
+        k = e.get("kmh")
+        was = f" (war {int(k)} km/h)" if isinstance(k, (int, float)) and 0 <= k < 1e5 else ""
+        lines.append(f"🛡️ {by} hat die Höchstgeschwindigkeit von {who} zurückgesetzt{was}")
 for l in lines[:10]:
     print(l)
 if len(lines) > 10:

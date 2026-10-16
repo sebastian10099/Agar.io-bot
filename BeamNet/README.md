@@ -276,6 +276,7 @@ Englische Befehlsnamen funktionieren ebenfalls: `/help`, `/league`, `/race [new|
 | Befehl | Wirkung |
 |---|---|
 | `/kick <Name> [Grund]` | Wirft den Spieler vom Server |
+| `/resetspeed <Name>` | Setzt eine falsche Höchstgeschwindigkeit (Physik-Ausreißer, Mod-Fahrzeug) eines Spielers auf diesem Server auf 0; steht im Moderationsprotokoll |
 | `/ban <Name> [30m\|2h\|7d] [Grund]` | Sperrt auf **allen** BeamNet-Servern – sofort, auch wenn er gerade woanders fährt; ohne Dauer dauerhaft. Gesperrt werden BeamMP-Konto und (wenn online) IP-Adresse, damit niemand als Gast zurückkommt. Funktioniert auch für Spieler, die offline sind |
 | `/unban <Name>` · `/bans` | Bann aufheben · aktive Banns zeigen |
 | `/warn <Name> <Text>` | Verwarnung nur an diesen Spieler |
