@@ -373,6 +373,7 @@ Fehlerhafte Einträge werden ignoriert, die Standardwerte bleiben.
 ## Für Entwickler
 
 ```bash
+bash BeamNet/tests/alle.sh                          # alles auf einmal – nur bei "ALLES GRÜN" committen
 bash BeamNet/tests/beamnet_test.sh                 # Werkzeug in einer nachgebauten Server-Umgebung
 pip install lupa && python3 BeamNet/tests/run_lua_tests.py   # Plugin unter Lua 5.3 (wie BeamMP), 5.4 und LuaJIT
 shellcheck BeamNet/beamnet.sh
