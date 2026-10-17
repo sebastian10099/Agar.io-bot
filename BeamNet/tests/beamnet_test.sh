@@ -1632,14 +1632,15 @@ echo "{\"name\":\"S3\",\"port\":30816,\"map\":\"italy\",\"players\":1,\"max\":8,
 echo "{\"port\":30815,\"players\":4,\"max\":8,\"names\":[\"Alt\"],\"updated\":$((now - 600))}" >"$T/root/shared/beamnet/servers/30815.json"
 : >"$T/curl.log"
 out=$(BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+m3=$(sed -n 's|^Map = "/levels/\([^/]*\)/.*|\1|p' "$T/root/3/ServerConfig.toml")   # haengt von der Rotation (Tag) ab
 contains "$out" "📊 BeamNet: 3 Spieler · 2 von 6 Servern belegt" "online: Uebersicht mit Gesamtzahl (veraltetes Lebenszeichen zaehlt nicht)"
 contains "$out" "Server 1 · gridmap_v2: 2/8 – Max, Sebi$" "online: Spieler/Plaetze und Namen je Server, sortiert, ohne Steuerzeichen"
-contains "$out" "Server 3 · utah: 1/8 – Ana$" "online: zweiter Server"
+contains "$out" "Server 3 · $m3: 1/8 – Ana$" "online: zweiter Server"
 contains "$out" "Ohne Lebenszeichen: Server 2, 4, 5, 6$" "online: Server ohne aktuelles Lebenszeichen extra"
-contains "$out" "🗺️ Maps: gridmap_v2 2/8 \(25 %\) · utah 1/8 \(13 %\)$" "online: Auslastung je Map, am vollsten zuerst"
+contains "$out" "🗺️ Maps: gridmap_v2 2/8 \(25 %\) · $m3 1/8 \(13 %\)$" "online: Auslastung je Map, am vollsten zuerst"
 contains "$(cat "$T/curl.log")" "https://api.telegram.org/bot123456:ABCDEFghijklmnop_1234567890/sendMessage" "online: an Telegram"
 lacks "$(cat "$T/curl.argv")" "ABCDEFghijklmnop" "online: Telegram-Token nie auf der Befehlszeile (ps)"
-contains "$(cat "$T/curl.log")" '\{"chat_id":"-1001234567890","text":"📊 BeamNet: 3 Spieler · 2 von 6 Servern belegt\\n   Server 1 · gridmap_v2: 2/8 – Max, Sebi\\n   Server 3 · utah: 1/8 – Ana\\n   Ohne Lebenszeichen: Server 2, 4, 5, 6\\n   🗺️ Maps: gridmap_v2 2/8 \(25 %\) · utah 1/8 \(13 %\)","disable_web_page_preview":true\}' "online: Telegram-JSON (reiner Text)"
+contains "$(cat "$T/curl.log")" '\{"chat_id":"-1001234567890","text":"📊 BeamNet: 3 Spieler · 2 von 6 Servern belegt\\n   Server 1 · gridmap_v2: 2/8 – Max, Sebi\\n   Server 3 · '"$m3"': 1/8 – Ana\\n   Ohne Lebenszeichen: Server 2, 4, 5, 6\\n   🗺️ Maps: gridmap_v2 2/8 \(25 %\) · '"$m3"' 1/8 \(13 %\)","disable_web_page_preview":true\}' "online: Telegram-JSON (reiner Text)"
 contains "$(cat "$T/curl.log")" "https://discord.com/api/webhooks/1/abc" "online: weiterhin an Discord"
 : >"$T/curl.log"
 echo $(( $(date +%s) - 61 )) >"$T/watch/online-at"

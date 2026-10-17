@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.63"
+BN.VERSION = "1.64"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -646,6 +646,8 @@ local EN = {
     ["Tipp: /konvoi – fahrt zusammen! Wer nah beieinander fährt, bekommt Bonus-XP."] =
         "Tip: /convoy – drive together! Driving close to each other gives bonus XP.",
     ["Konvoi: zusammen fahren gibt Bonus-XP – /konvoi"] = "Convoy: driving together gives bonus XP – /convoy",
+    ["Schicht: mehrere Aufträge hintereinander bringen Bonus-XP – /auftrag"] =
+        "Shift: several jobs in a row give bonus XP – /job",
     ["Aufträge auf jeder Map (Lieferpunkte) und Richtungshinweise unterwegs – /auftrag"] =
         "Jobs on every map (drop-off points) and direction hints on the way – /job",
     ["Neue Erfolge für Vielfahrer: 5000 km, 50 Stunden, 50 Rennen, 5 Streckenrekorde"] =
@@ -1113,6 +1115,10 @@ local EN = {
     ["Du hast gerade keinen Auftrag."] = "You don't have a job right now.",
     ["Auftrag abgebrochen. Neuer: /auftrag"] = "Job cancelled. New one: /job",
     ["Dein Auftrag: %s · noch %s · %s übrig"] = "Your job: %s · %s to go · %s left",
+    ["🔥 Schicht: %d Aufträge in Folge – +%d Bonus-XP!"] = "🔥 Shift: %d jobs in a row – +%d bonus XP!",
+    ["Schicht läuft: 2 Aufträge in Folge – beim 3. gibt es Bonus-XP (nächsten innerhalb von 3 min annehmen)."] =
+        "Shift running: 2 jobs in a row – the 3rd gives bonus XP (take the next one within 3 min).",
+    ["Schicht: %d Aufträge in Folge – dieser wäre der %d."] = "Shift: %d jobs in a row – this one would be number %d.",
     ["Erst das Rennen beenden (/rennen stop), dann gibt es einen Auftrag."] = "Finish the race first (/race stop), then you get a job.",
     ["Aufträge erledigt: %d"] = "Jobs done: %d",
     -- Freunde
@@ -2159,6 +2165,7 @@ BN.NEWS = {
     { "1.57", "7 neue Erfolge für Aufträge, Verfolgungsjagden und Konvois – /erfolge" },
     { "1.60", "Neue Erfolge für Vielfahrer: 5000 km, 50 Stunden, 50 Rennen, 5 Streckenrekorde" },
     { "1.62", "Aufträge auf jeder Map (Lieferpunkte) und Richtungshinweise unterwegs – /auftrag" },
+    { "1.64", "Schicht: mehrere Aufträge hintereinander bringen Bonus-XP – /auftrag" },
 }
 
 local function versionNum(v)
@@ -4684,6 +4691,14 @@ local function relDirection(j, pos, target)
 end
 BN.relDirection = relDirection
 
+-- Bonus fuer Auftraege in Folge (Schicht): beim 3., 5. und 10. Auftrag, danach bei jedem fuenften.
+function BN.jobStreakBonus(n)
+    if n == 3 then return 25 end
+    if n == 5 then return 50 end
+    if n >= 10 and n % 5 == 0 then return 100 end
+    return 0
+end
+
 function BN.startJob(s)
     local lang = BN.langOf(s.pid)
     local pos = currentPosition(s)
@@ -4787,15 +4802,25 @@ function BN.jobTick(s)
         if fast then xp = math.floor(xp * 1.5) end
         xp = math.min(xp, 250)
         local lim = jobLimit(s)
-        local capped = xp > C.jobXpPerHour - lim.xp
+        -- Schicht: Wer den Auftrag hoechstens 3 Minuten nach dem letzten angenommen hat, setzt die Serie fort.
+        if lim.doneAt and j.startAt - lim.doneAt <= 180 then lim.streak = (lim.streak or 1) + 1 else lim.streak = 1 end
+        local streakXp = BN.jobStreakBonus(lim.streak)
+        local capped = xp + streakXp > C.jobXpPerHour - lim.xp
         xp = math.max(0, math.min(xp, C.jobXpPerHour - lim.xp))
-        lim.xp, lim.doneAt = lim.xp + xp, now
+        streakXp = math.max(0, math.min(streakXp, C.jobXpPerHour - lim.xp - xp))
+        lim.xp, lim.doneAt = lim.xp + xp + streakXp, now
         s.job = nil
         s.lastJobPlace = j.place.name
         s.pendingBonus = s.pendingBonus + xp
         s.pendingJobs = (s.pendingJobs or 0) + 1
         say(s.pid, "✅ Auftrag erledigt: %s in %s – +%d XP%s. Nächster: /auftrag", j.place.name, fmtClock(now - j.startAt), xp,
             fast and tr(lang, " (Blitzschnell! +50 %)") or "")
+        if streakXp > 0 then
+            s.pendingBonus = s.pendingBonus + streakXp
+            say(s.pid, "🔥 Schicht: %d Aufträge in Folge – +%d Bonus-XP!", lim.streak, streakXp)
+        elseif lim.streak == 2 then
+            say(s.pid, "Schicht läuft: 2 Aufträge in Folge – beim 3. gibt es Bonus-XP (nächsten innerhalb von 3 min annehmen).")
+        end
         if capped then say(s.pid, "Stundenlimit für Auftrags-XP erreicht – weitere Aufträge zählen, bringen aber erst später wieder XP.") end
         return
     end
@@ -4829,6 +4854,10 @@ function commands.auftrag(pid, arg)
         local pos = currentPosition(s)
         say(pid, "Dein Auftrag: %s · noch %s · %s übrig", s.job.place.name,
             pos and fmtDist(lang, dist(pos, s.job.place)) or "?", fmtClock(s.job.limit - (BN.now() - s.job.startAt)))
+        local lim = jobLimit(s)
+        if (lim.streak or 0) >= 2 and lim.doneAt and s.job.startAt - lim.doneAt <= 180 then
+            say(pid, "Schicht: %d Aufträge in Folge – dieser wäre der %d.", lim.streak, lim.streak + 1)
+        end
         return
     end
     if s.race then

@@ -2742,6 +2742,45 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Schicht: Auftraege in Folge -------------------------------------------------------------------------------
+do
+    eq(BN.jobStreakBonus(2), 0, "Schicht: beim 2. noch nichts")
+    eq(BN.jobStreakBonus(3), 25, "Schicht: beim 3. +25")
+    eq(BN.jobStreakBonus(5), 50, "Schicht: beim 5. +50")
+    eq(BN.jobStreakBonus(10), 100, "Schicht: beim 10. +100")
+    eq(BN.jobStreakBonus(15), 100, "Schicht: danach jeder fuenfte")
+    os.execute('rm -rf "' .. SHARED .. '/places"')
+    os.execute('mkdir -p "' .. SHARED .. '/places"')
+    writeJson(SHARED .. "/places/gridmap_v2.json", { places = {
+        { type = "supermarkt", name = "Markt West", x = 100000, y = 0, z = 0 },
+        { type = "werkstatt", name = "Werkstatt Ost", x = 101200, y = 0, z = 0 } } })
+    players[170] = { name = "Schichtfahrer", ids = { beammp = "17070" }, vehicles = { [1] = { pos = { 100000, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](170)
+    BN.jobLimits = {}
+    tick(1)
+    chatLog = {}
+    local dir = 1
+    for n = 1, 3 do
+        say(170, "/auftrag")
+        check(BN.players[170].job ~= nil, "Schicht: Auftrag " .. n .. " angenommen")
+        for _ = 1, 60 do move(170, 1, 20 * dir); tick(1); if not BN.players[170].job then break end end
+        dir = -dir
+        tick(C.jobCooldownSec)
+    end
+    check(chatContains("Schicht läuft: 2 Aufträge in Folge", 170), "Schicht: Hinweis nach dem 2. Auftrag")
+    check(chatContains("🔥 Schicht: 3 Aufträge in Folge – %+25 Bonus%-XP!", 170), "Schicht: Bonus beim 3. Auftrag")
+    -- Zu lange Pause: die Serie beginnt neu.
+    tick(200)
+    chatLog = {}
+    say(170, "/auftrag")
+    for _ = 1, 60 do move(170, 1, 20 * dir); tick(1); if not BN.players[170].job then break end end
+    eq(BN.jobLimits["17070"].streak, 1, "Schicht: nach langer Pause von vorn")
+    _G[events.onPlayerDisconnect](170); players[170] = nil
+    os.remove(SHARED .. "/players/17070.json"); BN.savedRecently["17070"] = nil
+    os.execute('rm -rf "' .. SHARED .. '/places"')
+    BN.jobLimits = {}
+end
+
 -- --- Lieferpunkte und Richtungshinweise ---------------------------------------------------------------------
 do
     -- Richtung relativ zur Fahrt (Fahrt nach +x).
@@ -3256,8 +3295,8 @@ do
     chatLog = {}
     _G[events.onPlayerJoin](117)
     check(chatContains("✨ Neu seit deinem letzten Besuch:", 117), "Neuheiten: fuer Spieler von frueher")
-    check(chatContains("^  Aufträge auf jeder Map", 117) and chatContains("^  Neue Erfolge für Vielfahrer", 117) and chatContains("^  7 neue Erfolge", 117), "Neuheiten: die drei neuesten")
-    check(not chatContains("Konvoi: zusammen", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
+    check(chatContains("^  Schicht:", 117) and chatContains("^  Aufträge auf jeder Map", 117) and chatContains("^  Neue Erfolge für Vielfahrer", 117), "Neuheiten: die drei neuesten")
+    check(not chatContains("7 neue Erfolge", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
     _G[events.onPlayerDisconnect](117)
     eq(readJson(SHARED .. "/players/11717.json").seenVersion, BN.VERSION, "Neuheiten: Version gemerkt")
     chatLog = {}
@@ -3268,7 +3307,7 @@ do
     local r = readJson(SHARED .. "/players/11717.json"); r.seenVersion = "1.43"; writeJson(SHARED .. "/players/11717.json", r)
     chatLog = {}
     _G[events.onPlayerJoin](117)
-    check(chatContains("^  Aufträge auf jeder Map", 117) and chatContains("^  Neue Erfolge für Vielfahrer", 117) and chatContains("^  7 neue Erfolge", 117) and not chatContains("Verfolgungsjagd: /fangen", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
+    check(chatContains("^  Schicht:", 117) and chatContains("^  Aufträge auf jeder Map", 117) and chatContains("^  Neue Erfolge für Vielfahrer", 117) and not chatContains("Verfolgungsjagd: /fangen", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
     _G[events.onPlayerDisconnect](117); players[117] = nil
     -- Ganz neue Spieler bekommen die Begruessung statt Neuheiten.
     players[118] = { name = "Ganzneu", ids = { beammp = "11818" }, vehicles = {} }
