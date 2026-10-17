@@ -68,7 +68,7 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
   top 3 and leading team) and a daily summary (with the next XP evening).
 - Map rotation, map votes from the chat and automatic player slots (only while a server is empty).
 - The Telegram bot answers `/online`, `/top`, `/rekord`, `/server`, `/event` (XP event running? next XP evening?) and
-  `/spieler <name>` (level, league, XP, rank, kilometres, jobs of a player) and `/plaetze` (slot usage of the last 30
+  `/spieler <name>` (level, league, XP, rank, kilometres, jobs, this week's kilometres, season XP and rank, team of a player) and `/plaetze` (slot usage of the last 30
   days and where the automatic slots will add more) and `/woche` (top 5 of the calendar week by kilometres and the
   community weekly goal) and `/heute` (daily challenge, XP event, bonus map, next XP evening and weekly goal at a
   glance), `/teams` (teams by kilometres this week) and `/saison` (top 5 of the running season, the leading team and

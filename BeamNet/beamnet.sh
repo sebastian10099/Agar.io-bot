@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.39"
+VERSION="2.40"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="2.03"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -3714,6 +3714,8 @@ def f(v):
         return x if math.isfinite(x) else 0.0
     except ValueError:
         return 0.0
+import time
+WEEK, MONTH = time.strftime("%G-W%V", time.gmtime()), time.strftime("%Y-%m", time.gmtime())
 rows = []
 for line in read(sys.argv[1]).split("\n")[1:]:
     c = line.split("\t")
@@ -3721,7 +3723,9 @@ for line in read(sys.argv[1]).split("\n")[1:]:
         continue
     xp = int(f(c[2]) * per_km + f(c[3]) / 60 * per_min) + int(f(c[4]))
     rows.append({"id": c[0], "name": re.sub(r"[\x00-\x1f\x7f]", "", c[1])[:32], "xp": xp, "km": f(c[2]), "sec": f(c[3]),
-                 "top": f(c[13]) if len(c) > 13 else 0, "jobs": int(f(c[14])) if len(c) > 14 else 0})
+                 "top": f(c[13]) if len(c) > 13 else 0, "jobs": int(f(c[14])) if len(c) > 14 else 0,
+                 "weekKm": f(c[6]) if c[5] == WEEK and 0 < f(c[6]) < 1e6 else 0,
+                 "monthXp": int(f(c[10])) if c[9] == MONTH and 0 < f(c[10]) < 1e9 else 0})
 if not rows:
     print("Noch keine Bestenliste."); sys.exit(0)
 rows.sort(key=lambda r: (-r["xp"], r["name"].lower()))
@@ -3742,6 +3746,16 @@ rank = rows.index(r) + 1
 kmtxt = f"{r['km']:.0f}" if r["km"] >= 100 else f"{r['km']:.1f}".replace(".", ",")
 print(f"👤 {r['name']} – Level {lvl} · {league[:20]} · {r['xp']} XP · Platz {rank} von {len(rows)}")
 print(f"🚗 {kmtxt} km · {r['sec'] / 3600:.0f} h unterwegs · Spitze {r['top']:.0f} km/h · {r['jobs']} Aufträge".replace(".", ","))
+# Diese Woche und laufende Saison (Kalenderwoche und Monat in UTC, wie im Plugin).
+now_parts = []
+if r["weekKm"] > 0:
+    now_parts.append("📅 Diese Woche " + f"{r['weekKm']:.1f}".replace(".", ",") + " km")
+if r["monthXp"] > 0:
+    # wie im Plugin: mehr XP vorn, bei Gleichstand der Name
+    srank = 1 + sum(1 for o in rows if o["monthXp"] > r["monthXp"] or (o["monthXp"] == r["monthXp"] and o["name"] < r["name"]))
+    now_parts.append(f"🏆 Saison {r['monthXp']} XP (Platz {srank})")
+if now_parts:
+    print(" · ".join(now_parts))
 # Team (teams.json vom Plugin), falls vorhanden.
 try:
     teams = json.loads(read(sys.argv[4])).get("teams")

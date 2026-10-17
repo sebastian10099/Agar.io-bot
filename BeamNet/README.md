@@ -116,7 +116,7 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   Server; andere bekommen einen Hinweis, Bots werden ignoriert. **XP-Events aus Telegram:** `/event` zeigt allen, ob
   gerade ein XP-Event läuft und ob ein XP-Abend geplant ist; Admins starten mit `/event 2 2h` (Faktor 1,5–5, Dauer
   10m–6h) und beenden mit `/event stop`. **`/spieler <Name>`** (Teil des Namens reicht) zeigt Level, Liga, XP, Platz,
-  Kilometer, Fahrzeit, Spitze und Aufträge eines Spielers; **`/plaetze`** die Auslastung der letzten 30 Tage je Server und
+  Kilometer, Fahrzeit, Spitze, Aufträge, Kilometer dieser Woche, Saison-XP mit Platz und Team eines Spielers; **`/plaetze`** die Auslastung der letzten 30 Tage je Server und
   wo die Automatik mehr Plätze geben wird; **`/woche`** die Top 5 der Kalenderwoche nach Kilometern und den Stand des
   Wochenziels für alle; **`/heute`** Tagesaufgabe, laufendes XP-Event, Bonus-Map, nächsten XP-Abend und Wochenziel auf
   einen Blick; **`/teams`** die Teams nach Kilometern dieser Woche; **`/saison`** die Top 5 der laufenden Saison, das

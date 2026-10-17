@@ -2256,6 +2256,7 @@ rm -f "$T/root/shared/beamnet/players/910"[123].json "$T/root/shared/beamnet/com
 # /spieler <Name>: Werte aus dem Bestenlisten-Index, fuer alle (mit Team aus teams.json).
 cp "$T/root/shared/beamnet/teams.json" "$T/teams-sp.keep" 2>/dev/null || true
 echo '{"teams":{"a":{"name":"Crew","weekWins":2,"members":{"9001":"Vorn"}}}}' >"$T/root/shared/beamnet/teams.json"
+echo "{\"id\":\"9001\",\"name\":\"Vorn\",\"km\":99999,\"seconds\":3600,\"week\":\"$(date -u +%G-W%V)\",\"weekKm\":12.5,\"month\":\"$(date -u +%Y-%m)\",\"monthXp\":300}" >"$T/root/shared/beamnet/players/9001.json"
 cat >"$T/tg-updates.json" <<JSON
 {"ok":true,"result":[{"update_id":70,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/spieler vorn"}},
  {"update_id":71,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/spieler Gibtsnicht"}},
@@ -2266,6 +2267,7 @@ rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
 log=$(cat "$T/curl.log")
 contains "$log" '"text":"👤 Vorn – Level [0-9]+ · [A-Za-z]+ · 1000050 XP · Platz 1 von [0-9]+\\n🚗 99999 km · 1 h unterwegs' "telegram /spieler: Werte aus dem Index"
 contains "$log" '\\n👥 Team Crew · 🏅 2× Team der Woche"' "telegram /spieler: Team mit Siegen"
+contains "$log" 'Aufträge\\n📅 Diese Woche 12,5 km · 🏆 Saison 300 XP \(Platz 1\)\\n👥' "telegram /spieler: Woche und Saison"
 if [[ -f $T/teams-sp.keep ]]; then cp "$T/teams-sp.keep" "$T/root/shared/beamnet/teams.json"; else rm -f "$T/root/shared/beamnet/teams.json"; fi
 contains "$log" '"text":"Keinen Spieler „Gibtsnicht“ gefunden."' "telegram /spieler: unbekannter Name"
 contains "$log" '"text":"Aufruf: /spieler <Name>' "telegram /spieler: ohne Name"
