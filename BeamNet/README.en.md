@@ -97,7 +97,7 @@ Every player can switch to English with `/lang en`; the German commands work too
 |---|---|
 | `/help` | List of commands |
 | `/stats [name]` | Level, league, XP, kilometres, driving time, top speed, rank, XP to the next level |
-| `/top [km \| xp \| speed \| jobs \| convoy \| chase \| week]` | Leaderboard (top 5) |
+| `/top [km \| xp \| speed \| jobs \| convoy \| chase \| week \| teams]` | Leaderboard (top 5); `teams` = teams this week |
 | `/league` | All leagues and how far it is to the next one |
 | `/season` | Season table (calendar month), your place, last season's winners |
 | `/server` | All BeamNet servers with map and player count (switch servers in the BeamMP launcher) |

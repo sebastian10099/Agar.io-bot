@@ -2172,6 +2172,9 @@ do
     say(81, "/stats")
     check(chatContains("^Team: Die Raser %(/team%)", 81), "Team: in /stats")
     chatLog = {}
+    say(81, "/top teams")
+    check(chatContains("^Teams diese Woche:", 81) or chatContains("noch kein Team gefahren", 81), "Team: /top teams")
+    chatLog = {}
     say(81, "/heute")
     check(chatContains("^👥 Team Die Raser: .* diese Woche · Platz [%d–]+", 81), "Team: in /heute")
     say(81, "/team verlassen"); say(82, "/team leave")
