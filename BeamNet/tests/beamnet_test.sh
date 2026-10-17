@@ -1312,6 +1312,13 @@ contains "$out" "🗺️ Bonus-Map heute: east_coast_usa \\(Server 4\\) – \\+5
 python3 -c 'import json,sys,time; d=json.load(open(sys.argv[1])); assert d["map"]=="east_coast_usa" and d["factor"]==1.5 and time.time() < d["until"] <= time.time()+86400' "$B" \
     && pass || fail "bonusmap: bonusmap.json fuer das Plugin"
 lacks "$("$TOOL" watch 2>&1)" "Bonus-Map" "bonusmap: einmal am Tag"
+# Map von Server 4 wechselt (Rotation/Abstimmung): die Bonus-Map laeuft nirgends mehr – neu waehlen.
+cp "$T/root/4/ServerConfig.toml" "$T/sc4.bonus"
+sed -i 's|^Map = .*|Map = "/levels/gridmap_v2/info.json"|' "$T/root/4/ServerConfig.toml"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🗺️ Bonus-Map heute: " "bonusmap: neu gewaehlt, wenn die Map nirgends mehr laeuft"
+lacks "$(cat "$B")" "east_coast_usa" "bonusmap: alte Map nicht mehr Bonus-Map"
+cp "$T/sc4.bonus" "$T/root/4/ServerConfig.toml"
 rm -f "$T"/watch/bonusmap-*
 sed -i 's/^BONUS_MAP=.*/BONUS_MAP=0/' "$T/beamnet.conf"
 "$TOOL" watch >/dev/null 2>&1

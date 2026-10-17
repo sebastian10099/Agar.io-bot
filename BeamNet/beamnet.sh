@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.86"
+VERSION="1.87"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2582,7 +2582,14 @@ watch_bonusmap() {
     command -v python3 >/dev/null || return 0
     local today factor nr mp maps=() pick until json where="" pct
     today=$(date +%F)
-    [[ -f $STATE_DIR/bonusmap-$today ]] && return 0
+    if [[ -f $STATE_DIR/bonusmap-$today ]]; then
+        # Laeuft die Bonus-Map nach einer Map-Rotation oder -Abstimmung auf keinem Server mehr: neu waehlen.
+        local cur on=0
+        cur=$(safe get "$SHARED/bonusmap.json" 2>/dev/null | head -c 4096 | grep -o '"map":"[A-Za-z0-9_.-]*"' | head -n1 | cut -d'"' -f4)
+        [[ -n $cur ]] || return 0
+        for nr in $(servers); do [[ $(map_short "$(cfg "$nr" Map)") == "$cur" ]] && on=1; done
+        (( on )) && return 0
+    fi
     : >"$STATE_DIR/bonusmap-$today"
     find "$STATE_DIR" -maxdepth 1 -name 'bonusmap-*' -mtime +3 -delete 2>/dev/null
     if [[ $(conf_get BONUS_MAP) == 0 ]]; then

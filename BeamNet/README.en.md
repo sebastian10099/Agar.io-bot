@@ -71,6 +71,10 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
 - **XP evenings:** `beamnet event auto fr,sa 20:00 2 2h` starts double XP on all servers every Friday and Saturday at
   20:00 for two hours, announced an hour before (Discord/Telegram and in game). Players see the next one with `/event`
   and on the status page under "Demnächst".
+- **Bonus map of the day:** the map driven least in the last 7 days gets +50 % XP while driving until midnight
+  (announced on Discord/Telegram, in game at join and with `/event`), so players spread over the servers. If a map
+  rotation or vote moves it off every server, a new one is picked right away. `BONUS_MAP=0` turns it off,
+  `BONUS_MAP_FACTOR=1.5` (up to 3) changes the bonus.
 - It never fights you: servers stopped with `beamnet stop` count as maintenance until `beamnet start`.
 
 ## In-game chat commands
