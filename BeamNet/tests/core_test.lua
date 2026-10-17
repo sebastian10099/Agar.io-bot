@@ -113,6 +113,7 @@ C.alertEverySec = 0                -- Einsatz-Alarm fuer die allgemeinen Tests a
 C.convoyXp = 0                     -- Konvoi-Bonus fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.crowdHintSec = 0                 -- "Wo ist was los" fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.roadPointsMax = 0                -- Lieferpunkte fuer die allgemeinen Tests aus (eigener Test weiter unten)
+C.comebackXp = 0                   -- Rueckkehrer-Bonus fuer die allgemeinen Tests aus (eigener Test weiter unten)
 check(events.BN_Tick == "BN_Tick" and timers.BN_Tick == 1000, "Takt registriert")
 eq(BN.server.name, "BeamNet | Server 1", "Servername ohne Farbcodes")
 eq(BN.server.port, 30814, "Port trotz Kommentar")
@@ -2767,6 +2768,39 @@ do
     _G[events.onPlayerDisconnect](175); players[175] = nil
     os.remove(SHARED .. "/players/17575.json"); BN.savedRecently["17575"] = nil
     os.remove(SHARED .. "/xpabend.json"); BN.xpEveningAt, BN.xpEvening = nil, nil
+end
+
+-- --- Rueckkehrer-Bonus ------------------------------------------------------------------------------------------
+do
+    C.comebackXp = 50
+    writeJson(SHARED .. "/players/17676.json", { id = "17676", name = "Zurueck", km = 40, seconds = 7200, bonusXp = 100,
+                                                 lastSeen = clock - 20 * 86400 })
+    BN.savedRecently["17676"] = nil
+    players[176] = { name = "Zurueck", ids = { beammp = "17676" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](176)
+    check(chatContains("👋 Willkommen zurück! Du warst 20 Tage weg – hier sind %+50 XP", 176), "Rueckkehrer: Begruessung mit Bonus")
+    BN.savePlayer(BN.players[176])
+    local rec = readJson(SHARED .. "/players/17676.json")
+    check(rec.bonusXp == 150 and rec.comebackAt == clock, "Rueckkehrer: Bonus und Zeitpunkt gespeichert")
+    -- Gleich wieder rein: kein zweites Mal.
+    _G[events.onPlayerDisconnect](176)
+    chatLog = {}
+    _G[events.onPlayerJoin](176)
+    check(not chatContains("Willkommen zurück", 176), "Rueckkehrer: nicht bei kurzer Pause")
+    _G[events.onPlayerDisconnect](176)
+    -- Auf einem anderen Server parallel bekommen: beim Speichern nicht doppelt.
+    rec = readJson(SHARED .. "/players/17676.json")
+    rec.lastSeen, rec.comebackAt = clock - 20 * 86400, nil
+    writeJson(SHARED .. "/players/17676.json", rec)
+    BN.savedRecently["17676"] = nil
+    _G[events.onPlayerJoin](176)
+    rec = readJson(SHARED .. "/players/17676.json"); rec.comebackAt = clock; writeJson(SHARED .. "/players/17676.json", rec)
+    BN.savePlayer(BN.players[176])
+    eq(readJson(SHARED .. "/players/17676.json").bonusXp, 150, "Rueckkehrer: auf zwei Servern nicht doppelt")
+    _G[events.onPlayerDisconnect](176); players[176] = nil
+    os.remove(SHARED .. "/players/17676.json"); BN.savedRecently["17676"] = nil
+    C.comebackXp = 0
 end
 
 -- --- Schicht: Auftraege in Folge -------------------------------------------------------------------------------

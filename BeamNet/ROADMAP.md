@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.77 / Plugin 1.66)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.77 / Plugin 1.67)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -50,6 +50,7 @@
       Werkzeug 1.74).
 - [x] Aufträge auf jeder Map: Lieferpunkte aus echten Fahrten, wenn Admins (noch) keine Orte angelegt haben;
       Richtungshinweise unterwegs (Plugin 1.62).
+- [x] Rückkehrer-Bonus: nach mindestens 14 Tagen Pause einmal +50 XP beim Wiederkommen (Plugin 1.67).
 - [x] `/spieler <Name>` im Telegram-Chat: Level, Liga, XP, Platz, Kilometer, Fahrzeit, Spitze, Aufträge (Werkzeug 1.76).
 - [x] Nächster XP-Abend für alle sichtbar: `/event` im Spiel, Hinweis beim Betreten am selben Tag, „Demnächst“ auf
       der Statusseite (Plugin 1.66, Werkzeug 1.75).

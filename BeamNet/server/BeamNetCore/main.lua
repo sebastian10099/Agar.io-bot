@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.66"
+BN.VERSION = "1.67"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -145,6 +145,10 @@ local defaults = {
     -- Lieferpunkte: Wo Spieler mit Konto fahren, merkt sich das Plugin alle roadPointSec Sekunden einen Punkt (mindestens
     -- roadPointSpacingM von den anderen entfernt, hoechstens roadPointsMax je Map, gemeinsam fuer alle Server). Gibt es
     -- keine passenden Orte, liefert /auftrag zu einem dieser Punkte (roadPointsMax 0 = aus).
+    -- Rueckkehrer: Wer mindestens comebackDays Tage nicht da war, bekommt beim Wiederkommen einmal comebackXp
+    -- (hoechstens alle 30 Tage, nur mit Konto; 0 = aus).
+    comebackDays = 14,
+    comebackXp = 50,
     roadPointsMax = 300,
     roadPointSpacingM = 250,
     roadPointSec = 20,
@@ -541,7 +545,7 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        tipEverySec = true, tutorialXp = true, tutorialDoneXp = true, seriesXp = true,
                        alertEverySec = true, alertXp = true, alertMinPlayers = true, convoyXp = true,
                        convoyXpPerHour = true, convoyRadiusM = true, crowdHintSec = true, crowdMinPlayers = true,
-                       crowdMaxHere = true, roadPointsMax = true, roadPointSpacingM = true, roadPointSec = true }
+                       crowdMaxHere = true, comebackDays = true, comebackXp = true, roadPointsMax = true, roadPointSpacingM = true, roadPointSec = true }
 -- Untergrenzen, ohne die das Plugin nicht sinnvoll laeuft (Division durch 0, Dauertakt).
 local MIN_VALUES = { roadPointSpacingM = 50, roadPointSec = 5, convoyKm = 0.5, convoyRadiusM = 20, levelBase = 1, tickMs = 100, raceTickMs = 50, maxSpeedMps = 1, saveEverySec = 5, commandWindowSec = 1,
                      spamWindowSec = 1, mapVoteSec = 15, joinLimit = 2, joinWindowSec = 10, joinBlockSec = 10,
@@ -788,6 +792,8 @@ local EN = {
     ["Das XP-Event ist vorbei – danke fürs Mitfahren!"] = "The XP event is over – thanks for driving!",
     ["XP-Event läuft: %s-fache XP bis %s Uhr."] = "XP event running: %sx XP until %s.",
     ["Gerade läuft kein XP-Event."] = "No XP event right now.",
+    ["👋 Willkommen zurück! Du warst %d Tage weg – hier sind +%d XP zum Wiedereinstieg."] =
+        "👋 Welcome back! You were away for %d days – here are +%d XP to get going again.",
     ["Nächster XP-Abend: %s %s–%s Uhr (%s-fache XP)"] = "Next XP evening: %s %s–%s (%sx XP)",
     ["heute"] = "today",
     ["Sonntag"] = "Sunday", ["Montag"] = "Monday", ["Dienstag"] = "Tuesday", ["Mittwoch"] = "Wednesday",
@@ -1553,6 +1559,15 @@ function BN.savePlayer(s)
     end
     if s.friendsChanged then rec.friends = s.record.friends end
     if s.pendingRecap then rec.recapMonth = s.pendingRecap end
+    if s.pendingComeback then
+        -- Schon auf einem anderen Server bekommen (Datei kennt einen Bonus der letzten 30 Tage): nicht doppelt.
+        local last = tonumber(rec.comebackAt)
+        if last and s.pendingComeback.at - last < 30 * 86400 then
+            rec.bonusXp = rec.bonusXp - s.pendingComeback.xp
+        else
+            rec.comebackAt = s.pendingComeback.at
+        end
+    end
     if s.pendingSeenVersion then rec.seenVersion = s.pendingSeenVersion end
     if s.tutorialStarted and rec.tutorial == nil and fileKm >= 5 then
         -- Beim Beitritt war die Datei nicht lesbar (oder ein anderer Server hat inzwischen viel gespeichert): wer laut
@@ -1592,6 +1607,7 @@ function BN.savePlayer(s)
     s.friendsChanged = nil
     s.resetTop = nil
     s.pendingRecap = nil
+    s.pendingComeback = nil
     s.pendingSeenVersion = nil
     s.pendingTutorial, s.tutorialStarted = nil, nil
     if tutorialSkipped then s.tutorialFinished = true end
@@ -6002,8 +6018,23 @@ function BN_onInit()
     if not BN.initialized then BN.init() end
 end
 
+-- Rueckkehrer-Bonus: einmal, wenn jemand comebackDays Tage nicht da war (hoechstens alle 30 Tage).
+function BN.comebackCheck(s)
+    if s.guest or s.isNew or C.comebackXp <= 0 then return end
+    local rec, now = s.record, BN.now()
+    local seen = tonumber(rec.lastSeen)
+    if not seen or now - seen < C.comebackDays * 86400 then return end
+    if tonumber(rec.comebackAt) and now - tonumber(rec.comebackAt) < 30 * 86400 then return end
+    s.pendingComeback = { at = now, xp = C.comebackXp }
+    s.pendingBonus = s.pendingBonus + C.comebackXp
+    s.dirty = true
+    say(s.pid, "👋 Willkommen zurück! Du warst %d Tage weg – hier sind +%d XP zum Wiedereinstieg.",
+        math.floor((now - seen) / 86400), C.comebackXp)
+end
+
 function BN_onPlayerJoin(pid)
     local s = BN.addPlayer(pid)
+    guarded("Rueckkehrer", BN.comebackCheck, s)
     local t = BN.totals(s)
     say(pid, "Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server. English: /lang en",
         BN.server.name, BN.server.map, t.level, tr(BN.langOf(pid), t.league.name), fmtKm(t.km))
