@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.81"
+VERSION="1.82"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -4567,11 +4567,38 @@ COMMANDS = [
     ("/km", "Kilometer dieser Sitzung"), ("/rennen &lt;Strecke&gt;", "Zeitrennen starten (Strecken: /rennen)"),
     ("/serie [Name]", "Rennserie: mehrere Strecken nacheinander, die Zeiten werden addiert – eigene Bestenliste"),
     ("/rekorde", "Streckenrekorde dieser Map"), ("/vote map &lt;Name&gt;", "Abstimmung über eine andere Map"),
-    ("/event", "Läuft gerade ein XP-Event?"), ("/melden &lt;Name&gt; &lt;Grund&gt;", "Meldung an die Admins"),
+    ("/event", "Läuft gerade ein XP-Event? Wann ist der nächste XP-Abend?"), ("/melden &lt;Name&gt; &lt;Grund&gt;", "Meldung an die Admins"),
     ("/stats", "zeigt auch deine Tages-Serie: jeden Tag ab 1 km fahren gibt ab dem 2. Tag Bonus-XP"),
     ("/regeln", "Die Regeln"), ("/lang en", "English (zurück: /lang de)"),
 ]
 cmd_rows = [f"<tr><td><b>{c}</b></td><td>{d}</td></tr>" for c, d in COMMANDS]
+# Bonus-XP mit den Werten aus config.json (ausgeschaltete fehlen).
+def cv(k, d):
+    v = num(cfg.get(k), d)
+    return int(v) if v == int(v) else v
+def g(v):
+    return f"{v:g}".replace(".", ",")
+bonus = []
+if cv("jobXpPerKm", 25) > 0:
+    bonus.append(f"<b>Aufträge</b> (/auftrag): {g(cv('jobXpPerKm', 25))} XP je km Luftlinie, ab 1 km +{g(cv('jobXp', 20))}, "
+                 "Notfälle ×1,5, schnelle Fahrer +50 %; <b>Schicht</b>: beim 3., 5. und ab dem 10. Auftrag in Folge "
+                 f"+25/+50/+100 (höchstens {g(cv('jobXpPerHour', 600))} Auftrags-XP je Stunde)")
+if cv("convoyXp", 20) > 0:
+    bonus.append(f"<b>Konvoi</b> (/konvoi): je {g(cv('convoyKm', 3))} km zusammen mit anderen +{g(cv('convoyXp', 20))}")
+if cv("alertEverySec", 1800) > 0 and cv("alertXp", 50) > 0:
+    bonus.append(f"<b>Einsatz-Alarm</b>: wer zuerst am Ziel ist, +{g(cv('alertXp', 50))}")
+bonus.append("<b>Verfolgungsjagd</b> (/fangen): Fangen +60, Entkommen +100")
+if cv("streakXp", 10) > 0:
+    bonus.append(f"<b>Tages-Serie</b>: jeden Tag ab {g(cv('streakMinKm', 1))} km fahren, ab dem 2. Tag +{g(cv('streakXp', 10))} je Serientag")
+if cv("communityXp", 100) > 0:
+    bonus.append(f"<b>Wochenziel</b> (/ziel): +{g(cv('communityXp', 100))} für alle, die mitgefahren sind")
+if cv("comebackXp", 50) > 0:
+    bonus.append(f"<b>Willkommen zurück</b>: nach {g(cv('comebackDays', 14))} Tagen Pause einmal +{g(cv('comebackXp', 50))}")
+xa = load(os.path.join(shared, "xpabend.json"))
+if isinstance(xa, dict) and now < num(xa.get("next")) < now + 8 * 86400 and 1.5 <= num(xa.get("factor")) <= 5:
+    at = num(xa.get("next"))
+    bonus.append(f"<b>XP-Abend</b>: {g(num(xa.get('factor')))}-fache XP am {['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][time.localtime(at).tm_wday]} ab {time.strftime('%H:%M', time.localtime(at))} Uhr")
+bonus_items = "".join(f"<li>{b}</li>" for b in bonus)
 league_rows = [f"<tr><td>{E(str(l.get('name', '?')))}</td><td class=n>ab {int(num(l.get('xp')))} XP</td></tr>"
                for l in leagues if isinstance(l, dict)]
 rule_items = "".join(f"<li>{E(r)}</li>" for r in rules)
@@ -4588,7 +4615,7 @@ help_page = f"""<!doctype html>
 <div class=grid>
 <section><h2>So bekommst du XP</h2><p>{num(xp_km):g} XP je Kilometer und {num(xp_min):g} XP je Minute Fahrzeit
 (nur in Bewegung). Dazu Bonus-XP für Erfolge, die Tagesaufgabe, Rennen und Streckenrekorde. Bei einem
-<b>XP-Event</b> gibt es ein Vielfaches – schau mit <b>/event</b> nach.</p></section>
+<b>XP-Event</b> gibt es ein Vielfaches – schau mit <b>/event</b> nach.</p><ul>{bonus_items}</ul></section>
 <section><h2>Ligen</h2>{table(["Liga", "XP#"], league_rows, "")}</section>
 </div>
 <section><h2>Erfolge ({len(ACH)})</h2><div class=tags>{ach_tags}</div></section>

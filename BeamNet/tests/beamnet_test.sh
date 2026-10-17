@@ -766,13 +766,18 @@ contains "$help" "<li>Fair fahren: kein absichtliches Rammen oder Blockieren.</l
 contains "$help" "<td>Gold</td><td class=n>ab 2000 XP</td>" "Hilfeseite: Ligen"
 contains "$help" "<span>Erste 10 km</span>" "Hilfeseite: Erfolge"
 contains "$help" "10 XP je Kilometer und 1 XP je Minute" "Hilfeseite: XP-Regeln"
+contains "$help" "<li><b>Aufträge</b> \\(/auftrag\\): 25 XP je km Luftlinie, ab 1 km \\+20" "Hilfeseite: Auftrags-XP"
+contains "$help" "<li><b>Konvoi</b> \\(/konvoi\\): je 3 km zusammen mit anderen \\+20</li>" "Hilfeseite: Konvoi-XP"
+contains "$help" "<li><b>Willkommen zurück</b>: nach 14 Tagen Pause einmal \\+50</li>" "Hilfeseite: Rueckkehrer-Bonus"
 cp "$T/root/shared/beamnet/config.json" "$T/cfg.help" 2>/dev/null
-echo '{"rules":["Kein <script>alert(1)</script>","Linksverkehr"],"xpPerKm":12}' >"$T/root/shared/beamnet/config.json"
+echo '{"rules":["Kein <script>alert(1)</script>","Linksverkehr"],"xpPerKm":12,"convoyXp":0,"convoyKm":2.5,"comebackXp":75}' >"$T/root/shared/beamnet/config.json"
 "$TOOL" web run >/dev/null 2>&1
 help=$(cat "$T/web/hilfe.html")
 contains "$help" "<li>Kein &lt;script&gt;alert\\(1\\)&lt;/script&gt;</li><li>Linksverkehr</li>" "Hilfeseite: eigene Regeln, maskiert"
 lacks "$help" "<script>" "Hilfeseite: kein HTML aus der Konfiguration"
 contains "$help" "12 XP je Kilometer" "Hilfeseite: XP aus config.json"
+lacks "$help" "<b>Konvoi</b>" "Hilfeseite: ausgeschalteter Konvoi fehlt"
+contains "$help" "einmal \\+75</li>" "Hilfeseite: Bonus-Werte aus config.json"
 rm -f "$T/root/shared/beamnet/config.json"; [[ -f $T/cfg.help ]] && mv "$T/cfg.help" "$T/root/shared/beamnet/config.json"
 "$TOOL" web run >/dev/null 2>&1
 page=$(cat "$T/web/index.html")
