@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.26"
+VERSION="2.27"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.97"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -3496,7 +3496,7 @@ telegram_slots() {
 # Bestenlisten-Index (genauer Name zuerst, sonst Teil des Namens; bei mehreren Treffern eine Auswahl).
 telegram_player() {
     [[ -n ${1:-} ]] || { echo "Aufruf: /spieler <Name> (Teil des Namens reicht)"; return 0; }
-    python3 -I - "$SHARED/players-index.tsv" "$SHARED/config.json" "$1" <<'PY' 2>/dev/null || echo "Noch keine Bestenliste."
+    python3 -I - "$SHARED/players-index.tsv" "$SHARED/config.json" "$1" "$SHARED/teams.json" <<'PY' 2>/dev/null || echo "Noch keine Bestenliste."
 import json, math, os, re, stat, sys
 def read(path):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -3529,7 +3529,7 @@ for line in read(sys.argv[1]).splitlines()[1:]:
     if len(c) not in (13, 14, 15, 17):
         continue
     xp = int(f(c[2]) * per_km + f(c[3]) / 60 * per_min) + int(f(c[4]))
-    rows.append({"name": re.sub(r"[\x00-\x1f\x7f]", "", c[1])[:32], "xp": xp, "km": f(c[2]), "sec": f(c[3]),
+    rows.append({"id": c[0], "name": re.sub(r"[\x00-\x1f\x7f]", "", c[1])[:32], "xp": xp, "km": f(c[2]), "sec": f(c[3]),
                  "top": f(c[13]) if len(c) > 13 else 0, "jobs": int(f(c[14])) if len(c) > 14 else 0})
 if not rows:
     print("Noch keine Bestenliste."); sys.exit(0)
@@ -3551,6 +3551,17 @@ rank = rows.index(r) + 1
 kmtxt = f"{r['km']:.0f}" if r["km"] >= 100 else f"{r['km']:.1f}".replace(".", ",")
 print(f"👤 {r['name']} – Level {lvl} · {league[:20]} · {r['xp']} XP · Platz {rank} von {len(rows)}")
 print(f"🚗 {kmtxt} km · {r['sec'] / 3600:.0f} h unterwegs · Spitze {r['top']:.0f} km/h · {r['jobs']} Aufträge".replace(".", ","))
+# Team (teams.json vom Plugin), falls vorhanden.
+try:
+    teams = json.loads(read(sys.argv[4])).get("teams")
+except Exception:
+    teams = None
+for t in (teams.values() if isinstance(teams, dict) else []):
+    if isinstance(t, dict) and isinstance(t.get("members"), dict) and r["id"] in t["members"] and isinstance(t.get("name"), str):
+        wins = t.get("weekWins")
+        extra = f" · 🏅 {int(wins)}× Team der Woche" if isinstance(wins, int) and not isinstance(wins, bool) and 0 < wins < 1000 else ""
+        print("👥 Team " + " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", t["name"]).split())[:24] + extra)
+        break
 PY
 }
 
