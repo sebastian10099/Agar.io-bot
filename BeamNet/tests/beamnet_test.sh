@@ -757,6 +757,7 @@ import time
 r["jobsDone"], r["streak"], r["streakDay"], r["bestStreak"] = 14, 3, int(time.time() // 86400), 9
 r["convoyKm"] = 42.25
 r["bonusMapKm"] = 31.5
+r["teamWeeks"] = 2
 json.dump(r, open(p, "w"))
 PY
 cp "$T/root/shared/beamnet/teams.json" "$T/teams-prof.keep" 2>/dev/null || true
@@ -764,6 +765,7 @@ echo '{"teams":{"a":{"name":"<i>Crew</i>","members":{"1":"Sebi"}}}}' >"$T/root/s
 "$TOOL" web run >/dev/null 2>&1
 prof=$(cat "$T/web/p/1.html")
 contains "$prof" "<div>Auf Bonus-Maps<b>31[.,]5 km</b></div>" "Profilseite: Kilometer auf Bonus-Maps"
+contains "$prof" "<div>Team der Woche<b>2×</b></div>" "Profilseite: wie oft im Team der Woche"
 contains "$prof" "<div>Team<b>&lt;i&gt;Crew&lt;/i&gt;</b></div>" "Profilseite: Team (maskiert)"
 if [[ -f $T/teams-prof.keep ]]; then cp "$T/teams-prof.keep" "$T/root/shared/beamnet/teams.json"; else rm -f "$T/root/shared/beamnet/teams.json"; fi
 contains "$prof" "<div>Aufträge<b>14</b></div>" "Profilseite: Aufträge"

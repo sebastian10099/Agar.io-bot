@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.25"
+VERSION="2.26"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.97"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -4979,6 +4979,7 @@ for rank, r in enumerate(ranked, 1):
         stat("Im Konvoi", km(num(r.get("convoyKm")))),
         stat("Auf Bonus-Maps", km(num(r.get("bonusMapKm")))),
         stat("Team", E(team_of[rid]) if rid in team_of else "–"),
+        stat("Team der Woche", f"{int(min(num(r.get('teamWeeks')), 999))}×" if num(r.get("teamWeeks")) >= 1 else "–"),
     ])
     profile = f"""<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
