@@ -3489,6 +3489,7 @@ do
     chatLog = {}
     _G[events.onPlayerJoin](115)
     check(chatContains("📅 Deine letzte Woche: 42[,.]5 km · Platz %d+ von %d+ – neue Woche.*%(/top vorwoche%)", 115), "Wochen-Rueckblick: Kilometer und Platz")
+    eq(readJson(SHARED .. "/players/11515.json").recapWeek, prev, "Wochen-Rueckblick: sofort gespeichert (Serverwechsel)")
     local idx, list = 0, BN.weekRanking(prev)
     for i, e in ipairs(list) do if e.id == "11515" then idx = i end end
     check(idx > 0 and chatContains("Platz " .. idx .. " von " .. #list, 115), "Wochen-Rueckblick: eigener Platz")

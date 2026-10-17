@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.77"
+BN.VERSION = "1.78"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -6270,6 +6270,8 @@ function BN_onPlayerJoin(pid)
     end
     BN.seasonRecap(s)
     BN.weekRecap(s)
+    -- Rueckblick gezeigt: sofort merken, sonst zeigt ihn ein anderer Server bei schnellem Wechsel noch einmal.
+    if s.pendingRecap or s.pendingWeekRecap then guarded("Rueckblick speichern", BN.savePlayer, s) end
     BN.showNews(s)
     -- Bonus-Map des Tages: hier oder auf welcher Map.
     local bm = BN.bonusMap()
