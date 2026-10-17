@@ -659,6 +659,10 @@ contains "$(cat "$T/web/index.html")" "<h2>Rennserien</h2>.*<td>Italy</td><td><b
 contains "$out" "Statusseite erzeugt" "web run"
 page=$(cat "$T/web/index.html")
 contains "$page" "<title>BeamNet – Status</title>" "Statusseite: Titel"
+echo "{\"id\":\"9501\",\"name\":\"Frisch\",\"km\":1,\"firstSeen\":$(( $(date +%s) - 3600 ))}" >"$T/root/shared/beamnet/players/9501.json"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" " · 1 neuer Fahrer in 7 Tagen · Stand" "Statusseite: neue Fahrer der letzten 7 Tage"
+rm -f "$T/root/shared/beamnet/players/9501.json"
 contains "$page" "<td><b>BeamNet \\| Server 1</b><div class=small>Sebi, &lt;b&gt;Hacker&lt;/b&gt;</div></td><td>Grid Map</td><td class=n>2/8</td>" "Statusseite: Server"
 lacks "$page" ">Alt<" "Statusseite: veraltete Server fehlen"
 contains "$page" "1 Server online · 2 Spieler" "Statusseite: Zusammenfassung"

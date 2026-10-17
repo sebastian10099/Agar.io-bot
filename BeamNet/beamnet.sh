@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.03"
+VERSION="2.04"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.83"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -4525,6 +4525,9 @@ def link(r, prefix=""):
 
 
 online = sum(int(num(s.get("players"))) for s in servers)
+# Neue Fahrer der letzten 7 Tage (erstes Mal im BeamNet), fuer die Kopfzeile.
+new_week = sum(1 for r in players if now - 7 * 86400 <= num(r.get("firstSeen")) <= now + 60)
+new_text = f" · {new_week} neue{'r' if new_week == 1 else ''} Fahrer in 7 Tagen" if new_week else ""
 profile_ids = {str(r.get("id")) for r in players if ID_OK.fullmatch(str(r.get("id", "")))}
 rows = []
 for s in servers:
@@ -4723,7 +4726,7 @@ page = f"""<!doctype html>
 <meta http-equiv="refresh" content="60"><title>{E(title)} – Status</title>
 {STYLE}</head><body><main>
 <h1><span>{E(title)}</span> Status</h1>
-<div class=sub>{len(servers)} Server online · {online} Spieler{peak_text} · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))} (aktualisiert sich jede Minute)</div>
+<div class=sub>{len(servers)} Server online · {online} Spieler{peak_text}{new_text} · Stand {time.strftime('%d.%m.%Y %H:%M', time.localtime(now))} (aktualisiert sich jede Minute)</div>
 <section><h2>Server</h2>{table(["Server", "Map", "Spieler#"], rows, "Gerade meldet sich kein Server.")}</section>
 {('<section><h2>Demnächst</h2>' + table(["Wann", "Was"], upcoming_rows, "") + '</section>') if upcoming_rows else ""}
 {hours_chart()}
