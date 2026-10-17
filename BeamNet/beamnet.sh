@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.18"
+VERSION="2.19"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.93"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -5273,6 +5273,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet plugin-disable <name>  Plugin auf allen Servern abschalten (verschiebt nach Server.disabled)
   beamnet plugin-enable <name>   … und wieder einschalten
   beamnet players [json]         Wer gerade fährt, je Server mit Namen (mit Plugin BeamNetCore)
+  beamnet heute · woche · teams  Überblick wie im Telegram-Chat: Boni von heute, Wochenbeste, Teams dieser Woche
   beamnet backup                 Sichert Konfigurationen, Plugins und Dienste nach $BACKUP_DIR
   beamnet restore [JJJJ-MM-TT|check]   Tägliche Datensicherungen anzeigen, prüfen oder einen Stand zurückholen
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, Moderation) auf allen Servern
@@ -5313,6 +5314,9 @@ main() {
         set-map) cmd_set_map "$@" ;;
         rotation|rotate) cmd_rotation "$@" ;;
         slots|plaetze|plätze) cmd_slots "$@" ;;
+        heute|today) telegram_today ;;
+        woche|week) telegram_week ;;
+        teams) telegram_teams ;;
         logs|log) cmd_logs "$@" ;;
         plugins) cmd_plugins ;;
         plugin-disable) cmd_plugin_toggle disable "$@" ;;

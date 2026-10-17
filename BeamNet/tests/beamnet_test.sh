@@ -2128,6 +2128,8 @@ rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
 log=$(cat "$T/curl.log")
 contains "$log" '"text":"📅 KW [0-9]+: [0-9]+ Fahrer, zusammen [0-9]+,[0-9] km\\n1\. Wochenheld – 42,5 km\\n' "telegram /woche: Wochenbeste"
 contains "$log" 'Zweiter – 7,5 km' "telegram /woche: zweiter Fahrer"
+contains "$("$TOOL" woche 2>&1)" "^1\\. Wochenheld – 42,5 km$" "beamnet woche: dieselbe Wertung auf der Konsole"
+contains "$("$TOOL" heute 2>&1)" "^☀️ Heute im BeamNet:" "beamnet heute: Überblick auf der Konsole"
 lacks "$log" "Altwoche" "telegram /woche: alte Wochen zaehlen nicht"
 contains "$log" '🎯 Wochenziel für alle: [0-9]+,[0-9] km von 100,0 km \([0-9]+ %\)' "telegram /woche: Wochenziel"
 # /teams: Wochenwertung der Teams; wer erst diese Woche beigetreten ist, zaehlt noch nicht.

@@ -35,6 +35,7 @@ a new plugin version goes to one test server first and only then to the others).
 | `beamnet fix` | Stops stray server processes, resets file permissions, sets up log rotation, enables autostart and starts everything cleanly via systemd |
 | `beamnet start / stop / restart [nr … \| all]` | Control servers; `stop` and `restart` ask first |
 | `beamnet players` | Who is driving right now, per server with names (`players json` = raw data) |
+| `beamnet heute` · `woche` · `teams` | Same overviews as in the Telegram chat: today's bonuses, weekly best with the weekly goal, teams this week |
 | `beamnet backup` | Saves configurations, plugins and systemd services to `/root/beamnet-backups` |
 | `beamnet restore [YYYY-MM-DD]` | Lists the daily data backups or rolls the player data back to one; `beamnet restore check` test-restores without writing anything |
 | `beamnet install-core` | Installs BeamNetCore on all servers |
