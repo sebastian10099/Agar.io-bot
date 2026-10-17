@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.38"
+VERSION="2.39"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="2.02"
+CORE_VERSION="2.03"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3031,7 +3031,7 @@ def key(v):
     return v if isinstance(v, str) and KEY_OK.fullmatch(v) else ""
 
 def text(v):
-    return re.sub(r"[\x00-\x1f\x7f]", "", str(v))[:64]
+    return re.sub(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]", "", str(v))[:64]
 
 out = [f"# beamnet-index 4 {int(time.time())}"]
 try:
@@ -3419,7 +3419,7 @@ def n(v, d):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else d
 per_km, per_min = n(cfg.get("xpPerKm"), 10), n(cfg.get("xpPerMinute"), 1)
 rows = []
-for line in read(sys.argv[1]).splitlines()[1:]:
+for line in read(sys.argv[1]).split("\n")[1:]:
     f = line.split("\t")
     if len(f) not in (13, 14, 15, 17):
         continue
@@ -3497,7 +3497,7 @@ week = "%04d-W%02d" % (year, wk)
 start = (now - datetime.timedelta(days=wd - 1)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
 km = {}
 try:
-    lines = read(sys.argv[1]).splitlines()[1:]
+    lines = read(sys.argv[1]).split("\n")[1:]
 except Exception:
     lines = []
 for line in lines:
@@ -3520,7 +3520,9 @@ for t in (teams.values() if isinstance(teams, dict) else []):
     joined = t.get("joined") if isinstance(t.get("joined"), dict) else {}
     total = 0.0
     for i in list(t["members"])[:200]:
-        at = num(joined.get(i)) or num(t.get("created")) or 0
+        at = num(joined.get(i))
+        at = num(t.get("created")) if at is None else at
+        at = 0 if at is None else at
         if at < start:
             total += km.get(str(i), 0)
     name = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", t["name"]).split())[:24]
@@ -3539,8 +3541,8 @@ PY
 # /saison fuer Telegram: Top 5 der laufenden Saison (Monat, UTC – wie im Plugin) nach Saison-XP aus dem Index, das
 # fuehrende Team (Mitglieder zaehlen ab Saisonbeginn, wie im Plugin) und die Sieger der letzten Saison aus dem Archiv.
 telegram_season() {
-    python3 -I - "$SHARED/players-index.tsv" "$SHARED/teams.json" "$SHARED/seasons" <<'PY' 2>/dev/null || echo "Noch keine Saisonwertung."
-import calendar, datetime, json, os, re, stat, sys
+    python3 -I - "$SHARED/players-index.tsv" "$SHARED/teams.json" "$SHARED/seasons" "${1:-}" <<'PY' 2>/dev/null || echo "Noch keine Saisonwertung."
+import calendar, datetime, json, os, re, stat, sys, time
 def read(path, limit=64 << 20):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as f:
@@ -3552,13 +3554,14 @@ def num(v):
 def clean(s, n):
     return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(s)).split())[:n]
 MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
-now = datetime.datetime.now(datetime.timezone.utc)
+now = datetime.datetime.fromtimestamp(int(sys.argv[4]) if sys.argv[4:] and sys.argv[4].isdigit() else time.time(),
+                                     datetime.timezone.utc)
 month = now.strftime("%Y-%m")
 start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 left = calendar.monthrange(now.year, now.month)[1] - now.day + 1
 xp, names = {}, {}
 try:
-    lines = read(sys.argv[1]).splitlines()[1:]
+    lines = read(sys.argv[1]).split("\n")[1:]
 except Exception:
     lines = []
 for line in lines:
@@ -3585,8 +3588,11 @@ for t in (teams.values() if isinstance(teams, dict) else []):
     if not (isinstance(t, dict) and isinstance(t.get("members"), dict) and isinstance(t.get("name"), str)):
         continue
     joined = t.get("joined") if isinstance(t.get("joined"), dict) else {}
-    total = sum(xp.get(str(i), 0) for i in list(t["members"])[:200]
-                if (num(joined.get(i)) or num(t.get("created")) or 0) < start.timestamp())
+    def at(i):
+        v = num(joined.get(i))
+        v = num(t.get("created")) if v is None else v
+        return 0 if v is None else v
+    total = sum(xp.get(str(i), 0) for i in list(t["members"])[:200] if at(i) < start.timestamp())
     name = clean(t["name"], 24)
     if total > 0 and name and (best is None or (-total, name) < (-best[0], best[1])):
         best = (total, name)
@@ -3625,7 +3631,7 @@ year, wk, _ = datetime.datetime.now(datetime.timezone.utc).isocalendar()
 week = "%04d-W%02d" % (year, wk)
 rows = []
 try:
-    lines = read(sys.argv[1]).splitlines()[1:]
+    lines = read(sys.argv[1]).split("\n")[1:]
 except Exception:
     lines = []
 for line in lines:
@@ -3709,7 +3715,7 @@ def f(v):
     except ValueError:
         return 0.0
 rows = []
-for line in read(sys.argv[1]).splitlines()[1:]:
+for line in read(sys.argv[1]).split("\n")[1:]:
     c = line.split("\t")
     if len(c) not in (13, 14, 15, 17):
         continue
@@ -3856,19 +3862,18 @@ PY
     return 0
 }
 
-# Am 1. eines Monats einmal die Saisonsieger des Vormonats nach Discord (aus dem Archiv des Plugins oder den
-# Spielerdaten, falls das Archiv noch fehlt).
-# Letzter Tag der Saison (UTC), ab 12 Uhr einmal: Zwischenstand als Endspurt-Aufruf (Top 3 und fuehrendes Team, wie
-# /saison im Telegram-Chat).
+# Letzter Tag der Saison, ab 12 Uhr UTC einmal: Zwischenstand als Endspurt-Aufruf (Top 3 und fuehrendes Team, wie
+# /saison im Telegram-Chat). Ein Zeitpunkt fuer alles (kein Monatswechsel mitten im Lauf).
 watch_season_final() {
     local -n fout=$1
-    local month hour top="" lead="" l
-    [[ ${BEAMNET_LASTDAY:-$([[ $(date -u -d tomorrow +%d) == 01 ]] && echo 1)} == 1 ]] || return 0
-    hour=${BEAMNET_HOUR:-$(date +%H)}
+    local now month hour top="" lead="" l
+    now=$(date -u +%s)
+    [[ ${BEAMNET_LASTDAY:-$([[ $(date -u -d "@$(( now + 86400 ))" +%d) == 01 ]] && echo 1)} == 1 ]] || return 0
+    hour=${BEAMNET_HOUR:-$(date -u -d "@$now" +%H)}
     (( 10#$hour >= 12 )) || return 0
     [[ -d $SHARED/players && ! -L $SHARED/players ]] && notify_configured || return 0
     command -v python3 >/dev/null || return 0
-    month=$(date -u +%Y-%m)
+    month=$(date -u -d "@$now" +%Y-%m)
     [[ -f $STATE_DIR/season-final-$month ]] && return 0
     while IFS= read -r l; do
         if [[ $l =~ ^([1-3])\.\ (.*)\ –\ ([0-9]+)\ XP$ ]]; then
@@ -3876,7 +3881,7 @@ watch_season_final() {
         elif [[ $l == "🏅 Führendes Team: "* ]]; then
             lead=$l
         fi
-    done < <(telegram_season)
+    done < <(telegram_season "$now")
     : >"$STATE_DIR/season-final-$month"
     [[ -n $top ]] || return 0
     fout+=("⏳ Letzter Tag der Saison $month – Endspurt! $top")
@@ -3884,6 +3889,8 @@ watch_season_final() {
     return 0
 }
 
+# Am 1. eines Monats einmal die Saisonsieger des Vormonats nach Discord (aus dem Archiv des Plugins oder den
+# Spielerdaten, falls das Archiv noch fehlt).
 watch_season() {
     local -n sout=$1
     local month dom
@@ -4903,7 +4910,7 @@ for r in players:
 # Teams (teams.json des Plugins): Kilometer = Summe der Mitglieder.
 km_by_id = {str(r.get("id")): num(r.get("km")) for r in players}
 week_by_id = {str(r.get("id")): num(r.get("weekKm")) for r in players if r.get("week") == week}
-month_by_id = {str(r.get("id")): month_xp(r) for r in players if month_xp(r) > 0}
+month_by_id = {str(r.get("id")): month_xp(r) for r in players if 0 < month_xp(r) < 1e9}
 teams_data = load(os.path.join(shared, "teams.json"))
 # Wochen- und Saisonwertung wie im Spiel: Mitglieder zaehlen erst ab der Woche bzw. Saison nach ihrem Beitritt.
 day0 = int(now // 86400) * 86400
@@ -4911,7 +4918,13 @@ week_start = day0 - time.gmtime(now).tm_wday * 86400
 month_start = day0 - (time.gmtime(now).tm_mday - 1) * 86400
 def counted(t, since):
     joined = t.get("joined") if isinstance(t.get("joined"), dict) else {}
-    return [str(i) for i in list(t["members"])[:200] if (num(joined.get(i)) or num(t.get("created"))) < since]
+    def ts(v):   # wie tonumber im Plugin: jede Zahl zaehlt (auch riesige = Zukunft), nur Fehlendes nicht
+        return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v else None
+    def at(i):
+        v = ts(joined.get(i))
+        v = ts(t.get("created")) if v is None else v
+        return 0 if v is None else v
+    return [str(i) for i in list(t["members"])[:200] if at(i) < since]
 teams, season_lead = [], None
 for t in (teams_data.get("teams") or {}).values() if isinstance(teams_data, dict) and isinstance(teams_data.get("teams"), dict) else []:
     if isinstance(t, dict) and isinstance(t.get("members"), dict) and t.get("name"):
@@ -5302,7 +5315,7 @@ if not (isinstance(rules, list) and len(rules) <= 10 and all(isinstance(r, str) 
 COMMANDS = [
     ("/hilfe", "Alle Befehle im Chat"), ("/start", "Einsteiger-Pfad: fünf kleine Schritte mit Bonus-XP für neue Fahrer"), ("/stats [Name]", "Deine Werte oder die eines anderen Fahrers"),
     ("/top [km|xp|speed|auftraege|konvoi|jagd|woche|vorwoche|teams]", "Bestenliste (XP, Kilometer, Spitze, Aufträge, Konvoi, Verfolgungsjagden, diese oder letzte Woche, Teams dieser Woche)"),
-    ("/liga", "Ligen und was dir bis zur nächsten fehlt"), ("/saison", "Saisonwertung des Monats"),
+    ("/liga", "Ligen und was dir bis zur nächsten fehlt"), ("/saison", "Saisonwertung des Monats mit führendem Team und deinem Abstand zum nächsten Platz – in den letzten 3 Tagen erinnert dich das Betreten an deinen Platz"),
     ("/aufgabe", "Tagesaufgabe mit Bonus-XP"), ("/erfolge", "Deine Erfolge"),
     ("/server", "Alle BeamNet-Server mit Map und Spielerzahl"), ("/wo &lt;Name&gt;", "Auf welchem Server fährt jemand gerade?"),
     ("/freund &lt;Name&gt;", "Freundesliste: Nachricht, sobald ein Freund irgendwo online kommt (/freund zeigt alle, /freund weg &lt;Name&gt; entfernt)"),

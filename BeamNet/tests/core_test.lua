@@ -2881,6 +2881,18 @@ do
     BN.seasonRanking = saved
     check(chatContains("^Du: Platz 2 mit 0 XP in dieser Saison$", 291), "/saison: eigener Platz")
     check(chatContains("^Noch 901 XP bis Platz 1$", 291), "/saison: Abstand zum naechsten Platz")
+    -- Liste bis 60 s alt: liegt man inzwischen vorn, kein Abstand ("Noch 1 XP")
+    local rec291 = BN.players[291].record
+    rec291.month, rec291.monthXp = BN.monthKey(), 100
+    BN.seasonRanking = function() return { { id = "803", name = "C", xp = 50 }, { id = "29191", name = "Saisonfrager", xp = 40 } } end
+    chatLog = {}
+    say(291, "/saison")
+    BN.seasonRanking = saved
+    check(not chatContains("^Noch %d+ XP bis Platz", 291), "/saison: kein Abstand, wenn man schon vorn liegt")
+    rec291.monthXp = 0
+    -- Saison-XP ueber einer Million zaehlen fuers Team (Kilometer-Grenze gilt nur fuer die Woche)
+    local big = BN.teamWeekRanking({ { id = "801", km = 2e6 } }, nil, nil, 1e9)[1]
+    check(big and big.name == "Saisonteam" and big.km == 2e6, "Team der Saison: grosse XP-Werte zaehlen")
     -- Restzeit der Saison (UTC) und Hinweis beim Betreten in den letzten Tagen
     eq(BN.seasonDaysLeft(BN.monthStartOf("2026-11") - 10), 1, "Saison-Restzeit: letzter Tag")
     eq(BN.seasonDaysLeft(BN.monthStartOf("2026-11") - 2 * 86400 - 10), 3, "Saison-Restzeit: drei Tage")

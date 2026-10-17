@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "2.02"
+BN.VERSION = "2.03"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -2353,7 +2353,7 @@ function BN.endSeason(month, quiet)
         -- Archiv festgehalten, damit alle Server und der Waechter dasselbe Team nennen.
         local entries = {}
         for _, e in ipairs(list) do entries[#entries + 1] = { id = e.id, km = e.xp } end
-        local best = BN.teamWeekRanking and BN.teamWeekRanking(entries, nil, BN.monthStartOf(month))[1]
+        local best = BN.teamWeekRanking and BN.teamWeekRanking(entries, nil, BN.monthStartOf(month), 1e9)[1]
         writeFileAtomic(path, json.encode({ month = month, top = top, at = BN.now(),
             team = best and { name = best.name, xp = math.floor(best.km) } or nil }))
     end
@@ -4478,11 +4478,12 @@ end
 -- Teams nach Kilometern einer Wochenwertung (BN.weekRanking): { {name, km, team, counted}, ... }, nur Teams mit
 -- Kilometern. Mit since (Wochenbeginn) zaehlen nur Mitglieder, die vorher beigetreten sind (joined[id], aeltere Teams:
 -- Gruendung) – wer erst waehrend der Woche dazukommt, zaehlt ab der naechsten. counted = gezaehlte Mitglieder.
-function BN.teamWeekRanking(list, teams, since)
+function BN.teamWeekRanking(list, teams, since, cap)
     local byId = {}
+    cap = cap or 1e6
     for _, e in ipairs(list or {}) do
         local km = tonumber(e.km) or 0
-        if e.id and km > 0 and km < 1e6 then byId[tostring(e.id)] = km end
+        if e.id and km > 0 and km < cap then byId[tostring(e.id)] = km end
     end
     local out = {}
     for _, t in pairs(teams or BN.loadTeams().teams) do
@@ -6209,7 +6210,7 @@ function commands.saison(pid)
         -- Fuehrendes Team (wie beim Saisonende: Mitglieder zaehlen ab Saisonbeginn)
         local entries = {}
         for _, e in ipairs(list) do entries[#entries + 1] = { id = e.id, km = e.xp } end
-        local best = BN.teamWeekRanking(entries, nil, BN.monthStartOf(month))[1]
+        local best = BN.teamWeekRanking(entries, nil, BN.monthStartOf(month), 1e9)[1]
         if best then say(pid, "🏅 Führendes Team: %s (%d XP)", best.name, math.floor(best.km)) end
     end
     if not s.guest then
@@ -6217,9 +6218,8 @@ function commands.saison(pid)
         for i, e in ipairs(list) do if e.id == s.id then rank = i end end
         say(pid, "Du: Platz %s mit %d XP in dieser Saison", rank and tostring(rank) or "–", math.floor(mine))
         -- Abstand zum naechsten Platz (bei Gleichstand entscheidet der Name, also einen XP mehr als der Vordermann)
-        if rank and rank > 1 then
-            say(pid, "Noch %d XP bis Platz %d", math.max(1, list[rank - 1].xp - math.floor(mine) + 1), rank - 1)
-        end
+        local gap = rank and rank > 1 and list[rank - 1].xp - math.floor(mine) + 1 or 0
+        if gap > 0 then say(pid, "Noch %d XP bis Platz %d", gap, rank - 1) end
     end
     local prev = previousMonthKey(now)
     local archive = json.decode(readFile(seasonFile(prev)) or "")

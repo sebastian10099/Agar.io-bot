@@ -2244,6 +2244,12 @@ lacks "$log" "Altmonat" "telegram /saison: alte Monate zaehlen nicht"
 contains "$log" '🏅 Führendes Team: Blitz \(700 XP\)' "telegram /saison: fuehrendes Team (neues Mitglied zaehlt noch nicht)"
 contains "$log" 'Letzte Saison \([A-Za-zä]+ [0-9]{4}\): 1\. Vorjahresheld \(1234 XP\) · Team: Altteam' "telegram /saison: Vorsaison"
 contains "$("$TOOL" saison 2>&1)" "^1\\. Zweiter – 900 XP$" "beamnet saison: dieselbe Wertung auf der Konsole"
+# Unicode-Zeilentrenner im Namen: im Index entfernt (sonst zerfiele die Zeile in Telegram-Listen)
+printf '{"id":"9104","name":"Tren\u2028ner","km":5,"month":"%s","monthXp":5}' "$mon" >"$T/root/shared/beamnet/players/9104.json"
+"$TOOL" watch >/dev/null 2>&1
+contains "$(cat "$T/root/shared/beamnet/players-index.tsv")" "^9104	Trenner	" "Index: Unicode-Zeilentrenner im Namen entfernt"
+contains "$("$TOOL" saison 2>&1)" "^3\\. Trenner – 5 XP$" "beamnet saison: Spieler mit Zeilentrenner im Namen bleibt drin"
+rm -f "$T/root/shared/beamnet/players/9104.json"
 rm -f "$T/root/shared/beamnet/seasons/$prevmon.json"
 if [[ -f $T/teams-tg.keep ]]; then cp "$T/teams-tg.keep" "$T/root/shared/beamnet/teams.json"; else rm -f "$T/root/shared/beamnet/teams.json"; fi
 rm -f "$T/root/shared/beamnet/players/910"[123].json "$T/root/shared/beamnet/community.json"
