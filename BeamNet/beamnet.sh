@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.79"
+VERSION="1.80"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2490,6 +2490,27 @@ except Exception:
     printf '%s\n' "$text"
 }
 
+# Naechster XP-Abend aus xpabend.json als Zeile ("🎉 Nächster XP-Abend: Fr 20:00–22:00 Uhr (2-fache XP)"), nur wenn
+# er hoechstens <Tage> Tage entfernt ist; sonst nichts.
+xpabend_line() {
+    { safe get "$SHARED/xpabend.json" 2>/dev/null || true; } | python3 -I -c '
+import json, sys, time
+try:
+    d = json.loads(sys.stdin.read(4096))
+    at, f, sec, days = float(d["next"]), float(d["factor"]), float(d["sec"]), float(sys.argv[1])
+except Exception:
+    sys.exit(0)
+now = time.time()
+if not (now < at <= now + days * 86400 and 1.5 <= f <= 5 and 0 < sec <= 6 * 3600):
+    sys.exit(0)
+day = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][time.localtime(at).tm_wday]
+if time.strftime("%F", time.localtime(at)) == time.strftime("%F", time.localtime(now)):
+    day = "heute"
+fs = ("%g" % f).replace(".", ",")
+print("🎉 Nächster XP-Abend: %s %s–%s Uhr (%s-fache XP)" % (day, time.strftime("%H:%M", time.localtime(at)),
+      time.strftime("%H:%M", time.localtime(at + sec)), fs))' "$1" 2>/dev/null
+}
+
 # Laeuft gerade ein XP-Event (event.json mit "until" in der Zukunft)?
 event_running() {
     [[ -f $SHARED/event.json ]] || return 1
@@ -3345,6 +3366,8 @@ PY
         [[ $peak =~ ^[0-9]+$ ]] && (( peak > 1 )) && line+=" · Spitze: $peak Spieler gleichzeitig"
         : >"$STATE_DIR/daily-$today"
         dout+=("📊 Heute im Netzwerk: $line")
+        line=$(xpabend_line 3)
+        [[ -n $line ]] && dout+=("   $line")
     fi
     find "$STATE_DIR" -maxdepth 1 -name 'daily-*' -mtime +7 -delete 2>/dev/null
     return 0

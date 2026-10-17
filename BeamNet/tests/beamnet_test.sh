@@ -1094,7 +1094,11 @@ echo "{\"tracks\":{\"A\":{\"records\":[{\"name\":\"Sebi\",\"time\":61.2,\"at\":$
 out=$(BEAMNET_HOUR=21 "$TOOL" watch 2>&1)
 lacks "$out" "Heute im Netzwerk" "daily: nicht vor 22 Uhr"
 [[ ! -f $T/watch/daily-$todaydate ]] && pass || fail "daily: vor der Uhrzeit nicht als erledigt markiert"
+"$TOOL" event auto täglich 23:59 2 2h >/dev/null 2>&1
 out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
+"$TOOL" event auto aus >/dev/null 2>&1
+contains "$out" "   🎉 Nächster XP-Abend: (heute|Mo|Di|Mi|Do|Fr|Sa|So) 23:59–[0-9]{2}:[0-9]{2} Uhr \\(2-fache XP\\)" "daily: naechster XP-Abend in der Zusammenfassung"
+rm -f "$T/root/shared/beamnet/xpabend.json"
 contains "$out" "📊 Heute im Netzwerk: 87\\.7 km von 4 Fahrern · Top: 1\\. Sebi \\(40\\.2 km\\) · 2\\. Max \\(30\\.0 km\\) · 3\\. Ana \\(12\\.0 km\\) · 2 neue Streckenrekorde · 5 Aufträge erledigt" "daily: Zusammenfassung (mit Aufträgen von heute)"
 lacks "$out" "Gestern|Fremd|Bo \\(" "daily: nur heute, kein Symlink, nur Top 3"
 contains "$(cat "$T/curl.log")" "Heute im Netzwerk" "daily: an Discord"
