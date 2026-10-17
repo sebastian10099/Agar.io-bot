@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "2.00"
+BN.VERSION = "2.01"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -950,6 +950,7 @@ local EN = {
     ["Saison %s (noch %d Tage):"] = "Season %s (%d days left):",
     ["Noch keine Punkte in dieser Saison – einfach losfahren!"] = "No points in this season yet – just start driving!",
     ["Du: Platz %s mit %d XP in dieser Saison"] = "You: rank %s with %d XP this season",
+    ["Noch %d XP bis Platz %d"] = "%d XP to go for rank %d",
     ["Letzte Saison (%s): %s"] = "Last season (%s): %s",
     ["Tagesaufgabe geschafft: %s. Die nächste kommt in %s."] = "Daily challenge done: %s. The next one comes in %s.",
     ["Tagesaufgabe: %s – %s/%s · noch %s · Belohnung %d XP"] = "Daily challenge: %s – %s/%s · %s left · reward %d XP",
@@ -6189,6 +6190,10 @@ function commands.saison(pid)
         local mine, rank = BN.totals(s).monthXp, nil
         for i, e in ipairs(list) do if e.id == s.id then rank = i end end
         say(pid, "Du: Platz %s mit %d XP in dieser Saison", rank and tostring(rank) or "–", math.floor(mine))
+        -- Abstand zum naechsten Platz (bei Gleichstand entscheidet der Name, also einen XP mehr als der Vordermann)
+        if rank and rank > 1 then
+            say(pid, "Noch %d XP bis Platz %d", math.max(1, list[rank - 1].xp - math.floor(mine) + 1), rank - 1)
+        end
     end
     local prev = previousMonthKey(now)
     local archive = json.decode(readFile(seasonFile(prev)) or "")

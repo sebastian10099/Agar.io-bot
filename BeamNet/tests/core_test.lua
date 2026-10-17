@@ -2874,6 +2874,13 @@ do
     say(291, "/saison")
     BN.seasonRanking = saved
     check(chatContains("^🏅 Führendes Team: Saisonteam %(800 XP%)$", 291), "/saison: fuehrendes Team")
+    -- Abstand zum naechsten Platz
+    BN.seasonRanking = function() return { { id = "803", name = "C", xp = 900 }, { id = "29191", name = "Saisonfrager", xp = 0 } } end
+    chatLog = {}
+    say(291, "/saison")
+    BN.seasonRanking = saved
+    check(chatContains("^Du: Platz 2 mit 0 XP in dieser Saison$", 291), "/saison: eigener Platz")
+    check(chatContains("^Noch 901 XP bis Platz 1$", 291), "/saison: Abstand zum naechsten Platz")
     _G[events.onPlayerDisconnect](291); players[291] = nil
     os.remove(SHARED .. "/players/29191.json"); BN.savedRecently["29191"] = nil
     if keep then writeJson(SHARED .. "/teams.json", keep) else os.remove(SHARED .. "/teams.json") end

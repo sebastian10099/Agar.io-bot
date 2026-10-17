@@ -291,7 +291,7 @@ beamnet restart all
 | `/erfolge [Name]` | Freigeschaltete Erfolge und die nächsten mit Fortschritt |
 | `/aufgabe` | Tagesaufgabe und Fortschritt |
 | `/heute` | Alles für heute auf einen Blick: Tagesaufgabe, XP-Event oder nächster XP-Abend, Bonus-Map, Tages-Serie, eigenes Team, Wochenziel (englisch `/today`) |
-| `/saison` | Saison-Tabelle (Monat), führendes Team, eigener Platz, Vorsaison |
+| `/saison` | Saison-Tabelle (Monat), führendes Team, eigener Platz und Abstand zum nächsten, Vorsaison |
 | `/vote map <Name>` | Abstimmung über eine andere Map starten (`/vote ja`, `/vote nein`; `/vote` zeigt Stand oder Maps) |
 
 Befehle anderer Plugins werden nicht abgefangen.
