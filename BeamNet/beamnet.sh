@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.85"
+VERSION="1.86"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2425,6 +2425,7 @@ watch_run() {
     watch_backup msgs
     watch_peak msgs
     watch_capacity msgs
+    watch_bonusmap msgs
     watch_online msgs
     watch_autoevent msgs
     watch_weekly msgs
@@ -2570,6 +2571,61 @@ cmd_event() {
             ;;
         *) die "Aufruf: beamnet event [start <Faktor> <Dauer>|stop|auto <Tage> <HH:MM> <Faktor> <Dauer>|auto aus]" ;;
     esac
+}
+
+# Bonus-Map des Tages: die Map der eingerichteten Server mit den wenigsten Spielerminuten der letzten 7 Tage (aus den
+# usage-Dateien) bekommt bis Mitternacht BONUS_MAP_FACTOR-fache XP beim Fahren (Standard 1.5) – so verteilen sich die
+# Spieler besser. Einmal am Tag; BONUS_MAP=0 schaltet ab. bonusmap.json liest das Plugin.
+watch_bonusmap() {
+    local -n bmout=$1
+    [[ -d $SHARED && ! -L $SHARED ]] || return 0
+    command -v python3 >/dev/null || return 0
+    local today factor nr mp maps=() pick until json where="" pct
+    today=$(date +%F)
+    [[ -f $STATE_DIR/bonusmap-$today ]] && return 0
+    : >"$STATE_DIR/bonusmap-$today"
+    find "$STATE_DIR" -maxdepth 1 -name 'bonusmap-*' -mtime +3 -delete 2>/dev/null
+    if [[ $(conf_get BONUS_MAP) == 0 ]]; then
+        printf '{"map":""}' | safe put "$SHARED/bonusmap.json" 664 "$SERVICE_USER" 2>/dev/null
+        return 0
+    fi
+    factor=$(conf_get BONUS_MAP_FACTOR)
+    if ! [[ $factor =~ ^[1-3](\.[0-9])?$ ]] || ! awk -v f="$factor" 'BEGIN { exit !(f > 1) }'; then factor=1.5; fi
+    for nr in $(servers); do
+        mp=$(map_short "$(cfg "$nr" Map)")
+        [[ -n $mp ]] && maps+=("$mp")
+    done
+    (( ${#maps[@]} > 0 )) || return 0
+    pick=$(python3 -I - "$STATE_DIR" "${maps[@]}" <<'PY' 2>/dev/null
+import datetime, os, re, sys
+state, maps = sys.argv[1], sorted(set(sys.argv[2:]))
+if len(maps) < 2:
+    sys.exit(0)                      # nur eine Map: kein Bonus noetig
+cut = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+minutes = {m: 0 for m in maps}
+for name in os.listdir(state):
+    d = re.fullmatch(r"usage-(\d{4}-\d{2}-\d{2})", name)
+    if not d or d.group(1) <= cut:
+        continue
+    try:
+        lines = open(os.path.join(state, name), encoding="utf-8", errors="replace").read(1 << 20).splitlines()
+    except OSError:
+        continue
+    for line in lines:
+        f = line.split()
+        if len(f) == 4 and f[1] in minutes and f[3].isdigit():
+            minutes[f[1]] += int(f[3])
+print(min(maps, key=lambda m: (minutes[m], m)))
+PY
+)
+    [[ $pick =~ ^[A-Za-z0-9_.-]+$ ]] || return 0
+    until=$(date -d "$(date -d tomorrow +%F) 00:00" +%s)
+    json="{\"map\":\"$pick\",\"factor\":$factor,\"until\":$until,\"day\":\"$today\"}"
+    printf '%s' "$json" | safe put "$SHARED/bonusmap.json" 664 "$SERVICE_USER" 2>/dev/null || return 0
+    for nr in $(servers); do [[ $(map_short "$(cfg "$nr" Map)") == "$pick" ]] && where+="${where:+, }$nr"; done
+    pct=$(awk -v f="$factor" 'BEGIN { printf "%d", (f - 1) * 100 + 0.5 }')
+    bmout+=("🗺️ Bonus-Map heute: $pick (Server $where) – +$pct % XP beim Fahren bis Mitternacht.")
+    return 0
 }
 
 # Naechsten geplanten XP-Abend fuer Plugin und Statusseite in xpabend.json schreiben ({"next":0} = keiner), nur wenn
@@ -3424,6 +3480,9 @@ NETWORK_REPORT=10
 # Automatischer XP-Abend (netzweites XP-Event nach Plan, eine Stunde vorher angekuendigt), z. B. "fr,sa 20:00 2 2h"
 # (Tage mo..so oder taeglich, Uhrzeit, Faktor 1,5-5, Dauer 10m-6h). Leer = aus. Einfacher: beamnet event auto ...
 AUTO_EVENT=
+# Bonus-Map des Tages: die am wenigsten gefahrene Map (7 Tage) bekommt beim Fahren BONUS_MAP_FACTOR-fache XP. 0 = aus.
+BONUS_MAP=1
+BONUS_MAP_FACTOR=1.5
 # 1 = ausgefallene Server automatisch neu starten (hoechstens 3x pro Stunde; nicht, wenn mit "beamnet stop"
 # gestoppt oder von OpenClaw gestoppt). 0 = nur melden.
 AUTO_RESTART=0

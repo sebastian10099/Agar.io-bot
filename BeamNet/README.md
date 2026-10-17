@@ -135,6 +135,10 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   („Nächster XP-Abend: Freitag 20:00–22:00 Uhr (2-fache XP)“), am selben Tag schon beim Betreten, und die Statusseite
   zeigt ihn unter „Demnächst“ (`xpabend.json`). Aus: `beamnet event auto aus`. Von Hand:
   `beamnet event start 2 2h`, `beamnet event stop`, Stand: `beamnet event`.
+- **Bonus-Map des Tages:** Jeden Tag bekommt die Map, die in den letzten 7 Tagen am wenigsten gefahren wurde, bis
+  Mitternacht +50 % XP beim Fahren („🗺️ Bonus-Map heute: east_coast_usa (Server 4) …“ an Discord/Telegram, im Spiel beim
+  Betreten und mit `/event`). So verteilen sich die Spieler besser auf die Server. `BONUS_MAP=0` schaltet ab,
+  `BONUS_MAP_FACTOR=1.5` (bis 3) ändert den Bonus.
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
 - Er meldet **Moderation** an Discord/Telegram: Bann (mit Dauer), Kick, Stummschaltung (auch automatisch wegen Spam)
   und Verwarnung, jeweils mit Admin, Grund und Server; dazu `/melden` aus dem Spiel, Ort-Vorschläge und

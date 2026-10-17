@@ -2824,6 +2824,38 @@ do
     for _, id in ipairs({ "18080", "18181" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
 end
 
+-- --- Bonus-Map des Tages (bonusmap.json vom Waechter) ----------------------------------------------------------
+do
+    writeJson(SHARED .. "/bonusmap.json", { map = "gridmap_v2", factor = 2, ["until"] = clock + 3600 })
+    BN.bonusMapAt = nil
+    players[182] = { name = "Bonusfahrer", ids = { beammp = "18282" }, vehicles = { [1] = { pos = { 130000, 0, 0 }, tim = 0 } } }
+    chatLog = {}
+    _G[events.onPlayerJoin](182)
+    check(chatContains("🗺️ Diese Map ist heute Bonus%-Map: %+100 %% XP beim Fahren!", 182), "Bonus-Map: Hinweis beim Betreten")
+    tick(1)
+    BN.players[182].lastSaveAt = clock + 100000            -- waehrend der Messung nicht speichern
+    local e0 = BN.players[182].pendingEventXp or 0
+    for _ = 1, 50 do move(182, 1, 20); tick(1) end       -- 1 km
+    near((BN.players[182].pendingEventXp or 0) - e0, C.xpPerKm + 50 / 60 * C.xpPerMinute, 0.2, "Bonus-Map: doppelte Kilometer- und Minuten-XP")
+    chatLog = {}
+    say(182, "/event")
+    check(chatContains("Bonus%-Map heute: gridmap_v2 %(%+100 %% XP beim Fahren%)", 182), "Bonus-Map: /event zeigt sie")
+    -- Andere Map: kein Bonus hier, aber Hinweis.
+    writeJson(SHARED .. "/bonusmap.json", { map = "italy", factor = 1.5, ["until"] = clock + 3600 })
+    BN.bonusMapAt = nil
+    e0 = BN.players[182].pendingEventXp or 0
+    for _ = 1, 50 do move(182, 1, 20); tick(1) end
+    near((BN.players[182].pendingEventXp or 0) - e0, 0, 0.01, "Bonus-Map: andere Map bringt hier nichts")
+    -- Abgelaufen: nichts.
+    writeJson(SHARED .. "/bonusmap.json", { map = "gridmap_v2", factor = 2, ["until"] = clock - 1 })
+    BN.bonusMapAt = nil
+    check(BN.bonusMap() == nil, "Bonus-Map: abgelaufen")
+    BN.players[182].pendingEventXp, BN.players[182].pendingKm, BN.players[182].pendingBonus = 0, 0, 0
+    _G[events.onPlayerDisconnect](182); players[182] = nil
+    os.remove(SHARED .. "/players/18282.json"); BN.savedRecently["18282"] = nil
+    os.remove(SHARED .. "/bonusmap.json"); BN.bonusMapAt, BN.bonusMapData = nil, nil
+end
+
 -- --- Rueckkehrer-Bonus ------------------------------------------------------------------------------------------
 do
     C.comebackXp = 50

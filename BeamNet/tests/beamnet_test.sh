@@ -1300,6 +1300,25 @@ cap 1 8 8; cap 2 8 8; cap 3 8 8
 contains "$("$TOOL" watch 2>&1)" "Alle Server sind voll – Zeit für einen weiteren Server\\?" "capacity: alle voll"
 rm -f "$S"/servers/*.json "$T/watch/capacity-high"
 
+# --- Bonus-Map des Tages (watch_bonusmap) ----------------------------------------------------------------------------
+B="$T/root/shared/beamnet/bonusmap.json"
+rm -f "$T"/watch/bonusmap-* "$T"/watch/usage-* "$B"
+for nr in 1 2 3 4 5 6; do
+    m=$(sed -n 's|^Map = "/levels/\([^/]*\)/.*|\1|p' "$T/root/$nr/ServerConfig.toml")
+    [[ $m == east_coast_usa ]] || echo "$nr $m 8 600" >>"$T/watch/usage-$(date -d '-1 days' +%Y-%m-%d)"
+done
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🗺️ Bonus-Map heute: east_coast_usa \\(Server 4\\) – \\+50 % XP beim Fahren bis Mitternacht\\." "bonusmap: am wenigsten gefahrene Map"
+python3 -c 'import json,sys,time; d=json.load(open(sys.argv[1])); assert d["map"]=="east_coast_usa" and d["factor"]==1.5 and time.time() < d["until"] <= time.time()+86400' "$B" \
+    && pass || fail "bonusmap: bonusmap.json fuer das Plugin"
+lacks "$("$TOOL" watch 2>&1)" "Bonus-Map" "bonusmap: einmal am Tag"
+rm -f "$T"/watch/bonusmap-*
+sed -i 's/^BONUS_MAP=.*/BONUS_MAP=0/' "$T/beamnet.conf"
+"$TOOL" watch >/dev/null 2>&1
+[[ $(cat "$B") == '{"map":""}' ]] && pass || fail "bonusmap: BONUS_MAP=0 schaltet ab"
+sed -i 's/^BONUS_MAP=.*/BONUS_MAP=1/' "$T/beamnet.conf"
+rm -f "$T"/watch/usage-* "$B"
+
 # --- Spiel-Einstellungen (beamnet config) -----------------------------------------------------------------------------
 CJ="$T/root/shared/beamnet/config.json"
 cp "$CJ" "$T/config.keep" 2>/dev/null || true

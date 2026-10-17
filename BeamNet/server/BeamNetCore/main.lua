@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.71"
+BN.VERSION = "1.72"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -794,6 +794,10 @@ local EN = {
     ["Das XP-Event ist vorbei – danke fürs Mitfahren!"] = "The XP event is over – thanks for driving!",
     ["XP-Event läuft: %s-fache XP bis %s Uhr."] = "XP event running: %sx XP until %s.",
     ["Gerade läuft kein XP-Event."] = "No XP event right now.",
+    ["🗺️ Diese Map ist heute Bonus-Map: +%d %% XP beim Fahren!"] = "🗺️ This map is today's bonus map: +%d %% XP while driving!",
+    ["🗺️ Bonus-Map heute: %s – +%d %% XP beim Fahren auf den Servern mit dieser Map (/server)."] =
+        "🗺️ Bonus map today: %s – +%d %% XP while driving on servers with this map (/server).",
+    ["Bonus-Map heute: %s (+%d %% XP beim Fahren)."] = "Bonus map today: %s (+%d %% XP while driving).",
     ["👋 Willkommen zurück! Du warst %d Tage weg – hier sind +%d XP zum Wiedereinstieg."] =
         "👋 Welcome back! You were away for %d days – here are +%d XP to get going again.",
     ["Nächster XP-Abend: %s %s–%s Uhr (%s-fache XP)"] = "Next XP evening: %s %s–%s (%sx XP)",
@@ -1431,9 +1435,33 @@ end
 -- Uebernimmt die seit dem letzten Aufruf gefahrene Strecke (BN.track sammelt sie je Fahrzeug in s.moved). Gezaehlt
 -- wird nur das Fahrzeug mit der groessten Strecke: Lkw mit Anhaenger oder mehrere Fahrzeuge zaehlen nicht mehrfach.
 -- XP-Event: Zusatz-XP genau fuer das, was waehrend des Events gefahren wird (nicht erst beim Speichern berechnet).
+-- Bonus-Map des Tages (bonusmap.json vom Waechter): { map, factor, until } oder nil; hoechstens einmal je Minute gelesen.
+function BN.bonusMap()
+    local now = BN.now()
+    if not BN.bonusMapAt or now - BN.bonusMapAt >= 60 then
+        BN.bonusMapAt = now
+        local d = json.decode(readFile(C.sharedDir .. "/bonusmap.json") or "")
+        local f, u = type(d) == "table" and tonumber(d.factor), type(d) == "table" and tonumber(d["until"])
+        BN.bonusMapData = (type(d) == "table" and type(d.map) == "string" and d.map:match("^[%w_.-]+$") and f and f > 1
+            and f <= 3 and u) and { map = d.map, factor = f, ["until"] = u } or nil
+    end
+    local b = BN.bonusMapData
+    if b and b["until"] > now then return b end
+    return nil
+end
+
+-- Faktor der Bonus-Map, wenn dieser Server sie gerade faehrt (sonst nil).
+function BN.bonusMapFactorHere()
+    local b = BN.bonusMap()
+    if b and BN.server.map == b.map then return b.factor end
+    return nil
+end
+
 function BN.eventGain(s, xp)
     local ev = BN.activeEvent and BN.activeEvent()
     if ev then s.pendingEventXp = (tonumber(s.pendingEventXp) or 0) + xp * (ev.factor - 1) end
+    local bf = BN.bonusMapFactorHere()
+    if bf then s.pendingEventXp = (tonumber(s.pendingEventXp) or 0) + xp * (bf - 1) end
 end
 
 local function flushMoved(s)
@@ -4137,6 +4165,8 @@ function commands.event(pid, arg)
             say(pid, "Gerade läuft kein XP-Event.")
             local e = BN.nextXpEvening()
             if e then chat(pid, xpEveningText(BN.langOf(pid), e)) end
+            local bm = BN.bonusMap()
+            if bm then say(pid, "Bonus-Map heute: %s (+%d %% XP beim Fahren).", bm.map, math.floor((bm.factor - 1) * 100 + 0.5)) end
         end
         return
     end
@@ -6120,6 +6150,16 @@ function BN_onPlayerJoin(pid)
     end
     BN.seasonRecap(s)
     BN.showNews(s)
+    -- Bonus-Map des Tages: hier oder auf welcher Map.
+    local bm = BN.bonusMap()
+    if bm then
+        local pct = math.floor((bm.factor - 1) * 100 + 0.5)
+        if BN.server.map == bm.map then
+            say(pid, "🗺️ Diese Map ist heute Bonus-Map: +%d %% XP beim Fahren!", pct)
+        else
+            say(pid, "🗺️ Bonus-Map heute: %s – +%d %% XP beim Fahren auf den Servern mit dieser Map (/server).", bm.map, pct)
+        end
+    end
     -- XP-Abend heute (spaetestens in 12 Stunden): Hinweis beim Betreten.
     local xe = BN.nextXpEvening()
     if xe and xe.at - BN.now() <= 12 * 3600 and os.date("%Y-%m-%d", xe.at) == os.date("%Y-%m-%d", BN.now()) then
