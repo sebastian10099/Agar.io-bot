@@ -697,12 +697,17 @@ lacks "$(cat "$T/web/index.html")" "Demnächst" "Statusseite: ohne Termine kein 
 lacks "$(cat "$T/web/hilfe.html")" "Bonus-Map des Tages" "Hilfeseite: ohne Bonus-Map kein Eintrag"
 # Bonus-Map des Tages unter Demnaechst und auf der Hilfeseite; abgelaufene nicht.
 echo "{\"map\":\"utah\",\"factor\":1.5,\"until\":$((now + 3600)),\"day\":\"x\"}" >"$T/root/shared/beamnet/bonusmap.json"
+echo italy >"$T/watch/bonusmap-$(date +%F)"
+"$TOOL" web run >/dev/null 2>&1
+lacks "$(cat "$T/web/index.html")" "Bonus-Map heute" "Statusseite: Bonus-Map nur, wenn der Waechter sie gewaehlt hat"
+echo utah >"$T/watch/bonusmap-$(date +%F)"
 "$TOOL" web run >/dev/null 2>&1
 contains "$(cat "$T/web/index.html")" "<td>jetzt</td><td>🗺️ Bonus-Map heute: utah – \\+50 % XP beim Fahren bis Mitternacht</td>" "Statusseite: Bonus-Map unter Demnächst"
 contains "$(cat "$T/web/hilfe.html")" "<li><b>Bonus-Map des Tages</b>" "Hilfeseite: Bonus-Map"
 echo "{\"map\":\"utah\",\"factor\":1.5,\"until\":$((now - 60)),\"day\":\"x\"}" >"$T/root/shared/beamnet/bonusmap.json"
 "$TOOL" web run >/dev/null 2>&1
 lacks "$(cat "$T/web/index.html")" "Bonus-Map heute" "Statusseite: abgelaufene Bonus-Map nicht"
+rm -f "$T/watch/bonusmap-$(date +%F)"
 lacks "$(cat "$T/web/hilfe.html")" "Bonus-Map des Tages" "Hilfeseite: abgelaufene Bonus-Map nicht"
 rm -f "$T/root/shared/beamnet/bonusmap.json"
 # Orte fuer Auftraege je Map (kaputte Eintraege und unbekannte Typen ignoriert).
@@ -1130,6 +1135,11 @@ lacks "$out" "Heute im Netzwerk" "daily: nicht vor 22 Uhr"
 out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
 "$TOOL" event auto aus >/dev/null 2>&1
 contains "$out" "   🎉 Nächster XP-Abend: (heute|Mo|Di|Mi|Do|Fr|Sa|So) 23:59–[0-9]{2}:[0-9]{2} Uhr \\(2-fache XP\\)" "daily: naechster XP-Abend in der Zusammenfassung"
+# Ein vom Dienst untergeschobener XP-Abend (xpabend.json im gemeinsamen Ordner) erscheint nicht in den Meldungen.
+echo "{\"next\":$(( now + 3600 )),\"factor\":5,\"sec\":3600}" >"$T/root/shared/beamnet/xpabend.json"
+rm -f "$T/watch/daily-$todaydate"
+out2=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
+lacks "$out2" "5-fache XP" "daily: untergeschobener XP-Abend nicht gemeldet"
 rm -f "$T/root/shared/beamnet/xpabend.json"
 contains "$out" "📊 Heute im Netzwerk: 87\\.7 km von 4 Fahrern · Top: 1\\. Sebi \\(40\\.2 km\\) · 2\\. Max 🔴 Server 1 ist ausgefallen \\(30\\.0 km\\) · 3\\. Ana \\(12\\.0 km\\) · 2 neue Streckenrekorde · 5 Aufträge erledigt" "daily: Zusammenfassung (mit Aufträgen von heute)"
 lacks "$out" "Gestern|Fremd|Bo \\(" "daily: nur heute, kein Symlink, nur Top 3"
@@ -1854,10 +1864,13 @@ lacks "$out" "guest123" "online: keine Gast-Namen"
 contains "$out" "🗺️ Maps: gridmap_v2 7/8 \(88 % 🔥\)" "online: volle Map markiert"
 lacks "$out" "⭐ Bonus" "online: ohne Bonus-Map keine Markierung"
 echo "{\"map\":\"gridmap_v2\",\"factor\":1.5,\"until\":$(( $(date +%s) + 3600 ))}" >"$T/root/shared/beamnet/bonusmap.json"
+cp "$T/watch/bonusmap-$(date +%F)" "$T/bm-stamp.keep" 2>/dev/null || : >"$T/bm-stamp.keep"
+echo gridmap_v2 >"$T/watch/bonusmap-$(date +%F)"
 echo 0 >"$T/watch/online-at"
 out=$(BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
 contains "$out" "🗺️ Maps: gridmap_v2 7/8 \(88 % 🔥\) ⭐ Bonus" "online: Bonus-Map markiert"
 rm -f "$T/root/shared/beamnet/bonusmap.json"
+cp "$T/bm-stamp.keep" "$T/watch/bonusmap-$(date +%F)"
 # Alle weg: einmal "niemand online", danach Ruhe.
 for f in 30814 30816; do echo "{\"port\":$f,\"players\":0,\"max\":8,\"names\":[],\"updated\":$(date +%s)}" >"$T/root/shared/beamnet/servers/$f.json"; done
 echo 0 >"$T/watch/online-at"
@@ -1985,10 +1998,15 @@ contains "$log" '"text":"⚡ XP-Event läuft: 2-fache XP bis [0-9:]+ Uhr \(von T
 contains "$log" '"text":"XP-Event beendet."' "telegram /event stop"
 contains "$("$TOOL" event 2>&1)" "Gerade läuft kein XP-Event" "telegram /event stop: beendet"
 echo "{\"map\":\"gridmap_v2\",\"factor\":2,\"until\":$(( $(date +%s) + 3600 ))}" >"$T/root/shared/beamnet/bonusmap.json"
+cp "$T/watch/bonusmap-$(date +%F)" "$T/bm-stamp.keep" 2>/dev/null || : >"$T/bm-stamp.keep"
+echo fremd >"$T/watch/bonusmap-$(date +%F)"
+lacks "$("$TOOL" event 2>&1)" "Bonus-Map" "event: Bonus-Map nur, wenn der Waechter sie gewaehlt hat"
+echo gridmap_v2 >"$T/watch/bonusmap-$(date +%F)"
 contains "$("$TOOL" event 2>&1)" "🗺️ Bonus-Map heute: gridmap_v2 \(\+100 % XP beim Fahren\)" "event: Bonus-Map im Stand"
 echo "{\"map\":\"gridmap_v2\",\"factor\":2,\"until\":$(( $(date +%s) - 1 ))}" >"$T/root/shared/beamnet/bonusmap.json"
 lacks "$("$TOOL" event 2>&1)" "Bonus-Map" "event: abgelaufene Bonus-Map nicht"
 rm -f "$T/root/shared/beamnet/bonusmap.json"
+cp "$T/bm-stamp.keep" "$T/watch/bonusmap-$(date +%F)"
 rm -f "$E"
 # Flutschutz: veraltete Befehle (Rueckstau) werden nicht beantwortet, hoechstens 3 je Absender und Lauf.
 cat >"$T/tg-updates.json" <<JSON

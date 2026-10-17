@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.93"
+VERSION="1.94"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2501,6 +2501,10 @@ except Exception:
 # Bonus-Map des Tages aus bonusmap.json als Zeile ("🗺️ Bonus-Map heute: utah (+50 % XP beim Fahren)"), solange sie
 # gilt; sonst nichts.
 bonusmap_line() {
+    # Nur die Map, die der Waechter heute selbst gewaehlt hat (bonusmap.json darf der Dienst aendern).
+    local own
+    own=$(tail -n 1 "$STATE_DIR/bonusmap-$(date +%F)" 2>/dev/null)
+    [[ $own =~ ^[A-Za-z0-9_.-]+$ ]] || return 0
     { safe get "$SHARED/bonusmap.json" 2>/dev/null || true; } | python3 -I -c '
 import json, re, sys, time
 try:
@@ -2508,14 +2512,15 @@ try:
     m, f, until = d["map"], float(d["factor"]), float(d["until"])
 except Exception:
     sys.exit(0)
-if isinstance(m, str) and re.fullmatch(r"[A-Za-z0-9_.-]+", m) and 1 < f <= 3 and time.time() < until:
-    print("🗺️ Bonus-Map heute: %s (+%d %% XP beim Fahren)" % (m, int((f - 1) * 100 + 0.5)))' 2>/dev/null
+if m == sys.argv[1] and re.fullmatch(r"[A-Za-z0-9_.-]+", m) and 1 < f <= 3 and time.time() < until:
+    print("🗺️ Bonus-Map heute: %s (+%d %% XP beim Fahren)" % (m, int((f - 1) * 100 + 0.5)))' "$own" 2>/dev/null
 }
 
 # Naechster XP-Abend aus xpabend.json als Zeile ("🎉 Nächster XP-Abend: Fr 20:00–22:00 Uhr (2-fache XP)"), nur wenn
 # er hoechstens <Tage> Tage entfernt ist; sonst nichts.
 xpabend_line() {
-    { safe get "$SHARED/xpabend.json" 2>/dev/null || true; } | python3 -I -c '
+    # Aus der eigenen Kopie (autoevent_publish), nicht aus dem gemeinsamen Ordner.
+    { head -c 4096 "$STATE_DIR/xpabend.json" 2>/dev/null || true; } | python3 -I -c '
 import json, sys, time
 try:
     d = json.loads(sys.stdin.read(4096))
@@ -2713,6 +2718,8 @@ autoevent_publish() {
     else
         json='{"next":0}'
     fi
+    # Eigene Kopie fuer die Meldungen (xpabend_line): die Datei im gemeinsamen Ordner darf der Dienst aendern.
+    { printf '%s' "$json" >"$STATE_DIR/xpabend.json"; } 2>/dev/null
     old=$(safe get "$SHARED/xpabend.json" 2>/dev/null | head -c 4096)
     [[ $old == "$json" ]] && return 0
     printf '%s' "$json" | safe put "$SHARED/xpabend.json" 664 "$SERVICE_USER" 2>/dev/null
@@ -4166,6 +4173,9 @@ for line in sys.stdin:
 web_generate() {
     command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
     mkdir -p "$WEB_DIR" || die "Kann $WEB_DIR nicht anlegen."
+    # Bonus-Map und XP-Abend nur nach den eigenen Angaben des Waechters (die Dateien im gemeinsamen Ordner darf der
+    # Dienst aendern).
+    BEAMNET_BONUS_OWN=$(tail -n 1 "$STATE_DIR/bonusmap-$(date +%F)" 2>/dev/null) BEAMNET_XPABEND="$STATE_DIR/xpabend.json" \
     python3 -I - "$SHARED" "$WEB_DIR/index.html" "${1:-BeamNet}" <<'PY'
 import glob, html, json, math, os, re, sys, time
 
@@ -4322,12 +4332,14 @@ if isinstance(ev, dict) and now < num(ev.get("until")) < now + 2 * 86400 and 1 <
     f = num(ev.get("factor"))
     fs = (f"{f:.1f}".replace(".", ",") if f != int(f) else str(int(f)))
     upcoming.append((now, f"🎉 XP-Event läuft: {fs}-fache XP bis {time.strftime('%H:%M', time.localtime(num(ev.get('until'))))} Uhr"))
-xa = load(os.path.join(shared, "xpabend.json"))
+xa = load(os.environ.get("BEAMNET_XPABEND") or os.path.join(shared, "xpabend.json"))
 if isinstance(xa, dict) and now < num(xa.get("next")) < now + 8 * 86400 and 1.5 <= num(xa.get("factor")) <= 5 and 0 < num(xa.get("sec")) <= 6 * 3600:
     f, at = num(xa.get("factor")), num(xa.get("next"))
     fs = (f"{f:.1f}".replace(".", ",") if f != int(f) else str(int(f)))
     upcoming.append((at, f"🎉 XP-Abend: {fs}-fache XP auf allen Servern bis {time.strftime('%H:%M', time.localtime(at + num(xa.get('sec'))))} Uhr"))
 bm = load(os.path.join(shared, "bonusmap.json"))
+if not (isinstance(bm, dict) and bm.get("map") == os.environ.get("BEAMNET_BONUS_OWN")):
+    bm = None
 if (isinstance(bm, dict) and isinstance(bm.get("map"), str) and __import__("re").fullmatch(r"[A-Za-z0-9_.-]+", bm["map"])
         and 1 < num(bm.get("factor")) <= 3 and now < num(bm.get("until")) < now + 2 * 86400):
     upcoming.append((now, f"🗺️ Bonus-Map heute: {E(bm['map'])} – +{int((num(bm.get('factor')) - 1) * 100 + 0.5)} % XP beim Fahren bis Mitternacht"))
@@ -4840,7 +4852,7 @@ if cv("communityXp", 100) > 0:
     bonus.append(f"<b>Wochenziel</b> (/ziel): +{g(cv('communityXp', 100))} für alle, die mitgefahren sind")
 if cv("comebackXp", 50) > 0:
     bonus.append(f"<b>Willkommen zurück</b>: nach {g(cv('comebackDays', 14))} Tagen Pause einmal +{g(cv('comebackXp', 50))}")
-xa = load(os.path.join(shared, "xpabend.json"))
+xa = load(os.environ.get("BEAMNET_XPABEND") or os.path.join(shared, "xpabend.json"))
 if isinstance(xa, dict) and now < num(xa.get("next")) < now + 8 * 86400 and 1.5 <= num(xa.get("factor")) <= 5:
     at = num(xa.get("next"))
     bonus.append(f"<b>XP-Abend</b>: {g(num(xa.get('factor')))}-fache XP am {['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][time.localtime(at).tm_wday]} ab {time.strftime('%H:%M', time.localtime(at))} Uhr")
