@@ -1993,7 +1993,7 @@ contains "$log" "getUpdates\\?offset=0" "telegram: holt neue Nachrichten"
 contains "$log" '"text":"👥 Gerade online: [0-9]+ Spieler' "telegram: /online beantwortet"
 contains "$log" '"text":"🏁 Bestenliste \(XP\):\\n1\. Vorn – 1000050 XP · 99999 km"' "telegram: /top aus dem Index"
 contains "$log" '"text":"🏆 Rekord: [0-9]+ Spieler gleichzeitig \([0-9.]+\) · heute bisher: [0-9]+"' "telegram: /rekord"
-contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute"' "telegram: /hilfe"
+contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute · /teams"' "telegram: /hilfe"
 contains "$log" '"text":"📊 BeamNet: [0-9]+ Spieler · [0-9]+ von [0-9]+ Servern belegt' "telegram: /server mit Netzwerk-Uebersicht"
 [[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat, anderer Bot und normaler Text ignoriert)"
 [[ $(cat "$T/watch/telegram-offset") == 18 ]] && pass || fail "telegram: Offset gemerkt (der 6. Befehl bleibt für den nächsten Lauf)"
@@ -2130,6 +2130,16 @@ contains "$log" '"text":"📅 KW [0-9]+: [0-9]+ Fahrer, zusammen [0-9]+,[0-9] km
 contains "$log" 'Zweiter – 7,5 km' "telegram /woche: zweiter Fahrer"
 lacks "$log" "Altwoche" "telegram /woche: alte Wochen zaehlen nicht"
 contains "$log" '🎯 Wochenziel für alle: [0-9]+,[0-9] km von 100,0 km \([0-9]+ %\)' "telegram /woche: Wochenziel"
+# /teams: Wochenwertung der Teams; wer erst diese Woche beigetreten ist, zaehlt noch nicht.
+cp "$T/root/shared/beamnet/teams.json" "$T/teams-tg.keep" 2>/dev/null || true
+echo "{\"teams\":{\"a\":{\"name\":\"Blitz\",\"created\":1,\"members\":{\"9101\":\"Wochenheld\",\"9102\":\"Zweiter\"},\"joined\":{\"9102\":$(date +%s)}},\"b\":{\"name\":\"Leer\",\"members\":{}}}}" >"$T/root/shared/beamnet/teams.json"
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":87,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/teams"}}]}
+JSON
+rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+contains "$(cat "$T/curl.log")" '"text":"🏅 Teams KW [0-9]+:\\n1\. Blitz – 42,5 km"' "telegram /teams: Wochenwertung (neues Mitglied zaehlt noch nicht)"
+if [[ -f $T/teams-tg.keep ]]; then cp "$T/teams-tg.keep" "$T/root/shared/beamnet/teams.json"; else rm -f "$T/root/shared/beamnet/teams.json"; fi
 rm -f "$T/root/shared/beamnet/players/910"[123].json "$T/root/shared/beamnet/community.json"
 # /spieler <Name>: Werte aus dem Bestenlisten-Index, fuer alle.
 cat >"$T/tg-updates.json" <<JSON

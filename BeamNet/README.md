@@ -115,7 +115,7 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   Kilometer, Fahrzeit, Spitze und Aufträge eines Spielers; **`/plaetze`** die Auslastung der letzten 30 Tage je Server und
   wo die Automatik mehr Plätze geben wird; **`/woche`** die Top 5 der Kalenderwoche nach Kilometern und den Stand des
   Wochenziels für alle; **`/heute`** Tagesaufgabe, laufendes XP-Event, Bonus-Map, nächsten XP-Abend und Wochenziel auf
-  einen Blick. Die Befehlsliste trägt der Wächter selbst bei Telegram ein (einmal je Version), Telegram
+  einen Blick; **`/teams`** die Teams nach Kilometern dieser Woche. Die Befehlsliste trägt der Wächter selbst bei Telegram ein (einmal je Version), Telegram
   schlägt die Befehle dann beim Tippen von „/“ vor – ohne Umweg über @BotFather.
 - **Netzwerk-Übersicht:** alle 10 Minuten (`NETWORK_REPORT=…`, 0 = aus), solange jemand spielt:
   ```
