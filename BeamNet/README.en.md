@@ -1,11 +1,13 @@
 # BeamNet – tool and plugin for BeamMP server networks
 
 BeamNet has two parts. **`beamnet`** is a command for the server console: it shows the state of all BeamMP servers,
-finds problems and fixes them. Its **watcher** reports outages, hanging servers, load, player records and moderation
-to **Discord and Telegram**, backs up the player data every day and builds a **status page**. **`BeamNetCore`** is a
+finds problems and fixes them. Its **watcher** reports outages, hanging servers, load, player records, moderation,
+new players and milestones to **Discord and Telegram**, posts a network overview every 10 minutes, answers questions in
+the Telegram chat (`/heute`, `/woche`, `/teams`, `/spieler` …), picks a **bonus map of the day**, runs scheduled **XP
+evenings**, gives update notices, backs up the player data every day and builds a **status page**. **`BeamNetCore`** is a
 server plugin shared by all servers: kilometres, driving time, XP and levels, leagues, leaderboards, seasons,
 achievements, daily challenges, time trials and group races, jobs (hospital, school, taxi …), chases, convoys, XP
-events and moderation (bans on all servers, reports, word filter, spam protection) – tested with 64 players and
+events, teams with a team of the week, `/today`, weekly and season recaps and moderation (bans on all servers, reports, word filter, spam protection) – tested with 64 players and
 5000 player files.
 
 ## Install
