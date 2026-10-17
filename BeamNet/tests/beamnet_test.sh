@@ -1922,7 +1922,7 @@ cat >"$T/tg-updates.json" <<'JSON'
  {"update_id":18,"message":{"chat":{"id":-1001234567890},"text":"/online"}}
 ]}
 JSON
-rm -f "$T/watch/telegram-offset"
+rm -f "$T/watch/telegram-offset" "$T/watch/telegram-commands"
 echo "BeamNetBot" >"$T/watch/telegram-bot"
 : >"$T/curl.log"
 "$TOOL" watch >/dev/null 2>&1
@@ -1936,8 +1936,11 @@ contains "$log" '"text":"📊 BeamNet: [0-9]+ Spieler · [0-9]+ von [0-9]+ Serve
 [[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat, anderer Bot und normaler Text ignoriert)"
 [[ $(cat "$T/watch/telegram-offset") == 18 ]] && pass || fail "telegram: Offset gemerkt (der 6. Befehl bleibt für den nächsten Lauf)"
 lacks "$log" "getMe" "telegram: Bot-Name nur einmal am Tag abgefragt"
+contains "$log" 'setMyCommands' "telegram: Befehlsliste fuer die Vorschlaege hinterlegt"
+contains "$log" '"command":"woche","description":"Wochenbeste und Wochenziel"' "telegram: Befehlsliste mit /woche"
 : >"$T/curl.log"; "$TOOL" watch >/dev/null 2>&1
 contains "$(cat "$T/curl.log")" "getUpdates\\?offset=18" "telegram: naechster Abruf ab dem Offset"
+lacks "$(cat "$T/curl.log")" "setMyCommands" "telegram: Befehlsliste nur einmal je Version"
 lacks "$(cat "$T/curl.argv")" "ABCDEFghijklmnop" "telegram: Token auch beim Abruf nie auf der Befehlszeile"
 # /ansage aus Telegram: nur fuer Konten aus TELEGRAM_ADMINS.
 now=$(date +%s)

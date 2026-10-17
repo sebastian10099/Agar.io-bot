@@ -114,8 +114,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   10m–6h) und beenden mit `/event stop`. **`/spieler <Name>`** (Teil des Namens reicht) zeigt Level, Liga, XP, Platz,
   Kilometer, Fahrzeit, Spitze und Aufträge eines Spielers; **`/plaetze`** die Auslastung der letzten 30 Tage je Server und
   wo die Automatik mehr Plätze geben wird; **`/woche`** die Top 5 der Kalenderwoche nach Kilometern und den Stand des
-  Wochenziels für alle. Tipp: in @BotFather mit
-  `/setcommands` die Befehle hinterlegen, dann schlägt Telegram sie vor.
+  Wochenziels für alle. Die Befehlsliste trägt der Wächter selbst bei Telegram ein (einmal je Version), Telegram
+  schlägt die Befehle dann beim Tippen von „/“ vor – ohne Umweg über @BotFather.
 - **Netzwerk-Übersicht:** alle 10 Minuten (`NETWORK_REPORT=…`, 0 = aus), solange jemand spielt:
   ```
   📊 BeamNet: 14 Spieler · 3 von 12 Servern belegt

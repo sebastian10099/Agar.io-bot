@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.95"
+VERSION="1.96"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3059,6 +3059,14 @@ watch_telegram() {
         if [[ -s $STATE_DIR/telegram-bot.new ]]; then mv "$STATE_DIR/telegram-bot.new" "$STATE_DIR/telegram-bot"; else rm -f "$STATE_DIR/telegram-bot.new"; fi
     fi
     botname=$(head -c 64 "$STATE_DIR/telegram-bot" 2>/dev/null | tr -cd 'A-Za-z0-9_')
+    # Befehlsliste einmal je Version bei Telegram hinterlegen (setMyCommands): Telegram schlaegt die Befehle dann beim
+    # Tippen von "/" vor – ohne Umweg ueber @BotFather.
+    if [[ $(cat "$STATE_DIR/telegram-commands" 2>/dev/null) != "$VERSION" ]]; then
+        if curl -fsS -m 10 -H "Content-Type: application/json" -d "$TG_COMMANDS_JSON" \
+            -K <(printf 'url = "https://api.telegram.org/bot%s/setMyCommands"\n' "$token") >/dev/null 2>&1; then
+            echo "$VERSION" >"$STATE_DIR/telegram-commands"
+        fi
+    fi
     raw=$(curl -fsS -m 10 -K <(printf 'url = "https://api.telegram.org/bot%s/getUpdates?offset=%s&timeout=0&allowed_updates=%%5B%%22message%%22%%5D"\n' "$token" "$offset") 2>/dev/null) || return 0
     local admins
     admins=$(conf_get TELEGRAM_ADMINS | tr -d ' ')
@@ -3150,6 +3158,9 @@ PY
     done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" "$admins" <<<"$raw" 2>/dev/null)
     return 0
 }
+
+# Befehle fuer die Vorschlagsliste in Telegram (setMyCommands).
+TG_COMMANDS_JSON='{"commands":[{"command":"online","description":"Wer gerade fährt"},{"command":"server","description":"Netzwerk-Übersicht: Server, Spieler, Maps"},{"command":"top","description":"Bestenliste (XP)"},{"command":"woche","description":"Wochenbeste und Wochenziel"},{"command":"spieler","description":"Werte eines Spielers: /spieler Name"},{"command":"event","description":"XP-Event, XP-Abend und Bonus-Map"},{"command":"rekord","description":"Spielerrekord"},{"command":"plaetze","description":"Auslastung und Spielerplätze"},{"command":"hilfe","description":"Alle Befehle"}]}'
 
 # Antwort von getUpdates -> "naechster Offset<TAB>Befehl" je Nachricht (Befehl leer, wenn nicht fuer uns).
 read -r -d '' TG_PARSE_PY <<'PY'
