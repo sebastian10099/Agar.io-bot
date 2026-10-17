@@ -65,7 +65,8 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
 - Map rotation, map votes from the chat and automatic player slots (only while a server is empty).
 - The Telegram bot answers `/online`, `/top`, `/rekord`, `/server`, `/event` (XP event running? next XP evening?) and
   `/spieler <name>` (level, league, XP, rank, kilometres, jobs of a player) and `/plaetze` (slot usage of the last 30
-  days and where the automatic slots will add more) in the configured chat. Accounts listed in
+  days and where the automatic slots will add more) and `/woche` (top 5 of the calendar week by kilometres and the
+  community weekly goal) in the configured chat. Accounts listed in
   `TELEGRAM_ADMINS` may also send `/ansage [HH:MM] <text>` (announcement on all servers) and `/event 2 2h` /
   `/event stop`.
 - **XP evenings:** `beamnet event auto fr,sa 20:00 2 2h` starts double XP on all servers every Friday and Saturday at

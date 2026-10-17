@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.89"
+VERSION="1.90"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3073,6 +3073,7 @@ watch_telegram() {
             event) reply=$(event_status_text) ;;
             spieler) reply=$(telegram_player "$arg") ;;
             plaetze) reply=$(telegram_slots) ;;
+            woche) reply=$(telegram_week) ;;
             eventset)
                 # Nur Telegram-Konten aus TELEGRAM_ADMINS: /event <Faktor> <Dauer> startet, /event stop beendet.
                 local esender=${arg%%$'\x1f'*} ef="" ed="" espec
@@ -3109,7 +3110,7 @@ print(f"🏆 Rekord: {best} Spieler gleichzeitig ({when}) · heute bisher: {toda
 PY
 )
                 ;;
-            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
+            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
         esac
         NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$reply" || true
     done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" "$admins" <<<"$raw" 2>/dev/null)
@@ -3159,6 +3160,8 @@ for u in data["result"][:100]:
             cmd = "event"
         elif word in ("plaetze", "platz", "slots"):
             cmd = "plaetze"
+        elif word in ("woche", "week", "kw"):
+            cmd = "woche"
         elif word in ("spieler", "player", "profil", "stats"):
             cmd, arg = "spieler", body[:32]
     print(f"{nxt}\t{cmd}\t{arg}")
@@ -3199,6 +3202,55 @@ if not rows:
 print("🏁 Bestenliste (XP):")
 for i, (xp, km, name) in enumerate(rows[:5], 1):
     print(f"{i}. {name} – {xp} XP · {km:.0f} km")
+PY
+}
+
+# /woche fuer Telegram: Top 5 der Kalenderwoche (ISO, UTC – wie im Plugin) nach Kilometern aus dem Bestenlisten-Index
+# und das Wochenziel fuer alle (community.json).
+telegram_week() {
+    python3 -I - "$SHARED/players-index.tsv" "$SHARED/community.json" <<'PY' 2>/dev/null || echo "Noch keine Wochenwertung."
+import datetime, json, os, stat, sys
+def read(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise OSError
+        return f.read(64 << 20).decode("utf-8", "replace")
+def km(v):
+    return f"{v:.1f}".replace(".", ",") + " km"
+year, wk, _ = datetime.datetime.now(datetime.timezone.utc).isocalendar()
+week = "%04d-W%02d" % (year, wk)
+rows = []
+try:
+    lines = read(sys.argv[1]).splitlines()[1:]
+except Exception:
+    lines = []
+for line in lines:
+    f = line.split("\t")
+    if len(f) not in (13, 14, 15, 17) or f[5] != week:
+        continue
+    try:
+        v = float(f[6] or 0)
+    except ValueError:
+        continue
+    if 0 < v < 1e6:
+        rows.append((v, f[1][:32]))
+rows.sort(key=lambda r: (-r[0], r[1]))
+total = sum(v for v, _ in rows)
+if rows:
+    print(f"📅 KW {wk}: {len(rows)} Fahrer, zusammen {km(total)}")
+    for i, (v, name) in enumerate(rows[:5], 1):
+        print(f"{i}. {name} – {km(v)}")
+else:
+    print(f"📅 KW {wk}: diese Woche ist noch niemand gefahren.")
+try:
+    cg = json.loads(read(sys.argv[2]))
+except Exception:
+    cg = None
+goal = cg.get("goal") if isinstance(cg, dict) and cg.get("week") == week else None
+if isinstance(goal, (int, float)) and not isinstance(goal, bool) and 0 < goal < 1e7:
+    pct = min(100, int(total / goal * 100))
+    print(f"🎯 Wochenziel für alle: {km(total)} von {km(goal)} ({pct} %)" + (" – geschafft! 🎉" if total >= goal else ""))
 PY
 }
 

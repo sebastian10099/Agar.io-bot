@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.89 / Plugin 1.74)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.90 / Plugin 1.74)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -57,6 +57,7 @@
       Prüfung: der Wächter merkt sich die Wahl selbst (nicht in der vom Dienst beschreibbaren Datei), wählt höchstens
       dreimal am Tag neu und läuft bei nur einer Map nicht jede Minute erneut los (Werkzeug 1.89).
 - [x] Wochen-Rückblick: beim ersten Besuch in einer neuen Woche Kilometer und Platz der Vorwoche (Plugin 1.74).
+- [x] `/woche` im Telegram-Chat: Top 5 der Kalenderwoche und Stand des Wochenziels (Werkzeug 1.90).
 - [x] `/plaetze` im Telegram-Chat: Auslastung der letzten 30 Tage je Server und Vorschlag der Plätze-Automatik
       (Werkzeug 1.85).
 - [x] Bestenlisten-Index Format 4 mit Konvoi-km und gewonnenen Jagden: `/top konvoi`, `/top jagd` im Spiel, „Meiste
