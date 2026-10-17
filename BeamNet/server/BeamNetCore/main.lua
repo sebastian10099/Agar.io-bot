@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.89"
+BN.VERSION = "1.90"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -3390,6 +3390,8 @@ function commands.stats(pid, arg)
         if streak >= 2 or (tonumber(s.record.bestStreak) or 0) >= 2 then
             say(pid, "Serie: %d Tage in Folge (beste: %d)", streak, math.max(streak, tonumber(s.record.bestStreak) or 0))
         end
+        local team = BN.teamNameOf and BN.teamNameOf(s.id)
+        if team then say(pid, "Team: %s (/team)", team) end
     end
 end
 
@@ -4372,6 +4374,12 @@ local function teamOf(data, id)
 end
 
 local function teamKey(name) return tostring(name):lower() end
+
+-- Name des Teams eines Spielers (oder nil), fuer /stats.
+function BN.teamNameOf(id)
+    local _, t = teamOf(BN.loadTeams(), id)
+    return t and tostring(t.name) or nil
+end
 
 local function memberCount(t)
     local n = 0
