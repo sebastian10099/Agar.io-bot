@@ -2246,6 +2246,13 @@ do
     BN.friendTick(true)
     check(chatContains("👥 Dein Teamkollege Remote ist jetzt online: BeamNet | Server 2", 86), "Team: Meldung, wenn ein Teamkollege online kommt")
     check(not chatContains("Teamkollege", 85), "Team: nur fuer Mitglieder (Freunde bekommen die Freundes-Meldung)")
+    -- Schnell weg und wieder da: innerhalb von 10 Minuten keine zweite Meldung.
+    hb({}, {})
+    BN.friendTick(true)
+    chatLog = {}
+    hb({ "Remote" }, { "9999" })
+    BN.friendTick(true)
+    check(not chatContains("Teamkollege Remote", 86), "Team: keine Meldungs-Flut bei schnellem Neuverbinden")
     if keepTeams then writeJson(SHARED .. "/teams.json", keepTeams) else os.remove(SHARED .. "/teams.json") end
     -- Gespeichert und beim naechsten Besuch: wer online ist.
     _G[events.onPlayerDisconnect](85)
@@ -2877,6 +2884,14 @@ do
     local f1 = readJson(SHARED .. "/players/19191.json")
     eq(f1.teamWeek, prev, "Team der Woche: Belohnung sofort gemerkt")
     eq(f1.teamWeeks, 1, "Team der Woche: gezaehlt (Erfolge)")
+    -- Frueher (vor 1.94) bekommen: nur der Merker – zaehlt nachtraeglich einmal.
+    writeJson(SHARED .. "/players/19292.json", { id = "19292", name = "Altsieger", km = 10, teamWeek = "2026-W01" })
+    BN.savedRecently["19292"] = nil
+    players[192] = { name = "Altsieger", ids = { beammp = "19292" }, vehicles = {} }
+    _G[events.onPlayerJoin](192)
+    eq(BN.totals(BN.players[192]).teamWeeks, 1, "Team der Woche: frueherer Sieg zaehlt nachtraeglich")
+    _G[events.onPlayerDisconnect](192); players[192] = nil
+    os.remove(SHARED .. "/players/19292.json"); BN.savedRecently["19292"] = nil
     BN.checkAchievements(BN.players[191])
     check(BN.hasAchievement(BN.players[191], "teamweek1"), "Team der Woche: Erfolg Teamplayer")
     _G[events.onPlayerDisconnect](191)

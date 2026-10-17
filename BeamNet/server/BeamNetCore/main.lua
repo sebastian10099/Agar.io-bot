@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.94"
+BN.VERSION = "1.95"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1269,6 +1269,8 @@ local function normalizeRecord(rec, id, name)
                          "convoyKm", "chaseWins", "bonusMapKm", "teamWeeks" }) do
         rec[k] = tonumber(rec[k]) or 0
     end
+    -- Team der Woche schon vor Plugin 1.94 bekommen (nur der Merker, noch kein Zaehler): einmal zaehlen.
+    if rec.teamWeeks == 0 and type(rec.teamWeek) == "string" and rec.teamWeek ~= "" then rec.teamWeeks = 1 end
     for _, k in ipairs({ "maps", "achievements", "dayMaps", "mapKm", "dayMapKm" }) do
         if type(rec[k]) ~= "table" then rec[k] = {} end
     end
@@ -5816,10 +5818,24 @@ function BN.friendsOnlineText(s, lang, online)
 end
 
 -- Prueft im Takt (alle friendCheckSec), wer neu im Netzwerk ist, und sagt es seinen Freunden auf diesem Server.
+-- Hoechstens eine "ist jetzt online"-Meldung je Empfaenger und Spieler in 10 Minuten (schnelles Neuverbinden oder ein
+-- Serverwechsel mit langem Laden wuerde sonst jedes Mal melden).
+BN.onlineNotified = BN.onlineNotified or {}
+local function notifyOnce(pid, id, now)
+    local key = tostring(pid) .. ":" .. tostring(id)
+    if now - (BN.onlineNotified[key] or -math.huge) < 600 then return false end
+    BN.onlineNotified[key] = now
+    return true
+end
+
 function BN.friendTick(force)
     local now = BN.now()
     if not force and now - (BN.lastFriendCheck or -math.huge) < C.friendCheckSec then return end
     BN.lastFriendCheck = now
+    if now - (BN.onlineNotifiedClean or 0) >= 600 then
+        BN.onlineNotifiedClean = now
+        for k, t in pairs(BN.onlineNotified) do if now - t >= 600 then BN.onlineNotified[k] = nil end end
+    end
     local online = BN.networkOnline()
     local before = BN.friendOnline
     BN.friendOnline = online
@@ -5827,7 +5843,7 @@ function BN.friendTick(force)
     for pid, s in pairs(BN.players) do
         for _, f in ipairs((s.record and s.record.friends) or {}) do
             local e = online[f.id]
-            if e and not before[f.id] then
+            if e and not before[f.id] and notifyOnce(pid, f.id, now) then
                 local lang = BN.langOf(pid)
                 if e.st then
                     local addr = C.publicHost ~= "" and (C.publicHost .. ":" .. tostring(e.st.port)) or tr(lang, "Port %s", tostring(e.st.port))
@@ -5856,7 +5872,7 @@ function BN.friendTick(force)
             for _, f in ipairs((s.record and s.record.friends) or {}) do friends[f.id] = true end
             for id in pairs(team.members) do
                 local e = online[id]
-                if e and not before[id] and id ~= s.id and not friends[id] then
+                if e and not before[id] and id ~= s.id and not friends[id] and notifyOnce(pid, id, now) then
                     local lang = BN.langOf(pid)
                     if e.st then
                         local addr = C.publicHost ~= "" and (C.publicHost .. ":" .. tostring(e.st.port)) or tr(lang, "Port %s", tostring(e.st.port))
@@ -6081,6 +6097,8 @@ function commands.heute(pid)
             say(pid, "🔥 Deine Serie: %d Tage – fahr heute %s, dann gibt es +%d Bonus-XP.", streak, fmtKm(C.streakMinKm),
                 C.streakXp * (math.min(streak + 1, C.streakMaxDays) - 1))
         end
+    end
+    if not s.guest then
         local team = BN.teamNameOf and BN.teamNameOf(s.id)
         if team then
             local km, rank = 0, nil
