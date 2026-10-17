@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.98"
+BN.VERSION = "1.99"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -691,6 +691,12 @@ local EN = {
     ["Du: %s im Konvoi gefahren, nächster Bonus in %s."] = "You: %s driven in convoys, next bonus in %s.",
     ["In der Nähe: %s"] = "Nearby: %s",
     ["Gerade niemand in deiner Nähe – /server zeigt, wo was los ist."] = "Nobody near you right now – /server shows where players are.",
+    ["Tipp: /heute – Tagesaufgabe, Bonus-Map, XP-Abend und Wochenziel auf einen Blick."] =
+        "Tip: /today – daily challenge, bonus map, XP evening and weekly goal at a glance.",
+    ["Tipp: Auf der Bonus-Map des Tages gibt es mehr XP beim Fahren – welche es ist, zeigt /heute."] =
+        "Tip: today's bonus map gives more XP while driving – /today shows which one.",
+    ["Tipp: Das Team der Woche bekommt montags Bonus-XP – Stand mit /team woche."] =
+        "Tip: the team of the week gets bonus XP on Mondays – standings with /team week.",
     ["Tipp: /konvoi – fahrt zusammen! Wer nah beieinander fährt, bekommt Bonus-XP."] =
         "Tip: /convoy – drive together! Driving close to each other gives bonus XP.",
     ["Konvoi: zusammen fahren gibt Bonus-XP – /konvoi"] = "Convoy: driving together gives bonus XP – /convoy",
@@ -5553,6 +5559,9 @@ BN.TIPS = {
     "Tipp: /vote map <Name> – stimmt für eine andere Map ab.",
     "Tipp: /team gründen <Name> – fahrt zusammen Kilometer für euer Team.",
     "Tipp: /konvoi – fahrt zusammen! Wer nah beieinander fährt, bekommt Bonus-XP.",
+    "Tipp: /heute – Tagesaufgabe, Bonus-Map, XP-Abend und Wochenziel auf einen Blick.",
+    "Tipp: Auf der Bonus-Map des Tages gibt es mehr XP beim Fahren – welche es ist, zeigt /heute.",
+    "Tipp: Das Team der Woche bekommt montags Bonus-XP – Stand mit /team woche.",
 }
 
 function BN.tipTick()

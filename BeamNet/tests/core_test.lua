@@ -4154,6 +4154,14 @@ local saved = readJson(SHARED .. "/players/3003.json")
 check(saved ~= nil, "Herunterfahren speichert")
 check(saved and saved.bonusXp >= 90 and saved.xp >= 90, "Bonus-XP gespeichert und in XP enthalten")
 
+-- Jeder Tipp und jede Neuheit hat eine englische Uebersetzung.
+do
+    local missing = {}
+    for _, tip in ipairs(BN.TIPS) do if BN.tr("en", tip) == tip then missing[#missing + 1] = tip end end
+    for _, n in ipairs(BN.NEWS) do if BN.tr("en", n[2]) == n[2] then missing[#missing + 1] = n[2] end end
+    check(#missing == 0, "Tipps und Neuheiten auf Englisch (" .. table.concat(missing, " | ") .. ")")
+end
+
 do
     local names = {}
     for k in pairs(undefinedGlobals) do names[#names + 1] = k end
