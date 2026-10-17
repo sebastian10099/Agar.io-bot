@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.74"
+VERSION="1.75"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2518,10 +2518,11 @@ cmd_event() {
         auto)
             need_root event
             shift
-            if [[ ${1:-} == aus || ${1:-} == off || ${1:-} == 0 ]]; then conf_set AUTO_EVENT ""; ok "Automatischer XP-Abend aus."; return 0; fi
+            if [[ ${1:-} == aus || ${1:-} == off || ${1:-} == 0 ]]; then conf_set AUTO_EVENT ""; autoevent_publish; ok "Automatischer XP-Abend aus."; return 0; fi
             spec="$*"
             autoevent_spec "$spec" >/dev/null || die "Aufruf: beamnet event auto <Tage, z. B. fr,sa oder täglich> <HH:MM> <Faktor 1,5–5> <Dauer 10m–6h> – z. B. beamnet event auto fr,sa 20:00 2 2h"
             conf_set AUTO_EVENT "$spec"
+            autoevent_publish
             ok "Automatischer XP-Abend: $spec – eine Stunde vorher kommt eine Ankündigung (Spiel, Discord/Telegram)."
             [[ -f $SYSTEMD_DIR/beamnet-watch.timer ]] || echo "Hinweis: Der XP-Abend braucht den Wächter – beamnet watch install"
             ;;
@@ -2529,11 +2530,38 @@ cmd_event() {
     esac
 }
 
+# Naechsten geplanten XP-Abend fuer Plugin und Statusseite in xpabend.json schreiben ({"next":0} = keiner), nur wenn
+# sich etwas aendert (der Waechter laeuft jede Minute).
+autoevent_publish() {
+    [[ -d $SHARED && ! -L $SHARED ]] || return 0
+    local spec days hh mm factor secs now off day start next=0 json old
+    now=${BEAMNET_NOW:-$(date +%s)}
+    if spec=$(autoevent_spec); then
+        read -r days hh mm factor secs <<<"$spec"
+        for off in 0 1 2 3 4 5 6 7; do
+            day=$(date -d "@$(( now + off * 86400 ))" +%F)
+            [[ ,$days, == *",$(date -d "$day 12:00" +%u),"* ]] || continue
+            start=$(date -d "$day $hh:$mm" +%s 2>/dev/null) || continue
+            if (( start > now )); then next=$start; break; fi
+        done
+    fi
+    if (( next > 0 )); then
+        json="{\"next\":$next,\"factor\":$factor,\"sec\":$secs}"
+    else
+        json='{"next":0}'
+    fi
+    old=$(safe get "$SHARED/xpabend.json" 2>/dev/null | head -c 4096)
+    [[ $old == "$json" ]] && return 0
+    printf '%s' "$json" | safe put "$SHARED/xpabend.json" 664 "$SERVICE_USER" 2>/dev/null
+    return 0
+}
+
 # Automatischer XP-Abend: eine Stunde vorher Ankuendigung (Discord/Telegram und im Spiel), zur Startzeit startet der
 # Waechter das netzweite XP-Event (in den ersten 10 Minuten; nicht, wenn schon eines laeuft). Jeweils einmal am Tag.
 watch_autoevent() {
     local -n aout=$1
     local spec days hh mm factor secs now start key endt nice off day
+    autoevent_publish
     spec=$(autoevent_spec) || return 0
     read -r days hh mm factor secs <<<"$spec"
     now=${BEAMNET_NOW:-$(date +%s)}
@@ -3806,6 +3834,11 @@ if isinstance(ev, dict) and now < num(ev.get("until")) < now + 2 * 86400 and 1 <
     f = num(ev.get("factor"))
     fs = (f"{f:.1f}".replace(".", ",") if f != int(f) else str(int(f)))
     upcoming.append((now, f"🎉 XP-Event läuft: {fs}-fache XP bis {time.strftime('%H:%M', time.localtime(num(ev.get('until'))))} Uhr"))
+xa = load(os.path.join(shared, "xpabend.json"))
+if isinstance(xa, dict) and now < num(xa.get("next")) < now + 8 * 86400 and 1.5 <= num(xa.get("factor")) <= 5 and 0 < num(xa.get("sec")) <= 6 * 3600:
+    f, at = num(xa.get("factor")), num(xa.get("next"))
+    fs = (f"{f:.1f}".replace(".", ",") if f != int(f) else str(int(f)))
+    upcoming.append((at, f"🎉 XP-Abend: {fs}-fache XP auf allen Servern bis {time.strftime('%H:%M', time.localtime(at + num(xa.get('sec'))))} Uhr"))
 upcoming.sort(key=lambda x: x[0])
 DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 upcoming_rows = [f"<tr><td>{'jetzt' if at <= now else DAYS[time.localtime(at).tm_wday] + ' ' + time.strftime('%d.%m. %H:%M', time.localtime(at))}</td><td>{t}</td></tr>"

@@ -2742,6 +2742,33 @@ do
     C.admins = savedAdmins
 end
 
+-- --- Naechster XP-Abend (xpabend.json vom Waechter) ----------------------------------------------------------
+do
+    writeJson(SHARED .. "/xpabend.json", { next = clock + 3600, factor = 2, sec = 7200 })
+    BN.xpEveningAt = nil
+    players[175] = { name = "Abendgast", ids = { beammp = "17575" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](175)
+    local today = os.date("%Y-%m-%d", clock + 3600) == os.date("%Y-%m-%d", clock)
+    if today then
+        check(chatContains("🎉 Nächster XP%-Abend: heute %d%d:%d%d–%d%d:%d%d Uhr %(2%-fache XP%)", 175), "XP-Abend: Hinweis beim Betreten")
+    else
+        check(not chatContains("XP%-Abend", 175), "XP-Abend: kein Hinweis, wenn er erst morgen ist")
+    end
+    chatLog = {}
+    say(175, "/event")
+    check(chatContains("Gerade läuft kein XP%-Event", 175) and chatContains("^Nächster XP%-Abend: %S+ %d%d:%d%d–%d%d:%d%d Uhr %(2%-fache XP%)", 175), "XP-Abend: /event zeigt den naechsten")
+    -- Vorbei oder ausgeschaltet: nichts mehr.
+    writeJson(SHARED .. "/xpabend.json", { next = 0 })
+    BN.xpEveningAt = nil
+    chatLog = {}
+    say(175, "/event")
+    check(not chatContains("Nächster XP%-Abend", 175), "XP-Abend: ausgeschaltet – kein Hinweis")
+    _G[events.onPlayerDisconnect](175); players[175] = nil
+    os.remove(SHARED .. "/players/17575.json"); BN.savedRecently["17575"] = nil
+    os.remove(SHARED .. "/xpabend.json"); BN.xpEveningAt, BN.xpEvening = nil, nil
+end
+
 -- --- Schicht: Auftraege in Folge -------------------------------------------------------------------------------
 do
     eq(BN.jobStreakBonus(2), 0, "Schicht: beim 2. noch nichts")

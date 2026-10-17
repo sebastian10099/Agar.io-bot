@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.65"
+BN.VERSION = "1.66"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -788,6 +788,10 @@ local EN = {
     ["Das XP-Event ist vorbei – danke fürs Mitfahren!"] = "The XP event is over – thanks for driving!",
     ["XP-Event läuft: %s-fache XP bis %s Uhr."] = "XP event running: %sx XP until %s.",
     ["Gerade läuft kein XP-Event."] = "No XP event right now.",
+    ["Nächster XP-Abend: %s %s–%s Uhr (%s-fache XP)"] = "Next XP evening: %s %s–%s (%sx XP)",
+    ["heute"] = "today",
+    ["Sonntag"] = "Sunday", ["Montag"] = "Monday", ["Dienstag"] = "Tuesday", ["Mittwoch"] = "Wednesday",
+    ["Donnerstag"] = "Thursday", ["Freitag"] = "Friday", ["Samstag"] = "Saturday",
     ["XP-Event beendet."] = "XP event ended.",
     ["Event konnte nicht gespeichert werden."] = "Event could not be saved.",
     ["Aufruf: /event <Faktor 1,5–5> <Dauer, z. B. 2h oder 90m, höchstens 24h> · /event stop"] =
@@ -4034,6 +4038,31 @@ end
 
 -- /event (alle): laufendes Event zeigen. /event <Faktor> <Dauer> (Admins): starten, z. B. /event 2 2h oder
 -- /event 1.5 90m. /event stop (Admins): beenden.
+-- Naechster geplanter XP-Abend (xpabend.json, schreibt der Waechter aus AUTO_EVENT): { at, factor, sec } oder nil.
+-- Hoechstens einmal je Minute gelesen.
+BN.WEEKDAYS = { "Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag" }
+function BN.nextXpEvening()
+    local now = BN.now()
+    if not BN.xpEveningAt or now - BN.xpEveningAt >= 60 then
+        BN.xpEveningAt = now
+        local d = json.decode(readFile(C.sharedDir .. "/xpabend.json") or "")
+        local at, f, sec = type(d) == "table" and tonumber(d.next), type(d) == "table" and tonumber(d.factor),
+            type(d) == "table" and tonumber(d.sec)
+        BN.xpEvening = (at and f and sec and f >= 1.5 and f <= 5 and sec > 0 and sec <= 6 * 3600)
+            and { at = at, factor = f, sec = sec } or nil
+    end
+    local e = BN.xpEvening
+    if e and e.at > now and e.at - now <= 8 * 86400 then return e end
+    return nil
+end
+
+local function xpEveningText(lang, e)
+    local day = tr(lang, BN.WEEKDAYS[tonumber(os.date("%w", e.at)) + 1])
+    if os.date("%Y-%m-%d", e.at) == os.date("%Y-%m-%d", BN.now()) then day = tr(lang, "heute") end
+    return tr(lang, "Nächster XP-Abend: %s %s–%s Uhr (%s-fache XP)", day, os.date("%H:%M", e.at),
+        os.date("%H:%M", e.at + e.sec), fmtFactor(e.factor))
+end
+
 function commands.event(pid, arg)
     local words = {}
     for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
@@ -4043,6 +4072,8 @@ function commands.event(pid, arg)
             say(pid, "XP-Event läuft: %s-fache XP bis %s Uhr.", fmtFactor(ev.factor), os.date("%H:%M", ev["until"]))
         else
             say(pid, "Gerade läuft kein XP-Event.")
+            local e = BN.nextXpEvening()
+            if e then chat(pid, xpEveningText(BN.langOf(pid), e)) end
         end
         return
     end
@@ -6003,6 +6034,11 @@ function BN_onPlayerJoin(pid)
     end
     BN.seasonRecap(s)
     BN.showNews(s)
+    -- XP-Abend heute (spaetestens in 12 Stunden): Hinweis beim Betreten.
+    local xe = BN.nextXpEvening()
+    if xe and xe.at - BN.now() <= 12 * 3600 and os.date("%Y-%m-%d", xe.at) == os.date("%Y-%m-%d", BN.now()) then
+        chat(pid, "🎉 " .. xpEveningText(BN.langOf(pid), xe))
+    end
     if s.isNew and not s.guest and C.tutorialXp > 0 and s.record.tutorial == nil then
         s.record.tutorial, s.tutorialStarted = {}, true
     end

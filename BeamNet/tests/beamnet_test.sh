@@ -1314,6 +1314,11 @@ contains "$("$TOOL" event auto fr 20:00 2 8h 2>&1)" "Aufruf: beamnet event auto"
 "$TOOL" event auto fr,sa 20:00 2 2h >/dev/null 2>&1
 contains "$(cat "$T/beamnet.conf")" "^AUTO_EVENT=fr,sa 20:00 2 2h$" "event auto: Plan gespeichert"
 contains "$("$TOOL" event 2>&1)" "Automatischer XP-Abend: fr,sa 20:00 2 2h" "event: Plan wird gezeigt"
+X="$T/root/shared/beamnet/xpabend.json"
+python3 -c 'import json,sys,time; d=json.load(open(sys.argv[1])); assert d["factor"]==2 and d["sec"]==7200 and time.time() < d["next"] < time.time() + 8*86400 and time.localtime(d["next"]).tm_hour == 20 and time.localtime(d["next"]).tm_wday in (4, 5)' "$X" \
+    && pass || fail "event auto: naechster XP-Abend in xpabend.json (fuer Plugin und Statusseite)"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" "🎉 XP-Abend: 2-fache XP auf allen Servern bis 22:00 Uhr" "event auto: XP-Abend unter Demnaechst auf der Statusseite"
 fri=$(date -d "next friday" +%F)
 start=$(date -d "$fri 20:00" +%s)
 out=$(BEAMNET_NOW=$(( start - 86400 * 2 )) BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
@@ -1360,6 +1365,7 @@ lacks "$out" "uid=" "map_short: kein Befehl aus dem Map-Namen"
 cp "$T/sc4.keep" "$T/root/4/ServerConfig.toml"
 "$TOOL" event auto aus >/dev/null 2>&1
 contains "$("$TOOL" event 2>&1)" "Automatischer XP-Abend: aus" "event auto aus"
+[[ $(cat "$X") == '{"next":0}' ]] && pass || fail "event auto aus: xpabend.json ohne naechsten Abend"
 rm -f "$E" "$A" "$T"/watch/autoevent-*
 
 # --- Taegliche Datensicherung und Wiederherstellung --------------------------------------------------------------------
