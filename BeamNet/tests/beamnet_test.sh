@@ -2047,7 +2047,7 @@ contains "$log" "getUpdates\\?offset=0" "telegram: holt neue Nachrichten"
 contains "$log" '"text":"👥 Gerade online: [0-9]+ Spieler' "telegram: /online beantwortet"
 contains "$log" '"text":"🏁 Bestenliste \(XP\):\\n1\. Vorn – 1000050 XP · 99999 km"' "telegram: /top aus dem Index"
 contains "$log" '"text":"🏆 Rekord: [0-9]+ Spieler gleichzeitig \([0-9.]+\) · heute bisher: [0-9]+"' "telegram: /rekord"
-contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute · /teams"' "telegram: /hilfe"
+contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute · /teams · /saison"' "telegram: /hilfe"
 contains "$log" '"text":"📊 BeamNet: [0-9]+ Spieler · [0-9]+ von [0-9]+ Servern belegt' "telegram: /server mit Netzwerk-Uebersicht"
 [[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat, anderer Bot und normaler Text ignoriert)"
 [[ $(cat "$T/watch/telegram-offset") == 18 ]] && pass || fail "telegram: Offset gemerkt (der 6. Befehl bleibt für den nächsten Lauf)"
@@ -2195,6 +2195,26 @@ JSON
 rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
 "$TOOL" watch >/dev/null 2>&1
 contains "$(cat "$T/curl.log")" '"text":"🏅 Teams KW [0-9]+:\\n1\. Blitz – 42,5 km"' "telegram /teams: Wochenwertung (neues Mitglied zaehlt noch nicht)"
+# /saison: Top der laufenden Saison aus dem Index, fuehrendes Team (spaeter Beigetretene zaehlen nicht), Vorsaison.
+mon=$(date -u +%Y-%m)
+prevmon=$(python3 -c 'import datetime; d = datetime.datetime.now(datetime.timezone.utc).replace(day=1) - datetime.timedelta(days=1); print(d.strftime("%Y-%m"))')
+echo "{\"id\":\"9101\",\"name\":\"Wochenheld\",\"km\":80,\"month\":\"$mon\",\"monthXp\":700}" >"$T/root/shared/beamnet/players/9101.json"
+echo "{\"id\":\"9102\",\"name\":\"Zweiter\",\"km\":30,\"month\":\"$mon\",\"monthXp\":900}" >"$T/root/shared/beamnet/players/9102.json"
+echo '{"id":"9103","name":"Altmonat","km":500,"month":"2000-01","monthXp":99999}' >"$T/root/shared/beamnet/players/9103.json"
+mkdir -p "$T/root/shared/beamnet/seasons"
+echo "{\"month\":\"$prevmon\",\"top\":[{\"id\":\"1\",\"name\":\"Vorjahresheld\",\"xp\":1234}],\"team\":{\"name\":\"Altteam\",\"xp\":2000}}" >"$T/root/shared/beamnet/seasons/$prevmon.json"
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":88,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/saison"}}]}
+JSON
+rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+log=$(cat "$T/curl.log")
+contains "$log" '"text":"🏆 Saison [A-Za-zä]+ [0-9]{4} \(noch [0-9]+ Tage\):\\n1\. Zweiter – 900 XP\\n2\. Wochenheld – 700 XP\\n' "telegram /saison: Saisonwertung"
+lacks "$log" "Altmonat" "telegram /saison: alte Monate zaehlen nicht"
+contains "$log" '🏅 Führendes Team: Blitz \(700 XP\)' "telegram /saison: fuehrendes Team (neues Mitglied zaehlt noch nicht)"
+contains "$log" 'Letzte Saison \([A-Za-zä]+ [0-9]{4}\): 1\. Vorjahresheld \(1234 XP\) · Team: Altteam' "telegram /saison: Vorsaison"
+contains "$("$TOOL" saison 2>&1)" "^1\\. Zweiter – 900 XP$" "beamnet saison: dieselbe Wertung auf der Konsole"
+rm -f "$T/root/shared/beamnet/seasons/$prevmon.json"
 if [[ -f $T/teams-tg.keep ]]; then cp "$T/teams-tg.keep" "$T/root/shared/beamnet/teams.json"; else rm -f "$T/root/shared/beamnet/teams.json"; fi
 rm -f "$T/root/shared/beamnet/players/910"[123].json "$T/root/shared/beamnet/community.json"
 # /spieler <Name>: Werte aus dem Bestenlisten-Index, fuer alle (mit Team aus teams.json).

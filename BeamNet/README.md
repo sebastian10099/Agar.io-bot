@@ -7,7 +7,7 @@ Zwei Teile, beide getestet:
 1. **`beamnet`** – ein Befehl für die Server-Konsole: zeigt den Zustand aller Server, findet Probleme und repariert sie.
    Dazu ein **Wächter**, der rund um die Uhr Ausfälle, hängende Server, Last, Spielerrekorde, Moderation, neue Spieler
    und Meilensteine an **Discord und Telegram** meldet, alle 10 Minuten zeigt, wer auf welchem Server fährt und welche
-   Maps voll sind, im Telegram-Chat Fragen beantwortet (`/heute`, `/woche`, `/teams`, `/spieler` …), täglich die
+   Maps voll sind, im Telegram-Chat Fragen beantwortet (`/heute`, `/woche`, `/teams`, `/saison`, `/spieler` …), täglich die
    Spielerdaten sichert, eine **Bonus-Map des Tages** wählt, **XP-Abende** nach Plan startet, Update-Hinweise gibt und
    eine **Statusseite** mit Bestenlisten, Profilen, Diagrammen und Hilfeseite erzeugt. Plugin-Updates gehen zuerst auf
    einen Testserver.
@@ -66,7 +66,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet plugin-disable <name>` / `plugin-enable <name>` | Plugin auf allen Servern ab- oder einschalten – verschiebt nur nach `Resources/Server.disabled`, löscht nichts |
 | `beamnet restore [JJJJ-MM-TT]` | Tägliche Datensicherungen anzeigen bzw. Spielerdaten auf einen Stand zurücksetzen (Server werden kurz gestoppt, der bisherige Stand bleibt daneben liegen). `beamnet restore <Datum> spieler <Name|ID>` holt nur einen Spieler zurück (z. B. nach einer kaputten Datei; kein Neustart, sein bisheriger Stand wird gesichert). `beamnet restore check [Datum]` stellt probeweise wieder her, ohne etwas zu schreiben (jeder Eintrag sicher, jede Spielerdatei lesbar); der Wächter macht das einmal je Woche mit der neuen Sicherung und meldet Fehler |
 | `beamnet players` | Wer gerade fährt: je Server mit Namen (mit BeamNetCore; `players json` = Rohdaten) |
-| `beamnet heute` · `woche` · `teams` | Überblick wie im Telegram-Chat: Boni von heute, Wochenbeste mit Wochenziel, Teams dieser Woche |
+| `beamnet heute` · `woche` · `teams` · `saison` | Überblick wie im Telegram-Chat: Boni von heute, Wochenbeste mit Wochenziel, Teams dieser Woche, Saisonwertung |
 | `beamnet backup` | Konfigurationen, Plugins und systemd-Dienste nach `/root/beamnet-backups` (die 20 neuesten bleiben) |
 | `beamnet install-core` | Installiert BeamNetCore auf allen Servern |
 | `beamnet openclaw status / pause / resume` | OpenClaw-Agent ansehen, anhalten (einfrieren, nichts wird gelöscht) und fortsetzen |
@@ -119,7 +119,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   Kilometer, Fahrzeit, Spitze und Aufträge eines Spielers; **`/plaetze`** die Auslastung der letzten 30 Tage je Server und
   wo die Automatik mehr Plätze geben wird; **`/woche`** die Top 5 der Kalenderwoche nach Kilometern und den Stand des
   Wochenziels für alle; **`/heute`** Tagesaufgabe, laufendes XP-Event, Bonus-Map, nächsten XP-Abend und Wochenziel auf
-  einen Blick; **`/teams`** die Teams nach Kilometern dieser Woche. Die Befehlsliste trägt der Wächter selbst bei Telegram ein (einmal je Version), Telegram
+  einen Blick; **`/teams`** die Teams nach Kilometern dieser Woche; **`/saison`** die Top 5 der laufenden Saison, das
+  führende Team und die Sieger der letzten Saison. Die Befehlsliste trägt der Wächter selbst bei Telegram ein (einmal je Version), Telegram
   schlägt die Befehle dann beim Tippen von „/“ vor – ohne Umweg über @BotFather.
 - **Netzwerk-Übersicht:** alle 10 Minuten (`NETWORK_REPORT=…`, 0 = aus), solange jemand spielt:
   ```
@@ -290,7 +291,7 @@ beamnet restart all
 | `/erfolge [Name]` | Freigeschaltete Erfolge und die nächsten mit Fortschritt |
 | `/aufgabe` | Tagesaufgabe und Fortschritt |
 | `/heute` | Alles für heute auf einen Blick: Tagesaufgabe, XP-Event oder nächster XP-Abend, Bonus-Map, Tages-Serie, eigenes Team, Wochenziel (englisch `/today`) |
-| `/saison` | Saison-Tabelle (Monat), eigener Platz, Vorsaison |
+| `/saison` | Saison-Tabelle (Monat), führendes Team, eigener Platz, Vorsaison |
 | `/vote map <Name>` | Abstimmung über eine andere Map starten (`/vote ja`, `/vote nein`; `/vote` zeigt Stand oder Maps) |
 
 Befehle anderer Plugins werden nicht abgefangen.

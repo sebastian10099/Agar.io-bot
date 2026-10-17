@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.99"
+BN.VERSION = "2.00"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -648,6 +648,7 @@ local EN = {
     ["%s steigt in die Liga %s auf!"] = "%s moved up to the %s league!",
     ["🏅 Team der Woche: %s (%s)"] = "🏅 Team of the week: %s (%s)",
     ["🏅 Team der Saison: %s (%d XP)"] = "🏅 Team of the season: %s (%d XP)",
+    ["🏅 Führendes Team: %s (%d XP)"] = "🏅 Leading team: %s (%d XP)",
     ["🏅 %d× Team der Woche"] = "🏅 %d× team of the week",
     ["Team: %s (/team)"] = "Team: %s (/team)",
     ["🏅 Dein Team %s war Team der Woche – danke fürs Mitfahren: +%d XP!"] = "🏅 Your team %s was team of the week – thanks for driving: +%d XP!",
@@ -6178,6 +6179,11 @@ function commands.saison(pid)
         say(pid, "Noch keine Punkte in dieser Saison – einfach losfahren!")
     else
         for i = 1, math.min(5, #list) do chat(pid, string.format("%d. %s – %d XP", i, tostring(list[i].name), list[i].xp)) end
+        -- Fuehrendes Team (wie beim Saisonende: Mitglieder zaehlen ab Saisonbeginn)
+        local entries = {}
+        for _, e in ipairs(list) do entries[#entries + 1] = { id = e.id, km = e.xp } end
+        local best = BN.teamWeekRanking(entries, nil, BN.monthStartOf(month))[1]
+        if best then say(pid, "🏅 Führendes Team: %s (%d XP)", best.name, math.floor(best.km)) end
     end
     if not s.guest then
         local mine, rank = BN.totals(s).monthXp, nil

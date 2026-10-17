@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.35"
+VERSION="2.36"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="1.99"
+CORE_VERSION="2.00"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3285,6 +3285,7 @@ watch_telegram() {
             woche) reply=$(telegram_week) ;;
             heute) reply=$(telegram_today) ;;
             teams) reply=$(telegram_teams) ;;
+            saison) reply=$(telegram_season) ;;
             eventset)
                 # Nur Telegram-Konten aus TELEGRAM_ADMINS: /event <Faktor> <Dauer> startet, /event stop beendet.
                 local esender=${arg%%$'\x1f'*} ef="" ed="" espec
@@ -3321,7 +3322,7 @@ print(f"🏆 Rekord: {best} Spieler gleichzeitig ({when}) · heute bisher: {toda
 PY
 )
                 ;;
-            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute · /teams${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
+            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute · /teams · /saison${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
         esac
         NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$reply" || true
     done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" "$admins" <<<"$raw" 2>/dev/null)
@@ -3329,7 +3330,7 @@ PY
 }
 
 # Befehle fuer die Vorschlagsliste in Telegram (setMyCommands).
-TG_COMMANDS_JSON='{"commands":[{"command":"online","description":"Wer gerade fährt"},{"command":"server","description":"Netzwerk-Übersicht: Server, Spieler, Maps"},{"command":"top","description":"Bestenliste (XP)"},{"command":"heute","description":"Tagesaufgabe, Bonus-Map, XP-Event und Wochenziel"},{"command":"woche","description":"Wochenbeste und Wochenziel"},{"command":"teams","description":"Teams dieser Woche"},{"command":"spieler","description":"Werte eines Spielers: /spieler Name"},{"command":"event","description":"XP-Event, XP-Abend und Bonus-Map"},{"command":"rekord","description":"Spielerrekord"},{"command":"plaetze","description":"Auslastung und Spielerplätze"},{"command":"hilfe","description":"Alle Befehle"}]}'
+TG_COMMANDS_JSON='{"commands":[{"command":"online","description":"Wer gerade fährt"},{"command":"server","description":"Netzwerk-Übersicht: Server, Spieler, Maps"},{"command":"top","description":"Bestenliste (XP)"},{"command":"heute","description":"Tagesaufgabe, Bonus-Map, XP-Event und Wochenziel"},{"command":"woche","description":"Wochenbeste und Wochenziel"},{"command":"teams","description":"Teams dieser Woche"},{"command":"saison","description":"Saisonwertung des Monats"},{"command":"spieler","description":"Werte eines Spielers: /spieler Name"},{"command":"event","description":"XP-Event, XP-Abend und Bonus-Map"},{"command":"rekord","description":"Spielerrekord"},{"command":"plaetze","description":"Auslastung und Spielerplätze"},{"command":"hilfe","description":"Alle Befehle"}]}'
 
 # Antwort von getUpdates -> "naechster Offset<TAB>Befehl" je Nachricht (Befehl leer, wenn nicht fuer uns).
 read -r -d '' TG_PARSE_PY <<'PY'
@@ -3381,6 +3382,8 @@ for u in data["result"][:100]:
             cmd = "heute"
         elif word in ("teams", "team"):
             cmd = "teams"
+        elif word in ("saison", "season", "monat"):
+            cmd = "saison"
         elif word in ("spieler", "player", "profil", "stats"):
             cmd, arg = "spieler", body[:32]
         # Flutschutz: aelter als 2 Minuten (Rueckstau) nicht mehr beantworten; hoechstens 3 Befehle je Absender und Lauf
@@ -3529,6 +3532,78 @@ else:
     print(f"🏅 Teams KW {wk}:")
     for i, (v, n) in enumerate(rows[:5], 1):
         print(f"{i}. {n} – " + f"{v:.1f}".replace(".", ",") + " km")
+PY
+}
+
+# /saison fuer Telegram: Top 5 der laufenden Saison (Monat, UTC – wie im Plugin) nach Saison-XP aus dem Index, das
+# fuehrende Team (Mitglieder zaehlen ab Saisonbeginn, wie im Plugin) und die Sieger der letzten Saison aus dem Archiv.
+telegram_season() {
+    python3 -I - "$SHARED/players-index.tsv" "$SHARED/teams.json" "$SHARED/seasons" <<'PY' 2>/dev/null || echo "Noch keine Saisonwertung."
+import calendar, datetime, json, os, re, stat, sys
+def read(path, limit=64 << 20):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise OSError
+        return f.read(limit).decode("utf-8", "replace")
+def num(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v else None
+def clean(s, n):
+    return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(s)).split())[:n]
+MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
+now = datetime.datetime.now(datetime.timezone.utc)
+month = now.strftime("%Y-%m")
+start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+left = calendar.monthrange(now.year, now.month)[1] - now.day + 1
+xp, names = {}, {}
+try:
+    lines = read(sys.argv[1]).splitlines()[1:]
+except Exception:
+    lines = []
+for line in lines:
+    f = line.split("\t")
+    if len(f) in (13, 14, 15, 17) and f[9] == month:
+        try:
+            v = float(f[10] or 0)
+        except ValueError:
+            continue
+        if 0 < v < 1e9:
+            xp[f[0]], names[f[0]] = int(v), clean(f[1], 32)
+rows = sorted(((v, names[i]) for i, v in xp.items()), key=lambda r: (-r[0], r[1]))
+print(f"🏆 Saison {MONTHS[now.month - 1]} {now.year} (noch {left} Tage):")
+if not rows:
+    print("Noch keine Punkte in dieser Saison.")
+for i, (v, n) in enumerate(rows[:5], 1):
+    print(f"{i}. {n} – {v} XP")
+try:
+    teams = json.loads(read(sys.argv[2])).get("teams")
+except Exception:
+    teams = None
+best = None
+for t in (teams.values() if isinstance(teams, dict) else []):
+    if not (isinstance(t, dict) and isinstance(t.get("members"), dict) and isinstance(t.get("name"), str)):
+        continue
+    joined = t.get("joined") if isinstance(t.get("joined"), dict) else {}
+    total = sum(xp.get(str(i), 0) for i in list(t["members"])[:200]
+                if (num(joined.get(i)) or num(t.get("created")) or 0) < start.timestamp())
+    name = clean(t["name"], 24)
+    if total > 0 and name and (best is None or (-total, name) < (-best[0], best[1])):
+        best = (total, name)
+if best:
+    print(f"🏅 Führendes Team: {best[1]} ({best[0]} XP)")
+prev = (start - datetime.timedelta(days=1)).strftime("%Y-%m")
+try:
+    a = json.loads(read(os.path.join(sys.argv[3], prev + ".json"), 1 << 20))
+except Exception:
+    a = None
+top = a.get("top") if isinstance(a, dict) and isinstance(a.get("top"), list) else []
+parts = [f"{i}. {clean(e.get('name', '?'), 32)} ({int(num(e.get('xp')) or 0)} XP)"
+         for i, e in enumerate(top[:3], 1) if isinstance(e, dict) and 0 <= (num(e.get("xp")) or 0) < 1e9]
+if parts:
+    team = a.get("team")
+    tname = clean(team.get("name"), 24) if isinstance(team, dict) and isinstance(team.get("name"), str) else ""
+    print(f"Letzte Saison ({MONTHS[int(prev[5:7]) - 1]} {prev[:4]}): " + " · ".join(parts)
+          + (f" · Team: {tname}" if tname else ""))
 PY
 }
 
@@ -5417,7 +5492,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet plugin-disable <name>  Plugin auf allen Servern abschalten (verschiebt nach Server.disabled)
   beamnet plugin-enable <name>   … und wieder einschalten
   beamnet players [json]         Wer gerade fährt, je Server mit Namen (mit Plugin BeamNetCore)
-  beamnet heute · woche · teams  Überblick wie im Telegram-Chat: Boni von heute, Wochenbeste, Teams dieser Woche
+  beamnet heute|woche|teams|saison  Überblick wie im Telegram-Chat (Boni, Wochenbeste, Teams, Saison)
   beamnet backup                 Sichert Konfigurationen, Plugins und Dienste nach $BACKUP_DIR
   beamnet restore [JJJJ-MM-TT|check]   Tägliche Datensicherungen anzeigen, prüfen oder einen Stand zurückholen
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, Moderation) auf allen Servern
@@ -5461,6 +5536,7 @@ main() {
         heute|today) telegram_today ;;
         woche|week) telegram_week ;;
         teams) telegram_teams ;;
+        saison|season) telegram_season ;;
         logs|log) cmd_logs "$@" ;;
         plugins) cmd_plugins ;;
         plugin-disable) cmd_plugin_toggle disable "$@" ;;

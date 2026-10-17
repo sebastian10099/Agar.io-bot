@@ -3,7 +3,7 @@
 BeamNet has two parts. **`beamnet`** is a command for the server console: it shows the state of all BeamMP servers,
 finds problems and fixes them. Its **watcher** reports outages, hanging servers, load, player records, moderation,
 new players and milestones to **Discord and Telegram**, posts a network overview every 10 minutes, answers questions in
-the Telegram chat (`/heute`, `/woche`, `/teams`, `/spieler` …), picks a **bonus map of the day**, runs scheduled **XP
+the Telegram chat (`/heute`, `/woche`, `/teams`, `/saison`, `/spieler` …), picks a **bonus map of the day**, runs scheduled **XP
 evenings**, gives update notices, backs up the player data every day and builds a **status page**. **`BeamNetCore`** is a
 server plugin shared by all servers: kilometres, driving time, XP and levels, leagues, leaderboards, seasons,
 achievements, daily challenges, time trials and group races, jobs (hospital, school, taxi …), chases, convoys, XP
@@ -35,7 +35,7 @@ a new plugin version goes to one test server first and only then to the others).
 | `beamnet fix` | Stops stray server processes, resets file permissions, sets up log rotation, enables autostart and starts everything cleanly via systemd |
 | `beamnet start / stop / restart [nr … \| all]` | Control servers; `stop` and `restart` ask first |
 | `beamnet players` | Who is driving right now, per server with names (`players json` = raw data) |
-| `beamnet heute` · `woche` · `teams` | Same overviews as in the Telegram chat: today's bonuses, weekly best with the weekly goal, teams this week |
+| `beamnet heute` · `woche` · `teams` · `saison` | Same overviews as in the Telegram chat: today's bonuses, weekly best with the weekly goal, teams this week, season standings |
 | `beamnet backup` | Saves configurations, plugins and systemd services to `/root/beamnet-backups` |
 | `beamnet restore [YYYY-MM-DD]` | Lists the daily data backups or rolls the player data back to one; `beamnet restore <date> spieler <name|id>` restores a single player (no restart); `beamnet restore check` test-restores without writing anything |
 | `beamnet install-core` | Installs BeamNetCore on all servers |
@@ -70,7 +70,8 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
   `/spieler <name>` (level, league, XP, rank, kilometres, jobs of a player) and `/plaetze` (slot usage of the last 30
   days and where the automatic slots will add more) and `/woche` (top 5 of the calendar week by kilometres and the
   community weekly goal) and `/heute` (daily challenge, XP event, bonus map, next XP evening and weekly goal at a
-  glance) and `/teams` (teams by kilometres this week) in the configured chat. The watcher registers this command list with Telegram itself (once
+  glance), `/teams` (teams by kilometres this week) and `/saison` (top 5 of the running season, the leading team and
+  last season's winners) in the configured chat. The watcher registers this command list with Telegram itself (once
   per version), so Telegram suggests the commands when you type "/". Accounts listed in
   `TELEGRAM_ADMINS` may also send `/ansage [HH:MM] <text>` (announcement on all servers) and `/event 2 2h` /
   `/event stop`.
@@ -99,7 +100,7 @@ Every player can switch to English with `/lang en`; the German commands work too
 | `/stats [name]` | Level, league, XP, kilometres, driving time, top speed, rank, XP to the next level |
 | `/top [km \| xp \| speed \| jobs \| convoy \| chase \| week \| teams]` | Leaderboard (top 5); `teams` = teams this week |
 | `/league` | All leagues and how far it is to the next one |
-| `/season` | Season table (calendar month), your place, last season's winners |
+| `/season` | Season table (calendar month), leading team, your place, last season's winners |
 | `/server` | All BeamNet servers with map and player count (switch servers in the BeamMP launcher) |
 | `/where <name>` | Which server is a friend on right now? |
 | `/km` | Your kilometres |

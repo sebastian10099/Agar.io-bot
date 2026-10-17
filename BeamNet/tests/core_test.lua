@@ -2866,6 +2866,16 @@ do
     check(a and a.team and a.team.name == "Saisonteam" and a.team.xp == 800, "Team der Saison: im Archiv (spaeter Beigetretene zaehlen nicht)")
     check(chatContains("🏅 Team der Saison: Saisonteam %(800 XP%)"), "Team der Saison: angesagt")
     os.remove(SHARED .. "/seasons/2000-02.json")
+    -- /saison nennt das fuehrende Team der laufenden Saison (gleiche Regel: spaeter Beigetretene zaehlen nicht)
+    players[291] = { name = "Saisonfrager", ids = { beammp = "29191" }, vehicles = {} }
+    _G[events.onPlayerJoin](291)
+    BN.seasonRanking = function() return { { id = "803", name = "C", xp = 900 }, { id = "801", name = "A", xp = 500 }, { id = "802", name = "B", xp = 300 } } end
+    chatLog = {}
+    say(291, "/saison")
+    BN.seasonRanking = saved
+    check(chatContains("^🏅 Führendes Team: Saisonteam %(800 XP%)$", 291), "/saison: fuehrendes Team")
+    _G[events.onPlayerDisconnect](291); players[291] = nil
+    os.remove(SHARED .. "/players/29191.json"); BN.savedRecently["29191"] = nil
     if keep then writeJson(SHARED .. "/teams.json", keep) else os.remove(SHARED .. "/teams.json") end
 end
 
