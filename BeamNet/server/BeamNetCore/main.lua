@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.95"
+BN.VERSION = "1.96"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -502,6 +502,19 @@ local function weekStartAt(t)
 end
 BN.weekStartAt = weekStartAt
 
+-- Beginn (1., 00:00 UTC) eines Monats "2026-10" als Zeitstempel (ohne Zeitzone von os.time), sonst nil.
+function BN.monthStartOf(month)
+    local y, m = tostring(month):match("^(%d%d%d%d)%-(%d%d)$")
+    y, m = tonumber(y), tonumber(m)
+    if not y or m < 1 or m > 12 then return nil end
+    if m <= 2 then y = y - 1 end
+    local era = math.floor(y / 400)
+    local yoe = y - era * 400
+    local doy = math.floor((153 * (m + (m > 2 and -3 or 9)) + 2) / 5)
+    local doe = yoe * 365 + math.floor(yoe / 4) - math.floor(yoe / 100) + doy
+    return (era * 146097 + doe - 719468) * 86400
+end
+
 -- Beginn der Woche mit dem Schluessel week ("2026-W42"), gesucht rueckwaerts ab jetzt (hoechstens ein Jahr), sonst nil.
 function BN.weekStartOf(week)
     local t = BN.now()
@@ -634,6 +647,7 @@ local EN = {
     ["%s ist jetzt Level %d!"] = "%s reached level %d!",
     ["%s steigt in die Liga %s auf!"] = "%s moved up to the %s league!",
     ["🏅 Team der Woche: %s (%s)"] = "🏅 Team of the week: %s (%s)",
+    ["🏅 Team der Saison: %s (%d XP)"] = "🏅 Team of the season: %s (%d XP)",
     ["🏅 Dein Team %s war Team der Woche – danke fürs Mitfahren: +%d XP!"] = "🏅 Your team %s was team of the week – thanks for driving: +%d XP!",
     ["Wochensieger %s: %s"] = "Winners of %s: %s",
     ["KW %s"] = "week %s",
@@ -2294,12 +2308,23 @@ function BN.endSeason(month, quiet)
         ensureDir(C.sharedDir .. "/seasons")
         local top = {}
         for i = 1, math.min(10, #list) do top[i] = list[i] end
-        writeFileAtomic(path, json.encode({ month = month, top = top, at = BN.now() }))
+        -- Team der Saison: meiste Saison-XP seiner Mitglieder (nur wer schon vor Saisonbeginn im Team war); einmal im
+        -- Archiv festgehalten, damit alle Server und der Waechter dasselbe Team nennen.
+        local entries = {}
+        for _, e in ipairs(list) do entries[#entries + 1] = { id = e.id, km = e.xp } end
+        local best = BN.teamWeekRanking and BN.teamWeekRanking(entries, nil, BN.monthStartOf(month))[1]
+        writeFileAtomic(path, json.encode({ month = month, top = top, at = BN.now(),
+            team = best and { name = best.name, xp = math.floor(best.km) } or nil }))
     end
     if quiet then return true end
     local parts = {}
     for i = 1, math.min(3, #list) do parts[#parts + 1] = string.format("%d. %s (%d XP)", i, list[i].name, list[i].xp) end
     sayEach(function(lang) return tr(lang, "Saison %s beendet! %s", BN.seasonName(month, lang), table.concat(parts, " · ")) end)
+    local a = json.decode(readFile(path) or "")
+    local team = type(a) == "table" and type(a.team) == "table" and type(a.team.name) == "string" and a.team or nil
+    if team then
+        sayEach(function(lang) return tr(lang, "🏅 Team der Saison: %s (%d XP)", team.name:sub(1, 64), math.floor(tonumber(team.xp) or 0)) end)
+    end
     return true
 end
 

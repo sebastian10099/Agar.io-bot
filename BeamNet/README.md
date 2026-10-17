@@ -180,7 +180,7 @@ beamnet watch test         # Testnachricht an Discord/Telegram
 - Er kämpft nicht gegen OpenClaw: Hat der Agent einen Server gestoppt, meldet er das, startet aber nicht neu.
 - Montags postet er die **Wochensieger** der Vorwoche und die Zahlen der Woche (Fahrer, Kilometer, Spitze gleichzeitig,
   neue Fahrer) und das **Team der Woche** (meiste Kilometer seiner Mitglieder) nach Discord/Telegram, am 1. jedes Monats
-  die **Saisonsieger**.
+  die **Saisonsieger** mit dem **Team der Saison**.
 - Er schreibt jede Minute den **Bestenlisten-Index** (`players-index.tsv`): Die Server lesen dann eine kleine Datei
   statt aller Spielerdateien – wichtig bei vielen Spielern (10 000 Spieler: 0,07 s statt 1,4 s je Liste). Ohne
   Wächter funktioniert alles weiter wie bisher, nur langsamer.

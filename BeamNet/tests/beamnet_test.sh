@@ -425,12 +425,13 @@ lacks "$out" "Wochensieger" "watch: Wochensieger nur einmal"
 # Saisonsieger am 1. des Monats nach Discord (aus dem Archiv, sonst aus den Spielerdaten; einmal je Monat).
 prevmonth=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
 mkdir -p "$T/root/shared/beamnet/seasons"
-echo "{\"month\":\"$prevmonth\",\"top\":[{\"name\":\"Sebi\",\"xp\":900},{\"name\":\"Max\",\"xp\":300}]}" >"$T/root/shared/beamnet/seasons/$prevmonth.json"
+echo "{\"month\":\"$prevmonth\",\"top\":[{\"name\":\"Sebi\",\"xp\":900},{\"name\":\"Max\",\"xp\":300}],\"team\":{\"name\":\"Blitz\",\"xp\":1200}}" >"$T/root/shared/beamnet/seasons/$prevmonth.json"
 : >"$T/curl.log"
 out=$(BEAMNET_DOM=02 "$TOOL" watch 2>&1)
 lacks "$out" "Saisonsieger" "watch: Saisonsieger nur am 1."
 out=$(BEAMNET_DOM=01 "$TOOL" watch 2>&1)
 contains "$out" "🏆 Saisonsieger $prevmonth: 1\\. Sebi \\(900 XP\\) · 2\\. Max \\(300 XP\\)" "watch: Saisonsieger aus dem Archiv"
+contains "$out" "^🏅 Team der Saison: Blitz \\(1200 XP\\)$" "watch: Team der Saison aus dem Archiv"
 contains "$(cat "$T/curl.log")" "Saisonsieger" "watch: Saisonsieger an Discord"
 out=$(BEAMNET_DOM=01 "$TOOL" watch 2>&1)
 lacks "$out" "Saisonsieger" "watch: Saisonsieger nur einmal"

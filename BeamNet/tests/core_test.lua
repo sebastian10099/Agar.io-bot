@@ -2837,6 +2837,27 @@ do
     os.remove(SHARED .. "/players/17878.json"); BN.savedRecently["17878"] = nil
 end
 
+-- --- Team der Saison ---------------------------------------------------------------------------------------------
+do
+    eq(BN.monthStartOf("2026-10"), 1790812800, "Monatsbeginn UTC (Oktober 2026)")
+    eq(BN.monthStartOf("2024-03"), 1709251200, "Monatsbeginn UTC (nach Schaltjahr-Februar)")
+    check(BN.monthStartOf("kaputt") == nil, "Monatsbeginn: ungueltig")
+    local keep = readJson(SHARED .. "/teams.json")
+    writeJson(SHARED .. "/teams.json", { teams = { a = { name = "Saisonteam", created = 1, members = { ["801"] = true, ["802"] = true } },
+        b = { name = "Spaet", members = { ["803"] = true }, joined = { ["803"] = clock } } } })
+    local saved = BN.seasonRanking
+    BN.seasonRanking = function() return { { id = "803", name = "C", xp = 900 }, { id = "801", name = "A", xp = 500 }, { id = "802", name = "B", xp = 300 } } end
+    os.remove(SHARED .. "/seasons/2000-02.json")
+    chatLog = {}
+    BN.endSeason("2000-02")
+    BN.seasonRanking = saved
+    local a = readJson(SHARED .. "/seasons/2000-02.json")
+    check(a and a.team and a.team.name == "Saisonteam" and a.team.xp == 800, "Team der Saison: im Archiv (spaeter Beigetretene zaehlen nicht)")
+    check(chatContains("🏅 Team der Saison: Saisonteam %(800 XP%)"), "Team der Saison: angesagt")
+    os.remove(SHARED .. "/seasons/2000-02.json")
+    if keep then writeJson(SHARED .. "/teams.json", keep) else os.remove(SHARED .. "/teams.json") end
+end
+
 -- --- Team der Woche ----------------------------------------------------------------------------------------------
 do
     local keep = readJson(SHARED .. "/teams.json")

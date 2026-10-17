@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.22"
+VERSION="2.23"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="1.95"
+CORE_VERSION="1.96"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3664,15 +3664,18 @@ PY
 # Spielerdaten, falls das Archiv noch fehlt).
 watch_season() {
     local -n sout=$1
-    local month line dom
+    local month dom
     dom=${BEAMNET_DOM:-$(date -u +%d)}
     [[ $dom == 01 && -d $SHARED/players ]] && notify_configured || return 0
     command -v python3 >/dev/null || return 0
     month=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
     [[ -f $STATE_DIR/season-$month ]] && return 0
-    line=$(python3 -I - "$month" "$SHARED" <<'PY'
-import glob, json, os, sys
+    local lines=() l
+    while IFS= read -r l; do lines+=("$l"); done < <(python3 -I - "$month" "$SHARED" <<'PY'
+import glob, json, os, re, sys
 month, shared = sys.argv[1], sys.argv[2]
+def clean(v, n):
+    return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(v)).split())[:n] or "?"
 def read_nofollow(path, limit=16 * 1024 * 1024):
     """Inhalt einer regulaeren Datei, ohne einem Symlink zu folgen (Ordner gehoeren beammp)."""
     import os as _os, stat as _stat
@@ -3681,11 +3684,13 @@ def read_nofollow(path, limit=16 * 1024 * 1024):
         if not _stat.S_ISREG(_os.fstat(fh.fileno()).st_mode):
             raise OSError("keine regulaere Datei: " + path)
         return fh.read(limit).decode("utf-8", "replace")
-rows = []
+rows, team = [], None
 try:
-    rows = [(float(e.get("xp", 0)), str(e.get("name", "?")))
-            for e in json.loads(read_nofollow(os.path.join(shared, "seasons", month + ".json"))).get("top", [])
-            if isinstance(e, dict)]
+    archive = json.loads(read_nofollow(os.path.join(shared, "seasons", month + ".json")))
+    rows = [(float(e.get("xp", 0)), clean(e.get("name", "?"), 40)) for e in archive.get("top", []) if isinstance(e, dict)]
+    t = archive.get("team")
+    if isinstance(t, dict) and isinstance(t.get("name"), str) and isinstance(t.get("xp"), (int, float)) and 0 < t["xp"] < 1e9:
+        team = (clean(t["name"], 32), int(t["xp"]))
 except Exception:
     for path in glob.glob(os.path.join(shared, "players", "*.json")):
         try:
@@ -3694,13 +3699,16 @@ except Exception:
             continue
         xp = r.get("monthXp") if r.get("month") == month else r.get("lastMonthXp") if r.get("lastMonth") == month else None
         if isinstance(xp, (int, float)) and xp > 0:
-            rows.append((xp, str(r.get("name", "?"))))
+            rows.append((xp, clean(r.get("name", "?"), 40)))
 rows.sort(key=lambda x: (-x[0], x[1]))
 print(" · ".join(f"{i + 1}. {n} ({int(x)} XP)" for i, (x, n) in enumerate(rows[:3])))
+if team and rows:
+    print(f"🏅 Team der Saison: {team[0]} ({team[1]} XP)")
 PY
 )
     : >"$STATE_DIR/season-$month"
-    [[ -n $line ]] && sout+=("🏆 Saisonsieger $month: $line")
+    [[ -n ${lines[0]:-} ]] && sout+=("🏆 Saisonsieger $month: ${lines[0]}")
+    [[ -n ${lines[1]:-} ]] && sout+=("${lines[1]}")
     return 0
 }
 
