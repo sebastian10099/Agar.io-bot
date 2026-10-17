@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.67"
+BN.VERSION = "1.68"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1778,6 +1778,10 @@ local function checkProgress(s)
     if t.league.name ~= s.league then
         local league = t.league.name
         sayEach(function(lang) return tr(lang, "%s steigt in die Liga %s auf!", s.name, tr(lang, league)) end)
+        -- Fuer den Waechter (Discord/Telegram): nur echte Aufstiege mit Konto, nicht der erste Blick nach dem Betreten.
+        if s.league and not s.guest and BN.modlog then
+            BN.modlog({ action = "liga", target = s.name, league = league, xp = t.xp })
+        end
         s.league = t.league.name
     end
     BN.checkAchievements(s)
@@ -2810,6 +2814,7 @@ local function modlog(entry)
         f:close()
     end
 end
+BN.modlog = modlog
 
 function BN.loadBans()
     local data = json.decode(readFile(bansFile()) or "")

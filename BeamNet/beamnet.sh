@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.77"
+VERSION="1.78"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2196,6 +2196,9 @@ for raw in chunk[:end].splitlines():
     elif a == "ort-vorschlag":
         kind = e.get("kind") if isinstance(e.get("kind"), str) and re.fullmatch(r"[a-z]{2,12}", e.get("kind", "")) else "ort"
         lines.append(f"📍 {by} schlägt einen Ort für Aufträge vor: {who} ({kind}, {where(e)}) – im Spiel: /ort vorschlaege")
+    elif a == "liga":
+        lg = c(e.get("league"), 24)
+        lines.append(f"🏅 {who} ist in die Liga {lg} aufgestiegen ({where(e)}) – Glückwunsch!")
     elif a == "speed-reset":
         k = e.get("kmh")
         was = f" (war {int(k)} km/h)" if isinstance(k, (int, float)) and 0 <= k < 1e5 else ""

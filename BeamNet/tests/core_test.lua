@@ -2770,6 +2770,27 @@ do
     os.remove(SHARED .. "/xpabend.json"); BN.xpEveningAt, BN.xpEvening = nil, nil
 end
 
+-- --- Liga-Aufstieg fuer den Waechter (modlog) ------------------------------------------------------------------
+do
+    local second = BN.leagueFor(0)
+    for _, l in ipairs(C.leagues) do if l.xp > 0 and (second.xp == 0 or l.xp < second.xp) then second = l end end
+    writeJson(SHARED .. "/players/17878.json", { id = "17878", name = "Aufsteiger", km = 0, seconds = 0, bonusXp = second.xp - 5 })
+    BN.savedRecently["17878"] = nil
+    players[178] = { name = "Aufsteiger", ids = { beammp = "17878" }, vehicles = {} }
+    _G[events.onPlayerJoin](178)
+    tick(1)
+    local f = io.open(SHARED .. "/modlog.jsonl", "r"); local before = f and f:read("*a") or ""; if f then f:close() end
+    check(not before:find('"target":"Aufsteiger"', 1, true), "Liga: beim Betreten kein Eintrag")
+    BN.players[178].pendingBonus = BN.players[178].pendingBonus + 10
+    tick(1)
+    f = io.open(SHARED .. "/modlog.jsonl", "r"); local after = f and f:read("*a") or ""; if f then f:close() end
+    check(after:find('"action":"liga"', 1, true) and after:find('"target":"Aufsteiger"', 1, true) and after:find('"league":"' .. second.name .. '"', 1, true),
+        "Liga: Aufstieg im Protokoll fuer Discord/Telegram")
+    BN.players[178].pendingBonus = 0
+    _G[events.onPlayerDisconnect](178); players[178] = nil
+    os.remove(SHARED .. "/players/17878.json"); BN.savedRecently["17878"] = nil
+end
+
 -- --- Rueckkehrer-Bonus ------------------------------------------------------------------------------------------
 do
     C.comebackXp = 50

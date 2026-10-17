@@ -135,7 +135,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   `beamnet event start 2 2h`, `beamnet event stop`, Stand: `beamnet event`.
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
 - Er meldet **Moderation** an Discord/Telegram: Bann (mit Dauer), Kick, Stummschaltung (auch automatisch wegen Spam)
-  und Verwarnung, jeweils mit Admin, Grund und Server; dazu `/melden` aus dem Spiel. Abschalten: `MODLOG_NOTIFY=0`.
+  und Verwarnung, jeweils mit Admin, Grund und Server; dazu `/melden` aus dem Spiel, Ort-Vorschläge und
+  **Liga-Aufstiege** („🏅 Sebi ist in die Liga Gold aufgestiegen (Server 3) – Glückwunsch!“). Abschalten: `MODLOG_NOTIFY=0`.
 - **Neue Streckenrekorde sofort:** „🏆 Neuer Streckenrekord auf sprint (Italy): Sebi 0:49.1 (vorher Max 0:51.0)“, dazu
   „🏁 Erste Zeit auf …“ für neue Strecken. Abschalten: `RECORD_NOTIFY=0`.
 - **Wiederholungstäter:** Wer in 7 Tagen mindestens 3-mal gemeldet, stummgeschaltet, verwarnt oder gekickt wurde, wird
