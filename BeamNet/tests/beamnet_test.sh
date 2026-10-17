@@ -1076,6 +1076,10 @@ done
 out=$("$TOOL" doctor 2>&1)
 contains "$out" "Server 1 .*BeamNetCore 1\\.7 aktiv" "doctor: Plugin-Version"
 contains "$out" "Unterschiedliche BeamNetCore-Versionen auf den Servern: 1\\.6 1\\.7" "doctor: unterschiedliche Versionen"
+contains "$out" "BeamNetCore ist älter als [0-9.]+: Server [0-9]+ \\(1\\.[67]\\)" "doctor: veraltetes Plugin erkannt"
+# Die Plugin-Version im Werkzeug gehoert zur Version in main.lua.
+[[ $(grep -m1 -o '^CORE_VERSION="[0-9.]*"' "$TOOL" | cut -d'"' -f2) == $(grep -m1 -o 'BN.VERSION = "[0-9.]*"' "$HERE/../server/BeamNetCore/main.lua" | cut -d'"' -f2) ]] \
+    && pass || fail "CORE_VERSION im Werkzeug passt zu BN.VERSION im Plugin"
 # Update aus einer Kopie des Werkzeugs, Quelle per file:// (kein Netz noetig, echtes curl).
 mv "$T/bin/curl" "$T/curl.stub"
 # Eine leere Datei (z. B. abgebrochener Download) darf das Werkzeug nie ersetzen.

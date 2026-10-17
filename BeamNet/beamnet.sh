@@ -11,7 +11,9 @@
 
 set -uo pipefail
 
-VERSION="1.97"
+VERSION="1.98"
+# Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
+CORE_VERSION="1.79"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -678,6 +680,16 @@ cmd_doctor() {
             warn "Unterschiedliche BeamNetCore-Versionen auf den Servern: ${versions% }"
             hint "beamnet update   (bringt alle Server auf den neuesten Stand)"
         fi
+        # Aelter als die Plugin-Version, die zu diesem Werkzeug gehoert?
+        local e old="" v n
+        for e in "${CORE_VERSIONS[@]}"; do
+            v=${e%%:*} n=${e#*:}
+            ver_lt "$v" "$CORE_VERSION" && old+="${old:+, }Server $n ($v)"
+        done
+        if [[ -n $old ]]; then
+            warn "BeamNetCore ist älter als $CORE_VERSION: $old"
+            hint "beamnet update   (bringt alle Server auf BeamNetCore $CORE_VERSION)"
+        fi
     fi
     dup=$(tr ' ' '\n' <<<"$seen_maps" | grep -v '^$' | sort | uniq -d | tr '\n' ' ')
     [[ -n $dup ]] && warn "Mehrere Server mit derselben Map: $dup" && hint "beamnet maps   ·   beamnet set-map <nr> <map>"
@@ -786,6 +798,14 @@ check_watch() {
         fi
     fi
     return 0
+}
+
+# ver_lt <a> <b>: ist Version a (z. B. 1.9) aelter als b (z. B. 1.79)? Hauptnummer, dann Unternummer als Zahl.
+ver_lt() {
+    [[ $1 =~ ^([0-9]{1,4})\.([0-9]{1,4})$ ]] || return 1
+    local am=${BASH_REMATCH[1]} an=${BASH_REMATCH[2]}
+    [[ $2 =~ ^([0-9]{1,4})\.([0-9]{1,4})$ ]] || return 1
+    (( 10#$am < 10#${BASH_REMATCH[1]} || (10#$am == 10#${BASH_REMATCH[1]} && 10#$an < 10#${BASH_REMATCH[2]}) ))
 }
 
 # Laeuft BeamNetCore auf diesem Server? (nur wenn installiert und der Server laeuft)
