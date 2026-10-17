@@ -3746,6 +3746,23 @@ do
     os.remove(SHARED .. "/players/17777.json"); BN.savedRecently["17777"] = nil
 end
 
+-- --- Tagesaufgabe Auftraege -------------------------------------------------------------------------------------
+do
+    local ch = BN.CHALLENGES.jobs
+    check(ch ~= nil and ch.goals[1] == 2 and ch.goals[3] == 5, "Tagesaufgabe Auftraege: vorhanden mit Zielen 2/3/5")
+    players[179] = { name = "Tagesjobber", ids = { beammp = "17979" }, vehicles = {} }
+    _G[events.onPlayerJoin](179)
+    local s = BN.players[179]
+    s.pendingJobs = 2
+    eq(BN.dayTotals(s).jobs, 2, "Tagesaufgabe Auftraege: heute gezaehlt")
+    BN.savePlayer(s)
+    s.pendingJobs = 1
+    eq(ch.value(BN.dayTotals(s)), 3, "Tagesaufgabe Auftraege: gespeicherte und neue zusammen")
+    s.pendingJobs = 0
+    _G[events.onPlayerDisconnect](179); players[179] = nil
+    os.remove(SHARED .. "/players/17979.json"); BN.savedRecently["17979"] = nil
+end
+
 -- --- Neue Erfolge (Werkstatt-Aufgabe 07) -----------------------------------------------------------------------
 do
     local byId = {}

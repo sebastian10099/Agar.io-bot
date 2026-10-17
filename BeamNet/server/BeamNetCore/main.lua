@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.68"
+BN.VERSION = "1.69"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -910,6 +910,7 @@ local EN = {
     ["Kenner aller Welten (8 Maps)"] = "World expert (8 maps)",
     ["50 Stunden unterwegs"] = "50 hours on the road",
     ["Fahre heute %s km auf einer Map"] = "Drive %s km on one map today",
+    ["Erledige heute %s Aufträge (/auftrag)"] = "Finish %s jobs today (/job)",
     ["50 Rennen"] = "50 races",
     ["5 Streckenrekorde"] = "5 track records",
     ["Erster Auftrag"] = "First job",
@@ -1663,6 +1664,7 @@ function BN.dayTotals(s)
         races = (same and rec.dayRaces or 0) + s.pendingRaces,
         top = math.max(same and rec.dayTop or 0, s.pendingTop),
         servers = dayMaps,
+        jobs = (same and tonumber(rec.dayJobs) or 0) + (s.pendingJobs or 0),
         -- Kilometer heute auf der Map dieses Servers (fuer die Tagesaufgabe "mapkm").
         mapKm = BN.server.map and ((same and type(rec.dayMapKm) == "table" and tonumber(rec.dayMapKm[BN.server.map]) or 0)
             + s.pendingKm) or 0,
@@ -1681,6 +1683,7 @@ BN.CHALLENGES = {
     races = { text = "Beende heute %s Rennen", goals = { 1, 2, 3 }, value = function(d) return d.races end },
     -- Nicht in der Standardliste challengeTypes: Admins schalten sie in config.json ein.
     mapkm = { text = "Fahre heute %s km auf einer Map", goals = { 5, 8, 12 }, value = function(d) return d.mapKm end },
+    jobs = { text = "Erledige heute %s Aufträge (/auftrag)", goals = { 2, 3, 5 }, value = function(d) return d.jobs end },
 }
 
 function BN.challengeFor(day)
