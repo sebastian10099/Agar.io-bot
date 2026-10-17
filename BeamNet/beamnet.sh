@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.29"
+VERSION="2.30"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.97"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -411,11 +411,41 @@ def check(archive):
                     broken += 1
     print(f"{files} {players} {broken}")
 
+def player(archive, query):
+    """Eine Spielerdatei aus der Sicherung: "<ID><TAB><JSON>" – gesucht nach ID oder (eindeutigem) Namen."""
+    import json, re
+    q = query.strip().lower()
+    hits = []
+    with tarfile.open(archive, "r:gz") as tar:
+        for m in tar:
+            parts = safe_parts(m.name)
+            if not (m.isreg() and len(parts) == 2 and parts[0] == "players" and parts[1].endswith(".json")) or m.size > 4 << 20:
+                continue
+            pid = parts[1][:-5]
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", pid):
+                continue
+            try:
+                rec = json.loads(tar.extractfile(m).read().decode("utf-8"))
+            except Exception:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            if pid.lower() == q:
+                hits = [(pid, rec)]
+                break
+            if str(rec.get("name", "")).lower() == q:
+                hits.append((pid, rec))
+    if len(hits) != 1:
+        raise ValueError("nicht gefunden" if not hits else "Name nicht eindeutig – bitte die ID angeben")
+    print(hits[0][0] + "\t" + json.dumps(hits[0][1], ensure_ascii=False, separators=(",", ":")))
+
 try:
     if sys.argv[1] == "save":
         save(sys.argv[2], sys.argv[3])
     elif sys.argv[1] == "check":
         check(sys.argv[2])
+    elif sys.argv[1] == "player":
+        player(sys.argv[2], sys.argv[3])
     elif sys.argv[1] == "restore":
         restore(sys.argv[2], sys.argv[3])
     else:
@@ -1387,7 +1417,7 @@ cmd_restore() {
             printf '  %s  %s\n' "$(basename "$file" .tgz | sed 's/^daten-//')" "$(du -h "$file" | cut -f1)"
         done
         [[ -n $f ]] || echo "  (noch keine – der Wächter legt sie täglich ab $(backup_hour) Uhr an: beamnet watch install)"
-        echo "Zurücksetzen: beamnet restore <JJJJ-MM-TT> · prüfen: beamnet restore check [JJJJ-MM-TT]"
+        echo "Zurücksetzen: beamnet restore <JJJJ-MM-TT> · nur ein Spieler: beamnet restore <JJJJ-MM-TT> spieler <Name|ID> · prüfen: beamnet restore check [JJJJ-MM-TT]"
         return 0
     fi
     if [[ $want == check || $want == pruefen || $want == prüfen ]]; then
@@ -1412,6 +1442,23 @@ cmd_restore() {
     [[ $want =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "Aufruf: beamnet restore [JJJJ-MM-TT]"
     file="$BACKUP_DIR/daten-$want.tgz"
     [[ -f $file && ! -L $file ]] || die "Keine Datensicherung vom $want (Liste: beamnet restore)."
+    if [[ ${2:-} == spieler || ${2:-} == player ]]; then
+        # Nur einen Spieler zurueckholen (z. B. nach einer kaputten Datei): die anderen bleiben, kein Neustart.
+        local query=${3:-} line pid json
+        [[ -n $query && ${#query} -le 64 ]] || die "Aufruf: beamnet restore <JJJJ-MM-TT> spieler <Name oder ID>"
+        [[ -d $SHARED/players && ! -L $SHARED/players && ! -L $SHARED ]] || die "Kein Spielerordner unter $SHARED."
+        line=$(data_tool player "$file" "$query" 2>&1) || die "Spieler '$query' in der Sicherung vom $want: ${line##*$'\n'}"
+        pid=${line%%$'\t'*}; json=${line#*$'\t'}
+        [[ $pid =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "Unerwartete Spieler-ID in der Sicherung."
+        confirm "Spieler $pid auf den Stand vom $want zurücksetzen? (am besten, während er nicht fährt)" || { echo "Abgebrochen."; return 1; }
+        mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
+        ts=$(date +%Y%m%d-%H%M%S)
+        safe get "$SHARED/players/$pid.json" >"$BACKUP_DIR/spieler-$pid-vor-$ts.json" 2>/dev/null || rm -f "$BACKUP_DIR/spieler-$pid-vor-$ts.json"
+        printf '%s' "$json" | safe put "$SHARED/players/$pid.json" 664 "$SERVICE_USER" || die "Konnte die Spielerdatei nicht schreiben."
+        ok "Spieler $pid auf den Stand vom $want zurückgesetzt."
+        [[ -f $BACKUP_DIR/spieler-$pid-vor-$ts.json ]] && echo "Der bisherige Stand liegt in $BACKUP_DIR/spieler-$pid-vor-$ts.json."
+        return 0
+    fi
     [[ -L $SHARED ]] && die "$SHARED ist ein Symlink – bitte prüfen, nichts geändert."
     command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
     confirm "Spielerdaten auf den Stand vom $want zurücksetzen? Alle Server werden dafür kurz gestoppt." \
@@ -2754,7 +2801,7 @@ watch_broken() {
         | tr -cd 'A-Za-z0-9_./\n-' | paste -sd' ' -)
     : >"$stamp"
     [[ -n $names ]] || return 0
-    bout2+=("⚠️ BeamNetCore hat kaputte Dateien beiseitegelegt: $names – dort wird neu angefangen. Zurückholen: beamnet restore")
+    bout2+=("⚠️ BeamNetCore hat kaputte Dateien beiseitegelegt: $names – dort wird neu angefangen. Zurückholen: beamnet restore <Datum> spieler <ID>")
 }
 
 # Update-Hinweis: einmal am Tag nachsehen, ob es auf GitHub ein neueres Werkzeug gibt, und je neuer Version einmal

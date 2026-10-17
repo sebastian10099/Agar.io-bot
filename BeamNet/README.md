@@ -64,7 +64,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet logs <nr> [zeilen]` | Letzte Zeilen des Server-Protokolls |
 | `beamnet plugins` | Installierte (und abgeschaltete) Plugins je Server |
 | `beamnet plugin-disable <name>` / `plugin-enable <name>` | Plugin auf allen Servern ab- oder einschalten – verschiebt nur nach `Resources/Server.disabled`, löscht nichts |
-| `beamnet restore [JJJJ-MM-TT]` | Tägliche Datensicherungen anzeigen bzw. Spielerdaten auf einen Stand zurücksetzen (Server werden kurz gestoppt, der bisherige Stand bleibt daneben liegen). `beamnet restore check [Datum]` stellt probeweise wieder her, ohne etwas zu schreiben (jeder Eintrag sicher, jede Spielerdatei lesbar); der Wächter macht das einmal je Woche mit der neuen Sicherung und meldet Fehler |
+| `beamnet restore [JJJJ-MM-TT]` | Tägliche Datensicherungen anzeigen bzw. Spielerdaten auf einen Stand zurücksetzen (Server werden kurz gestoppt, der bisherige Stand bleibt daneben liegen). `beamnet restore <Datum> spieler <Name|ID>` holt nur einen Spieler zurück (z. B. nach einer kaputten Datei; kein Neustart, sein bisheriger Stand wird gesichert). `beamnet restore check [Datum]` stellt probeweise wieder her, ohne etwas zu schreiben (jeder Eintrag sicher, jede Spielerdatei lesbar); der Wächter macht das einmal je Woche mit der neuen Sicherung und meldet Fehler |
 | `beamnet players` | Wer gerade fährt: je Server mit Namen (mit BeamNetCore; `players json` = Rohdaten) |
 | `beamnet heute` · `woche` · `teams` | Überblick wie im Telegram-Chat: Boni von heute, Wochenbeste mit Wochenziel, Teams dieser Woche |
 | `beamnet backup` | Konfigurationen, Plugins und systemd-Dienste nach `/root/beamnet-backups` (die 20 neuesten bleiben) |

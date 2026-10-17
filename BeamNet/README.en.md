@@ -37,7 +37,7 @@ a new plugin version goes to one test server first and only then to the others).
 | `beamnet players` | Who is driving right now, per server with names (`players json` = raw data) |
 | `beamnet heute` · `woche` · `teams` | Same overviews as in the Telegram chat: today's bonuses, weekly best with the weekly goal, teams this week |
 | `beamnet backup` | Saves configurations, plugins and systemd services to `/root/beamnet-backups` |
-| `beamnet restore [YYYY-MM-DD]` | Lists the daily data backups or rolls the player data back to one; `beamnet restore check` test-restores without writing anything |
+| `beamnet restore [YYYY-MM-DD]` | Lists the daily data backups or rolls the player data back to one; `beamnet restore <date> spieler <name|id>` restores a single player (no restart); `beamnet restore check` test-restores without writing anything |
 | `beamnet install-core` | Installs BeamNetCore on all servers |
 | `beamnet watch install` | Sets up the watcher (checks all servers every minute); `status`, `test`, `uninstall` |
 | `beamnet web install [port]` | Status page as a website, default port 8080 |

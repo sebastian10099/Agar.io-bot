@@ -1700,6 +1700,19 @@ contains "$(cat "$T/actions")" "^stop beammp-1.service$" "restore: Server waehre
 contains "$(cat "$T/actions")" "^start beammp-1.service$" "restore: Server danach wieder gestartet"
 [[ ! -f $T/watch/maintenance-1 ]] && pass || fail "restore: keine Wartungsmarker uebrig"
 [[ -f $T/geheim2.json && $(cat "$T/geheim2.json") == '{"id":"502","secret":"root"}' ]] && pass || fail "restore: Symlink-Ziel unberuehrt"
+# Nur einen Spieler zurueckholen (nach Name oder ID), der bisherige Stand bleibt in der Sicherung.
+echo '{"id":"501","name":"Gesichert","km":1}' >"$S/players/501.json"
+echo '{"id":"504","name":"Andere","km":7}' >"$S/players/504.json"
+: >"$T/actions"
+out=$("$TOOL" -y restore "$today" spieler gesichert 2>&1)
+contains "$out" "Spieler 501 auf den Stand vom $today zurückgesetzt" "restore spieler: nach Name"
+contains "$(cat "$S/players/501.json")" '"km":42' "restore spieler: Spielerdatei zurueck"
+contains "$(cat "$S/players/504.json")" '"km":7' "restore spieler: andere Spieler unberuehrt"
+lacks "$(cat "$T/actions")" "stop beammp" "restore spieler: kein Neustart"
+contains "$(cat "$B"/spieler-501-vor-*.json)" '"km":1' "restore spieler: bisheriger Stand gesichert"
+contains "$("$TOOL" -y restore "$today" spieler 501 2>&1)" "Spieler 501 auf den Stand" "restore spieler: nach ID"
+contains "$("$TOOL" -y restore "$today" spieler Niemand 2>&1)" "nicht gefunden" "restore spieler: unbekannt"
+rm -f "$S/players/504.json" "$B"/spieler-*.json
 # Manipulierte Archive: nichts aendern.
 python3 - "$B/daten-2000-02-01.tgz" "$B/daten-2000-02-02.tgz" <<'PY'
 import io, sys, tarfile
