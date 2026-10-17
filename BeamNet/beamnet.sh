@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.33"
+VERSION="2.34"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.98"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -5186,11 +5186,12 @@ if not (isinstance(rules, list) and len(rules) <= 10 and all(isinstance(r, str) 
     rules = RULES
 COMMANDS = [
     ("/hilfe", "Alle Befehle im Chat"), ("/start", "Einsteiger-Pfad: fünf kleine Schritte mit Bonus-XP für neue Fahrer"), ("/stats [Name]", "Deine Werte oder die eines anderen Fahrers"),
-    ("/top [km|woche|vorwoche]", "Bestenliste (XP, Kilometer, diese oder letzte Woche)"),
+    ("/top [km|xp|speed|auftraege|konvoi|jagd|woche|vorwoche|teams]", "Bestenliste (XP, Kilometer, Spitze, Aufträge, Konvoi, Verfolgungsjagden, diese oder letzte Woche, Teams dieser Woche)"),
     ("/liga", "Ligen und was dir bis zur nächsten fehlt"), ("/saison", "Saisonwertung des Monats"),
     ("/aufgabe", "Tagesaufgabe mit Bonus-XP"), ("/erfolge", "Deine Erfolge"),
     ("/server", "Alle BeamNet-Server mit Map und Spielerzahl"), ("/wo &lt;Name&gt;", "Auf welchem Server fährt jemand gerade?"),
     ("/freund &lt;Name&gt;", "Freundesliste: Nachricht, sobald ein Freund irgendwo online kommt (/freund zeigt alle, /freund weg &lt;Name&gt; entfernt)"),
+    ("/team", "Teams: /team gründen &lt;Name&gt;, /team beitreten &lt;Name&gt;, /team verlassen, /team woche – montags das Team der Woche (+50 XP für alle, die mitgefahren sind), am Monatsende das Team der Saison"),
     ("/auftrag", "Fahrauftrag holen: Patient ins Krankenhaus, Kinder zur Schule, Taxi, Lieferung … mit Zeitlimit und XP (/auftrag stop bricht ab)"),
     ("/orte", "Alle Orte (Krankenhaus, Schule, Feuerwache …) auf dieser Map"),
     ("/ort vorschlag &lt;Typ&gt; &lt;Name&gt;", "Einen Ort für Aufträge vorschlagen (z. B. krankenhaus, schule) – die Admins entscheiden"),

@@ -858,6 +858,7 @@ contains "$help" "10 XP je Kilometer und 1 XP je Minute" "Hilfeseite: XP-Regeln"
 contains "$help" "<li><b>Aufträge</b> \\(/auftrag\\): 25 XP je km Luftlinie, ab 1 km \\+20" "Hilfeseite: Auftrags-XP"
 contains "$help" "<li><b>Konvoi</b> \\(/konvoi\\): je 3 km zusammen mit anderen \\+20</li>" "Hilfeseite: Konvoi-XP"
 contains "$help" "<li><b>Willkommen zurück</b>: nach 14 Tagen Pause einmal \\+50</li>" "Hilfeseite: Rueckkehrer-Bonus"
+contains "$help" "<td><b>/team</b></td><td>Teams: /team gründen" "Hilfeseite: Teams"
 cp "$T/root/shared/beamnet/config.json" "$T/cfg.help" 2>/dev/null
 echo '{"rules":["Kein <script>alert(1)</script>","Linksverkehr"],"xpPerKm":12,"convoyXp":0,"convoyKm":2.5,"comebackXp":75}' >"$T/root/shared/beamnet/config.json"
 "$TOOL" web run >/dev/null 2>&1
