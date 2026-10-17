@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.87"
+BN.VERSION = "1.88"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -108,6 +108,8 @@ local defaults = {
     communityKm = 0,
     communityXp = 100,
     communityMinKm = 5,
+    -- Team der Woche: jedes Mitglied, das in der Woche mitgefahren ist, bekommt beim naechsten Besuch einmal teamWeekXp.
+    teamWeekXp = 50,
     -- Verfolgungsjagd (/fangen): Anmeldung chaseJoinSec, Vorsprung chaseHeadStartSec, Dauer hoechstens chaseMaxSec.
     -- Gefangen bei chaseCatchM Abstand; XP fuer den Faenger, den Fluechtigen (je Minute, mehr wenn er durchkommt).
     chaseJoinSec = 30,
@@ -540,7 +542,7 @@ local INTEGER_KEYS = { challengeXp = true, raceFinishXp = true, racePersonalBest
                        mapVoteSec = true, joinLimit = true, filterStrikes = true, weeklyTrackXp = true,
                        groupRaceDelaySec = true, maxFriends = true, friendCheckSec = true,
                        streakXp = true, streakMaxDays = true, jobXp = true, jobXpPerKm = true, jobCooldownSec = true, jobXpPerHour = true,
-                       communityKm = true, communityXp = true, chaseJoinSec = true, chaseHeadStartSec = true,
+                       communityKm = true, communityXp = true, teamWeekXp = true, chaseJoinSec = true, chaseHeadStartSec = true,
                        chaseMaxSec = true, chaseXpCatch = true, chaseXpSurvive = true, chaseXpPerMin = true, chaseXpPerDay = true, chaseCooldownSec = true,
                        tipEverySec = true, tutorialXp = true, tutorialDoneXp = true, seriesXp = true,
                        alertEverySec = true, alertXp = true, alertMinPlayers = true, convoyXp = true,
@@ -615,6 +617,7 @@ local EN = {
     ["%s ist jetzt Level %d!"] = "%s reached level %d!",
     ["%s steigt in die Liga %s auf!"] = "%s moved up to the %s league!",
     ["🏅 Team der Woche: %s (%s)"] = "🏅 Team of the week: %s (%s)",
+    ["🏅 Dein Team %s war Team der Woche – danke fürs Mitfahren: +%d XP!"] = "🏅 Your team %s was team of the week – thanks for driving: +%d XP!",
     ["Wochensieger %s: %s"] = "Winners of %s: %s",
     ["KW %s"] = "week %s",
     ["%s – Lauf ungültig. Neuer Versuch: zurück zum Start von %s."] = "%s – run invalid. Try again: back to the start of %s.",
@@ -1614,6 +1617,11 @@ function BN.savePlayer(s)
     if s.friendsChanged then rec.friends = s.record.friends end
     if s.pendingRecap then rec.recapMonth = s.pendingRecap end
     if s.pendingWeekRecap then rec.recapWeek = s.pendingWeekRecap end
+    if s.pendingTeamWeek then
+        -- Schon auf einem anderen Server bekommen (Datei kennt die Woche): nicht doppelt.
+        if rec.teamWeek == s.pendingTeamWeek then rec.bonusXp = rec.bonusXp - (s.pendingTeamWeekXp or 0) end
+        rec.teamWeek = s.pendingTeamWeek
+    end
     rec.jobHour = BN.mergeHour(rec.jobHour, BN.jobLimits and BN.jobLimits[s.id])
     rec.convoyHour = BN.mergeHour(rec.convoyHour, BN.convoyLimits and BN.convoyLimits[s.id])
     if s.pendingComeback then
@@ -1680,6 +1688,7 @@ function BN.savePlayer(s)
     s.resetTop = nil
     s.pendingRecap = nil
     s.pendingWeekRecap = nil
+    s.pendingTeamWeek, s.pendingTeamWeekXp = nil, nil
     s.pendingComeback = nil
     s.pendingSeenVersion = nil
     s.pendingTutorial, s.tutorialStarted = nil, nil
@@ -4369,6 +4378,22 @@ function BN.teamOfWeek(list)
     return BN.teamWeekRanking(list)[1]
 end
 
+-- Belohnung fuer das Team der Vorwoche: wer dort Mitglied ist und in der Vorwoche gefahren ist, bekommt beim naechsten
+-- Besuch einmal teamWeekXp (gemerkt als teamWeek; doppelt auf zwei Servern wird beim Speichern abgezogen).
+function BN.teamWeekReward(s)
+    if s.guest or C.teamWeekXp <= 0 then return false end
+    local rec, prev = s.record, weekKey(BN.now() - 7 * 86400)
+    if rec.lastWeek ~= prev or (tonumber(rec.lastWeekKm) or 0) < 1 then return false end
+    if rec.teamWeek == prev or s.pendingTeamWeek == prev then return false end
+    local team = BN.teamOfWeek(BN.weekRanking(prev))
+    if not (team and type(team.team.members) == "table" and team.team.members[s.id]) then return false end
+    s.pendingTeamWeek, s.pendingTeamWeekXp = prev, C.teamWeekXp
+    s.pendingBonus = s.pendingBonus + C.teamWeekXp
+    s.dirty = true
+    say(s.pid, "🏅 Dein Team %s war Team der Woche – danke fürs Mitfahren: +%d XP!", team.name, C.teamWeekXp)
+    return true
+end
+
 -- Teams nach Kilometern: { {name, members, km}, ... }
 function BN.teamRanking()
     local km = {}
@@ -6379,8 +6404,9 @@ function BN_onPlayerJoin(pid)
     end
     BN.seasonRecap(s)
     BN.weekRecap(s)
-    -- Rueckblick gezeigt: sofort merken, sonst zeigt ihn ein anderer Server bei schnellem Wechsel noch einmal.
-    if s.pendingRecap or s.pendingWeekRecap then guarded("Rueckblick speichern", BN.savePlayer, s) end
+    guarded("Team der Woche", BN.teamWeekReward, s)
+    -- Rueckblick/Belohnung: sofort merken, sonst gibt es sie bei schnellem Serverwechsel ein zweites Mal.
+    if s.pendingRecap or s.pendingWeekRecap or s.pendingTeamWeek then guarded("Rueckblick speichern", BN.savePlayer, s) end
     BN.showNews(s)
     -- Bonus-Map des Tages: hier oder auf welcher Map.
     local bm = BN.bonusMap()

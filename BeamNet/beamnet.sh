@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.10"
+VERSION="2.11"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="1.87"
+CORE_VERSION="1.88"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3952,6 +3952,7 @@ KEYS = {
     "jobXpPerHour": ("int", 0, 100000, 600, "Höchstens so viele Auftrags-XP je Stunde"),
     "communityKm": ("int", 0, 1000000, 0, "Wochenziel in km (0 = automatisch)"),
     "communityXp": ("int", 0, 10000, 100, "XP fürs geschaffte Wochenziel"),
+    "teamWeekXp": ("int", 0, 10000, 50, "XP für Mitglieder des Teams der Woche, die mitgefahren sind"),
     "chaseXpPerDay": ("int", 0, 100000, 300, "Höchstens so viele Jagd-XP je Tag"),
     "tipEverySec": ("int", 0, 86400, 900, "Tipps im Chat alle N s (0 = aus)"),
     "tutorialXp": ("int", 0, 1000, 25, "XP je Schritt im Einsteiger-Pfad (0 = aus)"),
@@ -5005,6 +5006,8 @@ if cv("alertEverySec", 1800) > 0 and cv("alertXp", 50) > 0:
 bonus.append("<b>Verfolgungsjagd</b> (/fangen): Fangen +60, Entkommen +100")
 if cv("streakXp", 10) > 0:
     bonus.append(f"<b>Tages-Serie</b>: jeden Tag ab {g(cv('streakMinKm', 1))} km fahren, ab dem 2. Tag +{g(cv('streakXp', 10))} je Serientag")
+if cv("teamWeekXp", 50) > 0:
+    bonus.append(f"<b>Team der Woche</b> (/team): +{g(cv('teamWeekXp', 50))} für alle Mitglieder, die mitgefahren sind")
 if cv("communityXp", 100) > 0:
     bonus.append(f"<b>Wochenziel</b> (/ziel): +{g(cv('communityXp', 100))} für alle, die mitgefahren sind")
 if cv("comebackXp", 50) > 0:

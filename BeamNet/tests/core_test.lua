@@ -114,6 +114,7 @@ C.convoyXp = 0                     -- Konvoi-Bonus fuer die allgemeinen Tests au
 C.crowdHintSec = 0                 -- "Wo ist was los" fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.roadPointsMax = 0                -- Lieferpunkte fuer die allgemeinen Tests aus (eigener Test weiter unten)
 C.comebackXp = 0                   -- Rueckkehrer-Bonus fuer die allgemeinen Tests aus (eigener Test weiter unten)
+C.teamWeekXp = 0                   -- Belohnung fuers Team der Woche ebenso
 check(events.BN_Tick == "BN_Tick" and timers.BN_Tick == 1000, "Takt registriert")
 eq(BN.server.name, "BeamNet | Server 1", "Servername ohne Farbcodes")
 eq(BN.server.port, 30814, "Port trotz Kommentar")
@@ -2828,6 +2829,27 @@ do
     BN.announceWeek("2026-W42")
     BN.weekRanking = saved
     check(chatContains("🏅 Team der Woche: Blitz %(15[.,]0 km%)"), "Team der Woche: im Spiel angesagt")
+    -- Belohnung: Mitglied des Teams der Vorwoche, in der Vorwoche gefahren – einmal teamWeekXp.
+    C.teamWeekXp = 50
+    local prev = BN.weekKey(clock - 7 * 86400)
+    writeJson(SHARED .. "/teams.json", { teams = { a = { name = "Blitz", members = { ["19191"] = "Teamer" } } } })
+    writeJson(SHARED .. "/players/19191.json", { id = "19191", name = "Teamer", km = 50, week = prev, weekKm = 20 })
+    BN.savedRecently["19191"] = nil; BN.weekCache = {}
+    players[191] = { name = "Teamer", ids = { beammp = "19191" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](191)
+    check(chatContains("🏅 Dein Team Blitz war Team der Woche – danke fürs Mitfahren: %+50 XP!", 191), "Team der Woche: Belohnung beim Betreten")
+    local f1 = readJson(SHARED .. "/players/19191.json")
+    eq(f1.teamWeek, prev, "Team der Woche: Belohnung sofort gemerkt")
+    _G[events.onPlayerDisconnect](191)
+    local xp1 = readJson(SHARED .. "/players/19191.json").bonusXp
+    chatLog = {}
+    _G[events.onPlayerJoin](191)
+    check(not chatContains("Team der Woche", 191), "Team der Woche: Belohnung nur einmal")
+    _G[events.onPlayerDisconnect](191); players[191] = nil
+    eq(readJson(SHARED .. "/players/19191.json").bonusXp, xp1, "Team der Woche: keine doppelten XP")
+    os.remove(SHARED .. "/players/19191.json"); BN.savedRecently["19191"] = nil; BN.weekCache = {}
+    C.teamWeekXp = 0
     if keep then writeJson(SHARED .. "/teams.json", keep) else os.remove(SHARED .. "/teams.json") end
 end
 
