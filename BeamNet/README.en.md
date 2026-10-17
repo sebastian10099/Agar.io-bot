@@ -78,6 +78,8 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
   under "Demnächst", in the network overview ("⭐ Bonus"), with `beamnet event` and with `/event` in Telegram;
   in game, `/server` marks the servers running it (⭐). `BONUS_MAP=0` turns it off,
   `BONUS_MAP_FACTOR=1.5` (up to 3) changes the bonus.
+- **Update notice:** once a day it checks GitHub for a newer BeamNet and reports it once per version ("🆕 BeamNet-Update
+  verfügbar … sudo beamnet update"). It never installs anything itself; `UPDATE_CHECK=0` turns it off.
 - It never fights you: servers stopped with `beamnet stop` count as maintenance until `beamnet start`.
 
 ## In-game chat commands

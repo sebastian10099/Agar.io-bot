@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.92"
+VERSION="1.93"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2435,6 +2435,7 @@ watch_run() {
     watch_weekly msgs
     watch_season msgs
     watch_daily msgs
+    watch_update msgs
     watch_telegram
     if (( ${#msgs[@]} > 0 )); then
         printf '%s\n' "${msgs[@]}"
@@ -2668,6 +2669,26 @@ PY
     pct=$(awk -v f="$factor" 'BEGIN { printf "%d", (f - 1) * 100 + 0.5 }')
     bmout+=("🗺️ Bonus-Map heute: $pick (Server $where) – +$pct % XP beim Fahren bis Mitternacht.")
     return 0
+}
+
+# Update-Hinweis: einmal am Tag nachsehen, ob es auf GitHub ein neueres Werkzeug gibt, und je neuer Version einmal
+# melden ("sudo beamnet update"). Installiert nichts selbst. UPDATE_CHECK=0 schaltet ab.
+watch_update() {
+    local -n uout=$1
+    [[ $(conf_get UPDATE_CHECK) == 0 ]] && return 0
+    notify_configured || return 0
+    local today latest lm ln cm cn
+    today=$(date +%F)
+    [[ -f $STATE_DIR/updatecheck-$today ]] && return 0
+    : >"$STATE_DIR/updatecheck-$today"
+    find "$STATE_DIR" -maxdepth 1 -name 'updatecheck-*' -mtime +3 -delete 2>/dev/null
+    latest=$(curl -fsS -m 10 -r 0-4095 "$RAW_BASE/beamnet.sh" 2>/dev/null | head -c 4096 | grep -m1 -xE 'VERSION="[0-9]{1,3}\.[0-9]{1,3}"' | cut -d'"' -f2)
+    [[ $latest =~ ^[0-9]{1,3}\.[0-9]{1,3}$ && $VERSION =~ ^[0-9]+\.[0-9]+$ ]] || return 0
+    lm=${latest%%.*} ln=${latest#*.} cm=${VERSION%%.*} cn=${VERSION#*.}
+    (( 10#$lm > 10#$cm || (10#$lm == 10#$cm && 10#$ln > 10#$cn) )) || return 0
+    [[ $(cat "$STATE_DIR/update-notified" 2>/dev/null) == "$latest" ]] && return 0
+    echo "$latest" >"$STATE_DIR/update-notified"
+    uout+=("🆕 BeamNet-Update verfügbar: Werkzeug $latest (installiert: $VERSION) – auf dem Server: sudo beamnet update")
 }
 
 # Naechsten geplanten XP-Abend fuer Plugin und Statusseite in xpabend.json schreiben ({"next":0} = keiner), nur wenn
@@ -3591,6 +3612,8 @@ AUTO_EVENT=
 # Bonus-Map des Tages: die am wenigsten gefahrene Map (7 Tage) bekommt beim Fahren BONUS_MAP_FACTOR-fache XP. 0 = aus.
 BONUS_MAP=1
 BONUS_MAP_FACTOR=1.5
+# Einmal am Tag melden, wenn es ein neueres BeamNet gibt (installiert nichts selbst). 0 = aus.
+UPDATE_CHECK=1
 # 1 = ausgefallene Server automatisch neu starten (hoechstens 3x pro Stunde; nicht, wenn mit "beamnet stop"
 # gestoppt oder von OpenClaw gestoppt). 0 = nur melden.
 AUTO_RESTART=0

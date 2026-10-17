@@ -144,6 +144,9 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   bei `/event` im Telegram-Chat; im Spiel markiert `/server` die Server mit der Bonus-Map (⭐). `BONUS_MAP=0` schaltet ab,
   `BONUS_MAP_FACTOR=1.5` (bis 3) ändert den Bonus.
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
+- **Update-Hinweis:** Einmal am Tag sieht er auf GitHub nach, ob es ein neueres BeamNet gibt, und meldet jede neue
+  Version einmal („🆕 BeamNet-Update verfügbar: Werkzeug 1.94 (installiert: 1.93) – auf dem Server: sudo beamnet
+  update“). Er installiert nichts selbst; `UPDATE_CHECK=0` schaltet ab.
 - Er meldet **Moderation** an Discord/Telegram: Bann (mit Dauer), Kick, Stummschaltung (auch automatisch wegen Spam)
   und Verwarnung, jeweils mit Admin, Grund und Server; dazu `/melden` aus dem Spiel, Ort-Vorschläge und
   **Liga-Aufstiege** („🏅 Sebi ist in die Liga Gold aufgestiegen (Server 3) – Glückwunsch!“). Abschalten: `MODLOG_NOTIFY=0`.

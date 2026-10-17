@@ -321,6 +321,7 @@ done
 echo "$line" >>"$FAKE/curl.log"
 [[ -f $FAKE/curl.fail ]] && exit 22
 [[ $line == *getUpdates* && -f $FAKE/tg-updates.json ]] && cat "$FAKE/tg-updates.json"
+[[ $line == *raw.githubusercontent.com*/beamnet.sh* && -f $FAKE/raw-latest.sh ]] && cat "$FAKE/raw-latest.sh"
 exit 0
 EOF
 chmod +x "$T/bin/curl"
@@ -1329,6 +1330,22 @@ mkdir -p "$T/root/9"; mkfifo "$T/fifo9"; ln -s "$T/fifo9" "$T/root/9/ServerConfi
 [[ $rc != 124 ]] && pass || fail "cfg: Symlink auf eine FIFO haelt den Waechter nicht an"
 lacks "$("$REAL_TIMEOUT" 60 "$TOOL" status 2>&1)" "Server 9" "servers: Symlink als ServerConfig.toml zaehlt nicht"
 rm -rf "$T/root/9" "$T/fifo9"
+
+# --- Update-Hinweis (watch_update) ------------------------------------------------------------------------------------
+rm -f "$T"/watch/updatecheck-* "$T/watch/update-notified"
+printf '#!/usr/bin/env bash\n# BeamNet\nVERSION="99.1"\n' >"$T/raw-latest.sh"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "🆕 BeamNet-Update verfügbar: Werkzeug 99\\.1 \\(installiert: [0-9.]+\\) – auf dem Server: sudo beamnet update" "update: neuere Version gemeldet"
+lacks "$("$TOOL" watch 2>&1)" "Update verfügbar" "update: hoechstens einmal am Tag nachsehen"
+rm -f "$T"/watch/updatecheck-*
+lacks "$("$TOOL" watch 2>&1)" "Update verfügbar" "update: dieselbe Version nur einmal melden"
+rm -f "$T"/watch/updatecheck-*
+printf 'VERSION="1.0"\n' >"$T/raw-latest.sh"
+lacks "$("$TOOL" watch 2>&1)" "Update verfügbar" "update: aeltere Version nicht"
+rm -f "$T"/watch/updatecheck-*
+printf 'VERSION="99.2"; rm -rf /\n' >"$T/raw-latest.sh"
+lacks "$("$TOOL" watch 2>&1)" "Update verfügbar" "update: nur eine saubere VERSION-Zeile zaehlt"
+rm -f "$T/raw-latest.sh"
 
 # --- Bonus-Map des Tages (watch_bonusmap) ----------------------------------------------------------------------------
 B="$T/root/shared/beamnet/bonusmap.json"
