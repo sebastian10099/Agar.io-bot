@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.23"
+VERSION="2.24"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.96"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -4481,11 +4481,16 @@ season_title = f"{MONTHS[int(month[5:7]) - 1]} {month[:4]}"
 
 # Saison-Titel (Platz 1-3 der archivierten Saisons) je Spieler-ID, neueste zuerst.
 TITLES = {}
+season_team = ""          # Team der letzten archivierten Saison (fuer den Saison-Abschnitt)
 for path in sorted(glob.glob(os.path.join(shared, "seasons", "*.json")), reverse=True):
     a = load(path)
     m = a.get("month") if isinstance(a, dict) else None
     if not (isinstance(m, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}", m) and 1 <= int(m[5:7]) <= 12):
         continue
+    t = a.get("team")
+    if not season_team and m < month and isinstance(t, dict) and isinstance(t.get("name"), str) and 0 < num(t.get("xp")) < 1e9:
+        season_team = (f'<p>🏅 Team der Saison {MONTHS[int(m[5:7]) - 1]} {m[:4]}: <b>{E(t["name"][:32])}</b> '
+                       f'({int(num(t.get("xp")))} XP)</p>')
     for place, e in enumerate((a.get("top") if isinstance(a.get("top"), list) else [])[:3], 1):
         if isinstance(e, dict) and e.get("id") is not None:
             TITLES.setdefault(str(e["id"]), []).append((m, place))
@@ -4847,7 +4852,7 @@ page = f"""<!doctype html>
 <section><h2>Bestenliste</h2>{table(["#", "Name", "Level#", "Liga", "XP#", "Kilometer#", "Erfolge#"], top, "Noch keine Einträge – einfach losfahren!")}</section>
 <div class=grid>
 <section><h2>Diese Woche</h2>{table(["#", "Name", "Kilometer#"], weekly, "Diese Woche ist noch niemand gefahren.")}</section>
-<section><h2>Saison {E(season_title)}</h2>{table(["#", "Name", "XP#"], season_rows, "In dieser Saison noch keine Punkte.")}</section>
+<section><h2>Saison {E(season_title)}</h2>{season_team}{table(["#", "Name", "XP#"], season_rows, "In dieser Saison noch keine Punkte.")}</section>
 <section><h2>Streckenrekorde</h2>{weekly_track}{table(["Map", "Strecke", "Name", "Zeit#"], records, "Noch keine Rekorde.")}</section>
 <section><h2>Beliebteste Maps</h2>{table(["Map", "Kilometer#", "Fahrer#"], popular_rows, "Noch keine Kilometer je Map.")}</section>
 <section><h2>Schnellste Fahrer</h2>{table(["#", "Name", "Spitze#"], speed_rows, "Noch keine Geschwindigkeiten.")}</section>

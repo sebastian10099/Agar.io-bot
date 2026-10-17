@@ -861,6 +861,11 @@ contains "$page" "<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td cl
 contains "$page" "<td>Italy</td><td><a href=\"t/italy/sprint.html\">sprint</a></td><td>Sebi</td><td class=n>0:49.1</td>" "Statusseite: Rekorde"
 contains "$page" "<h2>Saison [A-Za-zä]+ [0-9]{4}</h2>.*<td class=n>1</td><td><a href=\"p/1.html\">Sebi</a></td><td class=n>500</td>" "Statusseite: Saison"
 contains "$page" "<td class=n>2</td><td><a href=\"p/4.html\">Zaehler</a></td><td class=n>321</td>" "Statusseite: Saison-Zaehler (1.9)"
+mkdir -p "$T/root/shared/beamnet/seasons"
+echo '{"month":"2000-05","top":[],"team":{"name":"<b>Alt</b>","xp":777}}' >"$T/root/shared/beamnet/seasons/2000-05.json"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" "<p>🏅 Team der Saison Mai 2000: <b>&lt;b&gt;Alt&lt;/b&gt;</b> \\(777 XP\\)</p>" "Statusseite: Team der letzten Saison (maskiert)"
+rm -f "$T/root/shared/beamnet/seasons/2000-05.json"
 contains "$page" "<th class=n>XP</th>" "Statusseite: Zahlenspalten rechtsbuendig"
 prof=$(cat "$T/web/p/1.html")
 contains "$prof" "<h1>Sebi</h1>" "Profilseite: Name"
