@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.88"
+BN.VERSION = "1.89"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -494,6 +494,23 @@ local function weekKey(t)
     return string.format("%04d-W%02d", thursday.year, math.floor((thursday.yday - 1) / 7) + 1)
 end
 BN.weekKey = weekKey
+
+-- Beginn (Montag 00:00 UTC) der ISO-Woche, in der t liegt.
+local function weekStartAt(t)
+    local day = math.floor(t / 86400)
+    return (day - (day + 3) % 7) * 86400
+end
+BN.weekStartAt = weekStartAt
+
+-- Beginn der Woche mit dem Schluessel week ("2026-W42"), gesucht rueckwaerts ab jetzt (hoechstens ein Jahr), sonst nil.
+function BN.weekStartOf(week)
+    local t = BN.now()
+    for _ = 0, 53 do
+        if weekKey(t) == week then return weekStartAt(t) end
+        t = t - 7 * 86400
+    end
+    return nil
+end
 
 local function fmtKm(km)
     if km >= 100 then return string.format("%.0f km", km) end
@@ -1537,7 +1554,10 @@ function BN.savePlayer(s)
     ensureDir(C.sharedDir)
     ensureDir(playersDir())
     -- Datei nicht lesbar: nichts schreiben, die Zuwaechse bleiben fuer den naechsten Versuch erhalten.
+    BN.lastLoadWasNew = false
     local rec, loadErr = loadRecord(s.id, s.name)
+    local fileWasNew = BN.lastLoadWasNew
+    BN.lastLoadWasNew = false
     if not rec then
         BN.logError("Spielerdatei " .. s.id, loadErr)
         return false
@@ -1661,6 +1681,8 @@ function BN.savePlayer(s)
         return false
     end
     s.record = rec
+    -- Neuer Spieler: wer die Datei als Erster anlegt, meldet ihn (einmal im Netzwerk, auch bei schnellem Serverwechsel).
+    if fileWasNew and BN.modlog then BN.modlog({ action = "neu", target = s.name }) end
     -- Meilensteine fuer Discord/Telegram (ueber das Moderationsprotokoll, wie Liga-Aufstiege): verglichen wird die Datei
     -- vor und nach diesem Speichern – sie ist der gemeinsame Stand aller Server, so kommt jeder Meilenstein nur einmal,
     -- auch bei schnellem Serverwechsel.
@@ -2390,8 +2412,8 @@ function BN.announceWeek(week)
     for i = 1, math.min(3, #list) do parts[#parts + 1] = string.format("%d. %s (%s)", i, list[i].name, fmtKm(list[i].km)) end
     local number = tostring(week):match("W(%d+)$") or tostring(week)
     sayEach(function(lang) return tr(lang, "Wochensieger %s: %s", tr(lang, "KW %s", number), table.concat(parts, " · ")) end)
-    local team = BN.teamOfWeek and BN.teamOfWeek(list)
-    if team then sayEach(function(lang) return tr(lang, "🏅 Team der Woche: %s (%s)", team.name, fmtKm(team.km)) end) end
+    local team = BN.teamWeekSnapshot and BN.teamWeekSnapshot(week)
+    if team then sayEach(function(lang) return tr(lang, "🏅 Team der Woche: %s (%s)", team.name, fmtKm(tonumber(team.km) or 0)) end) end
 end
 
 function BN.rankOf(id)
@@ -4357,16 +4379,26 @@ local function memberCount(t)
     return n
 end
 
--- Teams nach Kilometern einer Wochenwertung (BN.weekRanking): { {name, km, team}, ... }, nur Teams mit Kilometern.
-function BN.teamWeekRanking(list, teams)
+-- Teams nach Kilometern einer Wochenwertung (BN.weekRanking): { {name, km, team, counted}, ... }, nur Teams mit
+-- Kilometern. Mit since (Wochenbeginn) zaehlen nur Mitglieder, die vorher beigetreten sind (joined[id], aeltere Teams:
+-- Gruendung) – wer erst waehrend der Woche dazukommt, zaehlt ab der naechsten. counted = gezaehlte Mitglieder.
+function BN.teamWeekRanking(list, teams, since)
     local byId = {}
-    for _, e in ipairs(list or {}) do if e.id then byId[tostring(e.id)] = tonumber(e.km) or 0 end end
+    for _, e in ipairs(list or {}) do
+        local km = tonumber(e.km) or 0
+        if e.id and km > 0 and km < 1e6 then byId[tostring(e.id)] = km end
+    end
     local out = {}
     for _, t in pairs(teams or BN.loadTeams().teams) do
         if type(t) == "table" and type(t.members) == "table" then
-            local km = 0
-            for id in pairs(t.members) do km = km + (byId[tostring(id)] or 0) end
-            if km > 0 then out[#out + 1] = { name = clipText(tostring(t.name or "?"), 32), km = km, team = t } end
+            local km, counted = 0, {}
+            local joined = type(t.joined) == "table" and t.joined or {}
+            for id in pairs(t.members) do
+                local at = tonumber(joined[id]) or tonumber(t.created) or 0
+                local k = byId[tostring(id)] or 0
+                if k > 0 and (not since or at < since) then km, counted[tostring(id)] = km + k, true end
+            end
+            if km > 0 then out[#out + 1] = { name = clipText(tostring(t.name or "?"), 32), km = km, team = t, counted = counted } end
         end
     end
     table.sort(out, function(a, b) if a.km ~= b.km then return a.km > b.km end return a.name < b.name end)
@@ -4374,19 +4406,38 @@ function BN.teamWeekRanking(list, teams)
 end
 
 -- Team der Woche aus einer Wochenwertung: meiste Kilometer seiner Mitglieder, sonst nil.
-function BN.teamOfWeek(list)
-    return BN.teamWeekRanking(list)[1]
+function BN.teamOfWeek(list, since)
+    return BN.teamWeekRanking(list, nil, since)[1]
 end
 
--- Belohnung fuer das Team der Vorwoche: wer dort Mitglied ist und in der Vorwoche gefahren ist, bekommt beim naechsten
--- Besuch einmal teamWeekXp (gemerkt als teamWeek; doppelt auf zwei Servern wird beim Speichern abgezogen).
+-- Team einer abgeschlossenen Woche als Momentaufnahme (teamweek-<Woche>.json, einmal je Woche, gemeinsam fuer alle
+-- Server): { week, name, km, members = { [id] = true } } oder nil. Ansage und Belohnung beruhen darauf – spaetere
+-- Wechsel in ein Team aendern nichts mehr.
+local function teamWeekFile(week) return C.sharedDir .. "/teamweek-" .. tostring(week):gsub("[^%w-]", "") .. ".json" end
+function BN.teamWeekSnapshot(week)
+    local snap = json.decode(readFile(teamWeekFile(week)) or "")
+    if type(snap) == "table" and snap.week == week then
+        return (type(snap.name) == "string" and type(snap.members) == "table") and snap or nil
+    end
+    local since = BN.weekStartOf(week)
+    if not since or week == weekKey(BN.now()) then return nil end      -- nur abgeschlossene Wochen
+    local best = BN.teamWeekRanking(BN.weekRanking(week), nil, since)[1]
+    snap = { week = week, at = BN.now() }
+    if best then snap.name, snap.km, snap.members = best.name, math.floor(best.km * 10 + 0.5) / 10, best.counted end
+    ensureDir(C.sharedDir)
+    writeFileAtomic(teamWeekFile(week), json.encode(snap))
+    return best and snap or nil
+end
+
+-- Belohnung fuer das Team der Vorwoche: wer laut Momentaufnahme dafuer gezaehlt hat (Mitglied seit vor Wochenbeginn,
+-- mindestens communityMinKm gefahren), bekommt beim naechsten Besuch einmal teamWeekXp (gemerkt als teamWeek; doppelt auf zwei Servern wird beim Speichern abgezogen).
 function BN.teamWeekReward(s)
     if s.guest or C.teamWeekXp <= 0 then return false end
     local rec, prev = s.record, weekKey(BN.now() - 7 * 86400)
-    if rec.lastWeek ~= prev or (tonumber(rec.lastWeekKm) or 0) < 1 then return false end
+    if rec.lastWeek ~= prev or (tonumber(rec.lastWeekKm) or 0) < C.communityMinKm then return false end
     if rec.teamWeek == prev or s.pendingTeamWeek == prev then return false end
-    local team = BN.teamOfWeek(BN.weekRanking(prev))
-    if not (team and type(team.team.members) == "table" and team.team.members[s.id]) then return false end
+    local team = BN.teamWeekSnapshot(prev)
+    if not (team and team.members[s.id]) then return false end
     s.pendingTeamWeek, s.pendingTeamWeekXp = prev, C.teamWeekXp
     s.pendingBonus = s.pendingBonus + C.teamWeekXp
     s.dirty = true
@@ -4420,7 +4471,7 @@ function commands.team(pid, arg)
                       week = "woche" }
     sub = aliases[sub] or sub
     if sub == "woche" then
-        local list = BN.teamWeekRanking(BN.weekRanking(weekKey(BN.now())))
+        local list = BN.teamWeekRanking(BN.weekRanking(weekKey(BN.now())), nil, weekStartAt(BN.now()))
         if #list == 0 then say(pid, "Diese Woche ist noch kein Team gefahren.") return end
         say(pid, "Teams diese Woche:")
         for i = 1, math.min(5, #list) do chat(pid, string.format("%d. %s – %s", i, list[i].name, fmtKm(list[i].km))) end
@@ -4462,7 +4513,7 @@ function commands.team(pid, arg)
         say(pid, "Team %s: %d Mitglieder · Platz %s · /team verlassen", mine.name, memberCount(mine), rank and tostring(rank) or "–")
         -- Wochenwertung der Teams (Kilometer der Mitglieder in dieser Woche, wie "Team der Woche").
         local mineKm, wrank = 0, nil
-        for i, e in ipairs(BN.teamWeekRanking(BN.weekRanking(weekKey(BN.now())), data.teams)) do
+        for i, e in ipairs(BN.teamWeekRanking(BN.weekRanking(weekKey(BN.now())), data.teams, weekStartAt(BN.now()))) do
             if e.team == mine then mineKm, wrank = e.km, i end
         end
         say(pid, "Diese Woche: %s · Platz %s unter den Teams (/team woche)", fmtKm(mineKm), wrank and tostring(wrank) or "–")
@@ -4471,6 +4522,7 @@ function commands.team(pid, arg)
     if sub == "verlassen" then
         if not mine then say(pid, "Du bist in keinem Team.") return end
         mine.members[s.id] = nil
+        if type(mine.joined) == "table" then mine.joined[s.id] = nil end
         if memberCount(mine) == 0 then data.teams[key] = nil end
         saveTeams(data)
         say(pid, "Du hast das Team %s verlassen.", mine.name)
@@ -4505,7 +4557,8 @@ function commands.team(pid, arg)
             local count = 0
             for _ in pairs(data.teams) do count = count + 1 end
             if count >= 500 then say(pid, "Es gibt schon zu viele Teams.") return end
-            data.teams[teamKey(name)] = { name = name, by = s.name, created = BN.now(), members = { [s.id] = s.name } }
+            data.teams[teamKey(name)] = { name = name, by = s.name, created = BN.now(), members = { [s.id] = s.name },
+                                          joined = { [s.id] = BN.now() } }
             if not saveTeams(data) then say(pid, "Teams gerade nicht verfügbar – bitte später noch einmal.") return end
             for k, t in pairs(BN.teamFounded) do if BN.now() - t >= 600 then BN.teamFounded[k] = nil end end
             BN.teamFounded[s.id] = BN.now()
@@ -4515,6 +4568,8 @@ function commands.team(pid, arg)
         if not existing then say(pid, "Das Team %s gibt es nicht. Liste: /team liste", name) return end
         if memberCount(existing) >= BN.TEAM_MAX then say(pid, "Das Team %s ist voll (%d Mitglieder).", existing.name, BN.TEAM_MAX) return end
         existing.members[s.id] = s.name
+        if type(existing.joined) ~= "table" then existing.joined = {} end
+        existing.joined[s.id] = BN.now()        -- zaehlt fuer die Wochenwertung ab der naechsten Woche
         saveTeams(data)
         say(pid, "Willkommen im Team %s!", existing.name)
         return
@@ -6406,7 +6461,7 @@ function BN_onPlayerJoin(pid)
     BN.weekRecap(s)
     guarded("Team der Woche", BN.teamWeekReward, s)
     -- Rueckblick/Belohnung: sofort merken, sonst gibt es sie bei schnellem Serverwechsel ein zweites Mal.
-    if s.pendingRecap or s.pendingWeekRecap or s.pendingTeamWeek then guarded("Rueckblick speichern", BN.savePlayer, s) end
+    if s.pendingRecap or s.pendingWeekRecap or s.pendingTeamWeek or s.isNew then guarded("Rueckblick speichern", BN.savePlayer, s) end
     BN.showNews(s)
     -- Bonus-Map des Tages: hier oder auf welcher Map.
     local bm = BN.bonusMap()
@@ -6430,8 +6485,6 @@ function BN_onPlayerJoin(pid)
         local done, nextStep = tutorialState(s)
         if nextStep then say(pid, "Einsteiger-Pfad %d/%d: %s (/start)", done, #BN.TUTORIAL, tr(BN.langOf(pid), nextStep.text)) end
     end
-    -- Neuer Spieler (mit Konto): fuer den Waechter (Discord/Telegram), wie Meilensteine.
-    if s.isNew and not s.guest and BN.modlog then BN.modlog({ action = "neu", target = s.name }) end
     if s.isNew and C.welcomeNew then
         say(pid, "Schön, dass du da bist, %s! Deine Kilometer und XP zählen auf allen BeamNet-Servern.", s.name)
         BN.sayRules(pid)

@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.11"
+VERSION="2.12"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="1.88"
+CORE_VERSION="1.89"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3570,10 +3570,17 @@ if rows:
     if jobs > 0:
         parts.append(f"{jobs} {'Aufträge' if jobs != 1 else 'Auftrag'}")
     print("📈 Die Woche: " + " · ".join(parts))
-    # Team der Woche: die meisten Kilometer seiner Mitglieder in dieser Woche (teams.json vom Plugin).
+    # Team der Woche: die Momentaufnahme des Plugins (teamweek-<Woche>.json; dieselbe wie Ansage und Belohnung im
+    # Spiel), sonst die meisten Kilometer der Mitglieder (teams.json).
+    snap = load(os.path.join(os.path.dirname(folder), f"teamweek-{week}.json")) or {}
     teams = (load(os.path.join(os.path.dirname(folder), "teams.json")) or {}).get("teams")
     best = None
-    for t in (teams.values() if isinstance(teams, dict) else []):
+    if snap.get("week") == week:
+        teams = None
+        sk, sm = number(snap.get("km")), snap.get("members")
+        if isinstance(snap.get("name"), str) and clean(snap["name"], 32) and sk and 0 < sk < 1e7 and isinstance(sm, dict):
+            best = (sk, clean(snap["name"], 32), len(sm))
+    for t in (teams.values() if isinstance(teams, dict) and best is None else []):
         if not (isinstance(t, dict) and isinstance(t.get("members"), dict)):
             continue
         ids = [str(i) for i in list(t["members"])[:200]]

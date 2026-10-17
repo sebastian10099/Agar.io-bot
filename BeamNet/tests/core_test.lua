@@ -2826,12 +2826,30 @@ do
     chatLog = {}
     local saved = BN.weekRanking
     BN.weekRanking = function() return { { id = "3", name = "Ana", km = 12 }, { id = "1", name = "Ben", km = 10 }, { id = "2", name = "Cem", km = 5 } } end
-    BN.announceWeek("2026-W42")
+    local lastWeek = BN.weekKey(clock - 7 * 86400)
+    os.remove(SHARED .. "/teamweek-" .. lastWeek .. ".json")
+    BN.announceWeek(lastWeek)
     BN.weekRanking = saved
+    local snapFile = readJson(SHARED .. "/teamweek-" .. lastWeek .. ".json")
+    check(snapFile and snapFile.name == "Blitz" and snapFile.members["1"] and snapFile.members["2"] and not snapFile.members["3"],
+        "Team der Woche: Momentaufnahme mit den gezaehlten Mitgliedern")
     check(chatContains("🏅 Team der Woche: Blitz %(15[.,]0 km%)"), "Team der Woche: im Spiel angesagt")
     -- Belohnung: Mitglied des Teams der Vorwoche, in der Vorwoche gefahren – einmal teamWeekXp.
     C.teamWeekXp = 50
     local prev = BN.weekKey(clock - 7 * 86400)
+    os.remove(SHARED .. "/teamweek-" .. prev .. ".json")
+    -- Erst am Montag beigetreten (nach Wochenbeginn): zaehlt nicht fuer die Vorwoche, keine Belohnung.
+    writeJson(SHARED .. "/teams.json", { teams = { a = { name = "Blitz", members = { ["19191"] = "Teamer" },
+        joined = { ["19191"] = BN.weekStartAt(clock) + 60 } } } })
+    writeJson(SHARED .. "/players/19191.json", { id = "19191", name = "Teamer", km = 50, week = prev, weekKm = 20 })
+    BN.savedRecently["19191"] = nil; BN.weekCache = {}
+    players[191] = { name = "Teamer", ids = { beammp = "19191" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](191)
+    check(not chatContains("war Team der Woche", 191), "Team der Woche: nach Wochenende beigetreten – keine Belohnung")
+    _G[events.onPlayerDisconnect](191); players[191] = nil
+    os.remove(SHARED .. "/players/19191.json"); BN.savedRecently["19191"] = nil; BN.weekCache = {}
+    os.remove(SHARED .. "/teamweek-" .. prev .. ".json")
     writeJson(SHARED .. "/teams.json", { teams = { a = { name = "Blitz", members = { ["19191"] = "Teamer" } } } })
     writeJson(SHARED .. "/players/19191.json", { id = "19191", name = "Teamer", km = 50, week = prev, weekKm = 20 })
     BN.savedRecently["19191"] = nil; BN.weekCache = {}
@@ -2849,6 +2867,7 @@ do
     _G[events.onPlayerDisconnect](191); players[191] = nil
     eq(readJson(SHARED .. "/players/19191.json").bonusXp, xp1, "Team der Woche: keine doppelten XP")
     os.remove(SHARED .. "/players/19191.json"); BN.savedRecently["19191"] = nil; BN.weekCache = {}
+    os.remove(SHARED .. "/teamweek-" .. prev .. ".json")
     C.teamWeekXp = 0
     if keep then writeJson(SHARED .. "/teams.json", keep) else os.remove(SHARED .. "/teams.json") end
 end

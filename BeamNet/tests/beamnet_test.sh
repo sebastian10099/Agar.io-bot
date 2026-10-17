@@ -408,6 +408,12 @@ echo '{"teams":{"blitz":{"name":"Blitz","members":{"1":true,"2":true}},"solo":{"
 : >"$T/curl.log"
 out=$(BEAMNET_DOW=1 "$TOOL" watch 2>&1)
 contains "$out" "🏅 Team der Woche: Blitz \\(54 km, 2 Fahrer\\)$" "watch: Team der Woche"
+# Mit Momentaufnahme des Plugins (teamweek-<Woche>.json): genau die, wie im Spiel angesagt.
+echo "{\"week\":\"$lastweek\",\"name\":\"Sturm\",\"km\":77.5,\"members\":{\"5\":true,\"6\":true,\"7\":true}}" >"$T/root/shared/beamnet/teamweek-$lastweek.json"
+rm -f "$T/watch/weekly-$lastweek"
+out=$(BEAMNET_DOW=1 "$TOOL" watch 2>&1)
+contains "$out" "🏅 Team der Woche: Sturm \\(78 km, 3 Fahrer\\)$" "watch: Team der Woche aus der Momentaufnahme"
+rm -f "$T/root/shared/beamnet/teamweek-$lastweek.json"
 if [[ -f $T/teams.keep ]]; then cp "$T/teams.keep" "$T/root/shared/beamnet/teams.json"; else rm -f "$T/root/shared/beamnet/teams.json"; fi
 contains "$out" "🏁 Wochensieger .* KW .*: 1\\. Sebi \\(42\\.5 km\\) · 2\\. Max \\(12\\.0 km\\)" "watch: Wochensieger"
 lacks "$out" "Fremd" "watch: Wochensieger folgt keinem Symlink"
