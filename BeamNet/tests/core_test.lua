@@ -3689,6 +3689,19 @@ do
     fresh()
     check(BN.boardSource == "index" and boardHas("8821") and boardHas("8821").jobsDone == 7, "Index 3: Auftraege gelesen")
     check(not boardHas("8822"), "Index 3: Zeile mit 14 Feldern ist im Format 3 ungueltig")
+    -- Format 4 (mit Konvoi-km und gewonnenen Jagden): /top konvoi und /top jagd.
+    local f4 = io.open(indexPath, "wb")
+    f4:write("# beamnet-index 4 " .. tostring(clock) .. "\n"
+        .. table.concat({ "8831", "Kolonne", "10", "0", "0", "", "", "", "", "", "", "", "", "90", "7", "42.5", "3" }, "\t") .. "\n"
+        .. table.concat({ "8832", "Jaeger4", "10", "0", "0", "", "", "", "", "", "", "", "", "90", "1", "1", "9" }, "\t") .. "\n")
+    f4:close()
+    fresh()
+    check(BN.boardSource == "index" and boardHas("8831") and boardHas("8831").convoyKm == 42.5 and boardHas("8832").chaseWins == 9, "Index 4: Konvoi-km und Jagden gelesen")
+    chatLog = {}
+    say(1, "/top konvoi")
+    check(chatContains("Bestenliste Kilometer im Konvoi:", 1) and chatContains("^1%. Kolonne – 42[,.]5 km", 1), "/top konvoi")
+    say(1, "/top jagd")
+    check(chatContains("Bestenliste Gewonnene Verfolgungsjagden:", 1) and chatContains("^1%. Jaeger4 – 9", 1), "/top jagd")
     -- Die geteilte Liste wird von der Bestenliste nicht veraendert.
     writeIndex(clock, { table.concat({ "8805", "Alte Woche", "3", "0", "0", "2000-W01", "50", "", "", "", "", "", "" }, "\t") })
     fresh()

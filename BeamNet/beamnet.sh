@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.83"
+VERSION="1.84"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2741,7 +2741,7 @@ def key(v):
 def text(v):
     return re.sub(r"[\x00-\x1f\x7f]", "", str(v))[:64]
 
-out = [f"# beamnet-index 3 {int(time.time())}"]
+out = [f"# beamnet-index 4 {int(time.time())}"]
 try:
     pdir = os.open(os.path.join(shared, "players"), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 except OSError:
@@ -2771,12 +2771,13 @@ for name in sorted(n for n in os.listdir(pdir) if n.endswith(".json")):
     out.append("\t".join([r["id"], text(r.get("name", "?")), num(r.get("km")), num(r.get("seconds")),
                           num(r.get("bonusXp")), key(r.get("week")), num(r.get("weekKm")), key(r.get("lastWeek")),
                           num(r.get("lastWeekKm")), key(r.get("month")), num(month_xp), key(r.get("lastMonth")),
-                          num(r.get("lastMonthXp")), num(r.get("topSpeedKmh")), num(r.get("jobsDone"))]))
+                          num(r.get("lastMonthXp")), num(r.get("topSpeedKmh")), num(r.get("jobsDone")),
+                          num(r.get("convoyKm")), num(r.get("chaseWins"))]))
 sys.stdout.write("\n".join(out) + "\n")
 PY
 )
     # Nur einen vollstaendigen Index schreiben (bei einem Fehler bleibt der alte; das Plugin erkennt veraltete).
-    [[ $idx == "# beamnet-index 3 "* ]] && printf '%s\n' "$idx" | safe put "$SHARED/players-index.tsv" 644
+    [[ $idx == "# beamnet-index 4 "* ]] && printf '%s\n' "$idx" | safe put "$SHARED/players-index.tsv" 644
     return 0
 }
 
@@ -3087,7 +3088,7 @@ per_km, per_min = n(cfg.get("xpPerKm"), 10), n(cfg.get("xpPerMinute"), 1)
 rows = []
 for line in read(sys.argv[1]).splitlines()[1:]:
     f = line.split("\t")
-    if len(f) not in (13, 14, 15):
+    if len(f) not in (13, 14, 15, 17):
         continue
     try:
         km, sec, bonus = float(f[2] or 0), float(f[3] or 0), float(f[4] or 0)
@@ -3136,7 +3137,7 @@ def f(v):
 rows = []
 for line in read(sys.argv[1]).splitlines()[1:]:
     c = line.split("\t")
-    if len(c) not in (13, 14, 15):
+    if len(c) not in (13, 14, 15, 17):
         continue
     xp = int(f(c[2]) * per_km + f(c[3]) / 60 * per_min) + int(f(c[4]))
     rows.append({"name": re.sub(r"[\x00-\x1f\x7f]", "", c[1])[:32], "xp": xp, "km": f(c[2]), "sec": f(c[3]),
@@ -4222,6 +4223,10 @@ workers = sorted([r for r in players if 0 < num(r.get("jobsDone")) < 1e7],
                  key=lambda r: (-num(r.get("jobsDone")), str(r.get("name", ""))))[:10]
 job_rows = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{int(num(r.get('jobsDone')))}</td></tr>"
             for i, r in enumerate(workers, 1)]
+convoyers = sorted([r for r in players if 0 < num(r.get("convoyKm")) < 1e7],
+                   key=lambda r: (-num(r.get("convoyKm")), str(r.get("name", ""))))[:10]
+convoy_rows = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{km(num(r.get('convoyKm')))}</td></tr>"
+               for i, r in enumerate(convoyers, 1)]
 # Wochenziel fuer alle: Ziel aus community.json (vom Plugin), Fortschritt = Wochen-km aller Fahrer.
 community = ""
 cg = load(os.path.join(shared, "community.json"))
@@ -4364,6 +4369,7 @@ page = f"""<!doctype html>
 <section><h2>Beliebteste Maps</h2>{table(["Map", "Kilometer#", "Fahrer#"], popular_rows, "Noch keine Kilometer je Map.")}</section>
 <section><h2>Schnellste Fahrer</h2>{table(["#", "Name", "Spitze#"], speed_rows, "Noch keine Geschwindigkeiten.")}</section>
 <section><h2>Meiste Aufträge</h2>{table(["#", "Name", "Aufträge#"], job_rows, "Noch keine Aufträge – im Spiel: /auftrag")}</section>
+<section><h2>Meiste Konvoi-km</h2>{table(["#", "Name", "Kilometer#"], convoy_rows, "Noch niemand im Konvoi – im Spiel: /konvoi")}</section>
 <section><h2>Rennserien</h2>{table(["Map", "Serie", "Bester", "Gesamt#"], series_rows, "Noch keine Serien – Admins im Spiel: /serie neu &lt;Name&gt; &lt;Strecke1&gt; &lt;Strecke2&gt;")}</section>
 <section><h2>Orte für Aufträge</h2>{table(["Map", "Orte", "Anzahl#"], place_rows, "Noch keine Orte – Admins legen sie im Spiel an: /ort neu krankenhaus &lt;Name&gt;")}</section>
 <section><h2>Teams</h2>{table(["#", "Team", "Fahrer#", "Kilometer#"], team_rows, "Noch keine Teams – im Spiel: /team gründen &lt;Name&gt;")}</section>

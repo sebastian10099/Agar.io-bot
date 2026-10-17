@@ -659,12 +659,13 @@ lacks "$(cat "$T/web/index.html")" "9999 km/h" "Statusseite: unplausible Geschwi
 rm -f "$T/root/shared/beamnet/players/61.json" "$T/root/shared/beamnet/players/62.json"
 # Meiste Auftraege und Wochenziel fuer alle.
 wk=$(date -u +%G-W%V)
-echo '{"id":"63","name":"Sanitaeter","km":3,"jobsDone":12}' >"$T/root/shared/beamnet/players/63.json"
+echo '{"id":"63","name":"Sanitaeter","km":3,"jobsDone":12,"convoyKm":21.5}' >"$T/root/shared/beamnet/players/63.json"
 echo "{\"id\":\"64\",\"name\":\"Pendler\",\"km\":30,\"week\":\"$wk\",\"weekKm\":150}" >"$T/root/shared/beamnet/players/64.json"
 echo "{\"week\":\"$wk\",\"goal\":600}" >"$T/root/shared/beamnet/community.json"
 "$TOOL" web run >/dev/null 2>&1
 page=$(cat "$T/web/index.html")
 contains "$page" '<h2>Meiste Aufträge</h2>.*<td><a href="p/63.html">Sanitaeter</a></td><td class=n>12</td>' "Statusseite: meiste Aufträge"
+contains "$page" '<h2>Meiste Konvoi-km</h2>.*<td><a href="p/63.html">Sanitaeter</a></td><td class=n>21.5 km</td>' "Statusseite: meiste Konvoi-km"
 contains "$page" '<h2>Wochenziel für alle</h2><p>[0-9.]+ km von 600 km \([0-9]+ %\)</p><div class=bar><span style="width:[0-9]+%"></span></div>' "Statusseite: Wochenziel mit Balken"
 echo '{"week":"2000-W01","goal":600}' >"$T/root/shared/beamnet/community.json"
 "$TOOL" web run >/dev/null 2>&1
@@ -1209,16 +1210,16 @@ echo '{kaputt' >"$P/905.json"
 echo '{"id":"906","name":"Fremd","km":99999}' >"$T/fremd.json"; ln -sf "$T/fremd.json" "$P/906.json"
 "$TOOL" watch >/dev/null 2>&1
 idx=$(cat "$T/root/shared/beamnet/players-index.tsv" 2>/dev/null)
-contains "$idx" "^# beamnet-index 3 [0-9]+$" "index: Kopfzeile mit Format 3 und Zeitstempel"
-contains "$idx" $'^901\tTabNameZeile\t12\.5\t60\t5\t2025-W41\t3\t\t\t2025-10\t40\t\t\t231\.5\t$' "index: Zeile ohne Tabulatoren und Umbrueche im Namen, mit Spitze"
-contains "$idx" $'^902\tAlt\t1\t0\t\t\t\t\t\t2025-10\t70\t\t\t\t$' "index: Saison-XP fuer Datensaetze von 1.8"
+contains "$idx" "^# beamnet-index 4 [0-9]+$" "index: Kopfzeile mit Format 4 und Zeitstempel"
+contains "$idx" $'^901\tTabNameZeile\t12\.5\t60\t5\t2025-W41\t3\t\t\t2025-10\t40\t\t\t231\.5\t\t\t$' "index: Zeile ohne Tabulatoren und Umbrueche im Namen, mit Spitze"
+contains "$idx" $'^902\tAlt\t1\t0\t\t\t\t\t\t2025-10\t70\t\t\t\t\t\t$' "index: Saison-XP fuer Datensaetze von 1.8"
 contains "$idx" $'^904\tWoche\t1\t\t\t\t' "index: ungueltige Wochenangabe leer"
 lacks "$idx" "Pfad|Fremd|99999|kaputt" "index: unsichere IDs, Symlinks und kaputte Dateien fehlen"
 [[ $(stat -c %a "$T/root/shared/beamnet/players-index.tsv") == 644 ]] && pass || fail "index: lesbar fuer das Plugin (644)"
-python3 - "$T/root/shared/beamnet/players-index.tsv" <<'PY' && pass || fail "index: jede Zeile hat genau 15 Felder"
+python3 - "$T/root/shared/beamnet/players-index.tsv" <<'PY' && pass || fail "index: jede Zeile hat genau 17 Felder"
 import sys
 lines = open(sys.argv[1], encoding="utf-8").read().splitlines()[1:]
-sys.exit(0 if lines and all(len(l.split("\t")) == 15 for l in lines) else 1)
+sys.exit(0 if lines and all(len(l.split("\t")) == 17 for l in lines) else 1)
 PY
 rm -f "$P"/90[1-6].json "$T/fremd.json"
 
