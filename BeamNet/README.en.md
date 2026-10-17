@@ -62,7 +62,13 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
 - Reports moderation (bans, kicks, mutes, warnings), in-game reports and new track records; posts weekly and season
   winners and a daily summary.
 - Map rotation, map votes from the chat and automatic player slots (only while a server is empty).
-- The Telegram bot answers `/online`, `/top`, `/rekord` and `/server` in the configured chat.
+- The Telegram bot answers `/online`, `/top`, `/rekord`, `/server`, `/event` (XP event running? next XP evening?) and
+  `/spieler <name>` (level, league, XP, rank, kilometres, jobs of a player) in the configured chat. Accounts listed in
+  `TELEGRAM_ADMINS` may also send `/ansage [HH:MM] <text>` (announcement on all servers) and `/event 2 2h` /
+  `/event stop`.
+- **XP evenings:** `beamnet event auto fr,sa 20:00 2 2h` starts double XP on all servers every Friday and Saturday at
+  20:00 for two hours, announced an hour before (Discord/Telegram and in game). Players see the next one with `/event`
+  and on the status page under "Demnächst".
 - It never fights you: servers stopped with `beamnet stop` count as maintenance until `beamnet start`.
 
 ## In-game chat commands
@@ -88,7 +94,7 @@ Every player can switch to English with `/lang en`; the German commands work too
 | `/report <name> <reason>` | Report a player to the admins |
 | `/rules` | The rules of the network |
 | `/lang en` | English (`/lang de` = German) |
-| `/job` | Driving job: take a patient to the hospital, children to school, a taxi guest to the station … |
+| `/job` | Driving job: take a patient to the hospital, children to school, a taxi guest to the station … Without places on a map, jobs go to drop-off points where players have driven; hints show the direction. Several jobs in a row (a "shift") give bonus XP |
 | `/goal` | Weekly goal for everyone: collect kilometres together, everyone who drives gets bonus XP |
 | `/chase` | Chase: one player flees, everyone else hunts them |
 | `/convoy` | Convoy bonus: drive close to other players for bonus XP; shows who is nearby |
@@ -97,5 +103,7 @@ Every player can switch to English with `/lang en`; the German commands work too
 | `/friend <name>` | Friend list: get a message when a friend comes online anywhere in the network |
 | `/places` | Places (hospital, school, fire station …) on this map |
 | `/start` | Starter path for new players with bonus XP |
+
+Players who come back after at least 14 days get a one-time welcome-back bonus (+50 XP).
 
 German documentation: README.md
