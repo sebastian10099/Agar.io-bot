@@ -1323,6 +1323,9 @@ contains "$out" "🗺️ Bonus-Map heute: east_coast_usa \\(Server 4\\) – \\+5
 python3 -c 'import json,sys,time; d=json.load(open(sys.argv[1])); assert d["map"]=="east_coast_usa" and d["factor"]==1.5 and time.time() < d["until"] <= time.time()+86400' "$B" \
     && pass || fail "bonusmap: bonusmap.json fuer das Plugin"
 lacks "$("$TOOL" watch 2>&1)" "Bonus-Map" "bonusmap: einmal am Tag"
+# Leere Tagesdatei (z. B. Schreiben fehlgeschlagen): noch nicht gewaehlt – erneut versuchen.
+: >"$T/watch/bonusmap-$(date +%F)"
+contains "$("$TOOL" watch 2>&1)" "🗺️ Bonus-Map heute: east_coast_usa" "bonusmap: nach fehlgeschlagenem Versuch erneut"
 # Map von Server 4 wechselt (Rotation/Abstimmung): die Bonus-Map laeuft nirgends mehr – neu waehlen.
 cp "$T/root/4/ServerConfig.toml" "$T/sc4.bonus"
 sed -i 's|^Map = .*|Map = "/levels/gridmap_v2/info.json"|' "$T/root/4/ServerConfig.toml"

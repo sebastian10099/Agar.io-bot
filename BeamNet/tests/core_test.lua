@@ -3449,7 +3449,7 @@ do
     players[115] = { name = "Wochenfahrer", ids = { beammp = "11515" }, vehicles = {} }
     chatLog = {}
     _G[events.onPlayerJoin](115)
-    check(chatContains("📅 Deine letzte Woche: 42[,.]5 km · Platz %d+ von %d+ – neue Woche", 115), "Wochen-Rueckblick: Kilometer und Platz")
+    check(chatContains("📅 Deine letzte Woche: 42[,.]5 km · Platz %d+ von %d+ – neue Woche.*%(/top vorwoche%)", 115), "Wochen-Rueckblick: Kilometer und Platz")
     local idx, list = 0, BN.weekRanking(prev)
     for i, e in ipairs(list) do if e.id == "11515" then idx = i end end
     check(idx > 0 and chatContains("Platz " .. idx .. " von " .. #list, 115), "Wochen-Rueckblick: eigener Platz")
@@ -3459,6 +3459,18 @@ do
     _G[events.onPlayerJoin](115)
     check(not chatContains("letzte Woche", 115), "Wochen-Rueckblick: nur einmal je Woche")
     _G[events.onPlayerDisconnect](115); players[115] = nil
+    -- Neuer Monat und neue Woche beim selben Besuch: beide Rueckblicke.
+    local y, mo = BN.monthKey(clock):match("^(%d+)%-(%d+)$")
+    y, mo = tonumber(y), tonumber(mo) - 1
+    if mo == 0 then y, mo = y - 1, 12 end
+    writeJson(SHARED .. "/players/11818.json", { id = "11818", name = "Beides", km = 60, week = prev, weekKm = 12,
+        month = string.format("%04d-%02d", y, mo), monthXp = 300 })
+    players[118] = { name = "Beides", ids = { beammp = "11818" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](118)
+    check(chatContains("📅 Dein Rückblick", 118) and chatContains("📅 Deine letzte Woche: 12", 118), "Wochen-Rueckblick: auch am Tag des Saison-Rueckblicks")
+    _G[events.onPlayerDisconnect](118); players[118] = nil
+    os.remove(SHARED .. "/players/11818.json"); BN.savedRecently["11818"] = nil
     -- Letzte Woche nicht gefahren (Vorwoche ist aelter): kein Rueckblick.
     writeJson(SHARED .. "/players/11717.json", { id = "11717", name = "Pause", km = 30, week = "2000-W01", weekKm = 30 })
     players[117] = { name = "Pause", ids = { beammp = "11717" }, vehicles = {} }

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.90"
+VERSION="1.91"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2602,7 +2602,7 @@ watch_bonusmap() {
     local today factor nr mp maps=() pick until json where="" pct stamp
     today=$(date +%F)
     stamp=$STATE_DIR/bonusmap-$today
-    if [[ -f $stamp ]]; then
+    if [[ -s $stamp ]]; then
         # Laeuft die Bonus-Map nach einer Map-Rotation oder -Abstimmung auf keinem Server mehr: neu waehlen – hoechstens
         # dreimal am Tag. Heute nichts gewaehlt (aus, nur eine Map, "-"): nichts zu tun.
         local cur on=0
@@ -2611,12 +2611,14 @@ watch_bonusmap() {
         (( $(wc -l <"$stamp") < 3 )) || return 0
         for nr in $(servers); do [[ $(map_short "$(cfg "$nr" Map)") == "$cur" ]] && on=1; done
         (( on )) && return 0
-    else
+    elif [[ ! -f $stamp ]]; then
+        # Leere Datei = heute noch nichts gewaehlt (z. B. Schreiben fehlgeschlagen): naechste Minute erneut versuchen.
         : >"$stamp"
         find "$STATE_DIR" -maxdepth 1 -name 'bonusmap-*' -mtime +3 -delete 2>/dev/null
     fi
     if [[ $(conf_get BONUS_MAP) == 0 ]]; then
         printf '{"map":""}' | safe put "$SHARED/bonusmap.json" 664 "$SERVICE_USER" 2>/dev/null
+        echo - >>"$stamp"
         return 0
     fi
     factor=$(conf_get BONUS_MAP_FACTOR)
