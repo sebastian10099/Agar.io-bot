@@ -1363,6 +1363,16 @@ out=$("$TOOL" status 2>&1)
 contains "$out" " aidbx " "map_short: Map-Name nur mit harmlosen Zeichen"
 lacks "$out" "uid=" "map_short: kein Befehl aus dem Map-Namen"
 cp "$T/sc4.keep" "$T/root/4/ServerConfig.toml"
+# Zeitumstellung (Sommerzeit am 28.03.2027): der Sonntag wird nicht uebersprungen.
+"$TOOL" event auto so 20:00 2 2h >/dev/null 2>&1
+rm -f "$X"
+TZ=Europe/Berlin BEAMNET_NOW=$(TZ=Europe/Berlin date -d "2027-03-27 23:30" +%s) BEAMNET_HOUR=12 "$TOOL" watch >/dev/null 2>&1
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["next"]==int(sys.argv[2]), d' "$X" "$(TZ=Europe/Berlin date -d "2027-03-28 20:00" +%s)" \
+    && pass || fail "autoevent: Sonntag nach der Zeitumstellung gefunden"
+# Riesige (duenn belegte) Datei im gemeinsamen Ordner: wird nicht gelesen, kein Absturz.
+rm -f "$E"; truncate -s 100M "$E"
+contains "$("$TOOL" event 2>&1)" "Gerade läuft kein XP-Event" "safe get: riesige Datei wird nicht geladen"
+rm -f "$E"
 "$TOOL" event auto aus >/dev/null 2>&1
 contains "$("$TOOL" event 2>&1)" "Automatischer XP-Abend: aus" "event auto aus"
 [[ $(cat "$X") == '{"next":0}' ]] && pass || fail "event auto aus: xpabend.json ohne naechsten Abend"

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.76"
+VERSION="1.77"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -193,9 +193,13 @@ def get(path):
         # fs.protected_hardlinks=0) – nie lesen und weitergeben.
         if st.st_nlink != 1:
             raise OSError("mehrfach verlinkte Datei: " + path)
-        return f.read(), st
+        # Riesige (auch duenn belegte) Dateien des Dienst-Benutzers nie ganz in den Speicher von root laden.
+        if st.st_size > GET_MAX:
+            raise OSError("zu gross: " + path)
+        return f.read(GET_MAX + 1), st
 
 cmd = sys.argv[1]
+GET_MAX = 64 << 20
 try:
     if cmd == "put":
         uid = gid = -1
@@ -2538,8 +2542,10 @@ autoevent_publish() {
     now=${BEAMNET_NOW:-$(date +%s)}
     if spec=$(autoevent_spec); then
         read -r days hh mm factor secs <<<"$spec"
+        local base
+        base=$(date -d "@$now" +%F)
         for off in 0 1 2 3 4 5 6 7; do
-            day=$(date -d "@$(( now + off * 86400 ))" +%F)
+            day=$(date -d "$base +$off days" +%F)     # Kalendertage (nicht 86400 s: Zeitumstellung)
             [[ ,$days, == *",$(date -d "$day 12:00" +%u),"* ]] || continue
             start=$(date -d "$day $hh:$mm" +%s 2>/dev/null) || continue
             if (( start > now )); then next=$start; break; fi
@@ -2568,8 +2574,10 @@ watch_autoevent() {
     nice=${factor/./,}
     nice=${nice%,0}
     # Heute und morgen pruefen: ein Abend kurz nach Mitternacht wird schon am Vorabend angekuendigt.
+    local base
+    base=$(date -d "@$now" +%F)
     for off in 0 1; do
-        day=$(date -d "@$(( now + off * 86400 ))" +%F)
+        day=$(date -d "$base +$off days" +%F)
         [[ ,$days, == *",$(date -d "$day 12:00" +%u),"* ]] || continue
         key=$day
         if ! start=$(date -d "$key $hh:$mm" +%s 2>/dev/null); then
