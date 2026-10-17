@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.82"
+BN.VERSION = "1.83"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1511,6 +1511,10 @@ local function pendingRewards(s)
     return xp, retro
 end
 
+-- Meilensteine fuer Discord/Telegram (beim Speichern erkannt, siehe BN.savePlayer).
+BN.LEVEL_MILESTONES = { 25, 50, 75, 100 }
+BN.KM_MILESTONES = { 1000, 5000, 10000, 25000 }
+
 -- Speichert die Zuwaechse seit dem letzten Speichern. Die Datei wird dabei frisch gelesen und nur ergaenzt,
 -- damit ein schneller Serverwechsel (alter Server speichert noch, neuer hat schon geladen) nichts verliert.
 -- Belohnungen (Erfolge, Tagesaufgabe) zaehlen nur, wenn die Datei sie noch nicht kennt – sonst gaebe es sie bei
@@ -1645,6 +1649,20 @@ function BN.savePlayer(s)
         return false
     end
     s.record = rec
+    -- Meilensteine fuer Discord/Telegram (ueber das Moderationsprotokoll, wie Liga-Aufstiege): verglichen wird die Datei
+    -- vor und nach diesem Speichern – sie ist der gemeinsame Stand aller Server, so kommt jeder Meilenstein nur einmal,
+    -- auch bei schnellem Serverwechsel.
+    if not s.guest and BN.modlog then
+        local lv, km
+        for _, m in ipairs(BN.LEVEL_MILESTONES) do
+            if BN.levelFor(xpBefore) < m and rec.level >= m then lv = m end
+        end
+        for _, m in ipairs(BN.KM_MILESTONES) do
+            if fileKm < m and rec.km >= m then km = m end
+        end
+        if lv then BN.modlog({ action = "level", target = s.name, level = lv }) end
+        if km then BN.modlog({ action = "km", target = s.name, km = km }) end
+    end
     if eventExtra > 0 then s.pendingEventXp = s.pendingEventXp - eventExtra end   -- Bruchteile bleiben
     BN.savedRecently[s.id] = { at = BN.now(), rec = BN.slimRecord(rec) }
     s.pendingKm, s.pendingSeconds, s.pendingTop, s.pendingBonus, s.dirty = 0, 0, 0, 0, false
@@ -1842,31 +1860,11 @@ function BN.checkAchievements(s)
     end
 end
 
--- Meilensteine fuer Discord/Telegram (ueber das Moderationsprotokoll, wie Liga-Aufstiege): nur echte Fortschritte in
--- dieser Sitzung, nur mit Konto.
-BN.LEVEL_MILESTONES = { 25, 50, 75, 100 }
-BN.KM_MILESTONES = { 1000, 5000, 10000, 25000 }
-
 local function checkProgress(s)
     local t = BN.totals(s)
     if t.level > (s.level or 1) then
         if C.announceLevelUps then sayAll("%s ist jetzt Level %d!", s.name, t.level) end
-        local reached
-        for _, m in ipairs(BN.LEVEL_MILESTONES) do
-            if (s.level or 1) < m and t.level >= m then reached = m end
-        end
-        if reached and not s.guest and BN.modlog then BN.modlog({ action = "level", target = s.name, level = reached }) end
         s.level = t.level
-    end
-    if s.kmMark == nil then
-        s.kmMark = t.km
-    elseif t.km > s.kmMark then
-        local reached
-        for _, m in ipairs(BN.KM_MILESTONES) do
-            if s.kmMark < m and t.km >= m then reached = m end
-        end
-        if reached and not s.guest and BN.modlog then BN.modlog({ action = "km", target = s.name, km = reached }) end
-        s.kmMark = t.km
     end
     if t.league.name ~= s.league then
         local league = t.league.name

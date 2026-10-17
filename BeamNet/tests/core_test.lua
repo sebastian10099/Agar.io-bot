@@ -2813,6 +2813,10 @@ do
     tick(1)
     local f = io.open(SHARED .. "/modlog.jsonl", "r"); local before = f and f:read("*a") or ""; if f then f:close() end
     for _ = 1, 50 do move(179, 1, 20); tick(1) end      -- 1 km: ueber 1000 km
+    BN.savePlayer(BN.players[179])
+    -- Schneller Serverwechsel: ein Server mit dem alten Stand im Speicher speichert danach – kein zweites Mal.
+    BN.players[179].record.km, BN.players[179].level, BN.players[179].pendingKm = 999.5, 1, 0.1
+    BN.savePlayer(BN.players[179])
     f = io.open(SHARED .. "/modlog.jsonl", "r"); local after = f and f:read("*a") or ""; if f then f:close() end
     local new = after:sub(#before + 1)
     check(new:find('"action":"km"', 1, true) and new:find('"target":"Meilenstein"', 1, true) and new:find('"km":1000', 1, true),

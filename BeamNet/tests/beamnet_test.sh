@@ -704,10 +704,13 @@ echo italy >"$T/watch/bonusmap-$(date +%F)"
 "$TOOL" web run >/dev/null 2>&1
 lacks "$(cat "$T/web/index.html")" "Bonus-Map heute" "Statusseite: Bonus-Map nur, wenn der Waechter sie gewaehlt hat"
 echo utah >"$T/watch/bonusmap-$(date +%F)"
-echo "{\"name\":\"Utah-Server\",\"port\":30899,\"map\":\"utah\",\"players\":0,\"max\":8,\"names\":[],\"updated\":$now,\"challenge\":\"Fahre heute <b>15</b> km\"}" >"$T/root/shared/beamnet/servers/30899.json"
+echo "{\"name\":\"Utah-Server\",\"port\":30899,\"map\":\"utah\",\"players\":0,\"max\":8,\"names\":[],\"updated\":$now,\"challenge\":\"Erreiche heute 180 km/h\"}" >"$T/root/shared/beamnet/servers/30899.json"
 "$TOOL" web run >/dev/null 2>&1
 contains "$(cat "$T/web/index.html")" "<b>Utah-Server</b></td><td>Utah, USA <span class=small>⭐ Bonus-Map</span></td>" "Statusseite: Bonus-Map in der Servertabelle"
-contains "$(cat "$T/web/index.html")" "<td>jetzt</td><td>✅ Tagesaufgabe: Fahre heute &lt;b&gt;15&lt;/b&gt; km" "Statusseite: Tagesaufgabe unter Demnächst (maskiert)"
+contains "$(cat "$T/web/index.html")" "<td>jetzt</td><td>✅ Tagesaufgabe: Erreiche heute 180 km/h" "Statusseite: Tagesaufgabe unter Demnächst"
+echo "{\"name\":\"Utah-Server\",\"port\":30899,\"map\":\"utah\",\"players\":0,\"max\":8,\"names\":[],\"updated\":$now,\"challenge\":\"Fahre heute <b>15</b> km\"}" >"$T/root/shared/beamnet/servers/30899.json"
+"$TOOL" web run >/dev/null 2>&1
+lacks "$(cat "$T/web/index.html")" "Tagesaufgabe:" "Statusseite: nur Tagesaufgaben in bekannter Form"
 rm -f "$T/root/shared/beamnet/servers/30899.json"
 contains "$(cat "$T/web/index.html")" "<td>jetzt</td><td>🗺️ Bonus-Map heute: utah – \\+50 % XP beim Fahren bis Mitternacht</td>" "Statusseite: Bonus-Map unter Demnächst"
 contains "$(cat "$T/web/hilfe.html")" "<li><b>Bonus-Map des Tages</b>" "Hilfeseite: Bonus-Map"
@@ -1726,6 +1729,16 @@ sed -i 's/^MILESTONE_NOTIFY=.*/MILESTONE_NOTIFY=0/' "$T/beamnet.conf"
 printf '{"action":"level","target":"Leise","level":50,"at":%s,"server":%s}\n' "$now" "$port1" >>"$M"
 lacks "$("$TOOL" watch 2>&1)" "Leise" "modlog: MILESTONE_NOTIFY=0 schaltet Meilensteine ab"
 sed -i 's/^MILESTONE_NOTIFY=.*/MILESTONE_NOTIFY=1/' "$T/beamnet.conf"
+# MODLOG_NOTIFY=0 schaltet nur die Moderation ab, nicht die Erfolge von Spielern.
+sed -i 's/^MODLOG_NOTIFY=.*/MODLOG_NOTIFY=0/' "$T/beamnet.conf"
+{
+    printf '{"action":"level","target":"Laut","level":75,"at":%s,"server":%s}\n' "$now" "$port1"
+    printf '{"action":"kick","by":"Max","target":"Stumm","at":%s,"server":%s}\n' "$now" "$port1"
+} >>"$M"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "⭐ Laut hat Level 75 erreicht" "modlog: Meilensteine auch bei MODLOG_NOTIFY=0"
+lacks "$out" "Stumm" "modlog: MODLOG_NOTIFY=0 schaltet Moderation ab"
+sed -i 's/^MODLOG_NOTIFY=.*/MODLOG_NOTIFY=1/' "$T/beamnet.conf"
 lacks "$out" "Rambo|Troll" "modlog: nichts doppelt"
 for i in $(seq 1 12); do printf '{"action":"kick","by":"A","target":"K%s","at":%s,"server":%s}\n' "$i" "$now" "$port1"; done >>"$M"
 out=$("$TOOL" watch 2>&1)
@@ -1949,7 +1962,7 @@ cat >"$T/tg-updates.json" <<'JSON'
  {"update_id":18,"message":{"chat":{"id":-1001234567890},"text":"/online"}}
 ]}
 JSON
-rm -f "$T/watch/telegram-offset" "$T/watch/telegram-commands"
+rm -f "$T/watch/telegram-offset" "$T/watch/telegram-commands" "$T/watch/telegram-commands-try"
 echo "BeamNetBot" >"$T/watch/telegram-bot"
 : >"$T/curl.log"
 "$TOOL" watch >/dev/null 2>&1
@@ -2063,7 +2076,8 @@ rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
 contains "$(cat "$T/curl.log")" '"text":"📊 Spielerplätze – letzte 30 Tage:\\nServer 1 · gridmap_v2: 8 Plätze, Spitze 8, [0-9]+ Tage voll → 📈 [0-9]+ Plätze' "telegram /plaetze: Auslastung und Vorschlag"
 rm -f "$T/watch/usage-"*
 # /heute: Tagesaufgabe aus dem frischesten Lebenszeichen, Bonus-Map (vom Waechter gewaehlt), Wochenziel.
-echo "{\"name\":\"S1\",\"port\":30814,\"map\":\"gridmap_v2\",\"players\":1,\"max\":8,\"names\":[\"Sebi\"],\"updated\":$(date +%s),\"challenge\":\"Fahre heute 15 km\\u0007\"}" >"$T/root/shared/beamnet/servers/30814.json"
+echo "{\"name\":\"S1\",\"port\":30814,\"map\":\"gridmap_v2\",\"players\":1,\"max\":8,\"names\":[\"Sebi\"],\"updated\":$(date +%s),\"challenge\":\"Fahre heute 15 km\"}" >"$T/root/shared/beamnet/servers/30814.json"
+echo "{\"name\":\"S2\",\"port\":30815,\"map\":\"italy\",\"players\":0,\"max\":8,\"names\":[],\"updated\":$(( $(date +%s) + 1 )),\"challenge\":\"Gratis-VIP: http://boese.example\"}" >"$T/root/shared/beamnet/servers/30815.json"
 echo "{\"map\":\"gridmap_v2\",\"factor\":1.5,\"until\":$(( $(date +%s) + 3600 ))}" >"$T/root/shared/beamnet/bonusmap.json"
 cp "$T/watch/bonusmap-$(date +%F)" "$T/bm-stamp.keep" 2>/dev/null || : >"$T/bm-stamp.keep"
 echo gridmap_v2 >"$T/watch/bonusmap-$(date +%F)"
@@ -2074,6 +2088,8 @@ rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
 "$TOOL" watch >/dev/null 2>&1
 log=$(cat "$T/curl.log")
 contains "$log" '"text":"☀️ Heute im BeamNet:\\n✅ Tagesaufgabe: Fahre heute 15 km \(/aufgabe im Spiel\)\\n🗺️ Bonus-Map heute: gridmap_v2 \(\+50 % XP beim Fahren\)' "telegram /heute: Tagesaufgabe und Bonus-Map"
+lacks "$log" "Gratis-VIP" "telegram /heute: nur Tagesaufgaben in bekannter Form (kein fremder Text)"
+rm -f "$T/root/shared/beamnet/servers/30815.json"
 rm -f "$T/root/shared/beamnet/bonusmap.json"
 cp "$T/bm-stamp.keep" "$T/watch/bonusmap-$(date +%F)"
 # /woche: Top 5 der Kalenderwoche aus dem Index und das Wochenziel; alte Wochen zaehlen nicht.

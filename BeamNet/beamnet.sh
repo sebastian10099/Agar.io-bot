@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.02"
+VERSION="2.03"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="1.82"
+CORE_VERSION="1.83"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2149,13 +2149,14 @@ PY
 watch_modlog() {
     local -n modout=$1
     local line nr map=()
-    [[ $(conf_get MODLOG_NOTIFY) == 0 ]] && return 0
+    # Moderation (MODLOG_NOTIFY) und Erfolge von Spielern (Liga, Level, Kilometer: MILESTONE_NOTIFY) getrennt schaltbar.
+    [[ $(conf_get MODLOG_NOTIFY) == 0 && $(conf_get MILESTONE_NOTIFY) == 0 ]] && return 0
     [[ -f $SHARED/modlog.jsonl && ! -L $SHARED/modlog.jsonl && ! -L $SHARED ]] || return 0
     command -v python3 >/dev/null || return 0
     for nr in $(servers); do map+=("$(cfg "$nr" Port)=$nr"); done
     while IFS= read -r line; do
         [[ -n $line ]] && modout+=("$line")
-    done < <(BEAMNET_MILESTONES=$(conf_get MILESTONE_NOTIFY) python3 -I - "$SHARED/modlog.jsonl" "$STATE_DIR/modlog-pos" "${map[@]}" <<'PY' 2>/dev/null
+    done < <(BEAMNET_MODLOG=$(conf_get MODLOG_NOTIFY) BEAMNET_MILESTONES=$(conf_get MILESTONE_NOTIFY) python3 -I - "$SHARED/modlog.jsonl" "$STATE_DIR/modlog-pos" "${map[@]}" <<'PY' 2>/dev/null
 import json, os, re, stat, sys, time
 path, state = sys.argv[1], sys.argv[2]
 servers = dict(a.split("=", 1) for a in sys.argv[3:] if "=" in a)
@@ -2205,6 +2206,11 @@ for raw in chunk[:end].splitlines():
     if recent_only and not (isinstance(at, (int, float)) and time.time() - at <= 600):
         continue
     a, by, who = e.get("action"), c(e.get("by", "System")), c(e.get("target"))
+    if a in ("liga", "level", "km"):
+        if os.environ.get("BEAMNET_MILESTONES") == "0":
+            continue
+    elif os.environ.get("BEAMNET_MODLOG") == "0":
+        continue
     reason = f" – {c(e['reason'], 150)}" if e.get("reason") else ""
     if a == "ban":
         u = e.get("until")
@@ -2247,11 +2253,11 @@ for raw in chunk[:end].splitlines():
     elif a == "liga":
         lg = c(e.get("league"), 24)
         lines.append(f"🏅 {who} ist in die Liga {lg} aufgestiegen ({where(e)}) – Glückwunsch!")
-    elif a == "level" and os.environ.get("BEAMNET_MILESTONES") != "0":
+    elif a == "level":
         lv = e.get("level")
         if isinstance(lv, int) and not isinstance(lv, bool) and 1 <= lv <= 1000:
             lines.append(f"⭐ {who} hat Level {lv} erreicht ({where(e)}) – Glückwunsch!")
-    elif a == "km" and os.environ.get("BEAMNET_MILESTONES") != "0":
+    elif a == "km":
         k = e.get("km")
         if isinstance(k, int) and not isinstance(k, bool) and 1 <= k <= 10 ** 7:
             ks = f"{k:,}".replace(",", ".")
@@ -2478,8 +2484,11 @@ watch_run() {
     watch_telegram
     if (( ${#msgs[@]} > 0 )); then
         printf '%s\n' "${msgs[@]}"
-        notify "$(printf '%s\n' "${msgs[@]}")"
+        if notify "$(printf '%s\n' "${msgs[@]}")"; then
+            [[ -f $STATE_DIR/update-pending ]] && mv -f "$STATE_DIR/update-pending" "$STATE_DIR/update-notified"
+        fi
     fi
+    rm -f "$STATE_DIR/update-pending"
     # Dauer des Laufs (fuer beamnet doctor: der Waechter laeuft jede Minute neben den Spieleservern).
     echo $(( SECONDS - t0 )) >"$STATE_DIR/watch-seconds"
     return 0
@@ -2726,14 +2735,18 @@ watch_update() {
     local today latest lm ln cm cn
     today=$(date +%F)
     [[ -f $STATE_DIR/updatecheck-$today ]] && return 0
-    : >"$STATE_DIR/updatecheck-$today"
+    # Nach einem Netzfehler hoechstens einmal je Stunde erneut versuchen.
+    [[ -n $(find "$STATE_DIR/updatecheck-try" -mmin -60 2>/dev/null) ]] && return 0
+    : >"$STATE_DIR/updatecheck-try"
     find "$STATE_DIR" -maxdepth 1 -name 'updatecheck-*' -mtime +3 -delete 2>/dev/null
     latest=$(curl -fsS -m 10 -r 0-4095 "$RAW_BASE/beamnet.sh" 2>/dev/null | head -c 4096 | grep -m1 -xE 'VERSION="[0-9]{1,3}\.[0-9]{1,3}"' | cut -d'"' -f2)
     [[ $latest =~ ^[0-9]{1,3}\.[0-9]{1,3}$ && $VERSION =~ ^[0-9]+\.[0-9]+$ ]] || return 0
+    : >"$STATE_DIR/updatecheck-$today"
     lm=${latest%%.*} ln=${latest#*.} cm=${VERSION%%.*} cn=${VERSION#*.}
     (( 10#$lm > 10#$cm || (10#$lm == 10#$cm && 10#$ln > 10#$cn) )) || return 0
     [[ $(cat "$STATE_DIR/update-notified" 2>/dev/null) == "$latest" ]] && return 0
-    echo "$latest" >"$STATE_DIR/update-notified"
+    # Gemerkt wird erst, wenn die Meldung angekommen ist (watch_run); sonst kommt sie am naechsten Tag noch einmal.
+    echo "$latest" >"$STATE_DIR/update-pending"
     uout+=("🆕 BeamNet-Update verfügbar: Werkzeug $latest (installiert: $VERSION) – auf dem Server: sudo beamnet update")
 }
 
@@ -3102,7 +3115,9 @@ watch_telegram() {
     botname=$(head -c 64 "$STATE_DIR/telegram-bot" 2>/dev/null | tr -cd 'A-Za-z0-9_')
     # Befehlsliste einmal je Version bei Telegram hinterlegen (setMyCommands): Telegram schlaegt die Befehle dann beim
     # Tippen von "/" vor – ohne Umweg ueber @BotFather.
-    if [[ $(cat "$STATE_DIR/telegram-commands" 2>/dev/null) != "$VERSION" ]]; then
+    if [[ $(cat "$STATE_DIR/telegram-commands" 2>/dev/null) != "$VERSION" \
+          && $(cat "$STATE_DIR/telegram-commands-try" 2>/dev/null) != "$VERSION $(date +%F)" ]]; then
+        echo "$VERSION $(date +%F)" >"$STATE_DIR/telegram-commands-try"
         if curl -fsS -m 10 -H "Content-Type: application/json" -d "$TG_COMMANDS_JSON" \
             -K <(printf 'url = "https://api.telegram.org/bot%s/setMyCommands"\n' "$token") >/dev/null 2>&1; then
             echo "$VERSION" >"$STATE_DIR/telegram-commands"
@@ -3328,8 +3343,10 @@ for name in sorted(os.listdir(dfd))[:500]:
     except Exception:
         continue
     up, text = st.get("updated") if isinstance(st, dict) else None, st.get("challenge") if isinstance(st, dict) else None
-    if isinstance(up, int) and not isinstance(up, bool) and 0 <= time.time() - up <= 90 and isinstance(text, str) and up > best[0]:
-        best = (up, " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", text).split())[:120])
+    # Nur eine Tagesaufgabe in bekannter Form (die Datei darf der Dienst schreiben – kein freier Text in den Chat).
+    if isinstance(up, int) and not isinstance(up, bool) and 0 <= time.time() - up <= 90 and isinstance(text, str) and up > best[0] \
+            and re.fullmatch(r"(Fahre heute [0-9]{1,3} km( auf (einer Map|der Bonus-Map \(/server\)))?|Erreiche heute [0-9]{1,3} km/h|Sei heute [0-9]{1,3} Minuten unterwegs|Fahre heute auf [0-9] verschiedenen Servern|Beende heute [0-9] Rennen|Erledige heute [0-9] Aufträge \(/auftrag\))", text):
+        best = (up, text)
 if best[1]:
     print(best[1])
 PY
@@ -3733,7 +3750,7 @@ DAILY_SUMMARY=1
 DAILY_HOUR=22
 # Moderation (Bann, Kick, Stummschaltung, Verwarnung) an Discord/Telegram melden: 1 = an, 0 = aus.
 MODLOG_NOTIFY=1
-# Meilensteine von Spielern (Level 25/50/75/100, 1000/5000/10000/25000 km) melden. 0 = aus.
+# Erfolge von Spielern melden: Liga-Aufstiege und Meilensteine (Level 25/50/75/100, 1000/5000/10000/25000 km). 0 = aus.
 MILESTONE_NOTIFY=1
 # Taegliche Datensicherung der Spielerdaten nach /root/beamnet-backups/daten-<Datum>.tgz: ab BACKUP_HOUR Uhr,
 # BACKUP_KEEP Tage aufbewahren (zurueckholen: beamnet restore). DATA_BACKUP=0 schaltet ab.
@@ -4450,7 +4467,9 @@ else:
 # Tagesaufgabe aus dem frischesten Lebenszeichen (BeamNetCore ab 1.80).
 challenge = max(((num(s.get("updated")), s.get("challenge")) for s in servers if isinstance(s.get("challenge"), str)),
                 default=(0, ""))[1]
-challenge = " ".join(__import__("re").sub(r"[\x00-\x1f\x7f-\x9f]", " ", challenge).split())[:120]
+# Nur in bekannter Form (die Dateien darf der Dienst schreiben).
+if not __import__("re").fullmatch(r"(Fahre heute [0-9]{1,3} km( auf (einer Map|der Bonus-Map \(/server\)))?|Erreiche heute [0-9]{1,3} km/h|Sei heute [0-9]{1,3} Minuten unterwegs|Fahre heute auf [0-9] verschiedenen Servern|Beende heute [0-9] Rennen|Erledige heute [0-9] Aufträge \(/auftrag\))", challenge):
+    challenge = ""
 if challenge:
     upcoming.append((now, f"✅ Tagesaufgabe: {E(challenge)} (im Spiel: /aufgabe, alles für heute: /heute)"))
 upcoming.sort(key=lambda x: x[0])
