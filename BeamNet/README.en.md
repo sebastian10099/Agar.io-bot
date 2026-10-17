@@ -120,6 +120,7 @@ Every player can switch to English with `/lang en`; the German commands work too
 | `/duel <name> <track>` | Challenge a player to a time trial |
 | `/series [name]` | Race series: several tracks in a row, the times add up |
 | `/friend <name>` | Friend list: get a message when a friend comes online anywhere in the network |
+| `/team` | Teams: `/team gründen <name>` (found), `/team beitreten <name>` (join), `/team verlassen` (leave), `/team liste` (all-time ranking), `/team woche` (this week). Members count from the week after they join. Every Monday the **team of the week** is announced; members who drove at least 5 km get +50 XP once. At month end the **team of the season** is announced. Teammates coming online are announced like friends |
 | `/places` | Places (hospital, school, fire station …) on this map |
 | `/start` | Starter path for new players with bonus XP |
 
