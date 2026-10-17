@@ -316,12 +316,12 @@ Kilometer des Tages auf der Map des jeweiligen Servers; `"jobs"` = „Erledige h
 
 ### Erfolge
 
-24 Erfolge, die jeder nur einmal bekommt – mit Bonus-XP und Meldung im Chat (bei vielen auf einmal zusammengefasst):
+26 Erfolge, die jeder nur einmal bekommt – mit Bonus-XP und Meldung im Chat (bei vielen auf einmal zusammengefasst):
 10 / 100 / 1000 / 5000 km, 1, 10 und 50 Stunden unterwegs, 200 und 300 km/h, erstes Rennen, 10 und 50 Rennen,
 1 und 5 Streckenrekorde,
 3 und 8 verschiedene Maps (über alle Server; eine Map zählt ab 100 m Fahrt dort, `"mapMinKm": 0.1`), Level 10,
 erster Auftrag, 25 und 100 Aufträge, erste und 10 gewonnene Verfolgungsjagden (gefangen oder entkommen, nur wenn die
-Jagd XP bringt), 10 und 100 km im Konvoi. Wer schon Aufträge erledigt hat, bekommt die Auftrags-Erfolge nachträglich.
+Jagd XP bringt), 10 und 100 km im Konvoi, 25 und 100 km auf der Bonus-Map des Tages („Entdecker“, „Pionier“). Wer schon Aufträge erledigt hat, bekommt die Auftrags-Erfolge nachträglich.
 `/erfolge [Name]` (`/achievements`) zeigt, was geschafft ist und was als Nächstes kommt. Abschalten:
 `"achievements": false` in `config.json`.
 

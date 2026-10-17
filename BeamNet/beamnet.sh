@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.00"
+VERSION="2.01"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="1.80"
+CORE_VERSION="1.81"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -4761,7 +4761,8 @@ ACH = {"km10": "Erste 10 km", "km100": "100 km", "km1000": "1000 km", "hour1": "
        "hours50": "50 Stunden unterwegs", "race50": "50 Rennen", "record5": "5 Streckenrekorde", "job1": "Erster Auftrag",
        "job25": "25 Aufträge", "job100": "Profi-Fahrer (100 Aufträge)", "chase1": "Erste Jagd gewonnen",
        "chase10": "Jagd-Legende (10 Jagden gewonnen)", "convoy10": "Konvoi-Fahrer (10 km)",
-       "convoy100": "Kolonnenführer (100 km im Konvoi)"}
+       "convoy100": "Kolonnenführer (100 km im Konvoi)", "explorer25": "Entdecker (25 km auf Bonus-Maps)",
+       "explorer100": "Pionier (100 km auf Bonus-Maps)"}
 pdir = os.path.join(os.path.dirname(out), "p")
 os.makedirs(pdir, exist_ok=True)
 ranked = sorted(players, key=lambda r: (-xp_of(r), str(r.get("name", ""))))

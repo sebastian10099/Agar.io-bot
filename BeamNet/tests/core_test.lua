@@ -947,7 +947,7 @@ do
     end
     check(not BN.hasAchievement(v, "race1") and not BN.hasAchievement(v, "maps8"), "Nicht verdiente Erfolge fehlen")
     say(10, "/erfolge")
-    check(chatContains("Erfolge von Veteran: 9 von 24", 10), "/erfolge zaehlt")
+    check(chatContains("Erfolge von Veteran: 9 von 26", 10), "/erfolge zaehlt")
     check(chatContains("Als Nächstes: Erstes Rennen 0/1", 10), "/erfolge zeigt Fortschritt")
     BN.savePlayer(v)
     local saved = readJson(SHARED .. "/players/4242.json")
@@ -972,7 +972,7 @@ do
     -- Englisch.
     say(10, "/lang en")
     say(10, "/achievements")
-    check(chatContains("Achievements of Veteran: 9 of 24", 10) and chatContains("Next: First race 0/1", 10), "/achievements auf Englisch")
+    check(chatContains("Achievements of Veteran: 9 of 26", 10) and chatContains("Next: First race 0/1", 10), "/achievements auf Englisch")
     -- Abschaltbar.
     C.achievements = false
     players[11] = { name = "Ohne", ids = { beammp = "1111" }, vehicles = {} }
@@ -2850,6 +2850,10 @@ do
     local e0 = BN.players[182].pendingEventXp or 0
     for _ = 1, 50 do move(182, 1, 20); tick(1) end       -- 1 km
     near((BN.players[182].pendingEventXp or 0) - e0, C.xpPerKm + 50 / 60 * C.xpPerMinute, 0.2, "Bonus-Map: doppelte Kilometer- und Minuten-XP")
+    near(BN.totals(BN.players[182]).bonusMapKm, 1, 0.1, "Bonus-Map: Kilometer auf Bonus-Maps gezaehlt (Erfolg Entdecker)")
+    BN.players[182].pendingBonusMapKm = 25
+    BN.checkAchievements(BN.players[182])
+    check(BN.hasAchievement(BN.players[182], "explorer25") and not BN.hasAchievement(BN.players[182], "explorer100"), "Bonus-Map: Erfolg Entdecker (25 km)")
     chatLog = {}
     say(182, "/event")
     check(chatContains("Bonus%-Map heute: gridmap_v2 %(%+100 %% XP beim Fahren%)", 182), "Bonus-Map: /event zeigt sie")
