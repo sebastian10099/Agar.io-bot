@@ -2163,6 +2163,7 @@ do
     check(chatContains("^1%. Die Raser – 42%.0 km · 2$", 83), "Team: Liste mit Team-Kilometern")
     say(81, "/team")
     check(chatContains("Team Die Raser: 2 Mitglieder · Platz 1", 81), "Team: eigenes Team")
+    check(chatContains("^Diese Woche: .* · Platz [%d–]+ unter den Teams", 81), "Team: Wochenwertung")
     say(81, "/team verlassen"); say(82, "/team leave")
     check(chatContains("Du hast das Team Die Raser verlassen", 82), "Team: verlassen (auch englisch)")
     t = readJson(SHARED .. "/teams.json")
