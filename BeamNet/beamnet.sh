@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.82"
+VERSION="1.83"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3796,6 +3796,15 @@ cmd_setup() {
                 if [[ $chat =~ ^(-?[0-9]+|@[A-Za-z0-9_]{5,})$ ]]; then
                     conf_set TELEGRAM_TOKEN "$token"; conf_set TELEGRAM_CHAT "$chat"
                     ok "Telegram gespeichert (Test: beamnet watch test)"
+                    local tgadm
+                    tgadm=$(ask "Deine Telegram-Zahlen-ID für /ansage und /event im Chat (z. B. über @userinfobot; Enter = keine):" "")
+                    tgadm=${tgadm// /}
+                    if [[ $tgadm =~ ^[0-9]{1,15}(,[0-9]{1,15}){0,19}$ ]]; then
+                        conf_set TELEGRAM_ADMINS "$tgadm"
+                        ok "Telegram-Admins: $tgadm"
+                    elif [[ -n $tgadm ]]; then
+                        warn "Das ist keine Telegram-Zahlen-ID – nicht gespeichert."
+                    fi
                 else
                     warn "Das ist keine Chat-ID – Telegram nicht gespeichert."
                 fi
@@ -3804,6 +3813,11 @@ cmd_setup() {
             fi
         fi
         if confirm "Ausgefallene Server automatisch neu starten (höchstens 3x pro Stunde)?"; then conf_set AUTO_RESTART 1; fi
+        if confirm "XP-Abende einschalten (freitags und samstags 20–22 Uhr doppelte XP, eine Stunde vorher angekündigt)?"; then
+            conf_set AUTO_EVENT "fr,sa 20:00 2 2h"
+            autoevent_publish
+            ok "XP-Abende: fr,sa 20:00 2 2h (ändern: beamnet event auto <Tage> <HH:MM> <Faktor> <Dauer>)"
+        fi
     fi
 
     title "Schritt 8/9: Statusseite"

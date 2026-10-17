@@ -936,7 +936,7 @@ lacks "$(cat "$T/actions")" "^(start|restart|stop|enable) " "setup ohne Zustimmu
 [[ ! -f $T/systemd/beamnet-watch.timer ]] && pass || fail "setup ohne Zustimmung: kein Waechter"
 # Alles bejahen (mit Admins, Webhook, Port).
 rm -rf "$T/root/1/Resources/Server/BeamNetCore"
-answers='j\nj\nj\nj\nSebi Max\nj\nhttps://discord.com/api/webhooks/123/abc_DEF-9\n123456:ABCDEFghijklmnop_1234567890\n-1001234567890\nj\nj\n8090\nj\n'
+answers='j\nj\nj\nj\nSebi Max\nj\nhttps://discord.com/api/webhooks/123/abc_DEF-9\n123456:ABCDEFghijklmnop_1234567890\n-1001234567890\n42, 43\nj\nj\nj\n8090\nj\n'
 : >"$T/actions"
 out=$(printf "$answers" | "$TOOL" setup 2>&1)
 contains "$out" "Gesichert: $T/backups/" "setup: Sicherung"
@@ -947,16 +947,19 @@ contains "$(cat "$T/beamnet.conf")" "^DISCORD_WEBHOOK=https://discord.com/api/we
 contains "$(cat "$T/beamnet.conf")" "^AUTO_RESTART=1$" "setup: automatischer Neustart"
 contains "$(cat "$T/beamnet.conf")" "^TELEGRAM_TOKEN=123456:ABCDEFghijklmnop_1234567890$" "setup: Telegram-Token"
 contains "$(cat "$T/beamnet.conf")" "^TELEGRAM_CHAT=-1001234567890$" "setup: Telegram-Chat"
+contains "$(cat "$T/beamnet.conf")" "^TELEGRAM_ADMINS=42,43$" "setup: Telegram-Admins"
+contains "$(cat "$T/beamnet.conf")" "^AUTO_EVENT=fr,sa 20:00 2 2h$" "setup: XP-Abende eingeschaltet"
 [[ $(grep -c '^DISCORD_WEBHOOK=' "$T/beamnet.conf") == 1 ]] && pass || fail "setup: Webhook nur einmal in der Datei"
 contains "$(cat "$T/systemd/beamnet-web.service")" "' 0\\.0\\.0\\.0 8090 " "setup: Statusseite auf Port 8090"
 contains "$(cat "$T/actions")" "restart beammp-6.service" "setup: Neustart"
 contains "$out" "Zum Teilen mit mir: beamnet report" "setup: Abschluss"
 # Ungueltiger Webhook wird nicht gespeichert.
-out=$(printf '\n\n\n\nj\nhttp://evil.example/x\n\n\nj\nkeinport\n\n' | "$TOOL" setup 2>&1)
+out=$(printf '\n\n\n\nj\nhttp://evil.example/x\n\n\n\nj\nkeinport\n\n' | "$TOOL" setup 2>&1)
 contains "$out" "keine Discord-Webhook-URL" "setup: falscher Webhook abgelehnt"
 contains "$(cat "$T/beamnet.conf")" "^DISCORD_WEBHOOK=https://discord.com/api/webhooks/123/abc_DEF-9$" "setup: alter Webhook bleibt"
 contains "$out" "Ungültiger Port 'keinport' – Statusseite übersprungen" "setup: ungueltiger Port bricht nicht ab"
 contains "$out" "Zum Teilen mit mir" "setup laeuft nach ungueltigem Port bis zum Ende"
+sed -i 's/^AUTO_EVENT=.*/AUTO_EVENT=/; s/^TELEGRAM_ADMINS=.*/TELEGRAM_ADMINS=/' "$T/beamnet.conf"   # fuer die spaeteren Tests
 "$TOOL" plugin-enable XPSystem -y >/dev/null 2>&1
 
 # --- Funde aus der Code-Pruefung ---------------------------------------------------------------------------------
