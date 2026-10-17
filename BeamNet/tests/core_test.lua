@@ -103,6 +103,14 @@ BeamNetCore = { now = function() return clock end }
 
 -- --- Laden ---------------------------------------------------------------------------------------------------------
 dofile(PLUGIN)
+-- Undefinierte globale Variablen, die das Plugin liest (z. B. eine local function, die erst weiter unten im Plugin
+-- steht und an der Stelle noch nicht sichtbar ist) – am Ende muss die Liste leer sein.
+local undefinedGlobals = {}
+setmetatable(_G, { __index = function(_, k)
+    local info = debug and debug.getinfo and debug.getinfo(2, "S")
+    if info and tostring(info.source):find("BeamNetCore") then undefinedGlobals[tostring(k)] = true end
+    return nil
+end })
 local BN = BeamNetCore
 local C = BN.config
 
@@ -4145,6 +4153,13 @@ _G[events.onShutdown]()
 local saved = readJson(SHARED .. "/players/3003.json")
 check(saved ~= nil, "Herunterfahren speichert")
 check(saved and saved.bonusXp >= 90 and saved.xp >= 90, "Bonus-XP gespeichert und in XP enthalten")
+
+do
+    local names = {}
+    for k in pairs(undefinedGlobals) do names[#names + 1] = k end
+    table.sort(names)
+    check(#names == 0, "Plugin liest keine undefinierten globalen Variablen (" .. table.concat(names, ", ") .. ")")
+end
 
 print(string.format("%s: %d Prüfungen bestanden, %d fehlgeschlagen", _VERSION, passed, failed))
 return failed

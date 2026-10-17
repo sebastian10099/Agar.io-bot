@@ -51,6 +51,8 @@
       (Werkzeug 2.31); ist der Spieler gerade online, kommt eine Warnung (Werkzeug 2.32).
 - [x] `/top teams` im Spiel zeigt die Teams dieser Woche (Plugin 1.98); Hilfeseite mit `/team` und allen `/top`-Listen
       (Werkzeug 2.34).
+- [x] Test: das Plugin liest keine undefinierten globalen Variablen (fängt z. B. eine `local function`, die erst weiter
+      unten steht).
 - [ ] Vorschlag (braucht deine Zustimmung): `/neustart <Nr>` im Telegram-Chat für Admins – Server aus der Ferne neu
       starten. Bewusst noch nicht eingebaut, weil es den Server über den Chat steuert.
 - [x] `beamnet doctor`: Plugin-Version aller Server mit der Version des Werkzeugs vergleichen und auf `beamnet update`
