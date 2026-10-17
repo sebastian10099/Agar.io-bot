@@ -1721,11 +1721,13 @@ contains "$out" "🛡️ Max hat Halb vom Server geworfen \\(Server 1\\)" "modlo
 # Meilensteine (Level, Kilometer) – abschaltbar mit MILESTONE_NOTIFY=0.
 {
     printf '{"action":"level","target":"Ana, die Schnelle","level":25,"at":%s,"server":%s}\n' "$now" "$port1"
+    printf '{"action":"neu","target":"Neuling","at":%s,"server":%s}\n' "$now" "$port1"
     printf '{"action":"km","target":"Ana","km":5000,"at":%s,"server":%s}\n' "$now" "$port1"
     printf '{"action":"km","target":"Boese","km":"9e99","at":%s,"server":%s}\n' "$now" "$port1"
 } >>"$M"
 out=$("$TOOL" watch 2>&1)
 contains "$out" "⭐ Ana, die Schnelle hat Level 25 erreicht \\(Server 1\\) – Glückwunsch!" "modlog: Level-Meilenstein"
+contains "$out" "👋 Neuling ist zum ersten Mal im BeamNet \\(Server 1\\) – herzlich willkommen!" "modlog: neuer Spieler gemeldet"
 contains "$out" "🛣️ Ana hat 5\\.000 km im BeamNet geschafft \\(Server 1\\) – Glückwunsch!" "modlog: Kilometer-Meilenstein"
 lacks "$out" "Boese" "modlog: Meilenstein mit unsinnigem Wert nicht gemeldet"
 contains "$(cat "$T/beamnet.conf")" "^MILESTONE_NOTIFY=1$" "watch install: Meilensteine standardmaessig an"

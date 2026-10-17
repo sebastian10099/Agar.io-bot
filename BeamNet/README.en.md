@@ -80,7 +80,7 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
   under "Demnächst", in the network overview ("⭐ Bonus"), with `beamnet event` and with `/event` in Telegram;
   in game, `/server` marks the servers running it (⭐). `BONUS_MAP=0` turns it off,
   `BONUS_MAP_FACTOR=1.5` (up to 3) changes the bonus.
-- **Milestones:** level 25/50/75/100 and 1,000/5,000/10,000/25,000 km of a player, and league promotions;
+- **Milestones:** level 25/50/75/100 and 1,000/5,000/10,000/25,000 km of a player, league promotions and new players;
   `MILESTONE_NOTIFY=0` turns these off, `MODLOG_NOTIFY=0` only the moderation reports.
 - **Update notice:** once a day it checks GitHub for a newer BeamNet and reports it once per version ("🆕 BeamNet-Update
   verfügbar … sudo beamnet update"). It never installs anything itself; `UPDATE_CHECK=0` turns it off.

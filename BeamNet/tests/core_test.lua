@@ -1660,6 +1660,10 @@ do
     check(chatContains("Schön, dass du da bist, Frischling!", 92), "Neuer Spieler: persoenliche Begruessung")
     check(chatContains("^1%. Fair fahren", 92) and chatContains("^3%. Den Anweisungen", 92), "Neuer Spieler: Regeln nummeriert")
     check(chatContains("Frischling ist zum ersten Mal im BeamNet", 91), "Neuer Spieler: den anderen vorgestellt")
+    do
+        local fh = io.open(SHARED .. "/modlog.jsonl", "r"); local log = fh and fh:read("*a") or ""; if fh then fh:close() end
+        check(log:find('"action":"neu"', 1, true) and log:find('"target":"Frischling"', 1, true), "Neuer Spieler: fuer Discord/Telegram im Protokoll")
+    end
     check(not chatContains("Frischling ist zum ersten Mal", 92), "Neuer Spieler: sich selbst nicht vorgestellt")
     players[93] = { name = "Gast77", ids = {}, vehicles = {} }
     chatLog = {}

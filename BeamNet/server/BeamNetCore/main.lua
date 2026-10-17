@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.83"
+BN.VERSION = "1.84"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -6363,6 +6363,8 @@ function BN_onPlayerJoin(pid)
         local done, nextStep = tutorialState(s)
         if nextStep then say(pid, "Einsteiger-Pfad %d/%d: %s (/start)", done, #BN.TUTORIAL, tr(BN.langOf(pid), nextStep.text)) end
     end
+    -- Neuer Spieler (mit Konto): fuer den Waechter (Discord/Telegram), wie Meilensteine.
+    if s.isNew and not s.guest and BN.modlog then BN.modlog({ action = "neu", target = s.name }) end
     if s.isNew and C.welcomeNew then
         say(pid, "Schön, dass du da bist, %s! Deine Kilometer und XP zählen auf allen BeamNet-Servern.", s.name)
         BN.sayRules(pid)

@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.04"
+VERSION="2.05"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="1.83"
+CORE_VERSION="1.84"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2206,7 +2206,7 @@ for raw in chunk[:end].splitlines():
     if recent_only and not (isinstance(at, (int, float)) and time.time() - at <= 600):
         continue
     a, by, who = e.get("action"), c(e.get("by", "System")), c(e.get("target"))
-    if a in ("liga", "level", "km"):
+    if a in ("liga", "level", "km", "neu"):
         if os.environ.get("BEAMNET_MILESTONES") == "0":
             continue
     elif os.environ.get("BEAMNET_MODLOG") == "0":
@@ -2253,6 +2253,8 @@ for raw in chunk[:end].splitlines():
     elif a == "liga":
         lg = c(e.get("league"), 24)
         lines.append(f"🏅 {who} ist in die Liga {lg} aufgestiegen ({where(e)}) – Glückwunsch!")
+    elif a == "neu":
+        lines.append(f"👋 {who} ist zum ersten Mal im BeamNet ({where(e)}) – herzlich willkommen!")
     elif a == "level":
         lv = e.get("level")
         if isinstance(lv, int) and not isinstance(lv, bool) and 1 <= lv <= 1000:
@@ -3750,7 +3752,7 @@ DAILY_SUMMARY=1
 DAILY_HOUR=22
 # Moderation (Bann, Kick, Stummschaltung, Verwarnung) an Discord/Telegram melden: 1 = an, 0 = aus.
 MODLOG_NOTIFY=1
-# Erfolge von Spielern melden: Liga-Aufstiege und Meilensteine (Level 25/50/75/100, 1000/5000/10000/25000 km). 0 = aus.
+# Erfolge von Spielern melden: neue Spieler, Liga-Aufstiege und Meilensteine (Level 25/50/75/100, 1000/5000/10000/25000 km). 0 = aus.
 MILESTONE_NOTIFY=1
 # Taegliche Datensicherung der Spielerdaten nach /root/beamnet-backups/daten-<Datum>.tgz: ab BACKUP_HOUR Uhr,
 # BACKUP_KEEP Tage aufbewahren (zurueckholen: beamnet restore). DATA_BACKUP=0 schaltet ab.

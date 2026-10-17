@@ -146,7 +146,7 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   `BONUS_MAP_FACTOR=1.5` (bis 3) ändert den Bonus.
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
 - **Meilensteine:** Level 25/50/75/100 und 1.000/5.000/10.000/25.000 km eines Spielers („⭐ Ana hat Level 25
-  erreicht (Server 2) – Glückwunsch!“) und Liga-Aufstiege; `MILESTONE_NOTIFY=0` schaltet diese Erfolge ab,
+  erreicht (Server 2) – Glückwunsch!“), Liga-Aufstiege und neue Spieler („👋 Ana ist zum ersten Mal im BeamNet“); `MILESTONE_NOTIFY=0` schaltet diese Erfolge ab,
   `MODLOG_NOTIFY=0` nur die Moderationsmeldungen.
 - **Update-Hinweis:** Einmal am Tag sieht er auf GitHub nach, ob es ein neueres BeamNet gibt, und meldet jede neue
   Version einmal („🆕 BeamNet-Update verfügbar: Werkzeug 1.94 (installiert: 1.93) – auf dem Server: sudo beamnet

@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.04 / Plugin 1.83)
+## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.05 / Plugin 1.84)
 
 - [x] `/heute` im Spiel: Tagesaufgabe, XP-Event oder XP-Abend, Bonus-Map, Serie und Wochenziel auf einen Blick; `/event`
       zeigt die Bonus-Map jetzt auch während eines XP-Events (Plugin 1.79).
@@ -16,6 +16,8 @@
       nur in bekannter Form, `MODLOG_NOTIFY` und `MILESTONE_NOTIFY` unabhängig, Update-Hinweis erst nach erfolgreichem
       Senden gemerkt, `setMyCommands` höchstens einmal am Tag versucht.
 - [x] Statusseite: Kopfzeile nennt die neuen Fahrer der letzten 7 Tage (Werkzeug 2.04).
+- [x] Neue Spieler an Discord/Telegram („👋 … ist zum ersten Mal im BeamNet“, `MILESTONE_NOTIFY`; Plugin 1.84,
+      Werkzeug 2.05).
 - [x] `beamnet doctor`: Plugin-Version aller Server mit der Version des Werkzeugs vergleichen und auf `beamnet update`
       hinweisen (Werkzeug 1.98).
 
