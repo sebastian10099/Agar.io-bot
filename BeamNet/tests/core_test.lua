@@ -2840,12 +2840,18 @@ do
     chatLog = {}
     say(182, "/event")
     check(chatContains("Bonus%-Map heute: gridmap_v2 %(%+100 %% XP beim Fahren%)", 182), "Bonus-Map: /event zeigt sie")
+    chatLog = {}
+    say(182, "/server")
+    check(chatContains("· gridmap_v2 · %d+/%d+ ⭐ Bonus%-Map ·", 182), "Bonus-Map: /server markiert den Server")
     -- Andere Map: kein Bonus hier, aber Hinweis.
     writeJson(SHARED .. "/bonusmap.json", { map = "italy", factor = 1.5, ["until"] = clock + 3600 })
     BN.bonusMapAt = nil
     e0 = BN.players[182].pendingEventXp or 0
     for _ = 1, 50 do move(182, 1, 20); tick(1) end
     near((BN.players[182].pendingEventXp or 0) - e0, 0, 0.01, "Bonus-Map: andere Map bringt hier nichts")
+    chatLog = {}
+    say(182, "/server")
+    check(not chatContains("· gridmap_v2 · %d+/%d+ ⭐", 182), "Bonus-Map: /server markiert nur die Bonus-Map")
     -- Abgelaufen: nichts.
     writeJson(SHARED .. "/bonusmap.json", { map = "gridmap_v2", factor = 2, ["until"] = clock - 1 })
     BN.bonusMapAt = nil

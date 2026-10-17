@@ -140,7 +140,7 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   Betreten und mit `/event`). So verteilen sich die Spieler besser auf die Server. Wechselt eine Map-Rotation oder
   -Abstimmung tagsüber die Map, sodass die Bonus-Map nirgends mehr läuft, wählt er sofort eine neue. Die Bonus-Map
   steht auch auf der Statusseite unter „Demnächst“, in der Netzwerk-Übersicht („⭐ Bonus“), bei `beamnet event` und
-  bei `/event` im Telegram-Chat. `BONUS_MAP=0` schaltet ab,
+  bei `/event` im Telegram-Chat; im Spiel markiert `/server` die Server mit der Bonus-Map (⭐). `BONUS_MAP=0` schaltet ab,
   `BONUS_MAP_FACTOR=1.5` (bis 3) ändert den Bonus.
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
 - Er meldet **Moderation** an Discord/Telegram: Bann (mit Dauer), Kick, Stummschaltung (auch automatisch wegen Spam)

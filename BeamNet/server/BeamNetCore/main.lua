@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.72"
+BN.VERSION = "1.73"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -822,6 +822,7 @@ local EN = {
     ["… und %d weitere – bitte genauer schreiben."] = "… and %d more – please be more specific.",
     ["Port %s"] = "port %s",
     [" (voll)"] = " (full)",
+    [" ⭐ Bonus-Map"] = " ⭐ bonus map",
     ["👋 Auf %s (%s) fahren gerade %d Spieler – komm rüber! %s"] = "👋 %s (%s) has %d players right now – come over! %s",
     ["  ← hier"] = "  ← here",
     ["Auf %s gibt es noch keine Strecken."] = "No tracks on %s yet.",
@@ -3352,12 +3353,14 @@ function commands.server(pid)
         return
     end
     say(pid, "BeamNet-Server (wechseln im BeamMP-Launcher):")
+    local bm = BN.bonusMap()
     for _, st in ipairs(list) do
         local addr = C.publicHost ~= "" and (C.publicHost .. ":" .. tostring(st.port)) or tr(lang, "Port %s", tostring(st.port))
         local here = tonumber(st.port) == tonumber(BN.server.port) and tr(lang, "  ← hier") or ""
         local full = (tonumber(st.max) or 0) > 0 and (tonumber(st.players) or 0) >= (tonumber(st.max) or 0)
-        chat(pid, string.format("%s · %s · %d/%d%s · %s%s", st.name or "?", st.map or "?", tonumber(st.players) or 0,
-            tonumber(st.max) or 0, full and tr(lang, " (voll)") or "", addr, here))
+        local bonus = bm and st.map == bm.map and tr(lang, " ⭐ Bonus-Map") or ""
+        chat(pid, string.format("%s · %s · %d/%d%s%s · %s%s", st.name or "?", st.map or "?", tonumber(st.players) or 0,
+            tonumber(st.max) or 0, full and tr(lang, " (voll)") or "", bonus, addr, here))
     end
 end
 commands.servers = commands.server
