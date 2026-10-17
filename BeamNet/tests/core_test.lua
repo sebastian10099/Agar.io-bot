@@ -2775,6 +2775,17 @@ do
     say(170, "/auftrag")
     for _ = 1, 60 do move(170, 1, 20 * dir); tick(1); if not BN.players[170].job then break end end
     eq(BN.jobLimits["17070"].streak, 1, "Schicht: nach langer Pause von vorn")
+    -- Abbrechen beendet die Schicht.
+    tick(C.jobCooldownSec)
+    say(170, "/auftrag"); say(170, "/auftrag stop")
+    check(BN.jobLimits["17070"].streak == nil, "Schicht: Abbrechen beendet die Serie")
+    -- Neue Stunde: die Schicht laeuft weiter, nur das Stundenlimit beginnt neu.
+    BN.jobLimits["17070"].streak, BN.jobLimits["17070"].doneAt, BN.jobLimits["17070"].hourStart = 4, clock - 50, clock - 3700
+    BN.jobLimits["17070"].xp = 500
+    dir = -dir
+    say(170, "/auftrag")
+    for _ = 1, 60 do move(170, 1, 20 * dir); tick(1); if not BN.players[170].job then break end end
+    check(BN.jobLimits["17070"].streak == 5 and chatContains("🔥 Schicht: 5 Aufträge in Folge – %+50 Bonus%-XP!", 170), "Schicht: laeuft ueber die volle Stunde weiter")
     _G[events.onPlayerDisconnect](170); players[170] = nil
     os.remove(SHARED .. "/players/17070.json"); BN.savedRecently["17070"] = nil
     os.execute('rm -rf "' .. SHARED .. '/places"')

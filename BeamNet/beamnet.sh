@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.73"
+VERSION="1.74"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2448,6 +2448,27 @@ autoevent_spec() {
     printf '%s %02d %s %s %s\n' "$out" "$hh" "$mm" "$factor" "$n"
 }
 
+# Stand fuer Telegram und "beamnet event": laufendes XP-Event (Faktor, Ende, von wem) und der Plan fuer XP-Abende.
+event_status_text() {
+    local text spec
+    text=$( { safe get "$SHARED/event.json" 2>/dev/null || true; } | python3 -I -c '
+import json, re, sys, time
+try:
+    d = json.loads(sys.stdin.read(65536))
+    f, until = float(d.get("factor", 1)), float(d.get("until", 0))
+    if f <= 1 or until <= time.time():
+        raise ValueError
+    by = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(d.get("by", "?"))).split())[:40]
+    fs = ("%g" % f).replace(".", ",")
+    print("⚡ XP-Event läuft: %s-fache XP bis %s Uhr (von %s)" % (fs, time.strftime("%H:%M", time.localtime(until)), by))
+except Exception:
+    print("Gerade läuft kein XP-Event.")' 2>/dev/null)
+    [[ -n $text ]] || text="Gerade läuft kein XP-Event."
+    spec=$(conf_get AUTO_EVENT)
+    if autoevent_spec >/dev/null; then text+=$'\n'"🗓️ XP-Abend geplant: $spec"; fi
+    printf '%s\n' "$text"
+}
+
 # Laeuft gerade ein XP-Event (event.json mit "until" in der Zukunft)?
 event_running() {
     [[ -f $SHARED/event.json ]] || return 1
@@ -2476,7 +2497,7 @@ cmd_event() {
     local sub=${1:-} spec
     case $sub in
         ""|status)
-            if event_running; then echo "XP-Event läuft gerade (Ende: siehe /event im Spiel)."; else echo "Gerade läuft kein XP-Event."; fi
+            event_status_text | head -n 1
             spec=$(conf_get AUTO_EVENT)
             if autoevent_spec >/dev/null; then echo "Automatischer XP-Abend: $spec"
             else echo "Automatischer XP-Abend: aus (beamnet event auto fr,sa 20:00 2 2h)"; fi
@@ -2878,7 +2899,27 @@ watch_telegram() {
                     reply="Ansage fehlgeschlagen – bitte beamnet doctor prüfen."
                 fi
                 ;;
-            nichtadmin) reply="Ansagen nur für Admins (TELEGRAM_ADMINS in /etc/beamnet.conf)." ;;
+            nichtadmin) reply="Nur für Admins (TELEGRAM_ADMINS in /etc/beamnet.conf)." ;;
+            event) reply=$(event_status_text) ;;
+            eventset)
+                # Nur Telegram-Konten aus TELEGRAM_ADMINS: /event <Faktor> <Dauer> startet, /event stop beendet.
+                local esender=${arg%%$'\x1f'*} ef="" ed="" espec
+                arg=${arg#*$'\x1f'}
+                read -r ef ed _ <<<"$arg"
+                if [[ ${ef,,} == stop || ${ef,,} == aus ]]; then
+                    if event_write 1 0 "Telegram $esender"; then reply="XP-Event beendet."; else reply="XP-Event konnte nicht beendet werden – bitte beamnet doctor prüfen."; fi
+                elif espec=$(autoevent_spec "mo 00:00 $ef $ed"); then
+                    read -r _ _ _ ef ed <<<"$espec"
+                    if event_write "$ef" "$ed" "Telegram $esender"; then
+                        ef=${ef/./,}
+                        reply="⚡ XP-Event gestartet: ${ef%,0}-fache XP für $(( ed / 60 )) Minuten auf allen Servern."
+                    else
+                        reply="XP-Event konnte nicht gestartet werden – bitte beamnet doctor prüfen."
+                    fi
+                else
+                    reply="Aufruf: /event <Faktor 1,5–5> <Dauer 10m–6h> – z. B. /event 2 2h · /event stop"
+                fi
+                ;;
             rekord)
                 reply=$(python3 -I - "$SHARED/peak.json" <<'PY' 2>/dev/null
 import json, os, stat, sys, time
@@ -2896,7 +2937,7 @@ print(f"🏆 Rekord: {best} Spieler gleichzeitig ({when}) · heute bisher: {toda
 PY
 )
                 ;;
-            *) reply="BeamNet-Bot: /online · /top · /rekord · /server${admins:+ · /ansage (Admins)}" ;;
+            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
         esac
         NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$reply" || true
     done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" "$admins" <<<"$raw" 2>/dev/null)
@@ -2929,18 +2970,21 @@ for u in data["result"][:100]:
         word = hit.group(1)
         cmd = {"online": "online", "wer": "online", "top": "top", "bestenliste": "top", "rekord": "rekord",
                "record": "rekord", "server": "server", "servers": "server"}.get(word, "hilfe" if word in ("hilfe", "help", "start") else "")
-        if word in ("ansage", "announce"):
-            sender = m.get("from") if isinstance(m.get("from"), dict) else {}
-            forwarded = any(k in m for k in ("forward_origin", "forward_from", "forward_from_chat", "forward_date", "is_automatic_forward"))
-            fresh = isinstance(m.get("date"), int) and abs(time.time() - m["date"]) <= 600
-            if str(sender.get("id")) in admins and not sender.get("is_bot") and not forwarded and fresh:
-                cmd = "ansage"
-                # Absender-ID, Trennzeichen 0x1f, dann der Text nach dem Befehl (Original-Schreibweise), ohne Steuerzeichen
-                # und Tabulatoren, hoechstens 300 Zeichen.
-                body = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", text.strip().split(None, 1)[1] if len(text.strip().split(None, 1)) > 1 else "").split())[:300]
+        # Text nach dem Befehl (Original-Schreibweise), ohne Steuerzeichen und Tabulatoren, hoechstens 300 Zeichen.
+        body = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", text.strip().split(None, 1)[1] if len(text.strip().split(None, 1)) > 1 else "").split())[:300]
+        sender = m.get("from") if isinstance(m.get("from"), dict) else {}
+        forwarded = any(k in m for k in ("forward_origin", "forward_from", "forward_from_chat", "forward_date", "is_automatic_forward"))
+        fresh = isinstance(m.get("date"), int) and abs(time.time() - m["date"]) <= 600
+        is_admin = str(sender.get("id")) in admins and not sender.get("is_bot") and not forwarded and fresh
+        if word in ("ansage", "announce") or (word in ("event", "xpabend") and body):
+            if is_admin:
+                cmd = "ansage" if word in ("ansage", "announce") else "eventset"
+                # Absender-ID, Trennzeichen 0x1f, dann der Text.
                 arg = str(sender.get("id")) + "\x1f" + body
             else:
                 cmd = "nichtadmin"
+        elif word in ("event", "xpabend"):
+            cmd = "event"
     print(f"{nxt}\t{cmd}\t{arg}")
 PY
 

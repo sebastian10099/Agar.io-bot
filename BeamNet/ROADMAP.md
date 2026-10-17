@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.73 / Plugin 1.64)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.74 / Plugin 1.65)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -45,7 +45,9 @@
       aus ServerConfig.toml werden bereinigt (ältere Bash hätten sie in Rechenausdrücken ausgeführt), Abende kurz nach
       Mitternacht schon am Vorabend angekündigt, Zeitumstellung und Schreibfehler gemeldet, Warten auf laufende Events.
 - [x] Schicht: Aufträge in Folge (höchstens 3 min Pause) bringen beim 3., 5. und ab dem 10. Auftrag Bonus-XP,
-      im Stundenlimit für Auftrags-XP (Plugin 1.64).
+      im Stundenlimit für Auftrags-XP (Plugin 1.64). Nachprüfung (1.65): nur Aufträge ab 1 km zählen, Abbrechen beendet
+      die Serie, eine neue Stunde nicht. `/event` im Telegram-Chat (Stand für alle, Starten/Beenden für Admins,
+      Werkzeug 1.74).
 - [x] Aufträge auf jeder Map: Lieferpunkte aus echten Fahrten, wenn Admins (noch) keine Orte angelegt haben;
       Richtungshinweise unterwegs (Plugin 1.62).
 - [x] „Wo ist was los?“: Wer fast allein auf einem Server fährt, bekommt den vollsten anderen Server genannt

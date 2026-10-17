@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.64"
+BN.VERSION = "1.65"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -4559,19 +4559,17 @@ local function jobLimit(s)
     local key = s.id or ("ip:" .. tostring(s.ip or s.pid))
     local now = BN.now()
     local e = BN.jobLimits[key]
-    if not e or now - e.hourStart >= 3600 then
-        if e and now - (e.doneAt or 0) < C.jobCooldownSec then
-            e.hourStart, e.xp = now, 0
-        else
-            e = { hourStart = now, xp = 0 }
-            BN.jobLimits[key] = e
-        end
+    if not e then
+        e = { hourStart = now, xp = 0 }
+        BN.jobLimits[key] = e
+    elseif now - e.hourStart >= 3600 then
+        e.hourStart, e.xp = now, 0          -- neue Stunde; Abklingzeit und Schicht laufen weiter
     end
     -- Aufraeumen, damit die Tabelle nicht waechst.
     BN.jobLimitCount = (BN.jobLimitCount or 0) + 1
     if BN.jobLimitCount % 200 == 0 then
         for k, v in pairs(BN.jobLimits) do
-            if now - v.hourStart >= 3600 and now - (v.doneAt or 0) >= C.jobCooldownSec then BN.jobLimits[k] = nil end
+            if now - v.hourStart >= 3600 and now - (v.doneAt or 0) >= math.max(C.jobCooldownSec, 180) then BN.jobLimits[k] = nil end
         end
         BN.jobLimits[key] = e
     end
@@ -4770,6 +4768,7 @@ function BN.jobTick(s)
     -- Sprung (Teleport, Zuruecksetzen an einen anderen Ort, neues Fahrzeug mit derselben Nummer): Auftrag vorbei.
     if j.jumped or (pos and dist(pos, j.lastPos) > C.maxSpeedMps * math.max(1, now - j.lastAt) + 50) then
         s.job = nil
+        jobLimit(s).streak = nil
         say(s.pid, "Sprung erkannt – der Auftrag nach %s ist abgebrochen. Neuer: /auftrag", j.place.name)
         return
     end
@@ -4803,8 +4802,12 @@ function BN.jobTick(s)
         xp = math.min(xp, 250)
         local lim = jobLimit(s)
         -- Schicht: Wer den Auftrag hoechstens 3 Minuten nach dem letzten angenommen hat, setzt die Serie fort.
-        if lim.doneAt and j.startAt - lim.doneAt <= 180 then lim.streak = (lim.streak or 1) + 1 else lim.streak = 1 end
-        local streakXp = BN.jobStreakBonus(lim.streak)
+        -- Nur Auftraege ab 1 km zaehlen (kurze bringen auch sonst keinen festen Anteil); abgebrochene beenden die Serie.
+        local streakXp = 0
+        if (j.total or 0) >= 1000 then
+            if lim.streak and lim.doneAt and j.startAt - lim.doneAt <= 180 then lim.streak = lim.streak + 1 else lim.streak = 1 end
+            streakXp = BN.jobStreakBonus(lim.streak)
+        end
         local capped = xp + streakXp > C.jobXpPerHour - lim.xp
         xp = math.max(0, math.min(xp, C.jobXpPerHour - lim.xp))
         streakXp = math.max(0, math.min(streakXp, C.jobXpPerHour - lim.xp - xp))
@@ -4818,7 +4821,7 @@ function BN.jobTick(s)
         if streakXp > 0 then
             s.pendingBonus = s.pendingBonus + streakXp
             say(s.pid, "🔥 Schicht: %d Aufträge in Folge – +%d Bonus-XP!", lim.streak, streakXp)
-        elseif lim.streak == 2 then
+        elseif lim.streak == 2 and (j.total or 0) >= 1000 then
             say(s.pid, "Schicht läuft: 2 Aufträge in Folge – beim 3. gibt es Bonus-XP (nächsten innerhalb von 3 min annehmen).")
         end
         if capped then say(s.pid, "Stundenlimit für Auftrags-XP erreicht – weitere Aufträge zählen, bringen aber erst später wieder XP.") end
@@ -4826,6 +4829,7 @@ function BN.jobTick(s)
     end
     if left <= 0 then
         s.job = nil
+        jobLimit(s).streak = nil
         say(s.pid, "⌛ Zu spät – der Auftrag nach %s ist verfallen. Neuer Versuch: /auftrag", j.place.name)
         return
     end
@@ -4847,6 +4851,7 @@ function commands.auftrag(pid, arg)
     if sub == "stop" or sub == "abbrechen" or sub == "cancel" then
         if not s.job then say(pid, "Du hast gerade keinen Auftrag.") return end
         s.job = nil
+        jobLimit(s).streak = nil
         say(pid, "Auftrag abgebrochen. Neuer: /auftrag")
         return
     end

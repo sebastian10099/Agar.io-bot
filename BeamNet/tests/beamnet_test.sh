@@ -1342,7 +1342,7 @@ python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["factor"]==3' "
 # Von Hand: start/stop.
 contains "$("$TOOL" event start 9 2h 2>&1)" "Aufruf: beamnet event start" "event start: Faktor geprueft"
 contains "$("$TOOL" event start 1,5 90m 2>&1)" "1,5-fache XP für 90 Minuten" "event start: mit Komma"
-contains "$("$TOOL" event 2>&1)" "XP-Event läuft gerade" "event: laufendes Event erkannt"
+contains "$("$TOOL" event 2>&1)" "⚡ XP-Event läuft: 1,5-fache XP bis [0-9:]+ Uhr \(von Konsole\)" "event: laufendes Event erkannt (Faktor, Ende, von wem)"
 "$TOOL" event stop >/dev/null 2>&1
 contains "$("$TOOL" event 2>&1)" "Gerade läuft kein XP-Event" "event stop: beendet"
 # Kurz nach Mitternacht: Ankuendigung schon am Vorabend.
@@ -1724,7 +1724,7 @@ contains "$log" "getUpdates\\?offset=0" "telegram: holt neue Nachrichten"
 contains "$log" '"text":"👥 Gerade online: [0-9]+ Spieler' "telegram: /online beantwortet"
 contains "$log" '"text":"🏁 Bestenliste \(XP\):\\n1\. Vorn – 1000050 XP · 99999 km"' "telegram: /top aus dem Index"
 contains "$log" '"text":"🏆 Rekord: [0-9]+ Spieler gleichzeitig \([0-9.]+\) · heute bisher: [0-9]+"' "telegram: /rekord"
-contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server"' "telegram: /hilfe"
+contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event"' "telegram: /hilfe"
 contains "$log" '"text":"📊 BeamNet: [0-9]+ Spieler · [0-9]+ von [0-9]+ Servern belegt' "telegram: /server mit Netzwerk-Uebersicht"
 [[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat, anderer Bot und normaler Text ignoriert)"
 [[ $(cat "$T/watch/telegram-offset") == 18 ]] && pass || fail "telegram: Offset gemerkt (der 6. Befehl bleibt für den nächsten Lauf)"
@@ -1750,7 +1750,7 @@ rm -f "$T/watch/telegram-offset" "$T/root/shared/beamnet/announcements.json"
 log=$(cat "$T/curl.log")
 contains "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" '"text": "Heute 20 Uhr Gruppenrennen! Tab"' "telegram /ansage: Admin schickt eine Ansage an alle Server"
 contains "$log" '"text":"📢 Ansage an alle Server: Heute 20 Uhr Gruppenrennen! Tab"' "telegram /ansage: Bestätigung"
-contains "$log" '"text":"Ansagen nur für Admins' "telegram /ansage: Fremde werden abgewiesen"
+contains "$log" '"text":"Nur für Admins' "telegram /ansage: Fremde werden abgewiesen"
 lacks "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" "Fremder Text|\"Bot\"|Weitergeleitet|Uralt" "telegram /ansage: nur von Admins, nicht von Bots, nicht weitergeleitet, nicht alt"
 contains "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" '"by": "Telegram 42"' "telegram /ansage: Absender im Protokoll"
 # Geplant: /ansage 18:00 Text
@@ -1763,6 +1763,34 @@ rm -f "$T/watch/telegram-offset" "$T/root/shared/beamnet/announcements.json"; : 
 contains "$(cat "$T/curl.log")" '"text":"📢 Ansage für 18:00 Uhr geplant: Turnier"' "telegram /ansage: mit Uhrzeit geplant"
 contains "$(cat "$T/curl.log")" '"text":"Aufruf: /ansage \[HH:MM\] <Text>"' "telegram /ansage: Uhrzeit ohne Text"
 contains "$(cat "$T/root/shared/beamnet/announcements.json" 2>/dev/null)" '"text": "Turnier"' "telegram /ansage: Text ohne die Uhrzeit"
+# /event aus Telegram: Stand fuer alle, Starten und Beenden nur fuer Admins.
+E="$T/root/shared/beamnet/event.json"
+rm -f "$E"
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":50,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/event"}},
+ {"update_id":51,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/event 2 2h"}},
+ {"update_id":52,"message":{"chat":{"id":-1001234567890},"from":{"id":42},"date":$now,"text":"/event 9 2h"}},
+ {"update_id":53,"message":{"chat":{"id":-1001234567890},"from":{"id":42},"date":$now,"text":"/event 2 2h"}}]}
+JSON
+rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+log=$(cat "$T/curl.log")
+contains "$log" '"text":"Gerade läuft kein XP-Event."' "telegram /event: Stand fuer alle"
+contains "$log" '"text":"Nur für Admins' "telegram /event: Starten nur fuer Admins"
+contains "$log" '"text":"Aufruf: /event <Faktor' "telegram /event: Faktor geprueft"
+contains "$log" '"text":"⚡ XP-Event gestartet: 2-fache XP für 120 Minuten auf allen Servern."' "telegram /event: Admin startet"
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["factor"]==2 and d["by"]=="Telegram 42"' "$E" && pass || fail "telegram /event: event.json mit Absender"
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":60,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/event"}},
+ {"update_id":61,"message":{"chat":{"id":-1001234567890},"from":{"id":42},"date":$now,"text":"/event stop"}}]}
+JSON
+rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+log=$(cat "$T/curl.log")
+contains "$log" '"text":"⚡ XP-Event läuft: 2-fache XP bis [0-9:]+ Uhr \(von Telegram 42\)"' "telegram /event: laufendes Event"
+contains "$log" '"text":"XP-Event beendet."' "telegram /event stop"
+contains "$("$TOOL" event 2>&1)" "Gerade läuft kein XP-Event" "telegram /event stop: beendet"
+rm -f "$E"
 sed -i 's/^TELEGRAM_ADMINS=.*/TELEGRAM_ADMINS=/' "$T/beamnet.conf"
 rm -f "$T/root/shared/beamnet/announcements.json"
 sed -i 's/^TELEGRAM_COMMANDS=.*/TELEGRAM_COMMANDS=0/' "$T/beamnet.conf"
