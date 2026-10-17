@@ -110,7 +110,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   (Telegram-Zahlen-IDs, z. B. über @userinfobot) dürfen `/ansage [HH:MM] <Text>` schreiben – die Ansage geht an alle
   Server; andere bekommen einen Hinweis, Bots werden ignoriert. **XP-Events aus Telegram:** `/event` zeigt allen, ob
   gerade ein XP-Event läuft und ob ein XP-Abend geplant ist; Admins starten mit `/event 2 2h` (Faktor 1,5–5, Dauer
-  10m–6h) und beenden mit `/event stop`. Tipp: in @BotFather mit
+  10m–6h) und beenden mit `/event stop`. **`/spieler <Name>`** (Teil des Namens reicht) zeigt Level, Liga, XP, Platz,
+  Kilometer, Fahrzeit, Spitze und Aufträge eines Spielers. Tipp: in @BotFather mit
   `/setcommands` die Befehle hinterlegen, dann schlägt Telegram sie vor.
 - **Netzwerk-Übersicht:** alle 10 Minuten (`NETWORK_REPORT=…`, 0 = aus), solange jemand spielt:
   ```

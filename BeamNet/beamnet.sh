@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.75"
+VERSION="1.76"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2929,6 +2929,7 @@ watch_telegram() {
                 ;;
             nichtadmin) reply="Nur für Admins (TELEGRAM_ADMINS in /etc/beamnet.conf)." ;;
             event) reply=$(event_status_text) ;;
+            spieler) reply=$(telegram_player "$arg") ;;
             eventset)
                 # Nur Telegram-Konten aus TELEGRAM_ADMINS: /event <Faktor> <Dauer> startet, /event stop beendet.
                 local esender=${arg%%$'\x1f'*} ef="" ed="" espec
@@ -2965,7 +2966,7 @@ print(f"🏆 Rekord: {best} Spieler gleichzeitig ({when}) · heute bisher: {toda
 PY
 )
                 ;;
-            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
+            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name>${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
         esac
         NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$reply" || true
     done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" "$admins" <<<"$raw" 2>/dev/null)
@@ -3013,6 +3014,8 @@ for u in data["result"][:100]:
                 cmd = "nichtadmin"
         elif word in ("event", "xpabend"):
             cmd = "event"
+        elif word in ("spieler", "player", "profil", "stats"):
+            cmd, arg = "spieler", body[:32]
     print(f"{nxt}\t{cmd}\t{arg}")
 PY
 
@@ -3051,6 +3054,67 @@ if not rows:
 print("🏁 Bestenliste (XP):")
 for i, (xp, km, name) in enumerate(rows[:5], 1):
     print(f"{i}. {name} – {xp} XP · {km:.0f} km")
+PY
+}
+
+# /spieler <Name> fuer Telegram: Level, Liga, XP, Platz, Kilometer, Fahrzeit, Spitze, Auftraege aus dem
+# Bestenlisten-Index (genauer Name zuerst, sonst Teil des Namens; bei mehreren Treffern eine Auswahl).
+telegram_player() {
+    [[ -n ${1:-} ]] || { echo "Aufruf: /spieler <Name> (Teil des Namens reicht)"; return 0; }
+    python3 -I - "$SHARED/players-index.tsv" "$SHARED/config.json" "$1" <<'PY' 2>/dev/null || echo "Noch keine Bestenliste."
+import json, math, os, re, stat, sys
+def read(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise OSError
+        return f.read(64 << 20).decode("utf-8", "replace")
+try:
+    cfg = json.loads(read(sys.argv[2]))
+except Exception:
+    cfg = {}
+cfg = cfg if isinstance(cfg, dict) else {}
+def n(v, d):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else d
+per_km, per_min, base = n(cfg.get("xpPerKm"), 10), n(cfg.get("xpPerMinute"), 1), n(cfg.get("levelBase"), 25) or 25
+leagues = cfg.get("leagues")
+if not (isinstance(leagues, list) and leagues and all(isinstance(l, dict) and isinstance(l.get("name"), str) for l in leagues)):
+    leagues = [{"xp": 0, "name": "Bronze"}, {"xp": 500, "name": "Silber"}, {"xp": 2000, "name": "Gold"},
+               {"xp": 6000, "name": "Platin"}, {"xp": 15000, "name": "Diamant"}, {"xp": 40000, "name": "Legende"}]
+def f(v):
+    try:
+        x = float(v or 0)
+        return x if math.isfinite(x) else 0.0
+    except ValueError:
+        return 0.0
+rows = []
+for line in read(sys.argv[1]).splitlines()[1:]:
+    c = line.split("\t")
+    if len(c) not in (13, 14, 15):
+        continue
+    xp = int(f(c[2]) * per_km + f(c[3]) / 60 * per_min) + int(f(c[4]))
+    rows.append({"name": re.sub(r"[\x00-\x1f\x7f]", "", c[1])[:32], "xp": xp, "km": f(c[2]), "sec": f(c[3]),
+                 "top": f(c[13]) if len(c) > 13 else 0, "jobs": int(f(c[14])) if len(c) > 14 else 0})
+if not rows:
+    print("Noch keine Bestenliste."); sys.exit(0)
+rows.sort(key=lambda r: (-r["xp"], r["name"].lower()))
+q = " ".join(sys.argv[3].split()).lower()
+hits = [r for r in rows if r["name"].lower() == q] or [r for r in rows if q in r["name"].lower()]
+if not hits:
+    print(f"Keinen Spieler „{sys.argv[3][:32]}“ gefunden."); sys.exit(0)
+if len(hits) > 1:
+    print("Mehrere Treffer: " + ", ".join(r["name"] for r in hits[:8]) + (" …" if len(hits) > 8 else "") + " – bitte genauer.")
+    sys.exit(0)
+r = hits[0]
+lvl = int(math.sqrt(r["xp"] / base)) + 1 if r["xp"] > 0 else 1
+league = leagues[0]["name"]
+for l in leagues:
+    if r["xp"] >= n(l.get("xp"), 0):
+        league = l["name"]
+rank = rows.index(r) + 1
+kmtxt = f"{r['km']:.0f}" if r["km"] >= 100 else f"{r['km']:.1f}".replace(".", ",")
+print(f"👤 {r['name']} – Level {lvl} · {league[:20]} · {r['xp']} XP · Platz {rank} von {len(rows)}")
+print(f"🚗 {kmtxt} km · {r['sec'] / 3600:.0f} h unterwegs · Spitze {r['top']:.0f} km/h · {r['jobs']} Aufträge".replace(".", ","))
 PY
 }
 

@@ -1730,7 +1730,7 @@ contains "$log" "getUpdates\\?offset=0" "telegram: holt neue Nachrichten"
 contains "$log" '"text":"👥 Gerade online: [0-9]+ Spieler' "telegram: /online beantwortet"
 contains "$log" '"text":"🏁 Bestenliste \(XP\):\\n1\. Vorn – 1000050 XP · 99999 km"' "telegram: /top aus dem Index"
 contains "$log" '"text":"🏆 Rekord: [0-9]+ Spieler gleichzeitig \([0-9.]+\) · heute bisher: [0-9]+"' "telegram: /rekord"
-contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event"' "telegram: /hilfe"
+contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name>"' "telegram: /hilfe"
 contains "$log" '"text":"📊 BeamNet: [0-9]+ Spieler · [0-9]+ von [0-9]+ Servern belegt' "telegram: /server mit Netzwerk-Uebersicht"
 [[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat, anderer Bot und normaler Text ignoriert)"
 [[ $(cat "$T/watch/telegram-offset") == 18 ]] && pass || fail "telegram: Offset gemerkt (der 6. Befehl bleibt für den nächsten Lauf)"
@@ -1797,6 +1797,18 @@ contains "$log" '"text":"⚡ XP-Event läuft: 2-fache XP bis [0-9:]+ Uhr \(von T
 contains "$log" '"text":"XP-Event beendet."' "telegram /event stop"
 contains "$("$TOOL" event 2>&1)" "Gerade läuft kein XP-Event" "telegram /event stop: beendet"
 rm -f "$E"
+# /spieler <Name>: Werte aus dem Bestenlisten-Index, fuer alle.
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":70,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/spieler vorn"}},
+ {"update_id":71,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/spieler Gibtsnicht"}},
+ {"update_id":72,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/spieler"}}]}
+JSON
+rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+log=$(cat "$T/curl.log")
+contains "$log" '"text":"👤 Vorn – Level [0-9]+ · [A-Za-z]+ · 1000050 XP · Platz 1 von [0-9]+\\n🚗 99999 km · 1 h unterwegs' "telegram /spieler: Werte aus dem Index"
+contains "$log" '"text":"Keinen Spieler „Gibtsnicht“ gefunden."' "telegram /spieler: unbekannter Name"
+contains "$log" '"text":"Aufruf: /spieler <Name>' "telegram /spieler: ohne Name"
 sed -i 's/^TELEGRAM_ADMINS=.*/TELEGRAM_ADMINS=/' "$T/beamnet.conf"
 rm -f "$T/root/shared/beamnet/announcements.json"
 sed -i 's/^TELEGRAM_COMMANDS=.*/TELEGRAM_COMMANDS=0/' "$T/beamnet.conf"
