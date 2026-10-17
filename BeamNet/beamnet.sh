@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.88"
+VERSION="1.89"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2592,23 +2592,29 @@ cmd_event() {
 
 # Bonus-Map des Tages: die Map der eingerichteten Server mit den wenigsten Spielerminuten der letzten 7 Tage (aus den
 # usage-Dateien) bekommt bis Mitternacht BONUS_MAP_FACTOR-fache XP beim Fahren (Standard 1.5) – so verteilen sich die
-# Spieler besser. Einmal am Tag; BONUS_MAP=0 schaltet ab. bonusmap.json liest das Plugin.
+# Spieler besser. Einmal am Tag; BONUS_MAP=0 schaltet ab. bonusmap.json liest das Plugin. Die gewaehlten Maps des Tages
+# stehen (eine je Zeile) in der eigenen Datei STATE_DIR/bonusmap-<Tag> – nicht in bonusmap.json, die der Dienst
+# beschreiben darf.
 watch_bonusmap() {
     local -n bmout=$1
     [[ -d $SHARED && ! -L $SHARED ]] || return 0
     command -v python3 >/dev/null || return 0
-    local today factor nr mp maps=() pick until json where="" pct
+    local today factor nr mp maps=() pick until json where="" pct stamp
     today=$(date +%F)
-    if [[ -f $STATE_DIR/bonusmap-$today ]]; then
-        # Laeuft die Bonus-Map nach einer Map-Rotation oder -Abstimmung auf keinem Server mehr: neu waehlen.
+    stamp=$STATE_DIR/bonusmap-$today
+    if [[ -f $stamp ]]; then
+        # Laeuft die Bonus-Map nach einer Map-Rotation oder -Abstimmung auf keinem Server mehr: neu waehlen – hoechstens
+        # dreimal am Tag. Heute nichts gewaehlt (aus, nur eine Map, "-"): nichts zu tun.
         local cur on=0
-        cur=$(safe get "$SHARED/bonusmap.json" 2>/dev/null | head -c 4096 | grep -o '"map":"[A-Za-z0-9_.-]*"' | head -n1 | cut -d'"' -f4)
-        [[ -n $cur ]] || return 0
+        cur=$(tail -n 1 "$stamp" 2>/dev/null)
+        [[ $cur =~ ^[A-Za-z0-9_.-]+$ ]] || return 0
+        (( $(wc -l <"$stamp") < 3 )) || return 0
         for nr in $(servers); do [[ $(map_short "$(cfg "$nr" Map)") == "$cur" ]] && on=1; done
         (( on )) && return 0
+    else
+        : >"$stamp"
+        find "$STATE_DIR" -maxdepth 1 -name 'bonusmap-*' -mtime +3 -delete 2>/dev/null
     fi
-    : >"$STATE_DIR/bonusmap-$today"
-    find "$STATE_DIR" -maxdepth 1 -name 'bonusmap-*' -mtime +3 -delete 2>/dev/null
     if [[ $(conf_get BONUS_MAP) == 0 ]]; then
         printf '{"map":""}' | safe put "$SHARED/bonusmap.json" 664 "$SERVICE_USER" 2>/dev/null
         return 0
@@ -2642,10 +2648,16 @@ for name in os.listdir(state):
 print(min(maps, key=lambda m: (minutes[m], m)))
 PY
 )
-    [[ $pick =~ ^[A-Za-z0-9_.-]+$ ]] || return 0
+    if ! [[ $pick =~ ^[A-Za-z0-9_.-]+$ ]]; then
+        # Keine Wahl (nur noch eine Map): eine alte Bonus-Map nicht weiter anzeigen, bis morgen Ruhe.
+        [[ -s $stamp ]] && printf '{"map":""}' | safe put "$SHARED/bonusmap.json" 664 "$SERVICE_USER" 2>/dev/null
+        echo - >>"$stamp"
+        return 0
+    fi
     until=$(date -d "$(date -d tomorrow +%F) 00:00" +%s)
     json="{\"map\":\"$pick\",\"factor\":$factor,\"until\":$until,\"day\":\"$today\"}"
     printf '%s' "$json" | safe put "$SHARED/bonusmap.json" 664 "$SERVICE_USER" 2>/dev/null || return 0
+    echo "$pick" >>"$stamp"
     for nr in $(servers); do [[ $(map_short "$(cfg "$nr" Map)") == "$pick" ]] && where+="${where:+, }$nr"; done
     pct=$(awk -v f="$factor" 'BEGIN { printf "%d", (f - 1) * 100 + 0.5 }')
     bmout+=("🗺️ Bonus-Map heute: $pick (Server $where) – +$pct % XP beim Fahren bis Mitternacht.")
@@ -4731,7 +4743,7 @@ xa = load(os.path.join(shared, "xpabend.json"))
 if isinstance(xa, dict) and now < num(xa.get("next")) < now + 8 * 86400 and 1.5 <= num(xa.get("factor")) <= 5:
     at = num(xa.get("next"))
     bonus.append(f"<b>XP-Abend</b>: {g(num(xa.get('factor')))}-fache XP am {['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][time.localtime(at).tm_wday]} ab {time.strftime('%H:%M', time.localtime(at))} Uhr")
-if isinstance(bm, dict) and bm.get("map"):
+if isinstance(bm, dict) and isinstance(bm.get("map"), str) and bm["map"] and 1 < num(bm.get("factor")) <= 3 and now < num(bm.get("until")):
     bonus.append("<b>Bonus-Map des Tages</b>: auf der am wenigsten gefahrenen Map gibt es mehr XP beim Fahren "
                  "(steht unter „Demnächst“ und bei /event)")
 bonus_items = "".join(f"<li>{b}</li>" for b in bonus)

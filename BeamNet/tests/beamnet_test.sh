@@ -691,6 +691,7 @@ contains "$(cat "$T/web/hilfe.html")" "<li><b>Bonus-Map des Tages</b>" "Hilfesei
 echo "{\"map\":\"utah\",\"factor\":1.5,\"until\":$((now - 60)),\"day\":\"x\"}" >"$T/root/shared/beamnet/bonusmap.json"
 "$TOOL" web run >/dev/null 2>&1
 lacks "$(cat "$T/web/index.html")" "Bonus-Map heute" "Statusseite: abgelaufene Bonus-Map nicht"
+lacks "$(cat "$T/web/hilfe.html")" "Bonus-Map des Tages" "Hilfeseite: abgelaufene Bonus-Map nicht"
 rm -f "$T/root/shared/beamnet/bonusmap.json"
 # Orte fuer Auftraege je Map (kaputte Eintraege und unbekannte Typen ignoriert).
 mkdir -p "$T/root/shared/beamnet/places"
@@ -1328,6 +1329,23 @@ sed -i 's|^Map = .*|Map = "/levels/gridmap_v2/info.json"|' "$T/root/4/ServerConf
 out=$("$TOOL" watch 2>&1)
 contains "$out" "🗺️ Bonus-Map heute: " "bonusmap: neu gewaehlt, wenn die Map nirgends mehr laeuft"
 lacks "$(cat "$B")" "east_coast_usa" "bonusmap: alte Map nicht mehr Bonus-Map"
+# Der Dienst darf bonusmap.json schreiben: eine fremde Map dort loest weder neues Waehlen noch Meldungen aus.
+printf '{"map":"fremd","factor":1.5,"until":%s}' $(( $(date +%s) + 3600 )) >"$B"
+lacks "$("$TOOL" watch 2>&1)" "Bonus-Map" "bonusmap: fremde Map in bonusmap.json loest nichts aus"
+# Nur noch eine Map auf allen Servern: alte Bonus-Map nicht mehr zeigen, danach Ruhe (keine Schleife je Minute).
+for nr in 1 2 3 4 5 6; do
+    cp "$T/root/$nr/ServerConfig.toml" "$T/sc$nr.one"
+    sed -i 's|^Map = .*|Map = "/levels/small_island/info.json"|' "$T/root/$nr/ServerConfig.toml"
+done
+lacks "$("$TOOL" watch 2>&1)" "Bonus-Map" "bonusmap: nur eine Map – keine Meldung"
+[[ $(cat "$B") == '{"map":""}' && $(tail -n 1 "$T/watch/bonusmap-$(date +%F)") == - ]] && pass || fail "bonusmap: nur eine Map – alte Bonus-Map geloescht"
+n=$(wc -l <"$T/watch/bonusmap-$(date +%F)")
+"$TOOL" watch >/dev/null 2>&1
+[[ $(wc -l <"$T/watch/bonusmap-$(date +%F)") == "$n" ]] && pass || fail "bonusmap: nur eine Map – danach nicht jede Minute neu"
+for nr in 1 2 3 4 5 6; do cp "$T/sc$nr.one" "$T/root/$nr/ServerConfig.toml"; done
+# Hoechstens dreimal am Tag neu waehlen.
+printf 'a\nb\nweg\n' >"$T/watch/bonusmap-$(date +%F)"
+lacks "$("$TOOL" watch 2>&1)" "Bonus-Map" "bonusmap: hoechstens dreimal am Tag"
 cp "$T/sc4.bonus" "$T/root/4/ServerConfig.toml"
 rm -f "$T"/watch/bonusmap-*
 sed -i 's/^BONUS_MAP=.*/BONUS_MAP=0/' "$T/beamnet.conf"

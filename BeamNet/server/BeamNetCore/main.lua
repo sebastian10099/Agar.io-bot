@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.73"
+BN.VERSION = "1.74"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -966,6 +966,9 @@ local EN = {
     ["Bitte warte noch %d s, bevor ihr wieder ein Rennen startet."] = "Please wait %d s before you start another race.",
     ["📅 Dein Rückblick %s: %d XP%s – neue Saison, neues Glück!"] = "📅 Your %s recap: %d XP%s – new season, new chances!",
     [" · Platz %d"] = " · rank %d",
+    ["📅 Deine letzte Woche: %s%s – neue Woche, neue Kilometer! (/top woche)"] =
+        "📅 Your last week: %s%s – new week, new kilometres! (/top week)",
+    [" · Platz %d von %d"] = " · rank %d of %d",
     ["👑 %s ist jetzt Platz 1 der Bestenliste!"] = "👑 %s is now number 1 on the leaderboard!",
     ["📈 Du bist jetzt Platz %d der Bestenliste (vorher %d)!"] = "📈 You are now rank %d on the leaderboard (before %d)!",
     ["✨ Neu seit deinem letzten Besuch:"] = "✨ New since your last visit:",
@@ -1592,6 +1595,7 @@ function BN.savePlayer(s)
     end
     if s.friendsChanged then rec.friends = s.record.friends end
     if s.pendingRecap then rec.recapMonth = s.pendingRecap end
+    if s.pendingWeekRecap then rec.recapWeek = s.pendingWeekRecap end
     if s.pendingComeback then
         -- Schon auf einem anderen Server bekommen (Datei kennt einen Bonus der letzten 30 Tage): nicht doppelt.
         local last = tonumber(rec.comebackAt)
@@ -1640,6 +1644,7 @@ function BN.savePlayer(s)
     s.friendsChanged = nil
     s.resetTop = nil
     s.pendingRecap = nil
+    s.pendingWeekRecap = nil
     s.pendingComeback = nil
     s.pendingSeenVersion = nil
     s.pendingTutorial, s.tutorialStarted = nil, nil
@@ -2096,7 +2101,7 @@ function BN.weekRanking(week)
         if rec.id then
             local km
             if rec.week == week then km = tonumber(rec.weekKm) elseif rec.lastWeek == week then km = tonumber(rec.lastWeekKm) end
-            if km and km > 0 then byId[rec.id] = { name = rec.name, km = km } end
+            if km and km > 0 then byId[rec.id] = { id = rec.id, name = rec.name, km = km } end
         end
     end
     for _, s in pairs(BN.players) do
@@ -2104,7 +2109,7 @@ function BN.weekRanking(week)
             local rec, km = s.record, nil
             if rec.week == week then km = (tonumber(rec.weekKm) or 0) + s.pendingKm
             elseif rec.lastWeek == week then km = tonumber(rec.lastWeekKm) end
-            if km and km > 0 then byId[s.id] = { name = s.name, km = km } end
+            if km and km > 0 then byId[s.id] = { id = s.id, name = s.name, km = km } end
         end
     end
     local list = {}
@@ -2290,6 +2295,25 @@ function BN.seasonRecap(s)
     local lang = BN.langOf(s.pid)
     say(s.pid, "📅 Dein Rückblick %s: %d XP%s – neue Saison, neues Glück!", BN.seasonName(rec.lastMonth, lang), xp,
         rank and tr(lang, " · Platz %d", rank) or "")
+    return true
+end
+
+-- Wochen-Rueckblick: beim ersten Besuch in einer neuen Woche Kilometer und Platz der Vorwoche (einmal je Woche, nicht
+-- am selben Tag wie der Saison-Rueckblick).
+function BN.weekRecap(s)
+    local rec = s.record
+    local prev = weekKey(BN.now() - 7 * 86400)
+    if s.guest or rec.lastWeek ~= prev or rec.recapWeek == prev then return false end
+    s.pendingWeekRecap, s.dirty = prev, true
+    local km = tonumber(rec.lastWeekKm) or 0
+    if km < 1 then return false end
+    local list, rank = BN.weekRanking(prev), nil
+    for i, e in ipairs(list) do
+        if e.id == s.id then rank = i break end
+    end
+    local lang = BN.langOf(s.pid)
+    say(s.pid, "📅 Deine letzte Woche: %s%s – neue Woche, neue Kilometer! (/top woche)", fmtKm(km),
+        rank and tr(lang, " · Platz %d von %d", rank, #list) or "")
     return true
 end
 
@@ -6151,7 +6175,7 @@ function BN_onPlayerJoin(pid)
         local text, n = BN.friendsOnlineText(s, BN.langOf(pid))
         if n > 0 then say(pid, "Freunde online: %s", text) end
     end
-    BN.seasonRecap(s)
+    if not BN.seasonRecap(s) then BN.weekRecap(s) end
     BN.showNews(s)
     -- Bonus-Map des Tages: hier oder auf welcher Map.
     local bm = BN.bonusMap()

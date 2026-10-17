@@ -3411,6 +3411,36 @@ do
     BN.titleCache = {}
 end
 
+-- --- Wochen-Rueckblick ------------------------------------------------------------------------------------------
+do
+    local prev = BN.weekKey(clock - 7 * 86400)
+    writeJson(SHARED .. "/players/11515.json", { id = "11515", name = "Wochenfahrer", km = 300, week = prev, weekKm = 42.5 })
+    writeJson(SHARED .. "/players/11616.json", { id = "11616", name = "Wochensieger", km = 900, week = prev, weekKm = 999 })
+    BN.weekCache = {}
+    players[115] = { name = "Wochenfahrer", ids = { beammp = "11515" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](115)
+    check(chatContains("📅 Deine letzte Woche: 42[,.]5 km · Platz %d+ von %d+ – neue Woche", 115), "Wochen-Rueckblick: Kilometer und Platz")
+    local idx, list = 0, BN.weekRanking(prev)
+    for i, e in ipairs(list) do if e.id == "11515" then idx = i end end
+    check(idx > 0 and chatContains("Platz " .. idx .. " von " .. #list, 115), "Wochen-Rueckblick: eigener Platz")
+    _G[events.onPlayerDisconnect](115)
+    eq(readJson(SHARED .. "/players/11515.json").recapWeek, prev, "Wochen-Rueckblick: gemerkt")
+    chatLog = {}
+    _G[events.onPlayerJoin](115)
+    check(not chatContains("letzte Woche", 115), "Wochen-Rueckblick: nur einmal je Woche")
+    _G[events.onPlayerDisconnect](115); players[115] = nil
+    -- Letzte Woche nicht gefahren (Vorwoche ist aelter): kein Rueckblick.
+    writeJson(SHARED .. "/players/11717.json", { id = "11717", name = "Pause", km = 30, week = "2000-W01", weekKm = 30 })
+    players[117] = { name = "Pause", ids = { beammp = "11717" }, vehicles = {} }
+    chatLog = {}
+    _G[events.onPlayerJoin](117)
+    check(not chatContains("letzte Woche", 117), "Wochen-Rueckblick: nicht fuer alte Wochen")
+    _G[events.onPlayerDisconnect](117); players[117] = nil
+    for _, id in ipairs({ "11515", "11616", "11717" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+    BN.weekCache = {}
+end
+
 -- --- Aufstieg in der Bestenliste ----------------------------------------------------------------------------------
 do
     players[115] = { name = "Aufsteiger", ids = { beammp = "11515" }, vehicles = {} }

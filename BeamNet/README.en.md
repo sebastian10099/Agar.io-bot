@@ -112,6 +112,7 @@ Every player can switch to English with `/lang en`; the German commands work too
 | `/places` | Places (hospital, school, fire station …) on this map |
 | `/start` | Starter path for new players with bonus XP |
 
-Players who come back after at least 14 days get a one-time welcome-back bonus (+50 XP).
+Players who come back after at least 14 days get a one-time welcome-back bonus (+50 XP). On the first visit of a new
+week, players see their kilometres and rank of the last week; on the first visit of a new month, their season recap.
 
 German documentation: README.md
