@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.87"
+VERSION="1.88"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2488,7 +2488,23 @@ except Exception:
     [[ -n $text ]] || text="Gerade läuft kein XP-Event."
     spec=$(conf_get AUTO_EVENT)
     if autoevent_spec >/dev/null; then text+=$'\n'"🗓️ XP-Abend geplant: $spec"; fi
+    spec=$(bonusmap_line)
+    [[ -n $spec ]] && text+=$'\n'"$spec"
     printf '%s\n' "$text"
+}
+
+# Bonus-Map des Tages aus bonusmap.json als Zeile ("🗺️ Bonus-Map heute: utah (+50 % XP beim Fahren)"), solange sie
+# gilt; sonst nichts.
+bonusmap_line() {
+    { safe get "$SHARED/bonusmap.json" 2>/dev/null || true; } | python3 -I -c '
+import json, re, sys, time
+try:
+    d = json.loads(sys.stdin.read(4096))
+    m, f, until = d["map"], float(d["factor"]), float(d["until"])
+except Exception:
+    sys.exit(0)
+if isinstance(m, str) and re.fullmatch(r"[A-Za-z0-9_.-]+", m) and 1 < f <= 3 and time.time() < until:
+    print("🗺️ Bonus-Map heute: %s (+%d %% XP beim Fahren)" % (m, int((f - 1) * 100 + 0.5)))' 2>/dev/null
 }
 
 # Naechster XP-Abend aus xpabend.json als Zeile ("🎉 Nächster XP-Abend: Fr 20:00–22:00 Uhr (2-fache XP)"), nur wenn
@@ -2544,6 +2560,7 @@ cmd_event() {
             spec=$(conf_get AUTO_EVENT)
             if autoevent_spec >/dev/null; then echo "Automatischer XP-Abend: $spec"
             else echo "Automatischer XP-Abend: aus (beamnet event auto fr,sa 20:00 2 2h)"; fi
+            bonusmap_line
             ;;
         start)
             need_root event
@@ -2920,15 +2937,18 @@ network_lines() {
     printf '%s' "$body"
     [[ -n $empty ]] && printf 'Leer: Server %s\n' "$empty"
     [[ -n $silent ]] && printf 'Ohne Lebenszeichen: Server %s\n' "$silent"
-    local mp mm
+    local mp mm bonus="" tag
+    [[ $(bonusmap_line) =~ Bonus-Map\ heute:\ ([A-Za-z0-9_.-]+) ]] && bonus=${BASH_REMATCH[1]}
     for m in "${!map_pl[@]}"; do
         mp=${map_pl[$m]}
         mm=${map_mx[$m]}
+        tag=""
+        [[ $m == "$bonus" ]] && tag=" ⭐ Bonus"
         if (( mm > 0 )); then
             pct=$(( (mp * 100 + mm / 2) / mm ))
-            maprows+="$pct"$'\t'"$m $mp/$mm ($pct %$( (( pct >= 80 )) && printf ' 🔥'))"$'\n'
+            maprows+="$pct"$'\t'"$m $mp/$mm ($pct %$( (( pct >= 80 )) && printf ' 🔥'))$tag"$'\n'
         else
-            maprows+="0"$'\t'"$m $mp Spieler"$'\n'
+            maprows+="0"$'\t'"$m $mp Spieler$tag"$'\n'
         fi
     done
     if [[ -n $maprows ]]; then
@@ -4194,6 +4214,10 @@ if isinstance(xa, dict) and now < num(xa.get("next")) < now + 8 * 86400 and 1.5 
     f, at = num(xa.get("factor")), num(xa.get("next"))
     fs = (f"{f:.1f}".replace(".", ",") if f != int(f) else str(int(f)))
     upcoming.append((at, f"🎉 XP-Abend: {fs}-fache XP auf allen Servern bis {time.strftime('%H:%M', time.localtime(at + num(xa.get('sec'))))} Uhr"))
+bm = load(os.path.join(shared, "bonusmap.json"))
+if (isinstance(bm, dict) and isinstance(bm.get("map"), str) and __import__("re").fullmatch(r"[A-Za-z0-9_.-]+", bm["map"])
+        and 1 < num(bm.get("factor")) <= 3 and now < num(bm.get("until")) < now + 2 * 86400):
+    upcoming.append((now, f"🗺️ Bonus-Map heute: {E(bm['map'])} – +{int((num(bm.get('factor')) - 1) * 100 + 0.5)} % XP beim Fahren bis Mitternacht"))
 upcoming.sort(key=lambda x: x[0])
 DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 upcoming_rows = [f"<tr><td>{'jetzt' if at <= now else DAYS[time.localtime(at).tm_wday] + ' ' + time.strftime('%d.%m. %H:%M', time.localtime(at))}</td><td>{t}</td></tr>"
@@ -4707,6 +4731,9 @@ xa = load(os.path.join(shared, "xpabend.json"))
 if isinstance(xa, dict) and now < num(xa.get("next")) < now + 8 * 86400 and 1.5 <= num(xa.get("factor")) <= 5:
     at = num(xa.get("next"))
     bonus.append(f"<b>XP-Abend</b>: {g(num(xa.get('factor')))}-fache XP am {['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][time.localtime(at).tm_wday]} ab {time.strftime('%H:%M', time.localtime(at))} Uhr")
+if isinstance(bm, dict) and bm.get("map"):
+    bonus.append("<b>Bonus-Map des Tages</b>: auf der am wenigsten gefahrenen Map gibt es mehr XP beim Fahren "
+                 "(steht unter „Demnächst“ und bei /event)")
 bonus_items = "".join(f"<li>{b}</li>" for b in bonus)
 league_rows = [f"<tr><td>{E(str(l.get('name', '?')))}</td><td class=n>ab {int(num(l.get('xp')))} XP</td></tr>"
                for l in leagues if isinstance(l, dict)]
