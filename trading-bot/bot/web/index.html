@@ -537,7 +537,7 @@ function renderOverview(s) {
   $('closed').querySelectorAll('[data-detail]').forEach((b) => b.onclick = () => busy(b, () => showDetail(Number(b.dataset.detail))));
 }
 
-const srcShort = {dexscreener: 'DexScreener', geckoterminal: 'GeckoTerminal'};
+const srcShort = {dexscreener: 'DexScreener', geckoterminal: 'GeckoTerminal', pumpfun: 'pump.fun'};
 // forward returns 5 / 15 / 60 min after the decision: the honest answer to "was wurde daraus?"
 const HORIZONS = ['5', '15', '60'];
 function afterCell(o) {

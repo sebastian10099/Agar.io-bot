@@ -131,12 +131,20 @@ class FakeRug:
                 "warn": [r["name"] for r in risks if r.get("level") == "warn"]}
 
 
+def _newest(dex: FakeDex, now: float, chain: str, limit: int) -> list[dict[str, Any]]:
+    """The `limit` most recently listed demo pairs on a chain, newest first –
+    like the real feeds, which always return their latest page, whatever its age."""
+    pairs = [p for p in dex._generations(now) if p["chainId"] == chain]
+    pairs.sort(key=lambda p: p["pairCreatedAt"], reverse=True)
+    return pairs[:limit]
+
+
 class FakeGecko:
-    """Demo stand-in for the GeckoTerminal feed: every listing younger than
-    NEW_POOL_MIN simulated minutes, with its own snapshot, like the real one."""
+    """Demo stand-in for GeckoTerminal "new pools": the newest listings with
+    their own snapshot, never empty while the demo market has tokens."""
 
     label = "GeckoTerminal – neue Pools (Demo)"
-    NEW_POOL_MIN = 30.0
+    PAGE = 20
 
     def __init__(self, dex: FakeDex) -> None:
         self.dex = dex
@@ -144,16 +152,39 @@ class FakeGecko:
     def discover(self, chains: list[str]) -> dict[str, list[dict[str, Any]]]:
         now = self.dex.now()
         out: dict[str, list[dict[str, Any]]] = {c: [] for c in chains}
-        for p in self.dex._generations(now):
-            if p["chainId"] in out and (now - p["pairCreatedAt"] / 1000) / 60 <= self.NEW_POOL_MIN:
+        for chain in out:
+            for p in _newest(self.dex, now, chain, self.PAGE):
                 snap = self.dex._priced(p, now)
-                out[p["chainId"]].append({"token": snap["token"], "snapshot": snap})
+                out[chain].append({"token": snap["token"], "snapshot": snap})
+        return out
+
+
+class FakePump:
+    """Demo stand-in for pump.fun: the newest coins, mint and age only (no
+    market numbers), like the real feed."""
+
+    label = "pump.fun – neue Coins (Demo)"
+    PAGE = 4
+
+    def __init__(self, dex: FakeDex) -> None:
+        self.dex = dex
+
+    def discover(self, chains: list[str]) -> dict[str, list[dict[str, Any]]]:
+        now = self.dex.now()
+        out: dict[str, list[dict[str, Any]]] = {c: [] for c in chains}
+        if "solana" not in out:
+            return out
+        from .sources.pumpfun import normalize_coin
+        for p in _newest(self.dex, now, "solana", self.PAGE):
+            coin = {"mint": p["baseToken"]["address"], "symbol": p["baseToken"]["symbol"], "name": p["baseToken"]["name"],
+                    "created_timestamp": p["pairCreatedAt"], "usd_market_cap": p.get("fdv", 0)}
+            out["solana"].append({"token": coin["mint"], "snapshot": normalize_coin(coin, now)})
         return out
 
 
 def demo_feeds(dex: FakeDex) -> dict[str, Any]:
     from .discovery import DexScreenerFeed
-    return {"dexscreener": DexScreenerFeed(dex), "geckoterminal": FakeGecko(dex)}
+    return {"dexscreener": DexScreenerFeed(dex), "geckoterminal": FakeGecko(dex), "pumpfun": FakePump(dex)}
 
 
 def fast_clock(dex: FakeDex) -> Callable[[], float]:

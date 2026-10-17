@@ -114,8 +114,8 @@ class Engine:
             indexed = {p["token"] for p in pairs}
             for token, info in tokens.items():
                 snap = info.get("snapshot")
-                if token not in indexed and snap and snap.get("pair"):
-                    pairs.append(dict(snap, via_feed=True))   # not on DexScreener yet: judge the feed's own numbers
+                if token not in indexed and snap and snap.get("pair") and snap.get("price_usd"):
+                    pairs.append(dict(snap, via_feed=True))   # not on DexScreener yet: judge the feed's own numbers (needs a price)
             for p in pairs:                                    # DexScreener sometimes lacks the listing time; the feed knows it
                 snap = (tokens.get(p["token"]) or {}).get("snapshot")
                 if p.get("age_min") is None and snap and snap.get("age_min") is not None:

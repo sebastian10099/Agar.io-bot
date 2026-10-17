@@ -91,10 +91,11 @@ def build(cfg: dict[str, Any], home: Path, demo: bool) -> Engine:
     from .discovery import DexScreenerFeed
     from .sources.dexscreener import DexScreener
     from .sources.geckoterminal import GeckoTerminal
+    from .sources.pumpfun import PumpFun
     from .sources.rugcheck import RugCheck
     dex = DexScreener()
     return Engine(cfg, store, dex, RugCheck(),
-                  feeds={"dexscreener": DexScreenerFeed(dex), "geckoterminal": GeckoTerminal()})
+                  feeds={"dexscreener": DexScreenerFeed(dex), "geckoterminal": GeckoTerminal(), "pumpfun": PumpFun()})
 
 
 def main(argv: list[str] = None) -> int:

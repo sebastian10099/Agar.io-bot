@@ -14,6 +14,7 @@ from typing import Any, Callable, Optional
 LABELS = {
     "dexscreener": "DexScreener – Profile & Boosts",
     "geckoterminal": "GeckoTerminal – neue Pools",
+    "pumpfun": "pump.fun – neue Coins",
 }
 DEFAULT_SOURCES = ["dexscreener"]
 

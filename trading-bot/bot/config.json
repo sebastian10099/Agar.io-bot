@@ -6,7 +6,8 @@
   "discovery": {
     "sources": [
       "dexscreener",
-      "geckoterminal"
+      "geckoterminal",
+      "pumpfun"
     ]
   },
   "poll_seconds": 10,

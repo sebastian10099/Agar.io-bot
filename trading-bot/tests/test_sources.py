@@ -179,7 +179,7 @@ class EngineWithFeedsTests(unittest.TestCase):
         clean, _ = settings.validate({"discovery.sources": "geckoterminal, dexscreener"})
         self.assertEqual(clean["discovery.sources"], ["dexscreener", "geckoterminal"])   # option order = priority
         self.assertIn("discovery.sources", settings.validate({"discovery.sources": []})[1])
-        self.assertIn("discovery.sources", settings.validate({"discovery.sources": ["pumpfun"]})[1])
+        self.assertIn("discovery.sources", settings.validate({"discovery.sources": ["raydium"]})[1])
         eng = Engine(self.cfg, self.store, self.dex, FakeRug(), clock=self.dex.now, feeds=demo_feeds(self.dex))
         self.assertTrue(eng.apply_config({"discovery.sources": ["dexscreener"]})["ok"])
         eng.poll_once()
@@ -636,4 +636,54 @@ class HousekeepingTests(unittest.TestCase):
             self.assertEqual(dropped["candidates"], n_before); self.assertGreater(dropped["outcomes"], 0)
             self.assertEqual(store.candidates(), [])
             self.assertEqual(store._one("SELECT COUNT(*) AS n FROM outcomes")["n"], 0)
+            store.close()
+
+
+class PumpFunTests(unittest.TestCase):
+    PAYLOAD = [
+        {"mint": "MintPump1", "name": "Pump One", "symbol": "PMP1", "created_timestamp": int((NOW - 90) * 1000),
+         "usd_market_cap": 6500.0, "complete": False, "twitter": "https://x.com/x", "bonding_curve": "CurveAddr1"},
+        {"mint": "MintPump2", "name": "Pump Two", "symbol": "PMP2", "created_timestamp": int((NOW - 600) * 1000),
+         "usd_market_cap": 80000.0, "complete": True, "raydium_pool": "PoolAddr2"},
+        {"name": "broken"},
+    ]
+
+    def test_coins_become_minimal_snapshots(self):
+        from bot.sources.pumpfun import PumpFun
+        t = [NOW]
+        f = PumpFun(fetch=lambda url, **kw: list(self.PAYLOAD), min_interval=10, clock=lambda: t[0])
+        out = f.discover(["solana", "base"])
+        self.assertEqual(out["base"], []); self.assertEqual([i["token"] for i in out["solana"]], ["MintPump1", "MintPump2"])
+        s1 = out["solana"][0]["snapshot"]
+        self.assertAlmostEqual(s1["age_min"], 1.5, places=2); self.assertEqual((s1["symbol"], s1["dex"], s1["pair"], s1["price_usd"]), ("PMP1", "pumpfun", "CurveAddr1", 0.0))
+        self.assertTrue(s1["has_socials"]); self.assertFalse(s1["graduated"])
+        self.assertTrue(out["solana"][1]["snapshot"]["graduated"]); self.assertEqual(out["solana"][1]["snapshot"]["pair"], "PoolAddr2")
+        f.discover(["solana"]); self.assertEqual(f.calls, 1)                 # replayed inside the interval
+        t[0] += 11; f.discover(["solana"]); self.assertEqual(f.calls, 2)
+        self.assertEqual(PumpFun(fetch=lambda u, **k: {"coins": list(self.PAYLOAD)}).discover(["solana"])["solana"][0]["token"], "MintPump1")
+
+    def test_format_changes_are_reported(self):
+        from bot.sources.pumpfun import PumpFun
+        with self.assertRaises(RuntimeError):
+            PumpFun(fetch=lambda u, **k: [{"foo": 1}]).latest()
+        with self.assertRaises(RuntimeError):
+            PumpFun(fetch=lambda u, **k: {"html": "<cloudflare>"}).latest()
+        self.assertEqual(PumpFun(fetch=lambda u, **k: []).latest(), [])
+
+    def test_engine_uses_pump_age_but_never_judges_a_priceless_snapshot(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["pumpfun"]       # pump.fun only: tokens DexScreener knows get judged
+            feeds = demo_feeds(dex)
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds=feeds)
+            eng.poll_once()
+            cands = store.candidates()
+            self.assertTrue(cands)
+            self.assertTrue(all(c["snapshot"]["source"] == "pumpfun" and c["snapshot"]["price_usd"] > 0 for c in cands))
+            self.assertFalse(any(c["snapshot"].get("via_feed") for c in cands))      # no price -> not judged from the feed alone
+            # a mint DexScreener does not know yet is simply not judged (no numbers), no crash
+            feeds["pumpfun"].discover = lambda chains: {"solana": [{"token": "UnknownMint", "snapshot": {"pair": "x", "token": "UnknownMint", "price_usd": 0.0, "age_min": 0.5}}]}
+            t[0] += 600
+            counts = eng.poll_once()
+            self.assertEqual(counts["seen"], 0)
             store.close()

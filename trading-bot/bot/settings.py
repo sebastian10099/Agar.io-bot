@@ -17,8 +17,8 @@ SCHEMA: list[dict[str, Any]] = [
     {"path": "chains", "type": "chains", "label": "Chains", "group": "Allgemein",
      "help": "Welche Netzwerke beobachtet werden. RugCheck gibt es nur für Solana."},
     {"path": "discovery.sources", "type": "multi", "label": "Discovery-Quellen", "group": "Allgemein",
-     "options": [["dexscreener", "DexScreener"], ["geckoterminal", "GeckoTerminal"]],
-     "help": "Woher neue Tokens kommen. DexScreener liefert immer die Kennzahlen; GeckoTerminal sieht frische Pools oft einige Minuten früher. Status unten unter „Quellen“."},
+     "options": [["dexscreener", "DexScreener"], ["geckoterminal", "GeckoTerminal"], ["pumpfun", "pump.fun"]],
+     "help": "Woher neue Tokens kommen. DexScreener liefert immer die Kennzahlen; GeckoTerminal sieht frische Pools früher; pump.fun meldet Solana-Starts Sekunden nach der Erstellung (inoffizielle API, kann ausfallen). Status unten unter „Quellen“."},
 
     {"path": "risk_per_trade_pct", "type": "float", "min": 0.1, "max": 10, "step": 0.1,
      "label": "Risiko pro Trade", "unit": "%", "group": "Risiko",

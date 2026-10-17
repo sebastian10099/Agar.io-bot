@@ -175,6 +175,10 @@ auch über die Steuerseite). Eingebaut sind zwei kostenlose Feeds ohne Schlüsse
   einen Launch meist einige Minuten früher. Begrenzt auf eine Abfrage je Chain
   alle 15 Sekunden (die Freigrenze sind 30 pro Minute), dazwischen wird die
   letzte Antwort wiederverwendet.
+- **pump.fun** – die neuesten Coins der Launch-Plattform, Sekunden nach der
+  Erstellung; nur Solana. Liefert Mint und Alter, die Kennzahlen holt
+  DexScreener (indexiert pump.fun als Dex „pumpfun“). Inoffizielle API: fällt
+  sie aus oder ändert ihr Format, wird die Quelle rot und der Rest läuft weiter.
 
 Die erste Quelle in der Reihenfolge, die einen Token nennt, gilt als seine
 Quelle (steht am Kandidaten). Die Kennzahlen holt immer DexScreener; ist ein
@@ -294,7 +298,7 @@ Eingebaut:
 5. Kontrollgruppe mitlaufen lassen (watch/skip), sonst ist jede Gewinnkurve Zufall.
 
 Als Nächstes sinnvoll, in dieser Reihenfolge:
-- **Echtzeit-Discovery** über einen Solana-RPC/Websocket (pump.fun, Raydium) – noch schneller als GeckoTerminal, aber braucht einen RPC-Anbieter mit Websocket und ist ohne den nicht testbar. Die Feed-Schnittstelle in `bot/discovery.py` ist dafür gedacht: `discover(chains)` liefern, fertig.
+- **Echtzeit-Discovery per Solana-RPC/Websocket** (Raydium, PumpSwap) – noch einen Schritt näher an der Chain als der pump.fun-Feed, braucht aber einen RPC-Anbieter mit Websocket. Die Feed-Schnittstelle in `bot/discovery.py` ist dafür gedacht: `discover(chains)` liefern, fertig.
 - **Holder-Analyse**: Top-10-Anteil und Dev-Wallet-Verhalten direkt aus der Chain.
 - **Live-Adapter** (`bot/live.py`): Jupiter-Quote + Swap, lokal signiert — erst, wenn der Edge-Report über Wochen positiv ist, und nur mit Geld, das weg sein darf.
 
@@ -317,7 +321,7 @@ bot/
   discovery.py   Discovery-Quellen zusammenführen, Status je Quelle
   doctor.py      Selbsttest: Erreichbarkeit und Parser aller Quellen
   preflight.py   Startcheck: HTTPS/CA-Zertifikate und Anthropic-SDK, repariert per pip
-  sources/       DexScreener, GeckoTerminal, RugCheck
+  sources/       DexScreener, GeckoTerminal, pump.fun, RugCheck
 tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
 ```
 

@@ -142,9 +142,9 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
 
   // --- Quellen: Status-Liste, Multi-Chips, Quelle am Kandidaten ---
   const srcRows = await p.$$eval('#sources li', (l) => l.map((x) => ({ text: x.textContent, dot: x.querySelector('.dot').className })));
-  ok(srcRows.length === 3 && srcRows.every((r) => r.dot.includes('ok')), 'Quellen-Liste: beide Feeds liefern, RugCheck antwortet (' + srcRows.map((r) => r.text.slice(0, 14)).join(', ') + ')');
+  ok(srcRows.length === 4 && srcRows.every((r) => r.dot.includes('ok')), 'Quellen-Liste: drei Feeds liefern, RugCheck antwortet (' + srcRows.map((r) => r.text.slice(0, 14)).join(', ') + ')');
   ok(srcRows.some((r) => /\d+ gemeldet · \d+ eigene · \d+ Abfragen/.test(r.text)), 'Quellen zeigen Zähler');
-  ok((await p.textContent('#src-pill')) === '2 aktiv', 'Quellen-Pill: 2 aktiv');
+  ok((await p.textContent('#src-pill')) === '3 aktiv', 'Quellen-Pill: 3 aktiv');
   await clearToast(); await p.click('#b-doctor');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Selbsttest'));
   const docRows = await p.$$eval('#doctor li', (l) => l.map((x) => ({ text: x.textContent, ok: !!x.querySelector('.dot.ok'), bad: !!x.querySelector('.dot.bad') })));
@@ -169,12 +169,13 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   await p.click('.chips[data-path="discovery.sources"] .chip[data-chain="geckoterminal"]');
   ok((await p.getAttribute('.chips[data-path="discovery.sources"] .chip[data-chain="geckoterminal"]', 'aria-pressed')) === 'false', 'Quellen-Chip abwählbar');
   await clearToast(); await p.click('#b-save'); await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
-  await p.waitForFunction(() => document.querySelector('#src-pill').textContent === '1 aktiv');
+  await p.waitForFunction(() => document.querySelector('#src-pill').textContent === '2 aktiv');
   ok((await p.$$eval('#sources li .dot.off', (l) => l.length)) === 1, 'abgewählte Quelle als „aus“ markiert');
   await p.click('.chips[data-path="discovery.sources"] .chip[data-chain="geckoterminal"]'); await clearToast(); await p.click('#b-save');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Gespeichert'));
   await p.click('.chips[data-path="discovery.sources"] .chip[data-chain="dexscreener"]');
   await p.click('.chips[data-path="discovery.sources"] .chip[data-chain="geckoterminal"]');
+  await p.click('.chips[data-path="discovery.sources"] .chip[data-chain="pumpfun"]');
   await clearToast(); await p.click('#b-save'); await p.waitForFunction(() => document.querySelector('#toast').textContent.length > 0);
   ok((await p.textContent('[data-field="discovery.sources"] .err')).includes('mindestens'), 'keine Quelle → Inline-Fehler');
   await p.click('#b-revert');

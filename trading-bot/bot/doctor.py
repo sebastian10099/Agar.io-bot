@@ -91,6 +91,18 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
             return _parsed([i["snapshot"] for i in items if i.get("snapshot")])
         out.append(_check("GeckoTerminal – neue Pools & Parser", gecko_pools))
 
+    pump = feeds.get("pumpfun")
+    if pump is not None:
+        def pump_coins() -> str:
+            if hasattr(pump, "_last"):
+                pump._last = None
+            items = pump.discover(["solana"]).get("solana") or []
+            if not items:
+                raise RuntimeError("pump.fun meldet keine Coins (Feed leer oder blockiert)")
+            aged = sum(1 for i in items if (i.get("snapshot") or {}).get("age_min") is not None)
+            return f"{len(items)} Coins, {aged} mit Alter · z. B. {(items[0].get('snapshot') or {}).get('symbol')}"
+        out.append(_check("pump.fun – neue Coins", pump_coins))
+
     def rugcheck() -> str:
         if "solana" not in chains:
             return "übersprungen – Solana nicht aktiv"
