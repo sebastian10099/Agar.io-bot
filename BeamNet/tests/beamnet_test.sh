@@ -1370,8 +1370,8 @@ contains "$("$TOOL" config gibtsnicht 5 2>&1)" "Unbekannter Schlüssel" "config:
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["convoyKm"] == 2.5' "$CJ" && pass || fail "config: Kommazahl"
 "$TOOL" config achievements aus >/dev/null 2>&1
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["achievements"] is False' "$CJ" && pass || fail "config: an/aus"
-"$TOOL" config aufgaben km jobs mapkm jobs >/dev/null 2>&1
-python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["challengeTypes"] == ["km", "jobs", "mapkm"]' "$CJ" && pass || fail "config: Tagesaufgaben setzen (ohne doppelte)"
+"$TOOL" config aufgaben km jobs mapkm jobs bonus >/dev/null 2>&1
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["challengeTypes"] == ["km", "jobs", "mapkm", "bonus"]' "$CJ" && pass || fail "config: Tagesaufgaben setzen (ohne doppelte, mit Bonus-Map)"
 contains "$("$TOOL" config aufgaben km fliegen 2>&1)" "Unbekannte Tagesaufgabe" "config: nur bekannte Tagesaufgaben"
 "$TOOL" config comebackXp standard >/dev/null 2>&1
 python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["comebackXp"] == 50' "$CJ" && pass || fail "config: standard"

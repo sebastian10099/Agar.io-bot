@@ -41,7 +41,7 @@ a new plugin version goes to one test server first and only then to the others).
 | `beamnet ansage [HH:MM] <text>` | Announcement on all servers, now or at a time of day (without text: list planned ones) |
 | `beamnet event start <factor> <duration>` / `stop` / `auto …` | Network-wide XP event; `beamnet event auto fr,sa 20:00 2 2h` runs one automatically, announced an hour before |
 | `beamnet slots` | Player slots by popularity: last 30 days per server and more slots for popular servers and maps |
-| `beamnet config [<key> <value>]` | Game settings without editing JSON: `beamnet config` lists them (XP per km, jobs, convoy, welcome-back bonus …), `beamnet config comebackXp 100` changes one, `beamnet config aufgaben km speed jobs mapkm` picks the daily challenges; checked and applied within a minute |
+| `beamnet config [<key> <value>]` | Game settings without editing JSON: `beamnet config` lists them (XP per km, jobs, convoy, welcome-back bonus …), `beamnet config comebackXp 100` changes one, `beamnet config aufgaben km speed jobs mapkm bonus` picks the daily challenges (`bonus` = drive on the bonus map); checked and applied within a minute |
 | `beamnet update` | Updates the tool **and** the plugin on all servers |
 
 Add `-y` to run a command without questions. Day names for `beamnet event auto` are German: `mo di mi do fr sa so`

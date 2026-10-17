@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.74"
+BN.VERSION = "1.75"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -794,6 +794,7 @@ local EN = {
     ["Das XP-Event ist vorbei – danke fürs Mitfahren!"] = "The XP event is over – thanks for driving!",
     ["XP-Event läuft: %s-fache XP bis %s Uhr."] = "XP event running: %sx XP until %s.",
     ["Gerade läuft kein XP-Event."] = "No XP event right now.",
+    ["Fahre heute %s km auf der Bonus-Map (/server)"] = "Drive %s km on today's bonus map (/server)",
     ["🗺️ Diese Map ist heute Bonus-Map: +%d %% XP beim Fahren!"] = "🗺️ This map is today's bonus map: +%d %% XP while driving!",
     ["🗺️ Bonus-Map heute: %s – +%d %% XP beim Fahren auf den Servern mit dieser Map (/server)."] =
         "🗺️ Bonus map today: %s – +%d %% XP while driving on servers with this map (/server).",
@@ -1695,6 +1696,7 @@ function BN.dayTotals(s)
     if map then seen[map] = true end
     for _ in pairs(seen) do dayMaps = dayMaps + 1 end
     local cr = s.challengeReward
+    local bm = BN.bonusMap and BN.bonusMap()
     return {
         km = (same and rec.dayKm or 0) + s.pendingKm,
         seconds = (same and rec.daySeconds or 0) + s.pendingSeconds,
@@ -1705,6 +1707,9 @@ function BN.dayTotals(s)
         -- Kilometer heute auf der Map dieses Servers (fuer die Tagesaufgabe "mapkm").
         mapKm = BN.server.map and ((same and type(rec.dayMapKm) == "table" and tonumber(rec.dayMapKm[BN.server.map]) or 0)
             + s.pendingKm) or 0,
+        -- Kilometer heute auf der Bonus-Map des Tages, egal auf welchem Server (fuer die Tagesaufgabe "bonus").
+        bonusKm = bm and ((same and type(rec.dayMapKm) == "table" and tonumber(rec.dayMapKm[bm.map]) or 0)
+            + (BN.server.map == bm.map and s.pendingKm or 0)) or 0,
         done = rec.lastChallengeDay == today or (cr ~= nil and cr.day == today),
     }
 end
@@ -1721,6 +1726,8 @@ BN.CHALLENGES = {
     -- Nicht in der Standardliste challengeTypes: Admins schalten sie in config.json ein.
     mapkm = { text = "Fahre heute %s km auf einer Map", goals = { 5, 8, 12 }, value = function(d) return d.mapKm end },
     jobs = { text = "Erledige heute %s Aufträge (/auftrag)", goals = { 2, 3, 5 }, value = function(d) return d.jobs end },
+    -- Ohne Bonus-Map heute (aus, nur eine Map) gilt stattdessen "mapkm".
+    bonus = { text = "Fahre heute %s km auf der Bonus-Map (/server)", goals = { 3, 5, 8 }, value = function(d) return d.bonusKm end },
 }
 
 function BN.challengeFor(day)
@@ -1731,6 +1738,7 @@ function BN.challengeFor(day)
     if #types == 0 then return nil end
     day = day or dayNumber()
     local kind = types[(day % #types) + 1]
+    if kind == "bonus" and not BN.bonusMap() then kind = "mapkm" end
     local def = BN.CHALLENGES[kind]
     local goal = def.goals[(math.floor(day / #types) % #def.goals) + 1]
     return { kind = kind, text = def.text, goal = goal, value = def.value }

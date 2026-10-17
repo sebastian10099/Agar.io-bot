@@ -2862,6 +2862,35 @@ do
     os.remove(SHARED .. "/bonusmap.json"); BN.bonusMapAt, BN.bonusMapData = nil, nil
 end
 
+-- --- Tagesaufgabe auf der Bonus-Map ------------------------------------------------------------------------------
+do
+    local keepTypes = C.challengeTypes
+    C.challengeTypes = { "bonus" }
+    writeJson(SHARED .. "/bonusmap.json", { map = "gridmap_v2", factor = 1.5, ["until"] = clock + 3600 })
+    BN.bonusMapAt = nil
+    local ch = BN.challengeFor()
+    eq(ch and ch.kind, "bonus", "Bonus-Aufgabe: mit Bonus-Map")
+    players[183] = { name = "Aufgabenfahrer", ids = { beammp = "18383" }, vehicles = { [1] = { pos = { 140000, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](183)
+    tick(1)
+    local v0 = ch.value(BN.dayTotals(BN.players[183]))
+    for _ = 1, 50 do move(183, 1, 20); tick(1) end       -- 1 km auf der Bonus-Map
+    near(ch.value(BN.dayTotals(BN.players[183])) - v0, 1, 0.1, "Bonus-Aufgabe: zaehlt km auf der Bonus-Map")
+    writeJson(SHARED .. "/bonusmap.json", { map = "italy", factor = 1.5, ["until"] = clock + 3600 })
+    BN.bonusMapAt = nil
+    ch = BN.challengeFor()
+    v0 = ch.value(BN.dayTotals(BN.players[183]))
+    for _ = 1, 50 do move(183, 1, 20); tick(1) end
+    near(ch.value(BN.dayTotals(BN.players[183])) - v0, 0, 0.01, "Bonus-Aufgabe: andere Map zaehlt nicht")
+    os.remove(SHARED .. "/bonusmap.json"); BN.bonusMapAt, BN.bonusMapData = nil, nil
+    ch = BN.challengeFor()
+    eq(ch and ch.kind, "mapkm", "Bonus-Aufgabe: ohne Bonus-Map gilt mapkm")
+    BN.players[183].pendingEventXp = 0
+    _G[events.onPlayerDisconnect](183); players[183] = nil
+    os.remove(SHARED .. "/players/18383.json"); BN.savedRecently["18383"] = nil
+    C.challengeTypes = keepTypes
+end
+
 -- --- Rueckkehrer-Bonus ------------------------------------------------------------------------------------------
 do
     C.comebackXp = 50

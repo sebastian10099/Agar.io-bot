@@ -3754,7 +3754,7 @@ KEYS = {
     "mapVote": ("bool", 0, 0, True, "Map-Abstimmung im Chat"),
     "publicHost": ("str", 0, 64, "", "Adresse für /server (z. B. meinserver.de)"),
     "challengeXp": ("int", 0, 1000, 40, "XP für die Tagesaufgabe"),
-    "challengeTypes": ("list", 0, 0, ["km", "speed", "time", "servers"], "Tagesaufgaben (km speed time servers races mapkm jobs)"),
+    "challengeTypes": ("list", 0, 0, ["km", "speed", "time", "servers"], "Tagesaufgaben (km speed time servers races mapkm jobs bonus)"),
     "weeklyTrackXp": ("int", 0, 1000, 50, "XP für die Strecke der Woche"),
     "maxFriends": ("int", 1, 100, 20, "Freunde je Spieler"),
     "streakXp": ("int", 0, 1000, 10, "Bonus-XP je Tag der Tages-Serie (0 = aus)"),
@@ -3786,7 +3786,7 @@ KEYS = {
     "roadPointsMax": ("int", 0, 2000, 300, "Lieferpunkte je Map (0 = aus)"),
 }
 ALIASES = {"aufgaben": "challengeTypes", "tagesaufgaben": "challengeTypes"}
-CHALLENGES = ["km", "speed", "time", "servers", "races", "mapkm", "jobs"]
+CHALLENGES = ["km", "speed", "time", "servers", "races", "mapkm", "jobs", "bonus"]
 def read_nofollow(p, limit=16 * 1024 * 1024):
     fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as fh:

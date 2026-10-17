@@ -306,7 +306,8 @@ schafft, bekommt einmal am Tag 40 Bonus-XP – auch bei schnellem Serverwechsel 
 „verschiedene Server“, sobald man dort mindestens 100 m gefahren ist. Die Begrüßung nennt die Aufgabe, `/aufgabe`
 (`/daily`) zeigt den Fortschritt. Anpassen in `config.json`: `"challengeXp": 40`, `"challengeTypes": ["km", "speed", "time", "servers"]`
 (`"races"` dazunehmen, sobald es Strecken gibt; `"mapkm"` = „Fahre heute 5/8/12 km auf einer Map“, zählt die
-Kilometer des Tages auf der Map des jeweiligen Servers; `"jobs"` = „Erledige heute 2/3/5 Aufträge“).
+Kilometer des Tages auf der Map des jeweiligen Servers; `"jobs"` = „Erledige heute 2/3/5 Aufträge“; `"bonus"` =
+„Fahre heute 3/5/8 km auf der Bonus-Map“ – ohne Bonus-Map an dem Tag gilt stattdessen `"mapkm"`).
 
 ### Erfolge
 
