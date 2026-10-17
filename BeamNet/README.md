@@ -303,7 +303,7 @@ Rennen, Erfolge, Tagesaufgaben) – so haben auch Neue jeden Monat eine faire Ch
 Betreten für frühere Fahrten nachträglich bekommt, geben XP, zählen aber nicht für die Saison. `/saison` (`/season`)
 zeigt die Tabelle, den eigenen Platz und die Sieger der letzten Saison; zum Monatswechsel werden die Sieger verkündet
 und unter `seasons/<Monat>.json` archiviert. Lief beim Monatswechsel kein Server, holt der erste Server, der wieder
-läuft, das Archiv still nach. Die Statusseite zeigt die laufende Saison.
+läuft, das Archiv still nach. Die Statusseite zeigt die laufende Saison mit dem führenden Team.
 
 ### Map-Abstimmung
 

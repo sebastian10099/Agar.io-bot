@@ -838,6 +838,15 @@ contains "$(cat "$T/web/index.html")" "<h2>Teams</h2><p>🏅 Team der Woche \\(K
 rm -f "$T/root/shared/beamnet/teamweek-$lw.json"
 contains "$(cat "$T/web/index.html")" '<td>&lt;b&gt;Crew&lt;/b&gt; <span class=small>🏅 3× Team der Woche</span></td>' "Statusseite: Siege als Team der Woche"
 contains "$(cat "$T/web/index.html")" '<h2>Teams</h2>.*<td class=n>1</td><td>&lt;b&gt;Crew&lt;/b&gt;( <span class=small>[^<]*</span>)?</td><td class=n>2</td><td class=n>[0-9.]+ km</td><td class=n>[0-9.]+ km</td>' "Statusseite: Teams (mit Kilometern dieser Woche)"
+# Woche und Saison wie im Spiel: wer erst diese Woche/Saison beigetreten ist, zaehlt dort noch nicht.
+echo "{\"id\":\"9201\",\"name\":\"Altmitglied\",\"km\":50,\"week\":\"$(date -u +%G-W%V)\",\"weekKm\":12.5,\"month\":\"$(date -u +%Y-%m)\",\"monthXp\":400}" >"$T/root/shared/beamnet/players/9201.json"
+echo "{\"id\":\"9202\",\"name\":\"Neuling\",\"km\":50,\"week\":\"$(date -u +%G-W%V)\",\"weekKm\":30,\"month\":\"$(date -u +%Y-%m)\",\"monthXp\":900}" >"$T/root/shared/beamnet/players/9202.json"
+echo "{\"teams\":{\"z\":{\"name\":\"Zugang\",\"created\":1,\"members\":{\"9201\":true,\"9202\":true},\"joined\":{\"9202\":$(date +%s)}}}}" >"$T/root/shared/beamnet/teams.json"
+"$TOOL" web run >/dev/null 2>&1
+page=$(cat "$T/web/index.html")
+contains "$page" '<td>Zugang</td><td class=n>2</td><td class=n>12\.5 km</td>' "Statusseite: Team-Woche ohne neues Mitglied"
+contains "$page" '<h2>Saison [^<]*</h2><p>🏅 Führendes Team dieser Saison: <b>Zugang</b> \(400 XP\)</p>' "Statusseite: fuehrendes Team der Saison"
+rm -f "$T/root/shared/beamnet/players/920"[12].json
 rm -f "$T/root/shared/beamnet/teams.json"
 "$TOOL" web run >/dev/null 2>&1
 # Kennzahlen fuer Prometheus/Grafana.

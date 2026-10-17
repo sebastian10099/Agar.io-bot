@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.36"
+VERSION="2.37"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="2.00"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -4876,13 +4876,26 @@ for r in players:
 # Teams (teams.json des Plugins): Kilometer = Summe der Mitglieder.
 km_by_id = {str(r.get("id")): num(r.get("km")) for r in players}
 week_by_id = {str(r.get("id")): num(r.get("weekKm")) for r in players if r.get("week") == week}
+month_by_id = {str(r.get("id")): month_xp(r) for r in players if month_xp(r) > 0}
 teams_data = load(os.path.join(shared, "teams.json"))
-teams = []
+# Wochen- und Saisonwertung wie im Spiel: Mitglieder zaehlen erst ab der Woche bzw. Saison nach ihrem Beitritt.
+day0 = int(now // 86400) * 86400
+week_start = day0 - time.gmtime(now).tm_wday * 86400
+month_start = day0 - (time.gmtime(now).tm_mday - 1) * 86400
+def counted(t, since):
+    joined = t.get("joined") if isinstance(t.get("joined"), dict) else {}
+    return [str(i) for i in list(t["members"])[:200] if (num(joined.get(i)) or num(t.get("created"))) < since]
+teams, season_lead = [], None
 for t in (teams_data.get("teams") or {}).values() if isinstance(teams_data, dict) and isinstance(teams_data.get("teams"), dict) else []:
     if isinstance(t, dict) and isinstance(t.get("members"), dict) and t.get("name"):
         teams.append((sum(km_by_id.get(str(i), 0) for i in t["members"]), len(t["members"]), str(t["name"])[:20],
-                      sum(week_by_id.get(str(i), 0) for i in t["members"]), int(min(num(t.get("weekWins")), 999))))
+                      sum(week_by_id.get(i, 0) for i in counted(t, week_start)), int(min(num(t.get("weekWins")), 999))))
+        sxp = sum(month_by_id.get(i, 0) for i in counted(t, month_start))
+        if sxp > 0 and (season_lead is None or (-sxp, str(t["name"])) < (-season_lead[0], season_lead[1])):
+            season_lead = (sxp, str(t["name"])[:32])
 teams.sort(key=lambda x: (-x[0], x[2]))
+if season_lead:
+    season_team = f'<p>🏅 Führendes Team dieser Saison: <b>{E(season_lead[1])}</b> ({season_lead[0]} XP)</p>' + season_team
 # Team je Fahrer (fuer die Profilseiten).
 team_of = {}
 for t in (teams_data.get("teams") or {}).values() if isinstance(teams_data, dict) and isinstance(teams_data.get("teams"), dict) else []:
