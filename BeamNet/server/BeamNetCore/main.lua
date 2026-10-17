@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "2.03"
+BN.VERSION = "2.04"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -951,6 +951,8 @@ local EN = {
     ["Noch keine Punkte in dieser Saison – einfach losfahren!"] = "No points in this season yet – just start driving!",
     ["Du: Platz %s mit %d XP in dieser Saison"] = "You: rank %s with %d XP this season",
     ["Noch %d XP bis Platz %d"] = "%d XP to go for rank %d",
+    ["Diese Woche: %s · Saison: %d XP (Platz %s)"] = "This week: %s · season: %d XP (rank %s)",
+    ["Diese Woche: %s"] = "This week: %s",
     ["⏳ Letzter Tag der Saison – du bist Platz %d (/saison)"] = "⏳ Last day of the season – you are rank %d (/season)",
     ["⏳ Die Saison endet in %d Tagen – du bist Platz %d (/saison)"] = "⏳ The season ends in %d days – you are rank %d (/season)",
     ["Letzte Saison (%s): %s"] = "Last season (%s): %s",
@@ -3472,6 +3474,14 @@ function commands.stats(pid, arg)
         if #parts > 0 then say(pid, "Titel: %s", table.concat(parts, " · ")) end
         local jobs = (tonumber(s.record.jobsDone) or 0) + (s.pendingJobs or 0)
         if jobs > 0 then say(pid, "Aufträge erledigt: %d", jobs) end
+        -- Woche und Saison (wie /spieler im Telegram-Chat)
+        if t.monthXp > 0 then
+            local srank
+            for i, e in ipairs(BN.seasonRanking(monthKey())) do if e.id == s.id then srank = i; break end end
+            say(pid, "Diese Woche: %s · Saison: %d XP (Platz %s)", fmtKm(t.weekKm), math.floor(t.monthXp), srank and tostring(srank) or "–")
+        elseif t.weekKm > 0 then
+            say(pid, "Diese Woche: %s", fmtKm(t.weekKm))
+        end
         local streak = BN.streakOf(s.record)
         if streak >= 2 or (tonumber(s.record.bestStreak) or 0) >= 2 then
             say(pid, "Serie: %d Tage in Folge (beste: %d)", streak, math.max(streak, tonumber(s.record.bestStreak) or 0))

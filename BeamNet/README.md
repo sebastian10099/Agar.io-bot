@@ -257,7 +257,7 @@ beamnet restart all
 | Befehl | Antwort |
 |---|---|
 | `/hilfe` | Liste der Befehle |
-| `/stats [Name]` | Level, Liga, XP, Kilometer, Fahrzeit, Höchstgeschwindigkeit, Rang, XP bis zum nächsten Level |
+| `/stats [Name]` | Level, Liga, XP, Kilometer, Fahrzeit, Höchstgeschwindigkeit, Rang, XP bis zum nächsten Level, Kilometer dieser Woche, Saison-XP mit Platz, Team |
 | `/top [km \| xp \| speed \| auftraege \| konvoi \| jagd \| woche \| vorwoche \| teams]` | Bestenliste (Top 5) – nach XP, Gesamtkilometern, Höchstgeschwindigkeit, Aufträgen, Kilometern im Konvoi, gewonnenen Verfolgungsjagden, Kilometern dieser oder der letzten Woche; `teams` = Teams dieser Woche |
 | `/liga` | Alle Ligen und wie weit es bis zur nächsten ist |
 | `/server` | Alle BeamNet-Server mit Map und Spielerzahl (wechseln geht im BeamMP-Launcher) |

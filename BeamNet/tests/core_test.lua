@@ -2890,6 +2890,14 @@ do
     BN.seasonRanking = saved
     check(not chatContains("^Noch %d+ XP bis Platz", 291), "/saison: kein Abstand, wenn man schon vorn liegt")
     rec291.monthXp = 0
+    -- /stats nennt Woche und Saison
+    rec291.monthXp = 120
+    BN.seasonRanking = function() return { { id = "803", name = "C", xp = 900 }, { id = "29191", name = "Saisonfrager", xp = 120 } } end
+    chatLog = {}
+    say(291, "/stats")
+    BN.seasonRanking = saved
+    check(chatContains("^Diese Woche: .* · Saison: 120 XP %(Platz 2%)$", 291), "/stats: Woche und Saison")
+    rec291.monthXp = 0
     -- Saison-XP ueber einer Million zaehlen fuers Team (Kilometer-Grenze gilt nur fuer die Woche)
     local big = BN.teamWeekRanking({ { id = "801", km = 2e6 } }, nil, nil, 1e9)[1]
     check(big and big.name == "Saisonteam" and big.km == 2e6, "Team der Saison: grosse XP-Werte zaehlen")
