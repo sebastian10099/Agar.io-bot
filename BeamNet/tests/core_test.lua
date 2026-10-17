@@ -2881,6 +2881,31 @@ do
     BN.seasonRanking = saved
     check(chatContains("^Du: Platz 2 mit 0 XP in dieser Saison$", 291), "/saison: eigener Platz")
     check(chatContains("^Noch 901 XP bis Platz 1$", 291), "/saison: Abstand zum naechsten Platz")
+    -- Restzeit der Saison (UTC) und Hinweis beim Betreten in den letzten Tagen
+    eq(BN.seasonDaysLeft(BN.monthStartOf("2026-11") - 10), 1, "Saison-Restzeit: letzter Tag")
+    eq(BN.seasonDaysLeft(BN.monthStartOf("2026-11") - 2 * 86400 - 10), 3, "Saison-Restzeit: drei Tage")
+    eq(BN.seasonDaysLeft(BN.monthStartOf("2026-12")), 31, "Saison-Restzeit: Dezember (Jahreswechsel)")
+    local keepLeft = BN.seasonDaysLeft
+    BN.seasonDaysLeft = function() return 2 end
+    BN.seasonRanking = function() return { { id = "803", name = "C", xp = 900 }, { id = "29191", name = "Saisonfrager", xp = 50 } } end
+    BN.seasonHinted["29191"] = nil
+    _G[events.onPlayerDisconnect](291); chatLog = {}
+    _G[events.onPlayerJoin](291)
+    check(chatContains("^⏳ Die Saison endet in 2 Tagen – du bist Platz 2 %(/saison%)$", 291), "Saisonende-Hinweis beim Betreten")
+    _G[events.onPlayerDisconnect](291); chatLog = {}
+    _G[events.onPlayerJoin](291)
+    check(not chatContains("^⏳", 291), "Saisonende-Hinweis: einmal am Tag")
+    BN.seasonDaysLeft = function() return 1 end
+    BN.seasonHinted["29191"] = nil
+    _G[events.onPlayerDisconnect](291); chatLog = {}
+    _G[events.onPlayerJoin](291)
+    check(chatContains("^⏳ Letzter Tag der Saison – du bist Platz 2 %(/saison%)$", 291), "Saisonende-Hinweis: letzter Tag")
+    BN.seasonDaysLeft = function() return 5 end
+    BN.seasonHinted["29191"] = nil
+    _G[events.onPlayerDisconnect](291); chatLog = {}
+    _G[events.onPlayerJoin](291)
+    check(not chatContains("^⏳", 291), "Saisonende-Hinweis: nicht frueher als 3 Tage vorher")
+    BN.seasonDaysLeft, BN.seasonRanking = keepLeft, saved
     _G[events.onPlayerDisconnect](291); players[291] = nil
     os.remove(SHARED .. "/players/29191.json"); BN.savedRecently["29191"] = nil
     if keep then writeJson(SHARED .. "/teams.json", keep) else os.remove(SHARED .. "/teams.json") end

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "2.01"
+BN.VERSION = "2.02"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -951,6 +951,8 @@ local EN = {
     ["Noch keine Punkte in dieser Saison – einfach losfahren!"] = "No points in this season yet – just start driving!",
     ["Du: Platz %s mit %d XP in dieser Saison"] = "You: rank %s with %d XP this season",
     ["Noch %d XP bis Platz %d"] = "%d XP to go for rank %d",
+    ["⏳ Letzter Tag der Saison – du bist Platz %d (/saison)"] = "⏳ Last day of the season – you are rank %d (/season)",
+    ["⏳ Die Saison endet in %d Tagen – du bist Platz %d (/saison)"] = "⏳ The season ends in %d days – you are rank %d (/season)",
     ["Letzte Saison (%s): %s"] = "Last season (%s): %s",
     ["Tagesaufgabe geschafft: %s. Die nächste kommt in %s."] = "Daily challenge done: %s. The next one comes in %s.",
     ["Tagesaufgabe: %s – %s/%s · noch %s · Belohnung %d XP"] = "Daily challenge: %s – %s/%s · %s left · reward %d XP",
@@ -2305,6 +2307,35 @@ BN.previousMonthKey = previousMonthKey
 
 local function seasonFile(month)
     return C.sharedDir .. "/seasons/" .. month .. ".json"
+end
+
+-- Angefangene Tage bis zum Ende der laufenden Saison (Monatswechsel in UTC, wie monthKey): am letzten Tag 1.
+function BN.seasonDaysLeft(t)
+    t = t or BN.now()
+    local y, m = monthKey(t):match("^(%d+)%-(%d+)$")
+    y, m = tonumber(y), tonumber(m)
+    local nextStart = BN.monthStartOf(string.format("%04d-%02d", m == 12 and y + 1 or y, m == 12 and 1 or m + 1))
+    return math.max(1, math.ceil((nextStart - t) / 86400))
+end
+
+-- Hinweis beim Betreten in den letzten Tagen der Saison (hoechstens einmal am Tag je Spieler und Server): wer schon
+-- Saison-XP hat, erfaehrt seinen Platz.
+BN.SEASON_HINT_DAYS = 3
+BN.seasonHinted = BN.seasonHinted or {}
+
+function BN.seasonEndHint(s, pid)
+    if s.guest or not s.id then return end
+    local left = BN.seasonDaysLeft()
+    if left > BN.SEASON_HINT_DAYS or BN.seasonHinted[s.id] == dayNumber() then return end
+    local rank
+    for i, e in ipairs(BN.seasonRanking(monthKey())) do if e.id == s.id then rank = i; break end end
+    if not rank then return end
+    BN.seasonHinted[s.id] = dayNumber()
+    if left == 1 then
+        say(pid, "⏳ Letzter Tag der Saison – du bist Platz %d (/saison)", rank)
+    else
+        say(pid, "⏳ Die Saison endet in %d Tagen – du bist Platz %d (/saison)", left, rank)
+    end
 end
 
 -- Saisonende: Sieger verkuenden (ausser quiet) und einmal archivieren. true, wenn es eine Wertung gab.
@@ -6170,12 +6201,7 @@ function commands.saison(pid)
     local month = monthKey()
     local list = BN.seasonRanking(month)
     local now = BN.now()
-    local y, m = month:match("^(%d+)%-(%d+)$")
-    y, m = tonumber(y), tonumber(m)
-    local nextStart = os.time({ year = m == 12 and y + 1 or y, month = m == 12 and 1 or m + 1, day = 1, hour = 0 })
-    -- os.time rechnet in Ortszeit; fuer die Restzeit genuegt Tagesgenauigkeit.
-    local daysLeft = math.max(0, math.ceil((nextStart - now) / 86400))
-    say(pid, "Saison %s (noch %d Tage):", BN.seasonName(month, lang), daysLeft)
+    say(pid, "Saison %s (noch %d Tage):", BN.seasonName(month, lang), BN.seasonDaysLeft(now))
     if #list == 0 then
         say(pid, "Noch keine Punkte in dieser Saison – einfach losfahren!")
     else
@@ -6597,6 +6623,7 @@ function BN_onPlayerJoin(pid)
         if n > 0 then say(pid, "Freunde online: %s", text) end
     end
     BN.seasonRecap(s)
+    guarded("Saisonende-Hinweis", BN.seasonEndHint, s, pid)
     BN.weekRecap(s)
     guarded("Team der Woche", BN.teamWeekReward, s)
     -- Rueckblick/Belohnung: sofort merken, sonst gibt es sie bei schnellem Serverwechsel ein zweites Mal.
