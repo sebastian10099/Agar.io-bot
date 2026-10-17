@@ -599,6 +599,10 @@ rm -f "$T/watch/usage-"* "$T/watch/slots-"*
 out=$("$TOOL" doctor 2>&1)
 contains "$out" "Wächter läuft \\(zuletzt vor [0-9]+ s\\)" "doctor: Wächter läuft"
 contains "$out" "Ein Lauf des Wächters dauert [0-9]+ s$" "doctor: Dauer eines Waechter-Laufs"
+lacks "$out" "beschädigte Datei" "doctor: ohne kaputte Dateien kein Hinweis"
+mkdir -p "$T/root/shared/beamnet/players"; echo x >"$T/root/shared/beamnet/players/77.json.kaputt-123"
+contains "$("$TOOL" doctor 2>&1)" "1 beschädigte Datei\\(en\\) in den letzten 30 Tagen beiseitegelegt" "doctor: kaputte Spielerdatei gemeldet"
+rm -f "$T/root/shared/beamnet/players/77.json.kaputt-123"
 echo 75 >"$T/watch/watch-seconds"
 contains "$("$TOOL" doctor 2>&1)" "Ein Lauf des Wächters dauert 75 s \\(er läuft jede Minute\\)" "doctor: Warnung bei langem Waechter-Lauf"
 contains "$out" "Server 3: tägliche Map-Rotation \\(italy utah\\)" "doctor: Rotation"

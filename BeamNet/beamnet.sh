@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.27"
+VERSION="2.28"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.97"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -696,6 +696,7 @@ cmd_doctor() {
 
     title "BeamNet-Dienste"
     check_watch
+    check_broken
 
     title "Andere Programme, die an den Servern drehen"
     check_agent
@@ -806,6 +807,19 @@ ver_lt() {
     local am=${BASH_REMATCH[1]} an=${BASH_REMATCH[2]}
     [[ $2 =~ ^([0-9]{1,4})\.([0-9]{1,4})$ ]] || return 1
     (( 10#$am < 10#${BASH_REMATCH[1]} || (10#$am == 10#${BASH_REMATCH[1]} && 10#$an < 10#${BASH_REMATCH[2]}) ))
+}
+
+# Hat das Plugin in den letzten 30 Tagen kaputte Dateien beiseitegelegt (<datei>.kaputt-<Zeit>)? Dann haben die
+# betroffenen Spieler bzw. Teams neu angefangen – aus der Datensicherung zurueckholbar.
+check_broken() {
+    [[ -d $SHARED && ! -L $SHARED ]] || return 0
+    local n
+    n=$(find "$SHARED" -maxdepth 2 -name '*.kaputt-*' -mtime -30 2>/dev/null | wc -l)
+    if (( n > 0 )); then
+        warn "$n beschädigte Datei(en) in den letzten 30 Tagen beiseitegelegt (*.kaputt-*) – dort wurde neu angefangen"
+        hint "beamnet restore   (Datensicherungen ansehen und zurückholen)   ·   find $SHARED -name '*.kaputt-*'"
+    fi
+    return 0
 }
 
 # Laeuft BeamNetCore auf diesem Server? (nur wenn installiert und der Server laeuft)
