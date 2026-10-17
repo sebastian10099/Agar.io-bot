@@ -583,6 +583,11 @@ rm -f "$T/watch/usage-"* "$T/watch/slots-"*
 out=$("$TOOL" doctor 2>&1)
 contains "$out" "Wächter läuft \\(zuletzt vor [0-9]+ s\\)" "doctor: Wächter läuft"
 contains "$out" "Server 3: tägliche Map-Rotation \\(italy utah\\)" "doctor: Rotation"
+contains "$out" "XP-Abende aus" "doctor: Hinweis auf XP-Abende"
+contains "$out" "beamnet event auto fr,sa 20:00 2 2h" "doctor: Befehl fuer XP-Abende"
+"$TOOL" event auto sa 20:00 2 2h >/dev/null 2>&1
+contains "$("$TOOL" doctor 2>&1)" "XP-Abende: sa 20:00 2 2h" "doctor: XP-Abende an"
+"$TOOL" event auto aus >/dev/null 2>&1
 if compgen -G "$T/root/*/Resources/Server/BeamNetCore/main.lua" >/dev/null; then
     contains "$out" "Keine Orte für Fahraufträge \\(/auftrag\\) auf: " "doctor: fehlende Orte für Aufträge"
     for m in $(for f in "$T"/root/*/Resources/Server/BeamNetCore/main.lua; do n=${f#"$T"/root/}; n=${n%%/*}; grep -m1 '^Map' "$T/root/$n/ServerConfig.toml" | sed -E 's#.*/levels/([^/]+)/.*#\1#'; done | sort -u); do

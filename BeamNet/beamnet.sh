@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.78"
+VERSION="1.79"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -738,6 +738,20 @@ check_watch() {
         ok "Wächter läuft (zuletzt vor ${age} s)"
     fi
     [[ $(conf_get MAP_VOTE) == 0 ]] || ok "Map-Abstimmung an ($(vote_maps | wc -w) Maps)"
+    # Funktionen, die erst eingeschaltet werden muessen (nur Hinweise, keine Warnungen).
+    local spec every
+    if spec=$(autoevent_spec); then
+        ok "XP-Abende: $(conf_get AUTO_EVENT)"
+    else
+        echo "  XP-Abende aus – zur festen Zeit doppelte XP auf allen Servern, eine Stunde vorher angekündigt."
+        hint "beamnet event auto fr,sa 20:00 2 2h"
+    fi
+    every=$(online_report_min)
+    if notify_configured && (( every > 0 )); then ok "Netzwerk-Übersicht an Discord/Telegram alle $every Minuten"; fi
+    if [[ -n $(conf_get TELEGRAM_TOKEN) && -z $(conf_get TELEGRAM_ADMINS) ]]; then
+        echo "  Keine Telegram-Admins – /ansage und /event 2 2h gehen nur aus dem Chat, wenn deine Telegram-ID eingetragen ist."
+        hint "TELEGRAM_ADMINS=<deine Telegram-Zahlen-ID> in /etc/beamnet.conf (ID z. B. über @userinfobot)"
+    fi
     local nr list m missing=""
     for nr in $(servers); do
         list=$(conf_get "ROTATE_$nr")
