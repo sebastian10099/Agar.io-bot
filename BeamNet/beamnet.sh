@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.31"
+VERSION="2.32"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.97"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -1452,6 +1452,31 @@ cmd_restore() {
         pid=${line%%$'\t'*}; json=${line#*$'\t'}
         [[ $pid =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "Unerwartete Spieler-ID in der Sicherung."
         pname=$(python3 -I -c 'import json, re, sys; print(" ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(json.loads(sys.argv[1]).get("name", "?"))).split())[:32])' "$json" 2>/dev/null)
+        # Gerade online? Dann rechnet sein Server die laufende Fahrt beim naechsten Speichern oben drauf – besser danach.
+        local where
+        where=$(python3 -I - "$SHARED/servers" "$pid" <<'PY' 2>/dev/null
+import json, os, re, stat, sys, time
+try:
+    dfd = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+except OSError:
+    sys.exit(0)
+for name in sorted(os.listdir(dfd))[:500]:
+    if not re.fullmatch(r"[0-9]{1,5}\.json", name):
+        continue
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
+        with os.fdopen(fd, "rb") as fh:
+            if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+                continue
+            st = json.loads(fh.read(65536).decode("utf-8", "replace"))
+    except Exception:
+        continue
+    up = st.get("updated") if isinstance(st, dict) else None
+    if isinstance(up, int) and 0 <= time.time() - up <= 90 and isinstance(st.get("ids"), list) and sys.argv[2] in st["ids"]:
+        print("Port " + name[:-5]); break
+PY
+)
+        [[ -n $where ]] && warn "Spieler $pid ist gerade online ($where) – besser nach dem Verlassen zurückholen."
         confirm "Spieler $pid (${pname:-?}) auf den Stand vom $want zurücksetzen? (am besten, während er nicht fährt)" || { echo "Abgebrochen."; return 1; }
         mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
         ts=$(date +%Y%m%d-%H%M%S)

@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.31 / Plugin 1.97)
+## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.32 / Plugin 1.97)
 
 - [x] `/heute` im Spiel: Tagesaufgabe, XP-Event oder XP-Abend, Bonus-Map, Serie und Wochenziel auf einen Blick; `/event`
       zeigt die Bonus-Map jetzt auch während eines XP-Events (Plugin 1.79).
@@ -48,7 +48,7 @@
       der Wächter meldet jede neue einmal an Discord/Telegram (Werkzeug 2.29); `beamnet restore <Datum> spieler
       <Name|ID>` holt einen einzelnen Spieler aus der Sicherung zurück (Werkzeug 2.30). Prüfung: Meldung beruht auf der
       ctime (Beiseitelegen ist ein Umbenennen), Dateinamen nur in erwarteter Form, Rückfrage nennt den Namen
-      (Werkzeug 2.31).
+      (Werkzeug 2.31); ist der Spieler gerade online, kommt eine Warnung (Werkzeug 2.32).
 - [ ] Vorschlag (braucht deine Zustimmung): `/neustart <Nr>` im Telegram-Chat für Admins – Server aus der Ferne neu
       starten. Bewusst noch nicht eingebaut, weil es den Server über den Chat steuert.
 - [x] `beamnet doctor`: Plugin-Version aller Server mit der Version des Werkzeugs vergleichen und auf `beamnet update`
