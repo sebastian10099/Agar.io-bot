@@ -2702,7 +2702,7 @@ watch_load() {
 }
 
 # Bestenlisten-Index fuer das Plugin (ab 1.13; Format 2 mit Hoechstgeschwindigkeit ab Plugin 1.21, Format 3 mit
-# Auftraegen ab Plugin 1.37 – aeltere Plugins erkennen das neue Format nicht und lesen dann wie frueher alle Dateien, bis
+# Auftraegen ab Plugin 1.37, Format 4 mit Konvoi-km und gewonnenen Jagden ab Plugin 1.71 – aeltere Plugins erkennen das neue Format nicht und lesen dann wie frueher alle Dateien, bis
 # beamnet update sie erneuert): eine Zeile je Spieler in players-index.tsv. So liest jeder Server
 # einmal pro Minute eine kleine Datei statt aller Spielerdateien (bei 10 000 Spielern 0,07 s statt 1,4 s je Liste).
 # Nur regulaere Dateien, keinen Symlinks folgen; Namen ohne Tabulatoren und Steuerzeichen.

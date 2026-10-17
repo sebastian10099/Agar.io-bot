@@ -54,7 +54,7 @@ ImScaredOfUpdates = true
 UpdateReminderTime = "30s"
 TOML
 
-# Last: viele Spielerdateien und ein frischer Bestenlisten-Index (Format 2, wie ihn der Waechter schreibt). Das Plugin
+# Last: viele Spielerdateien und ein frischer Bestenlisten-Index (Format 4, wie ihn der Waechter schreibt). Das Plugin
 # baut im ersten Takt das Saisonarchiv des Vormonats und liest dafuer die Spieler – ueber den Index.
 LOAD_PLAYERS=${BEAMNET_LOAD_PLAYERS:-5000}
 python3 -I - "$WORK/shared" "$LOAD_PLAYERS" <<'PY'
@@ -64,7 +64,7 @@ os.makedirs(os.path.join(shared, "players"), exist_ok=True)
 now = time.time()
 t = time.gmtime(now)
 prev = f"{t.tm_year - 1}-12" if t.tm_mon == 1 else f"{t.tm_year}-{t.tm_mon - 1:02d}"
-lines = [f"# beamnet-index 2 {int(now)}"]
+lines = [f"# beamnet-index 4 {int(now)}"]
 for i in range(n):
     pid = str(100000 + i)
     rec = {"id": pid, "name": f"Last {i}", "km": i * 1.5, "seconds": i * 60, "bonusXp": i % 50,
@@ -72,7 +72,8 @@ for i in range(n):
     with open(os.path.join(shared, "players", pid + ".json"), "w") as f:
         json.dump(rec, f)
     lines.append("\t".join([pid, rec["name"], str(rec["km"]), str(rec["seconds"]), str(rec["bonusXp"]), "", "", "", "",
-                            "", "", prev, str(rec["lastMonthXp"]), str(rec["topSpeedKmh"])]))
+                            "", "", prev, str(rec["lastMonthXp"]), str(rec["topSpeedKmh"]), str(i % 7),
+                            str(i % 13 * 0.5), str(i % 3)]))
 with open(os.path.join(shared, "players-index.tsv"), "w") as f:
     f.write("\n".join(lines) + "\n")
 print(f"{n} Spielerdateien und Index angelegt")

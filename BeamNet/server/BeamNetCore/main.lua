@@ -1950,7 +1950,8 @@ end
 -- Was dieser Server nach dem Index gespeichert hat, ersetzt die Index-Zeile (sonst fehlten die letzten Zuwaechse von
 -- Spielern, die gerade gegangen sind). Die Liste wird geteilt: nie veraendern.
 BN.INDEX_MAX_AGE = 180
--- Format 1: die ersten 13 Felder; Format 2 (Werkzeug ab 1.39): dazu topSpeedKmh.
+-- Format 1: die ersten 13 Felder; Format 2 (Werkzeug ab 1.39): dazu topSpeedKmh; Format 3 (ab 1.57): jobsDone;
+-- Format 4 (Werkzeug ab 1.84): convoyKm und chaseWins.
 BN.INDEX_FIELDS = { "id", "name", "km", "seconds", "bonusXp", "week", "weekKm", "lastWeek", "lastWeekKm",
                     "month", "monthXp", "lastMonth", "lastMonthXp", "topSpeedKmh", "jobsDone", "convoyKm", "chaseWins" }
 local INDEX_COUNT = { [1] = 13, [2] = 14, [3] = 15, [4] = 17 }
