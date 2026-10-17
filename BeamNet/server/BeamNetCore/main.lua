@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.90"
+BN.VERSION = "1.91"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -659,6 +659,10 @@ local EN = {
     ["Spielen: /heute · /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote"] =
         "Play: /today · /job · /race · /series · /duel <name> <track> · /chase · /convoy · /daily · /goal · /vote",
     ["☀️ Heute im BeamNet:"] = "☀️ Today on BeamNet:",
+    ["Neue Erfolge: Entdecker und Pionier – fahr auf der Bonus-Map des Tages (/heute)"] =
+        "New achievements: Explorer and Pioneer – drive on today's bonus map (/today)",
+    ["Team der Woche: wer im besten Team mitfährt, bekommt +50 XP – /team woche"] =
+        "Team of the week: drive for the best team and get +50 XP – /team week",
     ["Alles für heute auf einen Blick: /heute – Tagesaufgabe, XP-Abend, Bonus-Map, Wochenziel"] =
         "Everything for today at a glance: /today – daily challenge, XP evening, bonus map, weekly goal",
     -- Konvoi
@@ -2334,6 +2338,8 @@ BN.NEWS = {
     { "1.62", "Aufträge auf jeder Map (Lieferpunkte) und Richtungshinweise unterwegs – /auftrag" },
     { "1.64", "Schicht: mehrere Aufträge hintereinander bringen Bonus-XP – /auftrag" },
     { "1.79", "Alles für heute auf einen Blick: /heute – Tagesaufgabe, XP-Abend, Bonus-Map, Wochenziel" },
+    { "1.81", "Neue Erfolge: Entdecker und Pionier – fahr auf der Bonus-Map des Tages (/heute)" },
+    { "1.88", "Team der Woche: wer im besten Team mitfährt, bekommt +50 XP – /team woche" },
 }
 
 local function versionNum(v)
