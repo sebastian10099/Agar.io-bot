@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.91"
+BN.VERSION = "1.92"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1180,6 +1180,8 @@ local EN = {
     ["hier"] = "here",
     [" · und %d weitere"] = " · and %d more",
     ["👋 Dein Freund %s ist jetzt online: %s · %s"] = "👋 Your friend %s is now online: %s · %s",
+    ["👥 Dein Teamkollege %s ist jetzt online: %s · %s"] = "👥 Your teammate %s is now online: %s · %s",
+    ["👥 Dein Teamkollege %s ist gerade auf diesen Server gekommen."] = "👥 Your teammate %s just joined this server.",
     ["👋 Dein Freund %s ist gerade auf diesen Server gekommen."] = "👋 Your friend %s just joined this server.",
     ["Freunde gibt es nur mit BeamMP-Konto."] = "Friends need a BeamMP account.",
     ["Noch keine Freunde. /freund <Name> fügt jemanden hinzu – du bekommst dann Bescheid, wenn er online kommt."] =
@@ -5826,6 +5828,32 @@ function BN.friendTick(force)
                 if e.name ~= f.name and e.name ~= "?" then
                     f.name = e.name
                     s.friendsChanged, s.dirty = true, true
+                end
+            end
+        end
+    end
+    -- Teamkollegen: wie Freunde (wer schon als Freund gemeldet wurde, nicht noch einmal). teams.json nur lesen, wenn
+    -- jemand neu im Netzwerk ist.
+    local fresh = false
+    for id in pairs(online) do if not before[id] then fresh = true break end end
+    if not fresh then return end
+    local data = BN.loadTeams()
+    for pid, s in pairs(BN.players) do
+        local team
+        if not s.guest and s.id then team = select(2, teamOf(data, s.id)) end
+        if team then
+            local friends = {}
+            for _, f in ipairs((s.record and s.record.friends) or {}) do friends[f.id] = true end
+            for id in pairs(team.members) do
+                local e = online[id]
+                if e and not before[id] and id ~= s.id and not friends[id] then
+                    local lang = BN.langOf(pid)
+                    if e.st then
+                        local addr = C.publicHost ~= "" and (C.publicHost .. ":" .. tostring(e.st.port)) or tr(lang, "Port %s", tostring(e.st.port))
+                        say(pid, "👥 Dein Teamkollege %s ist jetzt online: %s · %s", e.name, whereText(lang, e), addr)
+                    else
+                        say(pid, "👥 Dein Teamkollege %s ist gerade auf diesen Server gekommen.", e.name)
+                    end
                 end
             end
         end

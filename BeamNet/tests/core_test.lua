@@ -2233,6 +2233,17 @@ do
     chatLog = {}
     BN.friendTick(true)
     check(not chatContains("Dein Freund", 85), "Freunde: keine doppelte Meldung")
+    -- Teamkollegen: Kumpel (hier) und Remote sind im selben Team – Kumpel bekommt eine Meldung, wenn Remote kommt.
+    local keepTeams = readJson(SHARED .. "/teams.json")
+    writeJson(SHARED .. "/teams.json", { teams = { crew = { name = "Crew", members = { ["8586"] = "Kumpel", ["9999"] = "Remote" } } } })
+    hb({}, {})
+    BN.friendTick(true)
+    chatLog = {}
+    hb({ "Remote" }, { "9999" })
+    BN.friendTick(true)
+    check(chatContains("👥 Dein Teamkollege Remote ist jetzt online: BeamNet | Server 2", 86), "Team: Meldung, wenn ein Teamkollege online kommt")
+    check(not chatContains("Teamkollege", 85), "Team: nur fuer Mitglieder (Freunde bekommen die Freundes-Meldung)")
+    if keepTeams then writeJson(SHARED .. "/teams.json", keepTeams) else os.remove(SHARED .. "/teams.json") end
     -- Gespeichert und beim naechsten Besuch: wer online ist.
     _G[events.onPlayerDisconnect](85)
     local rec = readJson(SHARED .. "/players/8585.json")
