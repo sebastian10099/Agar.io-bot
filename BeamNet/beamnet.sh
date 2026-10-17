@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.28"
+VERSION="2.29"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.97"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -2497,6 +2497,7 @@ watch_run() {
     watch_season msgs
     watch_daily msgs
     watch_update msgs
+    watch_broken msgs
     watch_telegram
     if (( ${#msgs[@]} > 0 )); then
         printf '%s\n' "${msgs[@]}"
@@ -2740,6 +2741,20 @@ PY
     pct=$(awk -v f="$factor" 'BEGIN { printf "%d", (f - 1) * 100 + 0.5 }')
     bmout+=("🗺️ Bonus-Map heute: $pick (Server $where) – +$pct % XP beim Fahren bis Mitternacht.")
     return 0
+}
+
+# Neu beiseitegelegte kaputte Dateien des Plugins (<datei>.kaputt-<Zeit>) einmal melden: der Spieler bzw. die Teams
+# fangen dort neu an, die Daten lassen sich aus der Datensicherung zurueckholen. Erster Lauf: nur merken.
+watch_broken() {
+    local -n bout2=$1
+    [[ -d $SHARED && ! -L $SHARED ]] || return 0
+    local stamp=$STATE_DIR/broken-seen names
+    if [[ ! -f $stamp ]]; then : >"$stamp"; return 0; fi
+    names=$(find "$SHARED" -maxdepth 2 -name '*.kaputt-*' -newer "$stamp" -printf '%P\n' 2>/dev/null | head -n 5 \
+        | tr -cd 'A-Za-z0-9_./\n-' | paste -sd' ' -)
+    : >"$stamp"
+    [[ -n $names ]] || return 0
+    bout2+=("⚠️ BeamNetCore hat kaputte Dateien beiseitegelegt: $names – dort wird neu angefangen. Zurückholen: beamnet restore")
 }
 
 # Update-Hinweis: einmal am Tag nachsehen, ob es auf GitHub ein neueres Werkzeug gibt, und je neuer Version einmal

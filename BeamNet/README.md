@@ -152,6 +152,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
 - **Meilensteine:** Level 25/50/75/100 und 1.000/5.000/10.000/25.000 km eines Spielers („⭐ Ana hat Level 25
   erreicht (Server 2) – Glückwunsch!“), Liga-Aufstiege und neue Spieler („👋 Ana ist zum ersten Mal im BeamNet“); `MILESTONE_NOTIFY=0` schaltet diese Erfolge ab,
   `MODLOG_NOTIFY=0` nur die Moderationsmeldungen.
+- **Kaputte Dateien:** Legt BeamNetCore eine beschädigte Spieler- oder Teamdatei beiseite (`*.kaputt-*`), meldet er das
+  einmal („⚠️ BeamNetCore hat kaputte Dateien beiseitegelegt …“) – die Daten lassen sich mit `beamnet restore` zurückholen.
 - **Update-Hinweis:** Einmal am Tag sieht er auf GitHub nach, ob es ein neueres BeamNet gibt, und meldet jede neue
   Version einmal („🆕 BeamNet-Update verfügbar: Werkzeug 1.94 (installiert: 1.93) – auf dem Server: sudo beamnet
   update“). Er installiert nichts selbst; `UPDATE_CHECK=0` schaltet ab.
