@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.93"
+BN.VERSION = "1.94"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -962,6 +962,8 @@ local EN = {
     ["Kolonnenführer (100 km im Konvoi)"] = "Convoy leader (100 km in convoys)",
     ["Entdecker (25 km auf Bonus-Maps)"] = "Explorer (25 km on bonus maps)",
     ["Pionier (100 km auf Bonus-Maps)"] = "Pioneer (100 km on bonus maps)",
+    ["Teamplayer (Team der Woche)"] = "Team player (team of the week)",
+    ["Dauerbrenner (5-mal Team der Woche)"] = "Evergreen (5 times team of the week)",
     ["Bann konnte nicht gespeichert werden (%s) – bitte beamnet doctor prüfen."] = "Could not save the ban (%s) – please check beamnet doctor.",
     ["Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server. English: /lang en"] =
         "Welcome to %s (%s)! Level %d · %s league · %s driven. /help for commands, /server for all servers. Deutsch: /lang de",
@@ -1264,7 +1266,7 @@ local function normalizeRecord(rec, id, name)
     rec.name = name or rec.name
     for _, k in ipairs({ "km", "seconds", "weekKm", "topSpeedKmh", "bonusXp", "racesFinished", "recordsSet",
                          "dayKm", "daySeconds", "dayRaces", "dayTop", "lastMonthXp", "lastWeekKm", "streak", "bestStreak", "jobsDone", "dayJobs", "weekJobs",
-                         "convoyKm", "chaseWins", "bonusMapKm" }) do
+                         "convoyKm", "chaseWins", "bonusMapKm", "teamWeeks" }) do
         rec[k] = tonumber(rec[k]) or 0
     end
     for _, k in ipairs({ "maps", "achievements", "dayMaps", "mapKm", "dayMapKm" }) do
@@ -1646,7 +1648,11 @@ function BN.savePlayer(s)
     if s.pendingWeekRecap then rec.recapWeek = s.pendingWeekRecap end
     if s.pendingTeamWeek then
         -- Schon auf einem anderen Server bekommen (Datei kennt die Woche): nicht doppelt.
-        if rec.teamWeek == s.pendingTeamWeek then rec.bonusXp = rec.bonusXp - (s.pendingTeamWeekXp or 0) end
+        if rec.teamWeek == s.pendingTeamWeek then
+            rec.bonusXp = rec.bonusXp - (s.pendingTeamWeekXp or 0)
+        else
+            rec.teamWeeks = rec.teamWeeks + 1         -- wie oft im Team der Woche (Erfolge)
+        end
         rec.teamWeek = s.pendingTeamWeek
     end
     rec.jobHour = BN.mergeHour(rec.jobHour, BN.jobLimits and BN.jobLimits[s.id])
@@ -1746,7 +1752,8 @@ function BN.totals(s)
              maps = maps, day = BN.dayTotals(s), monthXp = BN.monthXpOf(s, xp, retro),
              jobs = rec.jobsDone + (s.pendingJobs or 0), chaseWins = rec.chaseWins + (s.pendingChaseWins or 0),
              convoyKm = rec.convoyKm + (s.pendingConvoyKm or 0),
-             bonusMapKm = rec.bonusMapKm + (s.pendingBonusMapKm or 0) }
+             bonusMapKm = rec.bonusMapKm + (s.pendingBonusMapKm or 0),
+             teamWeeks = rec.teamWeeks + ((s.pendingTeamWeek and rec.teamWeek ~= s.pendingTeamWeek) and 1 or 0) }
 end
 
 -- In dieser Saison gesammelte XP einer Sitzung (gespeichert + noch nicht gespeichert, ohne nachtraegliche Erfolge).
@@ -1859,6 +1866,8 @@ BN.ACHIEVEMENTS = {
     { id = "convoy100", name = "Kolonnenführer (100 km im Konvoi)", xp = 100, value = function(t) return t.convoyKm end, goal = 100 },
     { id = "explorer25", name = "Entdecker (25 km auf Bonus-Maps)", xp = 40, value = function(t) return t.bonusMapKm end, goal = 25 },
     { id = "explorer100", name = "Pionier (100 km auf Bonus-Maps)", xp = 120, value = function(t) return t.bonusMapKm end, goal = 100 },
+    { id = "teamweek1", name = "Teamplayer (Team der Woche)", xp = 40, value = function(t) return t.teamWeeks end, goal = 1 },
+    { id = "teamweek5", name = "Dauerbrenner (5-mal Team der Woche)", xp = 150, value = function(t) return t.teamWeeks end, goal = 5 },
 }
 
 function BN.hasAchievement(s, id)

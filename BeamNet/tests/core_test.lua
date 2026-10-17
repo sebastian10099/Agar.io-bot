@@ -948,7 +948,7 @@ do
     end
     check(not BN.hasAchievement(v, "race1") and not BN.hasAchievement(v, "maps8"), "Nicht verdiente Erfolge fehlen")
     say(10, "/erfolge")
-    check(chatContains("Erfolge von Veteran: 9 von 26", 10), "/erfolge zaehlt")
+    check(chatContains("Erfolge von Veteran: 9 von 28", 10), "/erfolge zaehlt")
     check(chatContains("Als Nächstes: Erstes Rennen 0/1", 10), "/erfolge zeigt Fortschritt")
     BN.savePlayer(v)
     local saved = readJson(SHARED .. "/players/4242.json")
@@ -973,7 +973,7 @@ do
     -- Englisch.
     say(10, "/lang en")
     say(10, "/achievements")
-    check(chatContains("Achievements of Veteran: 9 of 26", 10) and chatContains("Next: First race 0/1", 10), "/achievements auf Englisch")
+    check(chatContains("Achievements of Veteran: 9 of 28", 10) and chatContains("Next: First race 0/1", 10), "/achievements auf Englisch")
     -- Abschaltbar.
     C.achievements = false
     players[11] = { name = "Ohne", ids = { beammp = "1111" }, vehicles = {} }
@@ -2876,6 +2876,9 @@ do
     check(chatContains("🏅 Dein Team Blitz war Team der Woche – danke fürs Mitfahren: %+50 XP!", 191), "Team der Woche: Belohnung beim Betreten")
     local f1 = readJson(SHARED .. "/players/19191.json")
     eq(f1.teamWeek, prev, "Team der Woche: Belohnung sofort gemerkt")
+    eq(f1.teamWeeks, 1, "Team der Woche: gezaehlt (Erfolge)")
+    BN.checkAchievements(BN.players[191])
+    check(BN.hasAchievement(BN.players[191], "teamweek1"), "Team der Woche: Erfolg Teamplayer")
     _G[events.onPlayerDisconnect](191)
     local xp1 = readJson(SHARED .. "/players/19191.json").bonusXp
     chatLog = {}
