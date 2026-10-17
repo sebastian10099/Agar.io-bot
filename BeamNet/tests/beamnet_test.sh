@@ -403,8 +403,12 @@ echo "{\"id\":\"2\",\"name\":\"Max\",\"lastWeek\":\"$lastweek\",\"lastWeekKm\":1
 echo "{\"id\":\"9\",\"name\":\"Fremd\",\"week\":\"$lastweek\",\"weekKm\":999}" >"$T/fremd-week.json"
 ln -sf "$T/fremd-week.json" "$T/root/shared/beamnet/players/9.json"
 mkdir -p "$T/watch"; echo "$inweek 23" >"$T/watch/hours"
+cp "$T/root/shared/beamnet/teams.json" "$T/teams.keep" 2>/dev/null || true
+echo '{"teams":{"blitz":{"name":"Blitz","members":{"1":true,"2":true}},"solo":{"name":"Solo","members":{"9":true}},"kaputt":5}}' >"$T/root/shared/beamnet/teams.json"
 : >"$T/curl.log"
 out=$(BEAMNET_DOW=1 "$TOOL" watch 2>&1)
+contains "$out" "🏅 Team der Woche: Blitz \\(54 km, 2 Fahrer\\)$" "watch: Team der Woche"
+if [[ -f $T/teams.keep ]]; then cp "$T/teams.keep" "$T/root/shared/beamnet/teams.json"; else rm -f "$T/root/shared/beamnet/teams.json"; fi
 contains "$out" "🏁 Wochensieger .* KW .*: 1\\. Sebi \\(42\\.5 km\\) · 2\\. Max \\(12\\.0 km\\)" "watch: Wochensieger"
 lacks "$out" "Fremd" "watch: Wochensieger folgt keinem Symlink"
 contains "$out" "📈 Die Woche: 2 Fahrer · 54 km · Spitze 23 Spieler gleichzeitig \\([A-Z][a-z] [0-9]+ Uhr\\) · 1 neuer Fahrer · 5 Aufträge$" "watch: Wochenzahlen (Fahrer, km, Spitze, Neue, Aufträge)"

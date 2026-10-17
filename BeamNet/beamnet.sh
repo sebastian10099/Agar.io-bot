@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.05"
+VERSION="2.06"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.84"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -3530,7 +3530,10 @@ def load(path):
 def number(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
-rows, new, jobs = [], 0, 0
+def clean(v, n):
+    return " ".join(__import__("re").sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(v)).split())[:n]
+
+rows, new, jobs, by_id = [], 0, 0, {}
 for path in glob.glob(folder + "/*.json"):
     r = load(path)
     if not r:
@@ -3540,8 +3543,9 @@ for path in glob.glob(folder + "/*.json"):
         jobs += int(j)
     km = r.get("weekKm") if r.get("week") == week else r.get("lastWeekKm") if r.get("lastWeek") == week else None
     km = number(km)
-    if km and km > 0:
-        rows.append((km, " ".join(str(r.get("name", "?")).split())[:40]))    # keine Zeilenumbrueche aus Namen
+    if km and km > 0 and km < 1e6:
+        rows.append((km, clean(r.get("name", "?"), 40) or "?"))    # keine Zeilenumbrueche/Steuerzeichen aus Namen
+        by_id[str(r.get("id"))] = km
     first = number(r.get("firstSeen"))
     if first and start <= first < end:
         new += 1
@@ -3566,10 +3570,25 @@ if rows:
     if jobs > 0:
         parts.append(f"{jobs} {'Aufträge' if jobs != 1 else 'Auftrag'}")
     print("📈 Die Woche: " + " · ".join(parts))
+    # Team der Woche: die meisten Kilometer seiner Mitglieder in dieser Woche (teams.json vom Plugin).
+    teams = (load(os.path.join(os.path.dirname(folder), "teams.json")) or {}).get("teams")
+    best = None
+    for t in (teams.values() if isinstance(teams, dict) else []):
+        if not (isinstance(t, dict) and isinstance(t.get("members"), dict)):
+            continue
+        ids = [str(i) for i in list(t["members"])[:200]]
+        km = sum(by_id.get(i, 0) for i in ids)
+        drivers = sum(1 for i in ids if by_id.get(i, 0) > 0)
+        name = clean(t.get("name", "?"), 32)
+        if km > 0 and name and (best is None or km > best[0] or (km == best[0] and name < best[1])):
+            best = (km, name, drivers)
+    if best:
+        print(f"🏅 Team der Woche: {best[1]} ({best[0]:.0f} km, {best[2]} Fahrer)")
 PY
 )
     [[ -n ${lines[0]:-} ]] && out+=("🏁 Wochensieger ${week/-W/ KW }: ${lines[0]}")
     [[ -n ${lines[1]:-} ]] && out+=("${lines[1]}")
+    [[ -n ${lines[2]:-} ]] && out+=("${lines[2]}")
     return 0
 }
 
