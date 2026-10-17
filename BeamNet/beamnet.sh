@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.80"
+VERSION="1.81"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3565,6 +3565,145 @@ PY
     return 0
 }
 
+# beamnet config: Spiel-Einstellungen in config.json ansehen und aendern (nur bekannte Schluessel, geprueft auf Typ und
+# Grenzen; das Plugin uebernimmt sie innerhalb einer Minute). "standard" setzt den Standardwert.
+read -r -d '' CONFIG_PY <<'PY'
+import json, os, re, stat, sys
+path, out, args = sys.argv[1], sys.argv[2], sys.argv[3:]
+# Schluessel: (Typ, Minimum, Maximum, Standard, Beschreibung). Standardwerte wie im Plugin (ein Test vergleicht).
+KEYS = {
+    "xpPerKm": ("num", 0, 1000, 10, "XP je Kilometer"),
+    "xpPerMinute": ("num", 0, 100, 1, "XP je Minute Fahrzeit"),
+    "announceLevelUps": ("bool", 0, 0, True, "Level-Aufstiege allen ansagen"),
+    "welcomeNew": ("bool", 0, 0, True, "Neue Spieler begrüßen und vorstellen"),
+    "achievements": ("bool", 0, 0, True, "Erfolge an/aus"),
+    "mapVote": ("bool", 0, 0, True, "Map-Abstimmung im Chat"),
+    "publicHost": ("str", 0, 64, "", "Adresse für /server (z. B. meinserver.de)"),
+    "challengeXp": ("int", 0, 1000, 40, "XP für die Tagesaufgabe"),
+    "challengeTypes": ("list", 0, 0, ["km", "speed", "time", "servers"], "Tagesaufgaben (km speed time servers races mapkm jobs)"),
+    "weeklyTrackXp": ("int", 0, 1000, 50, "XP für die Strecke der Woche"),
+    "maxFriends": ("int", 1, 100, 20, "Freunde je Spieler"),
+    "streakXp": ("int", 0, 1000, 10, "Bonus-XP je Tag der Tages-Serie (0 = aus)"),
+    "streakMaxDays": ("int", 2, 30, 7, "Höchstens so viele Serientage zählen"),
+    "streakMinKm": ("num", 0.1, 100, 1, "Kilometer am Tag für die Serie"),
+    "jobXp": ("int", 0, 1000, 20, "Fester Anteil je Auftrag ab 1 km"),
+    "jobXpPerKm": ("num", 0, 1000, 25, "Auftrags-XP je km Luftlinie"),
+    "jobCooldownSec": ("int", 0, 3600, 45, "Pause zwischen zwei Aufträgen (s)"),
+    "jobXpPerHour": ("int", 0, 100000, 600, "Höchstens so viele Auftrags-XP je Stunde"),
+    "communityKm": ("int", 0, 1000000, 0, "Wochenziel in km (0 = automatisch)"),
+    "communityXp": ("int", 0, 10000, 100, "XP fürs geschaffte Wochenziel"),
+    "chaseXpPerDay": ("int", 0, 100000, 300, "Höchstens so viele Jagd-XP je Tag"),
+    "tipEverySec": ("int", 0, 86400, 900, "Tipps im Chat alle N s (0 = aus)"),
+    "tutorialXp": ("int", 0, 1000, 25, "XP je Schritt im Einsteiger-Pfad (0 = aus)"),
+    "tutorialDoneXp": ("int", 0, 10000, 50, "Extra-XP für den ganzen Einsteiger-Pfad"),
+    "seriesXp": ("int", 0, 1000, 40, "XP für eine Rennserie"),
+    "alertEverySec": ("int", 0, 86400, 1800, "Einsatz-Alarm etwa alle N s (0 = aus)"),
+    "alertXp": ("int", 0, 1000, 50, "XP für den Einsatz-Alarm"),
+    "alertMinPlayers": ("int", 1, 64, 2, "Einsatz-Alarm ab so vielen Spielern"),
+    "convoyKm": ("num", 0.5, 100, 3, "Konvoi: Bonus je so viele km zusammen"),
+    "convoyXp": ("int", 0, 1000, 20, "Konvoi-XP je Abschnitt (0 = aus)"),
+    "convoyXpPerHour": ("int", 0, 10000, 80, "Höchstens so viele Konvoi-XP je Stunde"),
+    "convoyRadiusM": ("int", 20, 1000, 150, "Konvoi: höchstens so weit auseinander (m)"),
+    "crowdHintSec": ("int", 0, 86400, 900, "„Wo ist was los?“ alle N s (0 = aus)"),
+    "crowdMinPlayers": ("int", 1, 64, 3, "„Wo ist was los?“: anderer Server ab so vielen Spielern"),
+    "crowdMaxHere": ("int", 0, 64, 2, "„Wo ist was los?“: nur bis so viele Spieler hier"),
+    "comebackDays": ("int", 1, 365, 14, "Rückkehrer-Bonus nach so vielen Tagen Pause"),
+    "comebackXp": ("int", 0, 10000, 50, "Rückkehrer-Bonus (0 = aus)"),
+    "roadPointsMax": ("int", 0, 2000, 300, "Lieferpunkte je Map (0 = aus)"),
+}
+ALIASES = {"aufgaben": "challengeTypes", "tagesaufgaben": "challengeTypes"}
+CHALLENGES = ["km", "speed", "time", "servers", "races", "mapkm", "jobs"]
+def read_nofollow(p, limit=16 * 1024 * 1024):
+    fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as fh:
+        if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+            raise OSError
+        return fh.read(limit).decode("utf-8", "replace")
+try:
+    cfg = json.loads(read_nofollow(path))
+    if not isinstance(cfg, dict):
+        raise ValueError
+except FileNotFoundError:
+    cfg = {}
+except Exception:
+    print("config.json ist fehlerhaft – bitte zuerst reparieren oder löschen."); sys.exit(1)
+def show(v):
+    if isinstance(v, bool):
+        return "an" if v else "aus"
+    if isinstance(v, list):
+        return " ".join(str(x) for x in v)
+    if isinstance(v, float) and v == int(v):
+        v = int(v)
+    return str(v).replace(".", ",") if isinstance(v, float) else (str(v) if v != "" else "–")
+if not args:
+    for k, (t, lo, hi, d, desc) in KEYS.items():
+        cur = cfg.get(k, d)
+        mark = "" if k not in cfg else "  (geändert)"
+        print(f"{k:<18} {show(cur):<28} {desc}{mark}")
+    print("Ändern: beamnet config <Schlüssel> <Wert> · zurück: beamnet config <Schlüssel> standard · "
+          "Tagesaufgaben: beamnet config aufgaben km speed jobs mapkm")
+    sys.exit(2)
+key = ALIASES.get(args[0].lower(), args[0])
+match = [k for k in KEYS if k.lower() == key.lower()]
+if not match:
+    print(f"Unbekannter Schlüssel „{args[0][:40]}“ – Liste: beamnet config"); sys.exit(1)
+key = match[0]
+t, lo, hi, d, desc = KEYS[key]
+vals = args[1:]
+if not vals:
+    print(f"{key} = {show(cfg.get(key, d))} ({desc})"); sys.exit(2)
+if len(vals) == 1 and vals[0].lower() in ("standard", "default"):
+    v = d
+elif t == "list":
+    v = []
+    for w in vals:
+        w = w.lower().strip(",")
+        if w not in CHALLENGES:
+            print(f"Unbekannte Tagesaufgabe „{w[:20]}“ – möglich: {' '.join(CHALLENGES)}"); sys.exit(1)
+        if w not in v:
+            v.append(w)
+elif len(vals) != 1:
+    print(f"Aufruf: beamnet config {key} <Wert>"); sys.exit(1)
+elif t == "bool":
+    w = vals[0].lower()
+    if w not in ("an", "aus", "ja", "nein", "on", "off", "true", "false", "1", "0"):
+        print(f"{key}: an oder aus"); sys.exit(1)
+    v = w in ("an", "ja", "on", "true", "1")
+elif t == "str":
+    v = vals[0].strip()
+    if v in ("-", "leer"):
+        v = ""
+    if len(v) > hi or not re.fullmatch(r"[A-Za-z0-9.:-]*", v):
+        print(f"{key}: nur Buchstaben, Ziffern, Punkt, Doppelpunkt und Bindestrich (höchstens {hi})"); sys.exit(1)
+else:
+    w = vals[0].replace(",", ".")
+    if not re.fullmatch(r"[0-9]{1,7}(\.[0-9]{1,3})?", w) or (t == "int" and "." in w):
+        print(f"{key}: {'ganze ' if t == 'int' else ''}Zahl von {show(lo)} bis {show(hi)}"); sys.exit(1)
+    v = int(w) if t == "int" else float(w)
+    if not lo <= v <= hi:
+        print(f"{key}: {show(lo)} bis {show(hi)}"); sys.exit(1)
+    if t == "num" and v == int(v):
+        v = int(v)
+cfg[key] = v
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+print(f"{key} = {show(v)} – wirksam innerhalb einer Minute auf allen Servern.")
+PY
+
+cmd_config() {
+    command -v python3 >/dev/null || die "python3 fehlt (apt install python3)."
+    local out rc=0
+    out=$(mktemp)
+    if [[ $# -ge 2 ]]; then need_root config; ensure_shared; fi
+    python3 -I -c "$CONFIG_PY" "$SHARED/config.json" "$out" "$@" || rc=$?
+    if (( rc == 0 )) && [[ -s $out ]]; then
+        safe put "$SHARED/config.json" 664 "$SERVICE_USER" <"$out" || { rm -f "$out"; die "config.json konnte nicht geschrieben werden."; }
+    fi
+    rm -f "$out"
+    (( rc == 0 || rc == 2 )) || exit 1
+    return 0
+}
+
 # Setzt KEY=Wert in /etc/beamnet.conf (legt die Datei bei Bedarf an).
 conf_set() {
     local key=$1 value=$2 tmp
@@ -4618,6 +4757,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet event [start <Faktor> <Dauer>|stop]   XP-Event auf allen Servern (z. B. start 2 2h)
   beamnet event auto <Tage> <HH:MM> <Faktor> <Dauer>|aus   Automatischer XP-Abend, z. B. auto fr,sa 20:00 2 2h
   beamnet admin list · add <Name …> · remove <Name …>   Admins für Rennen und Moderation
+  beamnet config [<Schlüssel> <Wert>|standard]   Spiel-Einstellungen (XP, Aufträge, Konvoi, Tagesaufgaben …)
   beamnet openclaw status|pause|resume   OpenClaw-Agent ansehen, anhalten (einfrieren), fortsetzen
   beamnet watch install|status|test|uninstall   Wächter: Ausfälle, Rekorde, wer online ist – an Discord/Telegram
   beamnet web install [port]     Statusseite (Server, Bestenliste, Rekorde) als Webseite, Standard-Port 8080
@@ -4667,6 +4807,7 @@ main() {
         modlog) cmd_modlog "$@" ;;
         ansage|announce) cmd_ansage "$@" ;;
         event|xp-abend) cmd_event "$@" ;;
+        config|einstellungen) cmd_config "$@" ;;
         self-update) cmd_self_update ;;
         update|aktualisieren) cmd_update ;;
         version|--version) echo "BeamNet $VERSION" ;;

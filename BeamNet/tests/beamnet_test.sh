@@ -1291,6 +1291,59 @@ cap 1 8 8; cap 2 8 8; cap 3 8 8
 contains "$("$TOOL" watch 2>&1)" "Alle Server sind voll – Zeit für einen weiteren Server\\?" "capacity: alle voll"
 rm -f "$S"/servers/*.json "$T/watch/capacity-high"
 
+# --- Spiel-Einstellungen (beamnet config) -----------------------------------------------------------------------------
+CJ="$T/root/shared/beamnet/config.json"
+cp "$CJ" "$T/config.keep" 2>/dev/null || true
+out=$("$TOOL" config 2>&1)
+contains "$out" "^convoyXp +20 +Konvoi-XP" "config: Liste mit Standardwerten"
+contains "$out" "^challengeTypes +km speed time servers" "config: Tagesaufgaben"
+contains "$("$TOOL" config comebackXp 100 2>&1)" "comebackXp = 100 – wirksam" "config: Wert setzen"
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["comebackXp"] == 100' "$CJ" && pass || fail "config: in config.json geschrieben"
+contains "$("$TOOL" config 2>&1)" "^comebackXp +100 .*\(geändert\)" "config: geaenderter Wert markiert"
+contains "$("$TOOL" config comebackXp abc 2>&1)" "ganze Zahl von 0 bis 10000" "config: nur Zahlen"
+contains "$("$TOOL" config comebackXp 99999 2>&1)" "0 bis 10000" "config: Grenzen"
+contains "$("$TOOL" config gibtsnicht 5 2>&1)" "Unbekannter Schlüssel" "config: nur bekannte Schluessel"
+"$TOOL" config convoyKm 2,5 >/dev/null 2>&1
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["convoyKm"] == 2.5' "$CJ" && pass || fail "config: Kommazahl"
+"$TOOL" config achievements aus >/dev/null 2>&1
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["achievements"] is False' "$CJ" && pass || fail "config: an/aus"
+"$TOOL" config aufgaben km jobs mapkm jobs >/dev/null 2>&1
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["challengeTypes"] == ["km", "jobs", "mapkm"]' "$CJ" && pass || fail "config: Tagesaufgaben setzen (ohne doppelte)"
+contains "$("$TOOL" config aufgaben km fliegen 2>&1)" "Unbekannte Tagesaufgabe" "config: nur bekannte Tagesaufgaben"
+"$TOOL" config comebackXp standard >/dev/null 2>&1
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["comebackXp"] == 50' "$CJ" && pass || fail "config: standard"
+contains "$(FAKE_UID=1000 "$TOOL" config comebackXp 10 2>&1)" "Bitte als root" "config: Aendern nur als root"
+# Standardwerte im Werkzeug = Standardwerte im Plugin.
+python3 - "$TOOL" "$HERE/../server/BeamNetCore/main.lua" <<'PY' && pass || fail "config: Standardwerte wie im Plugin"
+import ast, re, sys
+tool, lua = open(sys.argv[1], encoding="utf-8").read(), open(sys.argv[2], encoding="utf-8").read()
+block = tool[tool.index("KEYS = {"):tool.index("ALIASES =")]
+keys = {}
+for m in re.finditer(r'^\s+"(\w+)": \((.*)\),\s*$', block, re.M):
+    t = ast.literal_eval("(" + m.group(2) + ")")
+    keys[m.group(1)] = t[3]
+defaults = lua[lua.index("local defaults = {"):]
+bad = []
+for k, d in keys.items():
+    m = re.search(r"^\s+" + k + r" = (.+?),\s*(--.*)?$", defaults, re.M)
+    if not m:
+        bad.append(k); continue
+    v = m.group(1).strip()
+    if v.startswith("{"):
+        v = [x.strip().strip('"') for x in v.strip("{} ").split(",")]
+    elif v in ("true", "false"):
+        v = v == "true"
+    elif v.startswith('"'):
+        v = v.strip('"')
+    else:
+        v = float(v)
+    if (float(d) if isinstance(d, (int, float)) and not isinstance(d, bool) else d) != v:
+        bad.append(k)
+if bad:
+    print("abweichend:", bad); sys.exit(1)
+PY
+cp "$T/config.keep" "$CJ" 2>/dev/null || true
+
 # --- Ansagen von der Konsole (beamnet ansage) --------------------------------------------------------------------------
 A="$T/root/shared/beamnet/announcements.json"
 rm -f "$A"

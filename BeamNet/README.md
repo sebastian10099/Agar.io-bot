@@ -70,6 +70,7 @@ IP-Adressen und AuthKeys sind darin unkenntlich gemacht. Einfach komplett in den
 | `beamnet web install [port]` / `web uninstall` | Statusseite als Webseite (siehe unten), Standard-Port 8080 |
 | `beamnet bans` / `unban <Name>` / `modlog [n]` | Banns ansehen und aufheben, Moderationsprotokoll lesen |
 | `beamnet admin list / add <Name …> / remove <Name …>` | Admins für Rennen und Moderation – wirksam innerhalb einer Minute, ohne Neustart |
+| `beamnet config [<Schlüssel> <Wert>]` | **Spiel-Einstellungen** ohne JSON-Bearbeitung: `beamnet config` zeigt alle (XP je km, Aufträge, Konvoi, Rückkehrer-Bonus, Einsatz-Alarm, „Wo ist was los?“ …) mit Wert und Beschreibung, `beamnet config comebackXp 100` ändert, `beamnet config comebackXp standard` setzt zurück, `beamnet config aufgaben km speed jobs mapkm` wählt die Tagesaufgaben. Geprüft auf Typ und Grenzen, wirksam innerhalb einer Minute ohne Neustart |
 | `beamnet update` | Werkzeug **und** Plugin auf allen Servern aktualisieren |
 | `beamnet self-update` | Nur das Werkzeug aktualisieren |
 
