@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.92"
+BN.VERSION = "1.93"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -659,6 +659,7 @@ local EN = {
     ["Spielen: /heute · /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote"] =
         "Play: /today · /job · /race · /series · /duel <name> <track> · /chase · /convoy · /daily · /goal · /vote",
     ["☀️ Heute im BeamNet:"] = "☀️ Today on BeamNet:",
+    ["👥 Team %s: %s diese Woche · Platz %s (/team woche)"] = "👥 Team %s: %s this week · rank %s (/team week)",
     ["Neue Erfolge: Entdecker und Pionier – fahr auf der Bonus-Map des Tages (/heute)"] =
         "New achievements: Explorer and Pioneer – drive on today's bonus map (/today)",
     ["Team der Woche: wer im besten Team mitfährt, bekommt +50 XP – /team woche"] =
@@ -6070,6 +6071,14 @@ function commands.heute(pid)
         if streak >= 1 and s.record.streakDay == dayNumber() - 1 then
             say(pid, "🔥 Deine Serie: %d Tage – fahr heute %s, dann gibt es +%d Bonus-XP.", streak, fmtKm(C.streakMinKm),
                 C.streakXp * (math.min(streak + 1, C.streakMaxDays) - 1))
+        end
+        local team = BN.teamNameOf and BN.teamNameOf(s.id)
+        if team then
+            local km, rank = 0, nil
+            for i, e in ipairs(BN.teamWeekRanking(BN.weekRanking(weekKey(BN.now())), nil, weekStartAt(BN.now()))) do
+                if e.name == clipText(team, 32) then km, rank = e.km, i end
+            end
+            say(pid, "👥 Team %s: %s diese Woche · Platz %s (/team woche)", team, fmtKm(km), rank and tostring(rank) or "–")
         end
     end
     commands.ziel(pid)

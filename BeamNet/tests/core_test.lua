@@ -2171,6 +2171,9 @@ do
     chatLog = {}
     say(81, "/stats")
     check(chatContains("^Team: Die Raser %(/team%)", 81), "Team: in /stats")
+    chatLog = {}
+    say(81, "/heute")
+    check(chatContains("^👥 Team Die Raser: .* diese Woche · Platz [%d–]+", 81), "Team: in /heute")
     say(81, "/team verlassen"); say(82, "/team leave")
     check(chatContains("Du hast das Team Die Raser verlassen", 82), "Team: verlassen (auch englisch)")
     t = readJson(SHARED .. "/teams.json")

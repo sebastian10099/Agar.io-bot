@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.17 / Plugin 1.92)
+## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.18 / Plugin 1.93)
 
 - [x] `/heute` im Spiel: Tagesaufgabe, XP-Event oder XP-Abend, Bonus-Map, Serie und Wochenziel auf einen Blick; `/event`
       zeigt die Bonus-Map jetzt auch während eines XP-Events (Plugin 1.79).
@@ -30,7 +30,8 @@
 - [x] Profilseite: Team und Kilometer auf Bonus-Maps (Werkzeug 2.13); `/stats` nennt das Team (Plugin 1.90); `/teams` im Telegram-Chat zeigt
       die Teams dieser Woche (Werkzeug 2.15).
 - [x] „Neu seit deinem letzten Besuch“ nennt Entdecker-Erfolge und Team der Woche (Plugin 1.91).
-- [x] Nachricht, wenn ein Teamkollege irgendwo im Netzwerk online kommt (wie bei Freunden; Plugin 1.92).
+- [x] Nachricht, wenn ein Teamkollege irgendwo im Netzwerk online kommt (wie bei Freunden; Plugin 1.92); `/heute`
+      zeigt den Wochenstand des eigenen Teams (Plugin 1.93).
 - [ ] Vorschlag (braucht deine Zustimmung): `/neustart <Nr>` im Telegram-Chat für Admins – Server aus der Ferne neu
       starten. Bewusst noch nicht eingebaut, weil es den Server über den Chat steuert.
 - [x] `beamnet doctor`: Plugin-Version aller Server mit der Version des Werkzeugs vergleichen und auf `beamnet update`
