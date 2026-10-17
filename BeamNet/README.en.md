@@ -41,6 +41,7 @@ a new plugin version goes to one test server first and only then to the others).
 | `beamnet ansage [HH:MM] <text>` | Announcement on all servers, now or at a time of day (without text: list planned ones) |
 | `beamnet event start <factor> <duration>` / `stop` / `auto …` | Network-wide XP event; `beamnet event auto fr,sa 20:00 2 2h` runs one automatically, announced an hour before |
 | `beamnet slots` | Player slots by popularity: last 30 days per server and more slots for popular servers and maps |
+| `beamnet config [<key> <value>]` | Game settings without editing JSON: `beamnet config` lists them (XP per km, jobs, convoy, welcome-back bonus …), `beamnet config comebackXp 100` changes one, `beamnet config aufgaben km speed jobs mapkm` picks the daily challenges; checked and applied within a minute |
 | `beamnet update` | Updates the tool **and** the plugin on all servers |
 
 Add `-y` to run a command without questions. Day names for `beamnet event auto` are German: `mo di mi do fr sa so`
@@ -59,11 +60,12 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
 - Remembers the **player record** (most players at the same time) and reports new records.
 - **Backs up the player data every day** (`/root/beamnet-backups/daten-<date>.tgz`, 14 days) and test-restores the
   newest backup once a week.
-- Reports moderation (bans, kicks, mutes, warnings), in-game reports and new track records; posts weekly and season
-  winners and a daily summary.
+- Reports moderation (bans, kicks, mutes, warnings), in-game reports, league promotions and new track records; posts
+  weekly and season winners and a daily summary (with the next XP evening).
 - Map rotation, map votes from the chat and automatic player slots (only while a server is empty).
 - The Telegram bot answers `/online`, `/top`, `/rekord`, `/server`, `/event` (XP event running? next XP evening?) and
-  `/spieler <name>` (level, league, XP, rank, kilometres, jobs of a player) in the configured chat. Accounts listed in
+  `/spieler <name>` (level, league, XP, rank, kilometres, jobs of a player) and `/plaetze` (slot usage of the last 30
+  days and where the automatic slots will add more) in the configured chat. Accounts listed in
   `TELEGRAM_ADMINS` may also send `/ansage [HH:MM] <text>` (announcement on all servers) and `/event 2 2h` /
   `/event stop`.
 - **XP evenings:** `beamnet event auto fr,sa 20:00 2 2h` starts double XP on all servers every Friday and Saturday at
@@ -79,7 +81,7 @@ Every player can switch to English with `/lang en`; the German commands work too
 |---|---|
 | `/help` | List of commands |
 | `/stats [name]` | Level, league, XP, kilometres, driving time, top speed, rank, XP to the next level |
-| `/top [km \| xp \| speed]` | Leaderboard (top 5) |
+| `/top [km \| xp \| speed \| jobs \| convoy \| chase \| week]` | Leaderboard (top 5) |
 | `/league` | All leagues and how far it is to the next one |
 | `/season` | Season table (calendar month), your place, last season's winners |
 | `/server` | All BeamNet servers with map and player count (switch servers in the BeamMP launcher) |
