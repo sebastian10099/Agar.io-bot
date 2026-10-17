@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.78"
+BN.VERSION = "1.79"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -635,8 +635,11 @@ local EN = {
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
     ["BeamNet-Befehle:"] = "BeamNet commands:",
-    ["Spielen: /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote"] =
-        "Play: /job · /race · /series · /duel <name> <track> · /chase · /convoy · /daily · /goal · /vote",
+    ["Spielen: /heute · /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote"] =
+        "Play: /today · /job · /race · /series · /duel <name> <track> · /chase · /convoy · /daily · /goal · /vote",
+    ["☀️ Heute im BeamNet:"] = "☀️ Today on BeamNet:",
+    ["Alles für heute auf einen Blick: /heute – Tagesaufgabe, XP-Abend, Bonus-Map, Wochenziel"] =
+        "Everything for today at a glance: /today – daily challenge, XP evening, bonus map, weekly goal",
     -- Konvoi
     ["🚗🚗 Konvoi mit %s: %s zusammen gefahren – +%d XP"] = "🚗🚗 Convoy with %s: %s driven together – +%d XP",
     ["Konvoi: Stundenlimit für Konvoi-XP erreicht – zusammen fahren macht trotzdem Spaß!"] =
@@ -2267,6 +2270,7 @@ BN.NEWS = {
     { "1.60", "Neue Erfolge für Vielfahrer: 5000 km, 50 Stunden, 50 Rennen, 5 Streckenrekorde" },
     { "1.62", "Aufträge auf jeder Map (Lieferpunkte) und Richtungshinweise unterwegs – /auftrag" },
     { "1.64", "Schicht: mehrere Aufträge hintereinander bringen Bonus-XP – /auftrag" },
+    { "1.79", "Alles für heute auf einen Blick: /heute – Tagesaufgabe, XP-Abend, Bonus-Map, Wochenziel" },
 }
 
 local function versionNum(v)
@@ -3273,7 +3277,7 @@ commands.einsteiger = commands.start
 function commands.hilfe(pid)
     -- In Gruppen: eine einzige lange Zeile wird im BeamNG-Chat schlecht lesbar oder abgeschnitten.
     say(pid, "BeamNet-Befehle:")
-    say(pid, "Spielen: /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote")
+    say(pid, "Spielen: /heute · /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote")
     say(pid, "Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|konvoi|jagd|woche]")
     say(pid, "Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event")
     say(pid, "Sonst: /start · /regeln · /melden <Name> <Grund> · /lang en")
@@ -4219,9 +4223,9 @@ function commands.event(pid, arg)
             say(pid, "Gerade läuft kein XP-Event.")
             local e = BN.nextXpEvening()
             if e then chat(pid, xpEveningText(BN.langOf(pid), e)) end
-            local bm = BN.bonusMap()
-            if bm then say(pid, "Bonus-Map heute: %s (+%d %% XP beim Fahren).", bm.map, math.floor((bm.factor - 1) * 100 + 0.5)) end
         end
+        local bm = BN.bonusMap()
+        if bm then say(pid, "Bonus-Map heute: %s (+%d %% XP beim Fahren).", bm.map, math.floor((bm.factor - 1) * 100 + 0.5)) end
         return
     end
     local s = session(pid)
@@ -5844,6 +5848,39 @@ function commands.aufgabe(pid)
 end
 commands.daily = commands.aufgabe
 commands.challenge = commands.aufgabe
+
+-- Alles fuer heute auf einen Blick: Tagesaufgabe, XP-Event bzw. naechster XP-Abend, Bonus-Map, Serie, Wochenziel.
+function commands.heute(pid)
+    local s = session(pid)
+    local lang = BN.langOf(pid)
+    say(pid, "☀️ Heute im BeamNet:")
+    commands.aufgabe(pid)
+    local ev = BN.activeEvent()
+    if ev then
+        say(pid, "XP-Event läuft: %s-fache XP bis %s Uhr.", fmtFactor(ev.factor), os.date("%H:%M", ev["until"]))
+    else
+        local e = BN.nextXpEvening()
+        if e then chat(pid, xpEveningText(lang, e)) end
+    end
+    local bm = BN.bonusMap()
+    if bm then
+        local pct = math.floor((bm.factor - 1) * 100 + 0.5)
+        if BN.server.map == bm.map then
+            say(pid, "🗺️ Diese Map ist heute Bonus-Map: +%d %% XP beim Fahren!", pct)
+        else
+            say(pid, "🗺️ Bonus-Map heute: %s – +%d %% XP beim Fahren auf den Servern mit dieser Map (/server).", bm.map, pct)
+        end
+    end
+    if not s.guest and C.streakXp > 0 then
+        local streak = BN.streakOf(s.record)
+        if streak >= 1 and s.record.streakDay == dayNumber() - 1 then
+            say(pid, "🔥 Deine Serie: %d Tage – fahr heute %s, dann gibt es +%d Bonus-XP.", streak, fmtKm(C.streakMinKm),
+                C.streakXp * (math.min(streak + 1, C.streakMaxDays) - 1))
+        end
+    end
+    commands.ziel(pid)
+end
+commands.today = commands.heute
 
 function commands.saison(pid)
     local s = session(pid)

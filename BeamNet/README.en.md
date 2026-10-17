@@ -101,6 +101,7 @@ Every player can switch to English with `/lang en`; the German commands work too
 | `/records [name]` | Top 5 of a track or the records of all tracks on this map |
 | `/achievements [name]` | Unlocked achievements and the next ones with progress |
 | `/daily` | Daily challenge and progress |
+| `/today` | Everything for today at a glance: daily challenge, XP event or next XP evening, bonus map, streak, weekly goal |
 | `/vote map <name>` | Start a vote for another map (`/vote yes`, `/vote no`) |
 | `/event` | Is an XP event running? (admins: `/event <factor> <duration>`) |
 | `/report <name> <reason>` | Report a player to the admins |

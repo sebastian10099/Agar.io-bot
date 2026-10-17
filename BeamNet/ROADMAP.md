@@ -1,5 +1,16 @@
 # BeamNet – Roadmap
 
+## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 1.97 / Plugin 1.79)
+
+- [x] `/heute` im Spiel: Tagesaufgabe, XP-Event oder XP-Abend, Bonus-Map, Serie und Wochenziel auf einen Blick; `/event`
+      zeigt die Bonus-Map jetzt auch während eines XP-Events (Plugin 1.79).
+- [ ] Statusseite: Kasten „Heute“ (Bonus-Map, Tagesaufgabe, nächster XP-Abend) und Bonus-Map in der Servertabelle.
+- [ ] Telegram `/heute`: dieselbe Übersicht für den Chat.
+- [ ] Erfolg „Entdecker“: Kilometer auf Bonus-Maps sammeln.
+- [ ] Meilensteine an Discord/Telegram (z. B. Level 25/50, 1000 km) – abschaltbar.
+- [ ] `beamnet doctor`: Plugin-Version aller Server mit der Version des Werkzeugs vergleichen und auf `beamnet update`
+      hinweisen.
+
 ## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.97 / Plugin 1.78)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).

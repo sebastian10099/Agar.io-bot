@@ -4847,6 +4847,7 @@ COMMANDS = [
     ("/orte", "Alle Orte (Krankenhaus, Schule, Feuerwache …) auf dieser Map"),
     ("/ort vorschlag &lt;Typ&gt; &lt;Name&gt;", "Einen Ort für Aufträge vorschlagen (z. B. krankenhaus, schule) – die Admins entscheiden"),
     ("/ziel", "Wochenziel für alle: zusammen Kilometer sammeln – wer mitfährt, bekommt Bonus-XP"),
+    ("/heute", "Alles für heute auf einen Blick: Tagesaufgabe, XP-Event oder XP-Abend, Bonus-Map, Serie, Wochenziel"),
     ("/fangen", "Verfolgungsjagd: einer flüchtet, alle anderen jagen ihn – XP fürs Fangen und fürs Entkommen (/fangen mit)"),
     ("/konvoi", "Zusammen fahren: wer nah bei anderen Spielern fährt, bekommt Bonus-XP – zeigt auch, wer in der Nähe ist"),
     ("/duell &lt;Name&gt; &lt;Strecke&gt;", "Fordere einen Spieler zum Zeitrennen heraus (annehmen: /duell ja) – der Sieger bekommt Bonus-XP"),

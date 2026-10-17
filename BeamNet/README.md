@@ -278,6 +278,7 @@ beamnet restart all
 | `/rekorde [Name]` | Top 5 einer Strecke bzw. die Rekorde aller Strecken der Map |
 | `/erfolge [Name]` | Freigeschaltete Erfolge und die nächsten mit Fortschritt |
 | `/aufgabe` | Tagesaufgabe und Fortschritt |
+| `/heute` | Alles für heute auf einen Blick: Tagesaufgabe, XP-Event oder nächster XP-Abend, Bonus-Map, Tages-Serie, Wochenziel (englisch `/today`) |
 | `/saison` | Saison-Tabelle (Monat), eigener Platz, Vorsaison |
 | `/vote map <Name>` | Abstimmung über eine andere Map starten (`/vote ja`, `/vote nein`; `/vote` zeigt Stand oder Maps) |
 

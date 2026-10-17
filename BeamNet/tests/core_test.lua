@@ -254,7 +254,7 @@ check(chatContains("Sebi ist jetzt Level %d!"), "Level-Aufstieg verkuendet")
 
 -- --- Befehle -------------------------------------------------------------------------------------------------------
 eq(_G[events.onChatMessage](1, "Sebi", "/hilfe"), 1, "/hilfe abgefangen")
-check(chatContains("^Du: /stats", 1) and chatContains("^Spielen: /auftrag", 1), "/hilfe zeigt Befehle (in Gruppen)")
+check(chatContains("^Du: /stats", 1) and chatContains("^Spielen: /heute · /auftrag", 1), "/hilfe zeigt Befehle (in Gruppen)")
 eq(_G[events.onChatMessage](1, "Sebi", "Hallo zusammen"), nil, "Normale Nachricht bleibt")
 eq(_G[events.onChatMessage](1, "Sebi", "/xp"), nil, "Fremde Befehle bleiben fuer andere Plugins")
 _G[events.onChatMessage](1, "Sebi", "/km")
@@ -775,7 +775,7 @@ check(chatContains("Language set to English%.", 5), "/lang en")
 say(5, "/km")
 check(chatContains("You have driven %d+%.%d km %(this week", 5), "/km auf Englisch")
 say(5, "/help")
-check(chatContains("^BeamNet commands:$", 5) and chatContains("^Play: /job · /race", 5) and chatContains("^You: /stats %[name%]", 5), "/help auf Englisch")
+check(chatContains("^BeamNet commands:$", 5) and chatContains("^Play: /today · /job · /race", 5) and chatContains("^You: /stats %[name%]", 5), "/help auf Englisch")
 say(5, "/league")
 check(chatContains("Leagues %(XP%): .+ from 0", 5), "/league auf Englisch")
 eq(BN.tr("en", "Silber"), "Silver", "Standard-Liga uebersetzt")
@@ -2855,6 +2855,16 @@ do
     chatLog = {}
     say(182, "/server")
     check(chatContains("· gridmap_v2 · %d+/%d+ ⭐ Bonus%-Map ·", 182), "Bonus-Map: /server markiert den Server")
+    chatLog = {}
+    say(182, "/heute")
+    check(chatContains("☀️ Heute im BeamNet:", 182) and chatContains("Diese Map ist heute Bonus%-Map", 182)
+        and chatContains("Wochenziel für alle:", 182), "/heute: Ueberblick mit Bonus-Map und Wochenziel")
+    check(chatContains("Tagesaufgabe", 182) or chatContains("keine Tagesaufgabe", 182), "/heute: Tagesaufgabe")
+    BN.players[182].lang = "en"
+    chatLog = {}
+    say(182, "/today")
+    check(chatContains("☀️ Today on BeamNet:", 182), "/today: Englisch")
+    BN.players[182].lang = nil
     -- Andere Map: kein Bonus hier, aber Hinweis.
     writeJson(SHARED .. "/bonusmap.json", { map = "italy", factor = 1.5, ["until"] = clock + 3600 })
     BN.bonusMapAt = nil
@@ -3570,7 +3580,7 @@ do
     chatLog = {}
     _G[events.onPlayerJoin](117)
     check(chatContains("✨ Neu seit deinem letzten Besuch:", 117), "Neuheiten: fuer Spieler von frueher")
-    check(chatContains("^  Schicht:", 117) and chatContains("^  Aufträge auf jeder Map", 117) and chatContains("^  Neue Erfolge für Vielfahrer", 117), "Neuheiten: die drei neuesten")
+    check(chatContains("^  Alles für heute auf einen Blick", 117) and chatContains("^  Schicht:", 117) and chatContains("^  Aufträge auf jeder Map", 117), "Neuheiten: die drei neuesten")
     check(not chatContains("7 neue Erfolge", 117) and not chatContains("Freundesliste: /freund", 117), "Neuheiten: hoechstens drei")
     _G[events.onPlayerDisconnect](117)
     eq(readJson(SHARED .. "/players/11717.json").seenVersion, BN.VERSION, "Neuheiten: Version gemerkt")
@@ -3582,7 +3592,7 @@ do
     local r = readJson(SHARED .. "/players/11717.json"); r.seenVersion = "1.43"; writeJson(SHARED .. "/players/11717.json", r)
     chatLog = {}
     _G[events.onPlayerJoin](117)
-    check(chatContains("^  Schicht:", 117) and chatContains("^  Aufträge auf jeder Map", 117) and chatContains("^  Neue Erfolge für Vielfahrer", 117) and not chatContains("Verfolgungsjagd: /fangen", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
+    check(chatContains("^  Alles für heute auf einen Blick", 117) and chatContains("^  Schicht:", 117) and chatContains("^  Aufträge auf jeder Map", 117) and not chatContains("Verfolgungsjagd: /fangen", 117), "Neuheiten: nur was seitdem neu ist (hoechstens drei)")
     _G[events.onPlayerDisconnect](117); players[117] = nil
     -- Ganz neue Spieler bekommen die Begruessung statt Neuheiten.
     players[118] = { name = "Ganzneu", ids = { beammp = "11818" }, vehicles = {} }
