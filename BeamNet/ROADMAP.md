@@ -54,7 +54,7 @@
 - [x] Test: das Plugin liest keine undefinierten globalen Variablen (fängt z. B. eine `local function`, die erst weiter
       unten steht).
 - [x] Chat-Tipps zu `/heute`, Bonus-Map und Team der Woche; Test: jeder Tipp und jede Neuheit hat eine englische
-      Übersetzung (Plugin 1.99).
+      Übersetzung (Plugin 1.99); Test: jeder feste Chat-Text im Plugin hat eine englische Fassung.
 - [ ] Vorschlag (braucht deine Zustimmung): `/neustart <Nr>` im Telegram-Chat für Admins – Server aus der Ferne neu
       starten. Bewusst noch nicht eingebaut, weil es den Server über den Chat steuert.
 - [x] `beamnet doctor`: Plugin-Version aller Server mit der Version des Werkzeugs vergleichen und auf `beamnet update`

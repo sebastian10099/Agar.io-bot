@@ -4154,6 +4154,30 @@ local saved = readJson(SHARED .. "/players/3003.json")
 check(saved ~= nil, "Herunterfahren speichert")
 check(saved and saved.bonusXp >= 90 and saved.xp >= 90, "Bonus-XP gespeichert und in XP enthalten")
 
+-- Jeder Chat-Text im Plugin (say/sayAll/tr mit festem Text) hat eine englische Fassung – sonst sieht ein Spieler mit
+-- /lang en Deutsch. Gelesen wird der Quelltext; Escapes werden wie in Lua ausgewertet.
+do
+    local fh = io.open(PLUGIN, "rb"); local src = fh:read("*a"); fh:close()
+    local missing, seen = {}, {}
+    local function chk(lit)
+        if seen[lit] then return end
+        seen[lit] = true
+        local fn = load('return "' .. lit .. '"')
+        local ok, text = pcall(fn or error)
+        if ok and type(text) == "string" and text:find("%a%a%a") and BN.EN[text] == nil then
+            missing[#missing + 1] = text
+        end
+    end
+    for lit in src:gmatch('say%(%s*[%w_.]+%s*,%s*"([^"]*)"') do chk(lit) end
+    for lit in src:gmatch('sayAll%(%s*"([^"]*)"') do chk(lit) end
+    for lit in src:gmatch('tr%(%s*lang%s*,%s*"([^"]*)"') do chk(lit) end
+    table.sort(missing)
+    local found = 0
+    for _ in pairs(seen) do found = found + 1 end
+    check(found > 100, "Chat-Texte im Quelltext gefunden (" .. found .. ")")
+    check(#missing == 0, "Alle Chat-Texte auf Englisch (" .. table.concat(missing, " | ") .. ")")
+end
+
 -- Jeder Tipp und jede Neuheit hat eine englische Uebersetzung.
 do
     local missing = {}

@@ -649,6 +649,7 @@ local EN = {
     ["🏅 Team der Woche: %s (%s)"] = "🏅 Team of the week: %s (%s)",
     ["🏅 Team der Saison: %s (%d XP)"] = "🏅 Team of the season: %s (%d XP)",
     ["🏅 %d× Team der Woche"] = "🏅 %d× team of the week",
+    ["Team: %s (/team)"] = "Team: %s (/team)",
     ["🏅 Dein Team %s war Team der Woche – danke fürs Mitfahren: +%d XP!"] = "🏅 Your team %s was team of the week – thanks for driving: +%d XP!",
     ["Wochensieger %s: %s"] = "Winners of %s: %s",
     ["KW %s"] = "week %s",
