@@ -1703,6 +1703,7 @@ contains "$out" "⚠️ Max hat Ana verwarnt – bitte rechts fahren \\(Server 1
 contains "$out" "🎉 Orga startet ein XP-Event: 1,5-fache XP bis [0-9]{2}:[0-9]{2} Uhr – jetzt einsteigen!" "modlog: XP-Event angekuendigt"
 contains "$out" "🎉 Orga hat das XP-Event beendet" "modlog: XP-Event beendet"
 contains "$out" "🏅 Sebi ist in die Liga Gold aufgestiegen \\(Server 1\\) – Glückwunsch!" "modlog: Liga-Aufstieg an Discord/Telegram"
+
 contains "$out" "🔇 Pöbler wurde wegen Beleidigungen im Chat für 5 min stummgeschaltet \\(Server 1\\)" "modlog: Wortfilter gemeldet"
 contains "$out" "🚫 Hopper hat sich zu oft neu verbunden und wird für 2 min abgewiesen \\(Server 1\\)" "modlog: Verbindungs-Spam gemeldet"
 contains "$out" "📍 Melder schlägt einen Ort für Aufträge vor: Klinik Nord \\(krankenhaus, Server 1\\) – im Spiel: /ort vorschlaege" "modlog: Ort-Vorschlag gemeldet"
@@ -1710,6 +1711,21 @@ lacks "$out" "Max.*Event|kaputt|Halb" "modlog: Ansage, kaputte und halbe Zeilen 
 printf ',"server":%s}\n' "$port1" >>"$M"
 out=$("$TOOL" watch 2>&1)
 contains "$out" "🛡️ Max hat Halb vom Server geworfen \\(Server 1\\)" "modlog: halbe Zeile kommt, sobald sie vollstaendig ist"
+# Meilensteine (Level, Kilometer) – abschaltbar mit MILESTONE_NOTIFY=0.
+{
+    printf '{"action":"level","target":"Ana, die Schnelle","level":25,"at":%s,"server":%s}\n' "$now" "$port1"
+    printf '{"action":"km","target":"Ana","km":5000,"at":%s,"server":%s}\n' "$now" "$port1"
+    printf '{"action":"km","target":"Boese","km":"9e99","at":%s,"server":%s}\n' "$now" "$port1"
+} >>"$M"
+out=$("$TOOL" watch 2>&1)
+contains "$out" "⭐ Ana, die Schnelle hat Level 25 erreicht \\(Server 1\\) – Glückwunsch!" "modlog: Level-Meilenstein"
+contains "$out" "🛣️ Ana hat 5\\.000 km im BeamNet geschafft \\(Server 1\\) – Glückwunsch!" "modlog: Kilometer-Meilenstein"
+lacks "$out" "Boese" "modlog: Meilenstein mit unsinnigem Wert nicht gemeldet"
+contains "$(cat "$T/beamnet.conf")" "^MILESTONE_NOTIFY=1$" "watch install: Meilensteine standardmaessig an"
+sed -i 's/^MILESTONE_NOTIFY=.*/MILESTONE_NOTIFY=0/' "$T/beamnet.conf"
+printf '{"action":"level","target":"Leise","level":50,"at":%s,"server":%s}\n' "$now" "$port1" >>"$M"
+lacks "$("$TOOL" watch 2>&1)" "Leise" "modlog: MILESTONE_NOTIFY=0 schaltet Meilensteine ab"
+sed -i 's/^MILESTONE_NOTIFY=.*/MILESTONE_NOTIFY=1/' "$T/beamnet.conf"
 lacks "$out" "Rambo|Troll" "modlog: nichts doppelt"
 for i in $(seq 1 12); do printf '{"action":"kick","by":"A","target":"K%s","at":%s,"server":%s}\n' "$i" "$now" "$port1"; done >>"$M"
 out=$("$TOOL" watch 2>&1)

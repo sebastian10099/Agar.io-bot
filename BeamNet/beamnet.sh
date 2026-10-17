@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.01"
+VERSION="2.02"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="1.81"
+CORE_VERSION="1.82"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2155,7 +2155,7 @@ watch_modlog() {
     for nr in $(servers); do map+=("$(cfg "$nr" Port)=$nr"); done
     while IFS= read -r line; do
         [[ -n $line ]] && modout+=("$line")
-    done < <(python3 -I - "$SHARED/modlog.jsonl" "$STATE_DIR/modlog-pos" "${map[@]}" <<'PY' 2>/dev/null
+    done < <(BEAMNET_MILESTONES=$(conf_get MILESTONE_NOTIFY) python3 -I - "$SHARED/modlog.jsonl" "$STATE_DIR/modlog-pos" "${map[@]}" <<'PY' 2>/dev/null
 import json, os, re, stat, sys, time
 path, state = sys.argv[1], sys.argv[2]
 servers = dict(a.split("=", 1) for a in sys.argv[3:] if "=" in a)
@@ -2247,6 +2247,15 @@ for raw in chunk[:end].splitlines():
     elif a == "liga":
         lg = c(e.get("league"), 24)
         lines.append(f"🏅 {who} ist in die Liga {lg} aufgestiegen ({where(e)}) – Glückwunsch!")
+    elif a == "level" and os.environ.get("BEAMNET_MILESTONES") != "0":
+        lv = e.get("level")
+        if isinstance(lv, int) and not isinstance(lv, bool) and 1 <= lv <= 1000:
+            lines.append(f"⭐ {who} hat Level {lv} erreicht ({where(e)}) – Glückwunsch!")
+    elif a == "km" and os.environ.get("BEAMNET_MILESTONES") != "0":
+        k = e.get("km")
+        if isinstance(k, int) and not isinstance(k, bool) and 1 <= k <= 10 ** 7:
+            ks = f"{k:,}".replace(",", ".")
+            lines.append(f"🛣️ {who} hat {ks} km im BeamNet geschafft ({where(e)}) – Glückwunsch!")
     elif a == "speed-reset":
         k = e.get("kmh")
         was = f" (war {int(k)} km/h)" if isinstance(k, (int, float)) and 0 <= k < 1e5 else ""
@@ -3724,6 +3733,8 @@ DAILY_SUMMARY=1
 DAILY_HOUR=22
 # Moderation (Bann, Kick, Stummschaltung, Verwarnung) an Discord/Telegram melden: 1 = an, 0 = aus.
 MODLOG_NOTIFY=1
+# Meilensteine von Spielern (Level 25/50/75/100, 1000/5000/10000/25000 km) melden. 0 = aus.
+MILESTONE_NOTIFY=1
 # Taegliche Datensicherung der Spielerdaten nach /root/beamnet-backups/daten-<Datum>.tgz: ab BACKUP_HOUR Uhr,
 # BACKUP_KEEP Tage aufbewahren (zurueckholen: beamnet restore). DATA_BACKUP=0 schaltet ab.
 DATA_BACKUP=1

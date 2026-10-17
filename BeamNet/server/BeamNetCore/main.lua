@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.81"
+BN.VERSION = "1.82"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1842,11 +1842,31 @@ function BN.checkAchievements(s)
     end
 end
 
+-- Meilensteine fuer Discord/Telegram (ueber das Moderationsprotokoll, wie Liga-Aufstiege): nur echte Fortschritte in
+-- dieser Sitzung, nur mit Konto.
+BN.LEVEL_MILESTONES = { 25, 50, 75, 100 }
+BN.KM_MILESTONES = { 1000, 5000, 10000, 25000 }
+
 local function checkProgress(s)
     local t = BN.totals(s)
     if t.level > (s.level or 1) then
         if C.announceLevelUps then sayAll("%s ist jetzt Level %d!", s.name, t.level) end
+        local reached
+        for _, m in ipairs(BN.LEVEL_MILESTONES) do
+            if (s.level or 1) < m and t.level >= m then reached = m end
+        end
+        if reached and not s.guest and BN.modlog then BN.modlog({ action = "level", target = s.name, level = reached }) end
         s.level = t.level
+    end
+    if s.kmMark == nil then
+        s.kmMark = t.km
+    elseif t.km > s.kmMark then
+        local reached
+        for _, m in ipairs(BN.KM_MILESTONES) do
+            if s.kmMark < m and t.km >= m then reached = m end
+        end
+        if reached and not s.guest and BN.modlog then BN.modlog({ action = "km", target = s.name, km = reached }) end
+        s.kmMark = t.km
     end
     if t.league.name ~= s.league then
         local league = t.league.name

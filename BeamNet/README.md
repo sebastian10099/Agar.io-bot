@@ -145,6 +145,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   bei `/event` im Telegram-Chat; im Spiel markiert `/server` die Server mit der Bonus-Map (⭐). `BONUS_MAP=0` schaltet ab,
   `BONUS_MAP_FACTOR=1.5` (bis 3) ändert den Bonus.
 - Mit `AUTO_RESTART=1` startet er ausgefallene Server neu – höchstens 3-mal pro Stunde, danach kommt eine Warnung.
+- **Meilensteine:** Level 25/50/75/100 und 1.000/5.000/10.000/25.000 km eines Spielers („⭐ Ana hat Level 25
+  erreicht (Server 2) – Glückwunsch!“), wie Liga-Aufstiege; `MILESTONE_NOTIFY=0` schaltet ab.
 - **Update-Hinweis:** Einmal am Tag sieht er auf GitHub nach, ob es ein neueres BeamNet gibt, und meldet jede neue
   Version einmal („🆕 BeamNet-Update verfügbar: Werkzeug 1.94 (installiert: 1.93) – auf dem Server: sudo beamnet
   update“). Er installiert nichts selbst; `UPDATE_CHECK=0` schaltet ab.

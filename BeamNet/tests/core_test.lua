@@ -2804,6 +2804,26 @@ do
     os.remove(SHARED .. "/players/17878.json"); BN.savedRecently["17878"] = nil
 end
 
+-- --- Meilensteine fuer den Waechter (modlog) ------------------------------------------------------------------
+do
+    writeJson(SHARED .. "/players/17979.json", { id = "17979", name = "Meilenstein", km = 999.5, seconds = 0 })
+    BN.savedRecently["17979"] = nil
+    players[179] = { name = "Meilenstein", ids = { beammp = "17979" }, vehicles = { [1] = { pos = { 125000, 0, 0 }, tim = 0 } } }
+    _G[events.onPlayerJoin](179)
+    tick(1)
+    local f = io.open(SHARED .. "/modlog.jsonl", "r"); local before = f and f:read("*a") or ""; if f then f:close() end
+    for _ = 1, 50 do move(179, 1, 20); tick(1) end      -- 1 km: ueber 1000 km
+    f = io.open(SHARED .. "/modlog.jsonl", "r"); local after = f and f:read("*a") or ""; if f then f:close() end
+    local new = after:sub(#before + 1)
+    check(new:find('"action":"km"', 1, true) and new:find('"target":"Meilenstein"', 1, true) and new:find('"km":1000', 1, true),
+        "Meilenstein: 1000 km im Protokoll fuer Discord/Telegram")
+    local _, n = new:gsub('"action":"km"', "")
+    eq(n, 1, "Meilenstein: nur einmal")
+    BN.players[179].pendingEventXp = 0
+    _G[events.onPlayerDisconnect](179); players[179] = nil
+    os.remove(SHARED .. "/players/17979.json"); BN.savedRecently["17979"] = nil
+end
+
 -- --- Live-Update: Einsatz-Alarm im alten Format, Abstieg, nachtraegliche Erfolge -------------------------------
 do
     players[180] = { name = "Altalarm", ids = { beammp = "18080" }, vehicles = { [1] = { pos = { 120000, 0, 0 }, tim = 0 } } }
