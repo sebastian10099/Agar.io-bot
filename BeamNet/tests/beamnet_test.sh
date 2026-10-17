@@ -611,6 +611,15 @@ broken_out=$("$TOOL" watch 2>&1)
 contains "$broken_out" "⚠️ BeamNetCore hat kaputte Dateien beiseitegelegt: players/88\\.json\\.kaputt-456" "watch: kaputte Datei gemeldet"
 lacks "$("$TOOL" watch 2>&1)" "kaputte Dateien" "watch: kaputte Datei nur einmal gemeldet"
 rm -f "$T/root/shared/beamnet/players/88.json.kaputt-456"
+# Beiseitelegen ist ein Umbenennen: eine alte Datei (alte mtime) wird trotzdem gemeldet; seltsame Namen nur gezaehlt.
+sleep 1
+echo x >"$T/root/shared/beamnet/players/99.json"; touch -d '3 hours ago' "$T/root/shared/beamnet/players/99.json"
+mv "$T/root/shared/beamnet/players/99.json" "$T/root/shared/beamnet/players/99.json.kaputt-789"
+echo x >"$T/root/shared/beamnet/players/$'boese\nhier anmelden'.kaputt-1"
+broken_out=$("$TOOL" watch 2>&1)
+contains "$broken_out" "beiseitegelegt: players/99\\.json\\.kaputt-789 \\(\\+1 weitere\\)" "watch: umbenannte alte Datei gemeldet, seltsamer Name nur gezaehlt"
+lacks "$broken_out" "anmelden" "watch: kein fremder Text aus Dateinamen"
+rm -f "$T/root/shared/beamnet/players/99.json.kaputt-789" "$T/root/shared/beamnet/players/"*anmelden*
 echo 75 >"$T/watch/watch-seconds"
 contains "$("$TOOL" doctor 2>&1)" "Ein Lauf des Wächters dauert 75 s \\(er läuft jede Minute\\)" "doctor: Warnung bei langem Waechter-Lauf"
 contains "$out" "Server 3: tägliche Map-Rotation \\(italy utah\\)" "doctor: Rotation"
@@ -1705,12 +1714,13 @@ echo '{"id":"501","name":"Gesichert","km":1}' >"$S/players/501.json"
 echo '{"id":"504","name":"Andere","km":7}' >"$S/players/504.json"
 : >"$T/actions"
 out=$("$TOOL" -y restore "$today" spieler gesichert 2>&1)
-contains "$out" "Spieler 501 auf den Stand vom $today zurückgesetzt" "restore spieler: nach Name"
+contains "$out" "Spieler 501 \\(Gesichert\\) auf den Stand vom $today zurückgesetzt" "restore spieler: nach Name (mit Namen aus der Sicherung)"
+contains "$(printf 'n\n' | "$TOOL" restore "$today" spieler 501 2>&1)" "Abgebrochen" "restore spieler: fragt vorher"
 contains "$(cat "$S/players/501.json")" '"km":42' "restore spieler: Spielerdatei zurueck"
 contains "$(cat "$S/players/504.json")" '"km":7' "restore spieler: andere Spieler unberuehrt"
 lacks "$(cat "$T/actions")" "stop beammp" "restore spieler: kein Neustart"
 contains "$(cat "$B"/spieler-501-vor-*.json)" '"km":1' "restore spieler: bisheriger Stand gesichert"
-contains "$("$TOOL" -y restore "$today" spieler 501 2>&1)" "Spieler 501 auf den Stand" "restore spieler: nach ID"
+contains "$("$TOOL" -y restore "$today" spieler 501 2>&1)" "Spieler 501 \\(Gesichert\\) auf den Stand" "restore spieler: nach ID"
 contains "$("$TOOL" -y restore "$today" spieler Niemand 2>&1)" "nicht gefunden" "restore spieler: unbekannt"
 rm -f "$S/players/504.json" "$B"/spieler-*.json
 # Manipulierte Archive: nichts aendern.

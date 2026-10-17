@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.30"
+VERSION="2.31"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.97"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -844,7 +844,8 @@ ver_lt() {
 check_broken() {
     [[ -d $SHARED && ! -L $SHARED ]] || return 0
     local n
-    n=$(find "$SHARED" -maxdepth 2 -name '*.kaputt-*' -mtime -30 2>/dev/null | wc -l)
+    # ctime: das Beiseitelegen ist ein Umbenennen (die mtime bleibt die des letzten Schreibens).
+    n=$(find "$SHARED" -maxdepth 2 -name '*.kaputt-*' -ctime -30 2>/dev/null | wc -l)
     if (( n > 0 )); then
         warn "$n beschädigte Datei(en) in den letzten 30 Tagen beiseitegelegt (*.kaputt-*) – dort wurde neu angefangen"
         hint "beamnet restore   (Datensicherungen ansehen und zurückholen)   ·   find $SHARED -name '*.kaputt-*'"
@@ -1407,7 +1408,7 @@ PY
 # Datensicherungen (taeglich vom Waechter): auflisten oder einen Stand zuruecksetzen.
 cmd_restore() {
     need_root restore
-    local want=${1:-} file ts new old nr running=() f
+    local want=${1:-} file ts="" new old nr running=() f
     if [[ -z $want ]]; then
         echo "Tägliche Datensicherungen in $BACKUP_DIR (Spieler, Rekorde, Banns, Protokoll):"
         f=""
@@ -1444,18 +1445,19 @@ cmd_restore() {
     [[ -f $file && ! -L $file ]] || die "Keine Datensicherung vom $want (Liste: beamnet restore)."
     if [[ ${2:-} == spieler || ${2:-} == player ]]; then
         # Nur einen Spieler zurueckholen (z. B. nach einer kaputten Datei): die anderen bleiben, kein Neustart.
-        local query=${3:-} line pid json
+        local query=${3:-} line pid json pname
         [[ -n $query && ${#query} -le 64 ]] || die "Aufruf: beamnet restore <JJJJ-MM-TT> spieler <Name oder ID>"
         [[ -d $SHARED/players && ! -L $SHARED/players && ! -L $SHARED ]] || die "Kein Spielerordner unter $SHARED."
         line=$(data_tool player "$file" "$query" 2>&1) || die "Spieler '$query' in der Sicherung vom $want: ${line##*$'\n'}"
         pid=${line%%$'\t'*}; json=${line#*$'\t'}
         [[ $pid =~ ^[A-Za-z0-9_-]{1,64}$ ]] || die "Unerwartete Spieler-ID in der Sicherung."
-        confirm "Spieler $pid auf den Stand vom $want zurücksetzen? (am besten, während er nicht fährt)" || { echo "Abgebrochen."; return 1; }
+        pname=$(python3 -I -c 'import json, re, sys; print(" ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(json.loads(sys.argv[1]).get("name", "?"))).split())[:32])' "$json" 2>/dev/null)
+        confirm "Spieler $pid (${pname:-?}) auf den Stand vom $want zurücksetzen? (am besten, während er nicht fährt)" || { echo "Abgebrochen."; return 1; }
         mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
         ts=$(date +%Y%m%d-%H%M%S)
         safe get "$SHARED/players/$pid.json" >"$BACKUP_DIR/spieler-$pid-vor-$ts.json" 2>/dev/null || rm -f "$BACKUP_DIR/spieler-$pid-vor-$ts.json"
         printf '%s' "$json" | safe put "$SHARED/players/$pid.json" 664 "$SERVICE_USER" || die "Konnte die Spielerdatei nicht schreiben."
-        ok "Spieler $pid auf den Stand vom $want zurückgesetzt."
+        ok "Spieler $pid (${pname:-?}) auf den Stand vom $want zurückgesetzt."
         [[ -f $BACKUP_DIR/spieler-$pid-vor-$ts.json ]] && echo "Der bisherige Stand liegt in $BACKUP_DIR/spieler-$pid-vor-$ts.json."
         return 0
     fi
@@ -2795,13 +2797,19 @@ PY
 watch_broken() {
     local -n bout2=$1
     [[ -d $SHARED && ! -L $SHARED ]] || return 0
-    local stamp=$STATE_DIR/broken-seen names
+    local stamp=$STATE_DIR/broken-seen n names=() other=0 text
     if [[ ! -f $stamp ]]; then : >"$stamp"; return 0; fi
-    names=$(find "$SHARED" -maxdepth 2 -name '*.kaputt-*' -newer "$stamp" -printf '%P\n' 2>/dev/null | head -n 5 \
-        | tr -cd 'A-Za-z0-9_./\n-' | paste -sd' ' -)
-    : >"$stamp"
-    [[ -n $names ]] || return 0
-    bout2+=("⚠️ BeamNetCore hat kaputte Dateien beiseitegelegt: $names – dort wird neu angefangen. Zurückholen: beamnet restore <Datum> spieler <ID>")
+    # Neuen Merker vor der Suche anlegen: was waehrend der Suche beiseitegelegt wird, kommt beim naechsten Lauf.
+    : >"$stamp.neu"
+    # ctime (Umbenennen aendert sie, die mtime nicht); Namen nur in der erwarteten Form, sonst nur gezaehlt.
+    while IFS= read -r -d '' n; do
+        if [[ $n =~ ^[A-Za-z0-9_-]+(/[A-Za-z0-9_.-]+)?\.kaputt-[0-9]+$ ]] && (( ${#names[@]} < 5 )); then names+=("$n"); else other=$(( other + 1 )); fi
+    done < <(find "$SHARED" -maxdepth 2 -name '*.kaputt-*' -cnewer "$stamp" -printf '%P\0' 2>/dev/null | head -z -n 200)
+    mv -f "$stamp.neu" "$stamp"
+    (( ${#names[@]} + other > 0 )) || return 0
+    text="${names[*]}"
+    (( other > 0 )) && text+="${text:+ }(+$other weitere)"
+    bout2+=("⚠️ BeamNetCore hat kaputte Dateien beiseitegelegt: $text – dort wird neu angefangen. Zurückholen: beamnet restore <Datum> spieler <ID>")
 }
 
 # Update-Hinweis: einmal am Tag nachsehen, ob es auf GitHub ein neueres Werkzeug gibt, und je neuer Version einmal
