@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="1.98"
+VERSION="1.99"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="1.79"
+CORE_VERSION="1.80"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -3148,6 +3148,7 @@ watch_telegram() {
             spieler) reply=$(telegram_player "$arg") ;;
             plaetze) reply=$(telegram_slots) ;;
             woche) reply=$(telegram_week) ;;
+            heute) reply=$(telegram_today) ;;
             eventset)
                 # Nur Telegram-Konten aus TELEGRAM_ADMINS: /event <Faktor> <Dauer> startet, /event stop beendet.
                 local esender=${arg%%$'\x1f'*} ef="" ed="" espec
@@ -3184,7 +3185,7 @@ print(f"🏆 Rekord: {best} Spieler gleichzeitig ({when}) · heute bisher: {toda
 PY
 )
                 ;;
-            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
+            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
         esac
         NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$reply" || true
     done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" "$admins" <<<"$raw" 2>/dev/null)
@@ -3192,7 +3193,7 @@ PY
 }
 
 # Befehle fuer die Vorschlagsliste in Telegram (setMyCommands).
-TG_COMMANDS_JSON='{"commands":[{"command":"online","description":"Wer gerade fährt"},{"command":"server","description":"Netzwerk-Übersicht: Server, Spieler, Maps"},{"command":"top","description":"Bestenliste (XP)"},{"command":"woche","description":"Wochenbeste und Wochenziel"},{"command":"spieler","description":"Werte eines Spielers: /spieler Name"},{"command":"event","description":"XP-Event, XP-Abend und Bonus-Map"},{"command":"rekord","description":"Spielerrekord"},{"command":"plaetze","description":"Auslastung und Spielerplätze"},{"command":"hilfe","description":"Alle Befehle"}]}'
+TG_COMMANDS_JSON='{"commands":[{"command":"online","description":"Wer gerade fährt"},{"command":"server","description":"Netzwerk-Übersicht: Server, Spieler, Maps"},{"command":"top","description":"Bestenliste (XP)"},{"command":"heute","description":"Tagesaufgabe, Bonus-Map, XP-Event und Wochenziel"},{"command":"woche","description":"Wochenbeste und Wochenziel"},{"command":"spieler","description":"Werte eines Spielers: /spieler Name"},{"command":"event","description":"XP-Event, XP-Abend und Bonus-Map"},{"command":"rekord","description":"Spielerrekord"},{"command":"plaetze","description":"Auslastung und Spielerplätze"},{"command":"hilfe","description":"Alle Befehle"}]}'
 
 # Antwort von getUpdates -> "naechster Offset<TAB>Befehl" je Nachricht (Befehl leer, wenn nicht fuer uns).
 read -r -d '' TG_PARSE_PY <<'PY'
@@ -3240,6 +3241,8 @@ for u in data["result"][:100]:
             cmd = "plaetze"
         elif word in ("woche", "week", "kw"):
             cmd = "woche"
+        elif word in ("heute", "today"):
+            cmd = "heute"
         elif word in ("spieler", "player", "profil", "stats"):
             cmd, arg = "spieler", body[:32]
         # Flutschutz: aelter als 2 Minuten (Rueckstau) nicht mehr beantworten; hoechstens 3 Befehle je Absender und Lauf
@@ -3290,6 +3293,45 @@ print("🏁 Bestenliste (XP):")
 for i, (xp, km, name) in enumerate(rows[:5], 1):
     print(f"{i}. {name} – {xp} XP · {km:.0f} km")
 PY
+}
+
+# /heute fuer Telegram: Tagesaufgabe (aus dem Lebenszeichen eines Servers), laufendes XP-Event, Bonus-Map, naechster
+# XP-Abend (hoechstens eine Woche entfernt) und Wochenziel.
+telegram_today() {
+    local ch line
+    echo "☀️ Heute im BeamNet:"
+    ch=$(python3 -I - "$SHARED/servers" <<'PY' 2>/dev/null
+import json, os, re, stat, sys, time
+try:
+    dfd = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+except OSError:
+    sys.exit(0)
+best = (0, "")
+for name in sorted(os.listdir(dfd))[:500]:
+    if not re.fullmatch(r"[0-9]{1,5}\.json", name):
+        continue
+    try:
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
+        with os.fdopen(fd, "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                continue
+            st = json.loads(f.read(65536).decode("utf-8", "replace"))
+    except Exception:
+        continue
+    up, text = st.get("updated") if isinstance(st, dict) else None, st.get("challenge") if isinstance(st, dict) else None
+    if isinstance(up, int) and not isinstance(up, bool) and 0 <= time.time() - up <= 90 and isinstance(text, str) and up > best[0]:
+        best = (up, " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", text).split())[:120])
+if best[1]:
+    print(best[1])
+PY
+)
+    if [[ -n $ch ]]; then echo "✅ Tagesaufgabe: $ch (/aufgabe im Spiel)"; else echo "✅ Tagesaufgabe: im Spiel mit /aufgabe"; fi
+    line=$(event_status_text | head -n 1)
+    [[ $line == ⚡* ]] && echo "$line"
+    line=$(bonusmap_line); [[ -n $line ]] && echo "$line"
+    line=$(xpabend_line 7); [[ -n $line ]] && echo "$line"
+    line=$(telegram_week | grep '^🎯'); [[ -n $line ]] && echo "$line"
+    return 0
 }
 
 # /woche fuer Telegram: Top 5 der Kalenderwoche (ISO, UTC – wie im Plugin) nach Kilometern aus dem Bestenlisten-Index

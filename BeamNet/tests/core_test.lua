@@ -122,6 +122,7 @@ eq(BN.server.maxPlayers, 8, "MaxPlayers")
 local st = readJson(SHARED .. "/servers/30814.json")
 check(st and st.players == 0 and st.updated == clock, "Status beim Laden geschrieben")
 check(st and st.api and st.api.positions == true and st.api.files == true, "Status meldet vorhandene BeamMP-Funktionen")
+check(st and type(st.challenge) == "string" and st.challenge:match("^%u"), "Status nennt die Tagesaufgabe (fuer Telegram /heute)")
 do
     local saved = MP.GetPositionRaw
     MP.GetPositionRaw = nil

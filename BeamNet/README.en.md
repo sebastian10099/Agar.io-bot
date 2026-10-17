@@ -66,7 +66,8 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
 - The Telegram bot answers `/online`, `/top`, `/rekord`, `/server`, `/event` (XP event running? next XP evening?) and
   `/spieler <name>` (level, league, XP, rank, kilometres, jobs of a player) and `/plaetze` (slot usage of the last 30
   days and where the automatic slots will add more) and `/woche` (top 5 of the calendar week by kilometres and the
-  community weekly goal) in the configured chat. The watcher registers this command list with Telegram itself (once
+  community weekly goal) and `/heute` (daily challenge, XP event, bonus map, next XP evening and weekly goal at a
+  glance) in the configured chat. The watcher registers this command list with Telegram itself (once
   per version), so Telegram suggests the commands when you type "/". Accounts listed in
   `TELEGRAM_ADMINS` may also send `/ansage [HH:MM] <text>` (announcement on all servers) and `/event 2 2h` /
   `/event stop`.

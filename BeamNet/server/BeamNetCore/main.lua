@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.79"
+BN.VERSION = "1.80"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -2425,6 +2425,9 @@ function BN.writeStatus()
                      max = BN.server.maxPlayers, names = names, ids = ids, updated = BN.now(), version = BN.VERSION,
                      board = BN.boardSource,
                      api = BN.capabilities(), lua = _VERSION }
+    -- Tagesaufgabe (fuer /heute im Telegram-Chat): Text mit Ziel, auf Deutsch.
+    local ok, ch = pcall(BN.challengeFor)
+    if ok and ch then status.challenge = tr("de", ch.text, ch.goal) end
     writeFileAtomic(serversDir() .. "/" .. tostring(BN.server.port) .. ".json", json.encode(status))
     BN.lastStatus = BN.now()
 end

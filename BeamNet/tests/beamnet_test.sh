@@ -1938,7 +1938,7 @@ contains "$log" "getUpdates\\?offset=0" "telegram: holt neue Nachrichten"
 contains "$log" '"text":"👥 Gerade online: [0-9]+ Spieler' "telegram: /online beantwortet"
 contains "$log" '"text":"🏁 Bestenliste \(XP\):\\n1\. Vorn – 1000050 XP · 99999 km"' "telegram: /top aus dem Index"
 contains "$log" '"text":"🏆 Rekord: [0-9]+ Spieler gleichzeitig \([0-9.]+\) · heute bisher: [0-9]+"' "telegram: /rekord"
-contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche"' "telegram: /hilfe"
+contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute"' "telegram: /hilfe"
 contains "$log" '"text":"📊 BeamNet: [0-9]+ Spieler · [0-9]+ von [0-9]+ Servern belegt' "telegram: /server mit Netzwerk-Uebersicht"
 [[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat, anderer Bot und normaler Text ignoriert)"
 [[ $(cat "$T/watch/telegram-offset") == 18 ]] && pass || fail "telegram: Offset gemerkt (der 6. Befehl bleibt für den nächsten Lauf)"
@@ -2042,6 +2042,20 @@ rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
 "$TOOL" watch >/dev/null 2>&1
 contains "$(cat "$T/curl.log")" '"text":"📊 Spielerplätze – letzte 30 Tage:\\nServer 1 · gridmap_v2: 8 Plätze, Spitze 8, [0-9]+ Tage voll → 📈 [0-9]+ Plätze' "telegram /plaetze: Auslastung und Vorschlag"
 rm -f "$T/watch/usage-"*
+# /heute: Tagesaufgabe aus dem frischesten Lebenszeichen, Bonus-Map (vom Waechter gewaehlt), Wochenziel.
+echo "{\"name\":\"S1\",\"port\":30814,\"map\":\"gridmap_v2\",\"players\":1,\"max\":8,\"names\":[\"Sebi\"],\"updated\":$(date +%s),\"challenge\":\"Fahre heute 15 km\\u0007\"}" >"$T/root/shared/beamnet/servers/30814.json"
+echo "{\"map\":\"gridmap_v2\",\"factor\":1.5,\"until\":$(( $(date +%s) + 3600 ))}" >"$T/root/shared/beamnet/bonusmap.json"
+cp "$T/watch/bonusmap-$(date +%F)" "$T/bm-stamp.keep" 2>/dev/null || : >"$T/bm-stamp.keep"
+echo gridmap_v2 >"$T/watch/bonusmap-$(date +%F)"
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":86,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/heute"}}]}
+JSON
+rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+log=$(cat "$T/curl.log")
+contains "$log" '"text":"☀️ Heute im BeamNet:\\n✅ Tagesaufgabe: Fahre heute 15 km \(/aufgabe im Spiel\)\\n🗺️ Bonus-Map heute: gridmap_v2 \(\+50 % XP beim Fahren\)' "telegram /heute: Tagesaufgabe und Bonus-Map"
+rm -f "$T/root/shared/beamnet/bonusmap.json"
+cp "$T/bm-stamp.keep" "$T/watch/bonusmap-$(date +%F)"
 # /woche: Top 5 der Kalenderwoche aus dem Index und das Wochenziel; alte Wochen zaehlen nicht.
 wk=$(python3 -c 'import datetime; y, w, _ = datetime.datetime.now(datetime.timezone.utc).isocalendar(); print("%04d-W%02d" % (y, w))')
 echo "{\"id\":\"9101\",\"name\":\"Wochenheld\",\"km\":80,\"week\":\"$wk\",\"weekKm\":42.5}" >"$T/root/shared/beamnet/players/9101.json"
