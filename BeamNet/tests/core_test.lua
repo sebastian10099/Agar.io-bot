@@ -2876,6 +2876,9 @@ do
     BN.announceWeek(lastWeek)
     BN.weekRanking = saved
     local snapFile = readJson(SHARED .. "/teamweek-" .. lastWeek .. ".json")
+    eq(readJson(SHARED .. "/teams.json").teams.a.weekWins, 1, "Team der Woche: Sieg im Team gezaehlt")
+    BN.announceWeek(lastWeek)
+    eq(readJson(SHARED .. "/teams.json").teams.a.weekWins, 1, "Team der Woche: Sieg nur einmal gezaehlt")
     check(snapFile and snapFile.name == "Blitz" and snapFile.members["1"] and snapFile.members["2"] and not snapFile.members["3"],
         "Team der Woche: Momentaufnahme mit den gezaehlten Mitgliedern")
     check(chatContains("🏅 Team der Woche: Blitz %(15[.,]0 km%)"), "Team der Woche: im Spiel angesagt")

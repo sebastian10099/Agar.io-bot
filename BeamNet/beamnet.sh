@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.24"
+VERSION="2.25"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="1.96"
+CORE_VERSION="1.97"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -4686,7 +4686,7 @@ teams = []
 for t in (teams_data.get("teams") or {}).values() if isinstance(teams_data, dict) and isinstance(teams_data.get("teams"), dict) else []:
     if isinstance(t, dict) and isinstance(t.get("members"), dict) and t.get("name"):
         teams.append((sum(km_by_id.get(str(i), 0) for i in t["members"]), len(t["members"]), str(t["name"])[:20],
-                      sum(week_by_id.get(str(i), 0) for i in t["members"])))
+                      sum(week_by_id.get(str(i), 0) for i in t["members"]), int(min(num(t.get("weekWins")), 999))))
 teams.sort(key=lambda x: (-x[0], x[2]))
 # Team je Fahrer (fuer die Profilseiten).
 team_of = {}
@@ -4701,8 +4701,9 @@ team_week = ""
 if isinstance(tw, dict) and tw.get("week") == last_week and isinstance(tw.get("name"), str) and 0 < num(tw.get("km")) < 1e7:
     team_week = (f'<p>🏅 Team der Woche (KW {int(last_week[-2:])}): <b>{E(tw["name"][:32])}</b> – {km(num(tw.get("km")))}'
                  f'{" · " + str(len(tw["members"])) + " Fahrer" if isinstance(tw.get("members"), dict) else ""}</p>')
-team_rows = [f"<tr><td class=n>{i}</td><td>{E(n)}</td><td class=n>{m}</td><td class=n>{km(w)}</td><td class=n>{km(k)}</td></tr>"
-             for i, (k, m, n, w) in enumerate(teams[:10], 1)]
+team_rows = [f"<tr><td class=n>{i}</td><td>{E(n)}" + (f" <span class=small>🏅 {wins}× Team der Woche</span>" if wins > 0 else "") +
+             f"</td><td class=n>{m}</td><td class=n>{km(w)}</td><td class=n>{km(k)}</td></tr>"
+             for i, (k, m, n, w, wins) in enumerate(teams[:10], 1)]
 fastest = sorted([r for r in players if 0 < num(r.get("topSpeedKmh")) <= 600],
                  key=lambda r: (-num(r.get("topSpeedKmh")), str(r.get("name", ""))))[:10]
 speed_rows = [f"<tr><td class=n>{i}</td><td>{link(r)}</td><td class=n>{int(round(num(r.get('topSpeedKmh'))))} km/h</td></tr>"

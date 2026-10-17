@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.96"
+BN.VERSION = "1.97"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -648,6 +648,7 @@ local EN = {
     ["%s steigt in die Liga %s auf!"] = "%s moved up to the %s league!",
     ["🏅 Team der Woche: %s (%s)"] = "🏅 Team of the week: %s (%s)",
     ["🏅 Team der Saison: %s (%d XP)"] = "🏅 Team of the season: %s (%d XP)",
+    ["🏅 %d× Team der Woche"] = "🏅 %d× team of the week",
     ["🏅 Dein Team %s war Team der Woche – danke fürs Mitfahren: +%d XP!"] = "🏅 Your team %s was team of the week – thanks for driving: +%d XP!",
     ["Wochensieger %s: %s"] = "Winners of %s: %s",
     ["KW %s"] = "week %s",
@@ -4478,7 +4479,17 @@ function BN.teamWeekSnapshot(week)
     snap = { week = week, at = BN.now() }
     if best then snap.name, snap.km, snap.members = best.name, math.floor(best.km * 10 + 0.5) / 10, best.counted end
     ensureDir(C.sharedDir)
-    writeFileAtomic(teamWeekFile(week), json.encode(snap))
+    if writeFileAtomic(teamWeekFile(week), json.encode(snap)) and best then
+        -- Siege zaehlen (fuer /team und die Statusseite): nur der Server, der die Momentaufnahme anlegt.
+        local data = BN.loadTeams(true)
+        for _, t in pairs(data and data.teams or {}) do
+            if type(t) == "table" and t.name == best.team.name then
+                t.weekWins = (tonumber(t.weekWins) or 0) + 1
+                saveTeams(data)
+                break
+            end
+        end
+    end
     return best and snap or nil
 end
 
@@ -4564,6 +4575,8 @@ function commands.team(pid, arg)
         local rank
         for i, t in ipairs(BN.teamRanking()) do if t.name == mine.name then rank = i end end
         say(pid, "Team %s: %d Mitglieder · Platz %s · /team verlassen", mine.name, memberCount(mine), rank and tostring(rank) or "–")
+        local wins = math.floor(tonumber(mine.weekWins) or 0)
+        if wins > 0 then say(pid, "🏅 %d× Team der Woche", wins) end
         -- Wochenwertung der Teams (Kilometer der Mitglieder in dieser Woche, wie "Team der Woche").
         local mineKm, wrank = 0, nil
         for i, e in ipairs(BN.teamWeekRanking(BN.weekRanking(weekKey(BN.now())), data.teams, weekStartAt(BN.now()))) do
