@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.21"
+VERSION="2.22"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.95"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -4681,6 +4681,13 @@ for t in (teams_data.get("teams") or {}).values() if isinstance(teams_data, dict
     if isinstance(t, dict) and isinstance(t.get("members"), dict) and t.get("name"):
         for i in list(t["members"])[:200]:
             team_of[str(i)] = str(t["name"])[:20]
+# Team der Vorwoche aus der Momentaufnahme des Plugins (teamweek-<Woche>.json), wie im Spiel angesagt.
+last_week = time.strftime("%G-W%V", time.gmtime(now - 7 * 86400))
+tw = load(os.path.join(shared, f"teamweek-{last_week}.json"))
+team_week = ""
+if isinstance(tw, dict) and tw.get("week") == last_week and isinstance(tw.get("name"), str) and 0 < num(tw.get("km")) < 1e7:
+    team_week = (f'<p>🏅 Team der Woche (KW {int(last_week[-2:])}): <b>{E(tw["name"][:32])}</b> – {km(num(tw.get("km")))}'
+                 f'{" · " + str(len(tw["members"])) + " Fahrer" if isinstance(tw.get("members"), dict) else ""}</p>')
 team_rows = [f"<tr><td class=n>{i}</td><td>{E(n)}</td><td class=n>{m}</td><td class=n>{km(w)}</td><td class=n>{km(k)}</td></tr>"
              for i, (k, m, n, w) in enumerate(teams[:10], 1)]
 fastest = sorted([r for r in players if 0 < num(r.get("topSpeedKmh")) <= 600],
@@ -4840,7 +4847,7 @@ page = f"""<!doctype html>
 <section><h2>Meiste Konvoi-km</h2>{table(["#", "Name", "Kilometer#"], convoy_rows, "Noch niemand im Konvoi – im Spiel: /konvoi")}</section>
 <section><h2>Rennserien</h2>{table(["Map", "Serie", "Bester", "Gesamt#"], series_rows, "Noch keine Serien – Admins im Spiel: /serie neu &lt;Name&gt; &lt;Strecke1&gt; &lt;Strecke2&gt;")}</section>
 <section><h2>Orte für Aufträge</h2>{table(["Map", "Orte", "Anzahl#"], place_rows, "Noch keine Orte – Admins legen sie im Spiel an: /ort neu krankenhaus &lt;Name&gt;")}</section>
-<section><h2>Teams</h2>{table(["#", "Team", "Fahrer#", "Diese Woche#", "Kilometer#"], team_rows, "Noch keine Teams – im Spiel: /team gründen &lt;Name&gt;")}</section>
+<section><h2>Teams</h2>{team_week}{table(["#", "Team", "Fahrer#", "Diese Woche#", "Kilometer#"], team_rows, "Noch keine Teams – im Spiel: /team gründen &lt;Name&gt;")}</section>
 </div>
 <footer><a href="hilfe.html">Hilfe, Befehle &amp; Regeln</a> · Chat-Befehle im Spiel: /hilfe · /stats · /top · /wo · /event · /regeln · /lang en · <a href="api.json">api.json</a></footer>
 </main></body></html>

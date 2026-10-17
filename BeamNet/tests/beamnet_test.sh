@@ -807,6 +807,11 @@ rm -f "$T/root/shared/beamnet/weekly-track.json"
 # Teams: Kilometer der Mitglieder, maskierte Namen.
 echo '{"teams":{"a":{"name":"<b>Crew</b>","members":{"1":"Sebi","999":"Weg"}}}}' >"$T/root/shared/beamnet/teams.json"
 "$TOOL" web run >/dev/null 2>&1
+lw=$(date -u -d '7 days ago' +%G-W%V)
+echo "{\"week\":\"$lw\",\"name\":\"<u>Sturm</u>\",\"km\":77.5,\"members\":{\"5\":true,\"6\":true}}" >"$T/root/shared/beamnet/teamweek-$lw.json"
+"$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" "<h2>Teams</h2><p>🏅 Team der Woche \\(KW [0-9]+\\): <b>&lt;u&gt;Sturm&lt;/u&gt;</b> – 77\\.5 km · 2 Fahrer</p>" "Statusseite: Team der Woche (maskiert)"
+rm -f "$T/root/shared/beamnet/teamweek-$lw.json"
 contains "$(cat "$T/web/index.html")" '<h2>Teams</h2>.*<td class=n>1</td><td>&lt;b&gt;Crew&lt;/b&gt;</td><td class=n>2</td><td class=n>[0-9.]+ km</td><td class=n>[0-9.]+ km</td>' "Statusseite: Teams (mit Kilometern dieser Woche)"
 rm -f "$T/root/shared/beamnet/teams.json"
 "$TOOL" web run >/dev/null 2>&1
