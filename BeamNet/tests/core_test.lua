@@ -2164,6 +2164,9 @@ do
     say(81, "/team")
     check(chatContains("Team Die Raser: 2 Mitglieder · Platz 1", 81), "Team: eigenes Team")
     check(chatContains("^Diese Woche: .* · Platz [%d–]+ unter den Teams", 81), "Team: Wochenwertung")
+    chatLog = {}
+    say(81, "/team woche")
+    check(chatContains("^Teams diese Woche:", 81) or chatContains("noch kein Team gefahren", 81), "Team: /team woche")
     say(81, "/team verlassen"); say(82, "/team leave")
     check(chatContains("Du hast das Team Die Raser verlassen", 82), "Team: verlassen (auch englisch)")
     t = readJson(SHARED .. "/teams.json")
@@ -2817,6 +2820,8 @@ do
     local team = BN.teamOfWeek({ { id = "1", km = 10 }, { id = "2", km = 5 }, { id = "3", km = 12 } })
     check(team and team.name == "Blitz" and team.km == 15, "Team der Woche: meiste Kilometer der Mitglieder")
     check(BN.teamOfWeek({}) == nil, "Team der Woche: ohne Fahrten keins")
+    local tw = BN.teamWeekRanking({ { id = "1", km = 10 }, { id = "2", km = 5 }, { id = "3", km = 12 } })
+    check(#tw == 2 and tw[1].name == "Blitz" and tw[2].name == "Solo" and tw[2].km == 12, "Team-Wochenwertung: sortiert nach Kilometern")
     chatLog = {}
     local saved = BN.weekRanking
     BN.weekRanking = function() return { { id = "3", name = "Ana", km = 12 }, { id = "1", name = "Ben", km = 10 }, { id = "2", name = "Cem", km = 5 } } end

@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.86"
+BN.VERSION = "1.87"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -749,7 +749,9 @@ local EN = {
     ["Du bist in keinem Team. /team gründen <Name> · /team beitreten <Name> · /team liste"] =
         "You are not in a team. /team create <name> · /team join <name> · /team list",
     ["Team %s: %d Mitglieder · Platz %s · /team verlassen"] = "Team %s: %d members · rank %s · /team leave",
-    ["Diese Woche: %s · Platz %s unter den Teams"] = "This week: %s · rank %s among the teams",
+    ["Diese Woche: %s · Platz %s unter den Teams (/team woche)"] = "This week: %s · rank %s among the teams (/team week)",
+    ["Teams diese Woche:"] = "Teams this week:",
+    ["Diese Woche ist noch kein Team gefahren."] = "No team has driven this week yet.",
     ["Du bist in keinem Team."] = "You are not in a team.",
     ["Du hast das Team %s verlassen."] = "You left the team %s.",
     ["Du bist schon im Team %s – erst /team verlassen."] = "You are already in team %s – /team leave first.",
@@ -4346,20 +4348,25 @@ local function memberCount(t)
     return n
 end
 
--- Team der Woche aus einer Wochenwertung (BN.weekRanking): meiste Kilometer seiner Mitglieder, sonst nil.
-function BN.teamOfWeek(list)
+-- Teams nach Kilometern einer Wochenwertung (BN.weekRanking): { {name, km, team}, ... }, nur Teams mit Kilometern.
+function BN.teamWeekRanking(list, teams)
     local byId = {}
     for _, e in ipairs(list or {}) do if e.id then byId[tostring(e.id)] = tonumber(e.km) or 0 end end
-    local best
-    for _, t in pairs(BN.loadTeams().teams) do
+    local out = {}
+    for _, t in pairs(teams or BN.loadTeams().teams) do
         if type(t) == "table" and type(t.members) == "table" then
             local km = 0
             for id in pairs(t.members) do km = km + (byId[tostring(id)] or 0) end
-            local name = clipText(tostring(t.name or "?"), 32)
-            if km > 0 and (not best or km > best.km or (km == best.km and name < best.name)) then best = { name = name, km = km } end
+            if km > 0 then out[#out + 1] = { name = clipText(tostring(t.name or "?"), 32), km = km, team = t } end
         end
     end
-    return best
+    table.sort(out, function(a, b) if a.km ~= b.km then return a.km > b.km end return a.name < b.name end)
+    return out
+end
+
+-- Team der Woche aus einer Wochenwertung: meiste Kilometer seiner Mitglieder, sonst nil.
+function BN.teamOfWeek(list)
+    return BN.teamWeekRanking(list)[1]
 end
 
 -- Teams nach Kilometern: { {name, members, km}, ... }
@@ -4384,8 +4391,16 @@ function commands.team(pid, arg)
     for w in tostring(arg or ""):gmatch("%S+") do words[#words + 1] = w end
     local sub = (words[1] or ""):lower()
     local aliases = { gruenden = "gründen", create = "gründen", found = "gründen", join = "beitreten",
-                      leave = "verlassen", list = "liste", top = "liste", loeschen = "löschen", delete = "löschen" }
+                      leave = "verlassen", list = "liste", top = "liste", loeschen = "löschen", delete = "löschen",
+                      week = "woche" }
     sub = aliases[sub] or sub
+    if sub == "woche" then
+        local list = BN.teamWeekRanking(BN.weekRanking(weekKey(BN.now())))
+        if #list == 0 then say(pid, "Diese Woche ist noch kein Team gefahren.") return end
+        say(pid, "Teams diese Woche:")
+        for i = 1, math.min(5, #list) do chat(pid, string.format("%d. %s – %s", i, list[i].name, fmtKm(list[i].km))) end
+        return
+    end
     if sub == "liste" then
         local list = BN.teamRanking()
         if #list == 0 then say(pid, "Noch keine Teams. Gründen: /team gründen <Name>") return end
@@ -4421,20 +4436,11 @@ function commands.team(pid, arg)
         for i, t in ipairs(BN.teamRanking()) do if t.name == mine.name then rank = i end end
         say(pid, "Team %s: %d Mitglieder · Platz %s · /team verlassen", mine.name, memberCount(mine), rank and tostring(rank) or "–")
         -- Wochenwertung der Teams (Kilometer der Mitglieder in dieser Woche, wie "Team der Woche").
-        local byId = {}
-        for _, e in ipairs(BN.weekRanking(weekKey(BN.now()))) do if e.id then byId[tostring(e.id)] = tonumber(e.km) or 0 end end
-        local week, mineKm = {}, 0
-        for _, t in pairs(data.teams) do
-            if type(t) == "table" and type(t.members) == "table" then
-                local km = 0
-                for id in pairs(t.members) do km = km + (byId[tostring(id)] or 0) end
-                week[#week + 1] = km
-                if t == mine then mineKm = km end
-            end
+        local mineKm, wrank = 0, nil
+        for i, e in ipairs(BN.teamWeekRanking(BN.weekRanking(weekKey(BN.now())), data.teams)) do
+            if e.team == mine then mineKm, wrank = e.km, i end
         end
-        local wrank = 1
-        for _, km in ipairs(week) do if km > mineKm then wrank = wrank + 1 end end
-        say(pid, "Diese Woche: %s · Platz %s unter den Teams", fmtKm(mineKm), mineKm > 0 and tostring(wrank) or "–")
+        say(pid, "Diese Woche: %s · Platz %s unter den Teams (/team woche)", fmtKm(mineKm), wrank and tostring(wrank) or "–")
         return
     end
     if sub == "verlassen" then
