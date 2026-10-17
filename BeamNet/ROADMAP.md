@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.37 / Plugin 2.02)
+## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.38 / Plugin 2.02)
 
 - [x] `/heute` im Spiel: Tagesaufgabe, XP-Event oder XP-Abend, Bonus-Map, Serie und Wochenziel auf einen Blick; `/event`
       zeigt die Bonus-Map jetzt auch während eines XP-Events (Plugin 1.79).
@@ -60,7 +60,8 @@
       Team (Plugin 2.00). Die Statusseite nennt es im Saison-Abschnitt, und ihre Team-Tabelle zählt in „Diese Woche“
       neue Mitglieder erst ab der Woche nach dem Beitritt, wie im Spiel (Werkzeug 2.37). `/saison` sagt, wie viele XP
       bis zum nächsten Platz fehlen (Plugin 2.01). In den letzten 3 Tagen der Saison nennt das Betreten einmal am Tag
-      den eigenen Platz; die Restzeit rechnet in UTC wie der Saisonwechsel (Plugin 2.02).
+      den eigenen Platz; die Restzeit rechnet in UTC wie der Saisonwechsel (Plugin 2.02). Am letzten Saisontag meldet
+      der Wächter ab 12 Uhr einmal den Zwischenstand mit führendem Team an Discord/Telegram (Werkzeug 2.38).
 - [ ] Vorschlag (braucht deine Zustimmung): `/neustart <Nr>` im Telegram-Chat für Admins – Server aus der Ferne neu
       starten. Bewusst noch nicht eingebaut, weil es den Server über den Chat steuert.
 - [x] `beamnet doctor`: Plugin-Version aller Server mit der Version des Werkzeugs vergleichen und auf `beamnet update`

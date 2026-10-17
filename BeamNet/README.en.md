@@ -64,7 +64,8 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
 - **Backs up the player data every day** (`/root/beamnet-backups/daten-<date>.tgz`, 14 days) and test-restores the
   newest backup once a week.
 - Reports moderation (bans, kicks, mutes, warnings), in-game reports, league promotions and new track records; posts
-  weekly and season winners (with the team of the week) and a daily summary (with the next XP evening).
+  weekly and season winners (with the team of the week), a final-day standing on the last day of each season (from noon,
+  top 3 and leading team) and a daily summary (with the next XP evening).
 - Map rotation, map votes from the chat and automatic player slots (only while a server is empty).
 - The Telegram bot answers `/online`, `/top`, `/rekord`, `/server`, `/event` (XP event running? next XP evening?) and
   `/spieler <name>` (level, league, XP, rank, kilometres, jobs of a player) and `/plaetze` (slot usage of the last 30

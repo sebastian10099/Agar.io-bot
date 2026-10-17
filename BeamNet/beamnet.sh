@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.37"
+VERSION="2.38"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="2.02"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -2569,6 +2569,7 @@ watch_run() {
     watch_autoevent msgs
     watch_weekly msgs
     watch_season msgs
+    watch_season_final msgs
     watch_daily msgs
     watch_update msgs
     watch_broken msgs
@@ -3857,6 +3858,32 @@ PY
 
 # Am 1. eines Monats einmal die Saisonsieger des Vormonats nach Discord (aus dem Archiv des Plugins oder den
 # Spielerdaten, falls das Archiv noch fehlt).
+# Letzter Tag der Saison (UTC), ab 12 Uhr einmal: Zwischenstand als Endspurt-Aufruf (Top 3 und fuehrendes Team, wie
+# /saison im Telegram-Chat).
+watch_season_final() {
+    local -n fout=$1
+    local month hour top="" lead="" l
+    [[ ${BEAMNET_LASTDAY:-$([[ $(date -u -d tomorrow +%d) == 01 ]] && echo 1)} == 1 ]] || return 0
+    hour=${BEAMNET_HOUR:-$(date +%H)}
+    (( 10#$hour >= 12 )) || return 0
+    [[ -d $SHARED/players && ! -L $SHARED/players ]] && notify_configured || return 0
+    command -v python3 >/dev/null || return 0
+    month=$(date -u +%Y-%m)
+    [[ -f $STATE_DIR/season-final-$month ]] && return 0
+    while IFS= read -r l; do
+        if [[ $l =~ ^([1-3])\.\ (.*)\ –\ ([0-9]+)\ XP$ ]]; then
+            top+="${top:+ · }${BASH_REMATCH[1]}. ${BASH_REMATCH[2]} (${BASH_REMATCH[3]} XP)"
+        elif [[ $l == "🏅 Führendes Team: "* ]]; then
+            lead=$l
+        fi
+    done < <(telegram_season)
+    : >"$STATE_DIR/season-final-$month"
+    [[ -n $top ]] || return 0
+    fout+=("⏳ Letzter Tag der Saison $month – Endspurt! $top")
+    [[ -n $lead ]] && fout+=("$lead")
+    return 0
+}
+
 watch_season() {
     local -n sout=$1
     local month dom

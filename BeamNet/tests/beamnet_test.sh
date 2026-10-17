@@ -100,6 +100,7 @@ export FAKE="$T" PATH="$T/bin:$PATH"
 ME=$(/usr/bin/id -un)
 export BEAMNET_ROOT="$T/root" BEAMNET_USER="$ME" BEAMNET_SHARED="$T/root/shared/beamnet"
 export BEAMNET_CANARY=0          # Update zuerst auf einem Testserver: eigener Test weiter unten
+export BEAMNET_LASTDAY=0         # Endspurt am letzten Saisontag: nur im eigenen Test (sonst am echten Monatsletzten)
 export BEAMNET_TRUST_LINK_UID=-1   # die Tests laufen als root: alle Symlinks gehoeren root – keinem vertrauen
 export BEAMNET_LOGROTATE="$T/logrotate.d/beamnet"
 mkdir -p "$T/logrotate.d"
@@ -440,6 +441,26 @@ echo "{\"id\":\"1\",\"name\":\"Sebi\",\"lastMonth\":\"$prevmonth\",\"lastMonthXp
 echo "{\"id\":\"2\",\"name\":\"Max\",\"month\":\"$prevmonth\",\"monthXp\":450}" >"$T/root/shared/beamnet/players/2.json"
 out=$(BEAMNET_DOM=01 "$TOOL" watch 2>&1)
 contains "$out" "🏆 Saisonsieger $prevmonth: 1\\. Max \\(450 XP\\) · 2\\. Sebi \\(120 XP\\)" "watch: Saisonsieger aus den Spielerdaten"
+# Letzter Tag der Saison ab 12 Uhr: einmal der Zwischenstand als Endspurt-Aufruf.
+curmonth=$(date -u +%Y-%m)
+echo "{\"id\":\"1\",\"name\":\"Sebi\",\"month\":\"$curmonth\",\"monthXp\":333}" >"$T/root/shared/beamnet/players/1.json"
+echo "{\"id\":\"2\",\"name\":\"Max\",\"month\":\"$curmonth\",\"monthXp\":777}" >"$T/root/shared/beamnet/players/2.json"
+cp "$T/root/shared/beamnet/teams.json" "$T/teams-final.keep" 2>/dev/null || true
+echo '{"teams":{"a":{"name":"Blitz","created":1,"members":{"1":true,"2":true}}}}' >"$T/root/shared/beamnet/teams.json"
+rm -f "$T/watch/season-final-$curmonth"
+out=$(BEAMNET_LASTDAY=0 BEAMNET_HOUR=13 "$TOOL" watch 2>&1)
+lacks "$out" "Letzter Tag der Saison" "watch: Endspurt nur am letzten Tag"
+out=$(BEAMNET_LASTDAY=1 BEAMNET_HOUR=11 "$TOOL" watch 2>&1)
+lacks "$out" "Letzter Tag der Saison" "watch: Endspurt erst ab 12 Uhr"
+: >"$T/curl.log"
+out=$(BEAMNET_LASTDAY=1 BEAMNET_HOUR=13 "$TOOL" watch 2>&1)
+contains "$out" "^⏳ Letzter Tag der Saison $curmonth – Endspurt! 1\\. Max \\(777 XP\\) · 2\\. Sebi \\(333 XP\\)$" "watch: Endspurt am letzten Saisontag"
+contains "$out" "^🏅 Führendes Team: Blitz \\(1110 XP\\)$" "watch: Endspurt mit fuehrendem Team"
+contains "$(cat "$T/curl.log")" "Endspurt" "watch: Endspurt an Discord"
+out=$(BEAMNET_LASTDAY=1 BEAMNET_HOUR=13 "$TOOL" watch 2>&1)
+lacks "$out" "Letzter Tag der Saison" "watch: Endspurt nur einmal"
+rm -f "$T/watch/season-final-$curmonth"
+if [[ -f $T/teams-final.keep ]]; then cp "$T/teams-final.keep" "$T/root/shared/beamnet/teams.json"; else rm -f "$T/root/shared/beamnet/teams.json"; fi
 
 sed -i 's|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=http://example.com/hook|' "$T/beamnet.conf"
 rm -f "$T/state/beammp-1.service.active"
