@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.76"
+BN.VERSION = "1.77"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1597,6 +1597,8 @@ function BN.savePlayer(s)
     if s.friendsChanged then rec.friends = s.record.friends end
     if s.pendingRecap then rec.recapMonth = s.pendingRecap end
     if s.pendingWeekRecap then rec.recapWeek = s.pendingWeekRecap end
+    rec.jobHour = BN.mergeHour(rec.jobHour, BN.jobLimits and BN.jobLimits[s.id])
+    rec.convoyHour = BN.mergeHour(rec.convoyHour, BN.convoyLimits and BN.convoyLimits[s.id])
     if s.pendingComeback then
         -- Schon auf einem anderen Server bekommen (Datei kennt einen Bonus der letzten 30 Tage): nicht doppelt.
         local last = tonumber(rec.comebackAt)
@@ -1924,6 +1926,7 @@ function BN.track(pid, vid, pos, tim, vel)
     local counted = 0
     local jump = false
     local d, dt
+    if not v then s.roadDriven = 0 end         -- neues Fahrzeug (auch an beliebiger Stelle gespawnt): Lieferpunkte erst nach Fahrt
     if v then
         if tim and v.tim and tim > v.tim then dt = tim - v.tim else dt = math.max(1, now - v.at) end
         local dx, dy, dz = x - v.x, y - v.y, z - v.z
@@ -1935,6 +1938,9 @@ function BN.track(pid, vid, pos, tim, vel)
         elseif dt > 0 and d / dt > C.maxSpeedMps then
             jump = true
         end
+        -- Lieferpunkte: zaehlt nur echte Fahrt am Boden seit dem letzten Sprung (kein Fallen aus der Luft).
+        if jump or (dt > 0 and math.abs(dz) / dt > BN.ROAD_MAX_VERTICAL_MPS) then s.roadDriven = 0
+        else s.roadDriven = (tonumber(s.roadDriven) or 0) + counted end
     end
     -- Neue Position sofort merken: bricht einer der folgenden Schritte ab, bleibt sonst die alte stehen und jede weitere
     -- Messung zaehlte die ganze Strecke ab dort noch einmal.
@@ -1973,6 +1979,7 @@ end
 function BN.forgetVehicle(pid, vid)
     local s = BN.players[pid]
     if not s then return end
+    s.roadDriven = 0
     s.vehicles[vid] = nil
     if s.job and s.job.vid == vid then s.job.reset = true end   -- danach: weiter nur ohne Sprung (siehe jobTick)
     local e = BN.alert and BN.alert.entries[s.id]
@@ -2423,7 +2430,20 @@ function BN.serverList()
     local list = {}
     for _, file in ipairs(listJsonFiles(serversDir())) do
         local st = json.decode(readFile(file) or "")
-        if type(st) == "table" and tonumber(st.updated) and now - st.updated <= 90 then list[#list + 1] = st end
+        -- Die Dateien kann jeder Dienst schreiben: nur ganze Ports, frische (nicht zukuenftige) Zeitstempel und
+        -- ganzzahlige Spielerzahlen; Name und Karte gekuerzt.
+        local port, upd = type(st) == "table" and tonumber(st.port), type(st) == "table" and tonumber(st.updated)
+        if port and upd and port == math.floor(port) and port >= 1 and port <= 65535 and now - upd <= 90 and upd - now <= 60 then
+            local function count(v)
+                v = tonumber(v) or 0
+                if v ~= v or v < 0 then return 0 end
+                return math.floor(math.min(v, 1000))
+            end
+            st.port, st.players, st.max = math.floor(port), count(st.players), count(st.max)
+            st.name = type(st.name) == "string" and st.name:sub(1, 64) or nil
+            st.map = type(st.map) == "string" and st.map:sub(1, 48) or nil
+            list[#list + 1] = st
+        end
     end
     table.sort(list, function(a, b) return (tonumber(a.port) or 0) < (tonumber(b.port) or 0) end)
     return list
@@ -4712,6 +4732,40 @@ BN.random = BN.random or function(n) return math.random(1, n) end
 
 BN.jobLimits = BN.jobLimits or {}
 
+-- Stundengrenzen (Auftrags- und Konvoi-XP, Abklingzeit) gelten netzweit: der Stand der laufenden Stunde steht im
+-- Spielerdatensatz (jobHour, convoyHour) und wird beim Betreten uebernommen – sonst gaebe jeder Serverwechsel eine
+-- frische Stunde. Gespeichert wird der hoechste Stand (Werte wachsen nur innerhalb einer Stunde).
+local function hourOf(saved)
+    if type(saved) ~= "table" then return nil end
+    local now = BN.now()
+    local st, xp, done = tonumber(saved.start), tonumber(saved.xp), tonumber(saved.doneAt)
+    if not (st and xp) or st ~= st or xp ~= xp or now - st >= 3600 or st - now > 60 then return nil end
+    return { start = st, xp = math.max(0, math.min(xp, 1e6)),
+             doneAt = done and done == done and done <= now + 60 and done or nil }
+end
+
+function BN.mergeHour(saved, e)
+    local h = hourOf(saved)
+    if e and BN.now() - e.hourStart < 3600 then
+        if not h then return { start = e.hourStart, xp = e.xp, doneAt = e.doneAt } end
+        local done = math.max(h.doneAt or 0, e.doneAt or 0)
+        return { start = math.min(h.start, e.hourStart), xp = math.max(h.xp, e.xp), doneAt = done > 0 and done or nil }
+    end
+    return h
+end
+
+function BN.applyHourLimit(tbl, id, saved)
+    local h = hourOf(saved)
+    if not h or not id then return end
+    local e = tbl[id]
+    if not e or BN.now() - e.hourStart >= 3600 then
+        e = { hourStart = h.start, xp = 0 }
+        tbl[id] = e
+    end
+    e.xp = math.max(e.xp, h.xp)
+    if h.doneAt then e.doneAt = math.max(e.doneAt or 0, h.doneAt) end
+end
+
 -- Abklingzeit und XP je Stunde gelten je Konto (Gaeste je IP), auch ueber Neuverbinden hinweg.
 local function jobLimit(s)
     local key = s.id or ("ip:" .. tostring(s.ip or s.pid))
@@ -4739,6 +4793,18 @@ end
 -- gemeinsam fuer alle Server dieser Map; beim Speichern werden die Punkte der anderen Server dazugenommen. Eine kaputte
 -- Datei wird nie ueberschrieben.
 
+-- Ein Lieferpunkt entsteht erst nach ROAD_MIN_DRIVEN_M echter Fahrt seit dem letzten Sprung, Zuruecksetzen oder neuen
+-- Fahrzeug (Teleport aufs Dach, ins Meer oder in die Luft gibt keine Punkte), hoechstens ROAD_PER_HOUR je Konto und
+-- Stunde, nur mit Koordinaten in vernuenftigen Grenzen.
+BN.ROAD_MIN_DRIVEN_M = 300
+BN.ROAD_MAX_VERTICAL_MPS = 20
+BN.ROAD_PER_HOUR = 30
+BN.roadLimits = BN.roadLimits or {}
+
+local function plausiblePoint(x, y, z)
+    return x and y and z and x == x and y == y and z == z and math.abs(x) < 1e5 and math.abs(y) < 1e5 and math.abs(z) < 5000
+end
+
 local function roadDir() return C.sharedDir .. "/roadpoints" end
 local function roadFile() return roadDir() .. "/" .. BN.mapKey() .. ".json" end
 
@@ -4746,7 +4812,7 @@ local function cleanPoints(src, max)
     local list = {}
     for _, p in ipairs(type(src) == "table" and src or {}) do
         if #list >= max then break end
-        if type(p) == "table" and tonumber(p.x) and tonumber(p.y) and tonumber(p.z) then
+        if type(p) == "table" and plausiblePoint(tonumber(p.x), tonumber(p.y), tonumber(p.z)) then
             local id = tonumber(p.id)
             list[#list + 1] = { x = tonumber(p.x), y = tonumber(p.y), z = tonumber(p.z),
                                 id = id and id >= 1 and id < 1e6 and math.floor(id) or nil }
@@ -4796,15 +4862,27 @@ function BN.roadTick()
     if rp.broken then return end
     for _, s in pairs(BN.players) do
         if #list >= C.roadPointsMax then break end
-        local v = not s.guest and (tonumber(s.tickMoved) or 0) > 0 and s.tickVid ~= nil and type(s.vehicles) == "table"
-            and s.vehicles[s.tickVid]
-        if type(v) == "table" and tonumber(v.x) and not nearPoint(list, v, C.roadPointSpacingM) then
+        local v = not s.guest and (tonumber(s.tickMoved) or 0) > 0 and (tonumber(s.roadDriven) or 0) >= BN.ROAD_MIN_DRIVEN_M
+            and s.tickVid ~= nil and type(s.vehicles) == "table" and s.vehicles[s.tickVid]
+        local lim = BN.roadLimits[s.id]
+        if lim and now - lim.hourStart >= 3600 then lim = nil end
+        if type(v) == "table" and plausiblePoint(tonumber(v.x), tonumber(v.y), tonumber(v.z))
+            and (not lim or lim.n < BN.ROAD_PER_HOUR) and not nearPoint(list, v, C.roadPointSpacingM) then
             list[#list + 1] = { x = math.floor(v.x + 0.5), y = math.floor(v.y + 0.5), z = math.floor(v.z + 0.5) }
             assignIds(list)
             rp.dirty = true
+            if not lim then
+                lim = { hourStart = now, n = 0 }
+                BN.roadLimits[s.id] = lim
+            end
+            lim.n = lim.n + 1
         end
     end
     if rp.dirty and now - (rp.savedAt or 0) >= 300 then BN.saveRoadPoints() end
+    if now - (BN.roadLimitCleanAt or 0) >= 600 then
+        BN.roadLimitCleanAt = now
+        for k, e in pairs(BN.roadLimits) do if now - e.hourStart >= 3600 then BN.roadLimits[k] = nil end end
+    end
 end
 
 -- Neue Punkte speichern (zusammen mit denen der anderen Server). Ist die Datei gerade kaputt: nichts schreiben, die
@@ -5360,15 +5438,17 @@ function BN.convoyTick()
         local mate
         for j, b in ipairs(movers) do
             if i ~= j and b.s.id ~= a.s.id and not (a.s.ip and a.s.ip == b.s.ip)
-                and dist(a.pos, b.pos) <= C.convoyRadiusM then
+                and dist(a.pos, b.pos) <= C.convoyRadiusM and (not mate or b.s.tickMoved > mate.tickMoved) then
                 mate = b.s
-                break
             end
         end
         if mate then
             local s = a.s
-            s.convoyM = (s.convoyM or 0) + s.tickMoved
-            s.pendingConvoyKm = (s.pendingConvoyKm or 0) + s.tickMoved / 1000
+            -- Hoechstens so viel, wie der Partner im selben Takt gefahren ist: neben einem kriechenden Zweitkonto
+            -- hin und her fahren bringt nichts.
+            local moved = math.min(s.tickMoved, mate.tickMoved)
+            s.convoyM = (s.convoyM or 0) + moved
+            s.pendingConvoyKm = (s.pendingConvoyKm or 0) + moved / 1000
             if s.convoyM >= C.convoyKm * 1000 then
                 s.convoyM = s.convoyM - C.convoyKm * 1000
                 local lim = BN.convoyLimits[s.id]
@@ -6154,6 +6234,12 @@ end
 function BN_onPlayerJoin(pid)
     local s = BN.addPlayer(pid)
     guarded("Rueckkehrer", BN.comebackCheck, s)
+    if not s.guest then
+        guarded("Stundengrenzen", function()
+            BN.applyHourLimit(BN.jobLimits, s.id, s.record.jobHour)
+            BN.applyHourLimit(BN.convoyLimits, s.id, s.record.convoyHour)
+        end)
+    end
     local t = BN.totals(s)
     say(pid, "Willkommen auf %s (%s)! Level %d · Liga %s · %s gefahren. /hilfe für Befehle, /server für alle Server. English: /lang en",
         BN.server.name, BN.server.map, t.level, tr(BN.langOf(pid), t.league.name), fmtKm(t.km))

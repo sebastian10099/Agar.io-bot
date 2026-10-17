@@ -297,6 +297,18 @@ _G[events.onChatMessage](1, "Sebi", "/server")
 check(chatContains("BeamNet | Server 1 · gridmap_v2 · 2/8 · Port 30814  ← hier", 1), "/server eigener Server")
 check(chatContains("BeamNet | Server 2 · west_coast_usa · 3/8 · Port 30815", 1), "/server zweiter Server")
 check(not chatContains("Server 3 · italy", 1), "/server ohne veraltete Server")
+-- Manipulierte Statusdateien: Zukunfts-Zeitstempel, Text als Port, Kommazahlen – nicht in der Liste, kein Fehler.
+local f5 = io.open(SHARED .. "/servers/boese.json", "w")
+f5:write(json.encode({ name = "Boese", port = string.rep("WERBUNG ", 60), map = "x", players = 10, max = 0, updated = clock + 1e9 }))
+f5:close()
+local f6 = io.open(SHARED .. "/servers/komma.json", "w")
+f6:write(json.encode({ name = "Komma", port = 30899, map = "y", players = 7.5, max = 8.5, updated = clock }))
+f6:close()
+chatLog = {}
+_G[events.onChatMessage](1, "Sebi", "/server")
+check(not chatContains("WERBUNG", 1) and not chatContains("Boese", 1), "/server: Eintrag mit Text als Port verworfen")
+check(chatContains("Komma · y · 7/8", 1), "/server: Kommazahlen abgerundet, kein Fehler")
+os.remove(SHARED .. "/servers/boese.json"); os.remove(SHARED .. "/servers/komma.json")
 do
     local fv = io.open(SHARED .. "/servers/30817.json", "w")
     fv:write(json.encode({ name = "BeamNet | Server 4", port = 30817, map = "utah", players = 8, max = 8, updated = clock }))
@@ -3043,6 +3055,22 @@ do
     BN.roadPoints.loadedAt = clock - 301
     for _ = 1, 15 do move(160, 1, 20); tick(1) end
     check(not BN.roadPoints.broken and #BN.roadPointList() >= 2, "Lieferpunkte: nach reparierter Datei geht es weiter")
+    -- Teleport (aufs Dach, in die Luft) und ein paar Meter rollen: keine Punkte; erst nach 300 m echter Fahrt.
+    local nT = #BN.roadPointList()
+    for k = 1, 10 do
+        players[160].vehicles[1].pos = { 20000 + k * 1000, 5000, 4000 }
+        tick(1)
+        for _ = 1, 5 do move(160, 1, 1); tick(1) end
+        for _ = 1, 20 do tick(1) end
+    end
+    eq(#BN.roadPointList(), nT, "Lieferpunkte: Teleport und Rollen geben keine Punkte")
+    -- Fallen aus der Luft zaehlt nicht als Fahrt.
+    for _ = 1, 30 do move(160, 1, 5, 0, -30); tick(1) end
+    eq(#BN.roadPointList(), nT, "Lieferpunkte: Fallen zaehlt nicht")
+    -- Unsinnige Koordinaten in der Datei werden verworfen.
+    writeJson(SHARED .. "/roadpoints/gridmap_v2.json", { points = { { x = 1e9, y = 0, z = 0 }, { x = 5, y = 5, z = 99999 }, { x = 7, y = 8, z = 9 } } })
+    BN.roadPoints = nil
+    eq(#BN.roadPointList(), 1, "Lieferpunkte: unsinnige Koordinaten verworfen")
     for _, pid in ipairs({ 160, 161 }) do
         if BN.players[pid] then BN.players[pid].pendingBonus, BN.players[pid].pendingKm = 0, 0 end
         _G[events.onPlayerDisconnect](pid); players[pid] = nil
@@ -3132,12 +3160,23 @@ do
     check(chatContains("Stundenlimit für Konvoi%-XP erreicht", 140), "Konvoi: Stundenlimit")
     local gainA = BN.players[140].pendingBonus - b[140]
     check(gainA <= C.convoyXpPerHour + 1e-9, "Konvoi: hoechstens convoyXpPerHour (" .. tostring(gainA) .. ")")
+    -- Stundenlimit gilt netzweit: gespeichert, auf einem "anderen Server" (leere Tabelle) beim Betreten uebernommen.
+    BN.savePlayer(BN.players[140])
+    check((readJson(SHARED .. "/players/14040.json").convoyHour or {}).xp == C.convoyXpPerHour, "Konvoi: Stundenstand gespeichert")
+    BN.convoyLimits = {}
+    BN.applyHourLimit(BN.convoyLimits, "14040", readJson(SHARED .. "/players/14040.json").convoyHour)
+    eq(BN.convoyLimits["14040"] and BN.convoyLimits["14040"].xp, C.convoyXpPerHour, "Konvoi: Stundenlimit nach Serverwechsel")
     -- /konvoi zeigt Stand und wer in der Naehe ist.
     chatLog = {}
     say(140, "/konvoi")
     check(chatContains("im Konvoi gefahren, nächster Bonus in", 140) and chatContains("In der Nähe: KonvoiB %(30 m%)", 140), "Konvoi: /konvoi")
     say(143, "/konvoi")
     check(chatContains("Gerade niemand in deiner Nähe", 143), "Konvoi: niemand in der Naehe")
+    -- Neben einem kriechenden Partner hin und her fahren: zaehlt nur, was der Partner faehrt.
+    BN.players[140].convoyM = 0
+    local c0 = BN.players[140].pendingConvoyKm or 0
+    for _ = 1, 100 do move(140, 1, (_ % 2 == 0) and 20 or -20); move(141, 1, 0.5); tick(1) end
+    check((BN.players[140].pendingConvoyKm or 0) - c0 < 0.1, "Konvoi: neben kriechendem Partner kaum Konvoi-km")
     -- Gespeichert: Konvoi-Kilometer in der Spielerdatei.
     BN.savePlayer(BN.players[140])
     check((readJson(SHARED .. "/players/14040.json").convoyKm or 0) >= 15, "Konvoi: Kilometer gespeichert")

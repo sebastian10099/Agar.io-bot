@@ -47,11 +47,15 @@ case $cmd in
 esac
 EOF
 REAL_TIMEOUT=$(command -v timeout)     # die Attrappe unten ersetzt timeout fuer den Waechter
-cat >"$T/bin/timeout" <<'EOF'
+cat >"$T/bin/timeout" <<EOF
 #!/usr/bin/env bash
-# Port-Pruefung des Waechters: "offen", ausser $FAKE/portdown existiert.
-[[ -f $FAKE/portdown ]] && exit 1
-exit 0
+# Port-Pruefung des Waechters (timeout <s> bash -c ...): "offen", ausser \$FAKE/portdown existiert. Alles andere
+# (z. B. cfg: timeout 5 head ...) laeuft ueber das echte timeout.
+if [[ \${2:-} == bash ]]; then
+    [[ -f \$FAKE/portdown ]] && exit 1
+    exit 0
+fi
+exec "$REAL_TIMEOUT" "\$@"
 EOF
 chmod +x "$T/bin/timeout"
 cat >"$T/bin/journalctl" <<'EOF'
@@ -638,6 +642,13 @@ contains "$track" '<td class=n>1</td><td><a href="../../p/1.html">Sebi</a></td><
 mkdir -p "$T/root/shared/beamnet/places"; echo '{"places":[{"type":["a"]},{"type":{"b":1}}]}' >"$T/root/shared/beamnet/places/x.json"
 contains "$("$TOOL" web run 2>&1)" "Statusseite erzeugt" "Statusseite: fremde Typen in places/*.json brechen nichts"
 rm -rf "$T/root/shared/beamnet/places"
+# Unendliche/riesige XP in einer Spielerdatei und ein negativer levelBase brechen die Statusseite nicht.
+echo '{"id":"955","name":"Unendlich","km":1,"xp":Infinity,"monthXp":1e999}' >"$T/root/shared/beamnet/players/955.json"
+cp "$T/root/shared/beamnet/config.json" "$T/cfg955.keep" 2>/dev/null || true
+echo '{"levelBase":-1}' >"$T/root/shared/beamnet/config.json"
+contains "$("$TOOL" web run 2>&1)" "Statusseite erzeugt" "Statusseite: unendliche XP und negativer levelBase brechen nichts"
+rm -f "$T/root/shared/beamnet/players/955.json"
+if [[ -f $T/cfg955.keep ]]; then cp "$T/cfg955.keep" "$T/root/shared/beamnet/config.json"; else rm -f "$T/root/shared/beamnet/config.json"; fi
 echo '{"tracks":{"sprint":{"records":[{"id":"1","name":"Sebi","time":49.0667}]},"leer":{"records":[]}},"series":{"tour":{"tracks":["sprint","leer"],"records":[{"id":"1","name":"Sebi","time":101.5}]},"bad":"x"}}' >"$T/root/shared/beamnet/races/italy.json"
 out=$("$TOOL" web run 2>&1)
 contains "$(cat "$T/web/index.html")" "<h2>Rennserien</h2>.*<td>Italy</td><td><b>tour</b><div class=small>sprint → leer</div></td><td>Sebi</td><td class=n>1:41\.5</td>" "Statusseite: Rennserien mit Bestzeit"
@@ -1099,7 +1110,7 @@ today=$(( $(date +%s) / 86400 )); todaydate=$(date +%Y-%m-%d)
 rm -f "$T/watch/daily-$todaydate"
 sed -i '/^DAILY_/d; s|^DISCORD_WEBHOOK=.*|DISCORD_WEBHOOK=https://discord.com/api/webhooks/1/abc|' "$T/beamnet.conf"
 echo "{\"name\":\"Sebi\",\"day\":$today,\"dayKm\":40.2}" >"$P/1.json"
-echo "{\"name\":\"Max\",\"day\":$today,\"dayKm\":30,\"dayJobs\":4}" >"$P/2.json"
+echo "{\"name\":\"Max\\n🔴 Server 1 ist ausgefallen\",\"day\":$today,\"dayKm\":30,\"dayJobs\":4}" >"$P/2.json"
 echo "{\"name\":\"Ana\",\"day\":$today,\"dayKm\":12,\"dayJobs\":1}" >"$P/3.json"
 echo "{\"name\":\"Bo\",\"day\":$today,\"dayKm\":5.5}" >"$P/4.json"
 echo "{\"name\":\"Gestern\",\"day\":$(( today - 1 )),\"dayKm\":99,\"dayJobs\":9}" >"$P/5.json"
@@ -1119,8 +1130,9 @@ out=$(BEAMNET_HOUR=22 "$TOOL" watch 2>&1)
 "$TOOL" event auto aus >/dev/null 2>&1
 contains "$out" "   🎉 Nächster XP-Abend: (heute|Mo|Di|Mi|Do|Fr|Sa|So) 23:59–[0-9]{2}:[0-9]{2} Uhr \\(2-fache XP\\)" "daily: naechster XP-Abend in der Zusammenfassung"
 rm -f "$T/root/shared/beamnet/xpabend.json"
-contains "$out" "📊 Heute im Netzwerk: 87\\.7 km von 4 Fahrern · Top: 1\\. Sebi \\(40\\.2 km\\) · 2\\. Max \\(30\\.0 km\\) · 3\\. Ana \\(12\\.0 km\\) · 2 neue Streckenrekorde · 5 Aufträge erledigt" "daily: Zusammenfassung (mit Aufträgen von heute)"
+contains "$out" "📊 Heute im Netzwerk: 87\\.7 km von 4 Fahrern · Top: 1\\. Sebi \\(40\\.2 km\\) · 2\\. Max 🔴 Server 1 ist ausgefallen \\(30\\.0 km\\) · 3\\. Ana \\(12\\.0 km\\) · 2 neue Streckenrekorde · 5 Aufträge erledigt" "daily: Zusammenfassung (mit Aufträgen von heute)"
 lacks "$out" "Gestern|Fremd|Bo \\(" "daily: nur heute, kein Symlink, nur Top 3"
+lacks "$out" "^ *🔴" "daily: Zeilenumbruch im Namen erzeugt keine eigene Zeile"
 contains "$(cat "$T/curl.log")" "Heute im Netzwerk" "daily: an Discord"
 [[ -f $T/watch/daily-$todaydate ]] && pass || fail "daily: als erledigt markiert"
 : >"$T/curl.log"
@@ -1311,6 +1323,13 @@ cap 1 8 8; cap 2 8 8; cap 3 8 8
 contains "$("$TOOL" watch 2>&1)" "Alle Server sind voll – Zeit für einen weiteren Server\\?" "capacity: alle voll"
 rm -f "$S"/servers/*.json "$T/watch/capacity-high"
 
+# --- Untergeschobene Symlinks/FIFOs als ServerConfig.toml halten den Waechter nicht an --------------------------------
+mkdir -p "$T/root/9"; mkfifo "$T/fifo9"; ln -s "$T/fifo9" "$T/root/9/ServerConfig.toml"
+"$REAL_TIMEOUT" 60 "$TOOL" watch >/dev/null 2>&1; rc=$?
+[[ $rc != 124 ]] && pass || fail "cfg: Symlink auf eine FIFO haelt den Waechter nicht an"
+lacks "$("$REAL_TIMEOUT" 60 "$TOOL" status 2>&1)" "Server 9" "servers: Symlink als ServerConfig.toml zaehlt nicht"
+rm -rf "$T/root/9" "$T/fifo9"
+
 # --- Bonus-Map des Tages (watch_bonusmap) ----------------------------------------------------------------------------
 B="$T/root/shared/beamnet/bonusmap.json"
 rm -f "$T"/watch/bonusmap-* "$T"/watch/usage-* "$B"
@@ -1360,6 +1379,12 @@ rm -f "$T"/watch/usage-* "$B"
 # --- Spiel-Einstellungen (beamnet config) -----------------------------------------------------------------------------
 CJ="$T/root/shared/beamnet/config.json"
 cp "$CJ" "$T/config.keep" 2>/dev/null || true
+printf '{"publicHost":"a\\u001b]0;boese\\u0007\\u001b[2Jb","xpPerKm":Infinity}' >"$CJ"
+out=$("$TOOL" config 2>&1)
+lacks "$out" $'\x1b' "config: keine Steuerzeichen aus config.json im Terminal"
+contains "$out" "^publicHost +a\\]0;boese\\[2Jb" "config: Text ohne Steuerzeichen"
+contains "$out" "^xpPerKm +\\(ungültig\\)" "config: unendlicher Wert stuerzt nicht ab"
+if [[ -f $T/config.keep ]]; then cp "$T/config.keep" "$CJ"; else rm -f "$CJ"; fi
 out=$("$TOOL" config 2>&1)
 contains "$out" "^convoyXp +20 +Konvoi-XP" "config: Liste mit Standardwerten"
 contains "$out" "^challengeTypes +km speed time servers" "config: Tagesaufgaben"
@@ -1948,6 +1973,21 @@ echo "{\"map\":\"gridmap_v2\",\"factor\":2,\"until\":$(( $(date +%s) - 1 ))}" >"
 lacks "$("$TOOL" event 2>&1)" "Bonus-Map" "event: abgelaufene Bonus-Map nicht"
 rm -f "$T/root/shared/beamnet/bonusmap.json"
 rm -f "$E"
+# Flutschutz: veraltete Befehle (Rueckstau) werden nicht beantwortet, hoechstens 3 je Absender und Lauf.
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":90,"message":{"chat":{"id":-1001234567890},"from":{"id":77},"date":$(( now - 600 )),"text":"/online"}},
+ {"update_id":91,"message":{"chat":{"id":-1001234567890},"from":{"id":78},"date":$now,"text":"/rekord"}},
+ {"update_id":92,"message":{"chat":{"id":-1001234567890},"from":{"id":78},"date":$now,"text":"/rekord"}},
+ {"update_id":93,"message":{"chat":{"id":-1001234567890},"from":{"id":78},"date":$now,"text":"/rekord"}},
+ {"update_id":94,"message":{"chat":{"id":-1001234567890},"from":{"id":78},"date":$now,"text":"/rekord"}},
+ {"update_id":95,"message":{"chat":{"id":-1001234567890},"from":{"id":78},"date":$now,"text":"/rekord"}}]}
+JSON
+rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+log=$(cat "$T/curl.log")
+lacks "$log" "Gerade online" "telegram: veraltete Befehle nicht beantwortet"
+[[ $(grep -c "🏆 Rekord" <<<"$log") == 3 ]] && pass || fail "telegram: hoechstens 3 Befehle je Absender und Lauf"
+[[ $(cat "$T/watch/telegram-offset") == 96 ]] && pass || fail "telegram: uebersprungene Befehle trotzdem abgehakt"
 # /plaetze: Auslastung der letzten 30 Tage und Vorschlag der Automatik.
 for d in 1 2 3 4 5; do echo "1 gridmap_v2 8 480" >"$T/watch/usage-$(date -d "-$d days" +%Y-%m-%d)"; done
 cat >"$T/tg-updates.json" <<JSON

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.91"
+VERSION="1.92"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -81,14 +81,18 @@ servers() {
     for dir in "$ROOT"/*/; do
         name=$(basename "$dir")
         # "if" statt "&&": sonst liefert die Liste wegen pipefail einen Fehler, wenn der letzte Ordner kein Server ist.
-        if [[ $name =~ ^[0-9]+$ && -f $dir/ServerConfig.toml ]]; then echo "$name"; fi
+        # Ordner und Datei gehoeren beammp: Symlinks zaehlen nicht (root wuerde sonst fremden Dateien folgen).
+        if [[ $name =~ ^[0-9]+$ && ! -L ${dir%/} && ! -L $dir/ServerConfig.toml && -f $dir/ServerConfig.toml ]]; then echo "$name"; fi
     done | sort -n
 }
 
 # cfg <nr> <Schluessel>: Wert aus ServerConfig.toml (ohne Anfuehrungszeichen und Kommentar).
 cfg() {
     local file="$ROOT/$1/ServerConfig.toml" line
-    line=$(grep -m1 -E "^[[:space:]]*$2[[:space:]]*=" "$file" 2>/dev/null) || return 0
+    # Keinen Symlinks folgen; head mit Zeitlimit und Groessengrenze, damit eine untergeschobene FIFO oder Geraetedatei
+    # (/proc/kmsg) den Waechter nicht anhaelt.
+    [[ -L $ROOT/$1 || -L $file || ! -f $file ]] && return 0
+    line=$(timeout 5 head -c 1048576 -- "$file" 2>/dev/null | grep -m1 -E "^[[:space:]]*$2[[:space:]]*=") || return 0
     line=${line#*=}
     line="${line#"${line%%[![:space:]]*}"}"
     if [[ $line == \"* ]]; then
@@ -3131,6 +3135,7 @@ except Exception:
     sys.exit(0)
 if not isinstance(data, dict) or data.get("ok") is not True or not isinstance(data.get("result"), list):
     sys.exit(0)
+per_sender = {}
 for u in data["result"][:100]:
     if not isinstance(u, dict) or not isinstance(u.get("update_id"), int):
         continue
@@ -3166,6 +3171,15 @@ for u in data["result"][:100]:
             cmd = "woche"
         elif word in ("spieler", "player", "profil", "stats"):
             cmd, arg = "spieler", body[:32]
+        # Flutschutz: aelter als 2 Minuten (Rueckstau) nicht mehr beantworten; hoechstens 3 Befehle je Absender und Lauf
+        # (der Rest wird uebersprungen, damit die Befehle anderer nicht stundenlang warten).
+        sid = sender.get("id") if isinstance(sender.get("id"), int) else None
+        if cmd and isinstance(m.get("date"), int) and time.time() - m["date"] > 120:
+            cmd, arg = "", ""
+        elif cmd and sid is not None:
+            per_sender[sid] = per_sender.get(sid, 0) + 1
+            if per_sender[sid] > 3:
+                cmd, arg = "", ""
     print(f"{nxt}\t{cmd}\t{arg}")
 PY
 
@@ -3296,6 +3310,7 @@ cfg = cfg if isinstance(cfg, dict) else {}
 def n(v, d):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else d
 per_km, per_min, base = n(cfg.get("xpPerKm"), 10), n(cfg.get("xpPerMinute"), 1), n(cfg.get("levelBase"), 25) or 25
+base = min(max(base, 1), 10000) if base == base else 25
 leagues = cfg.get("leagues")
 if not (isinstance(leagues, list) and leagues and all(isinstance(l, dict) and isinstance(l.get("name"), str) for l in leagues)):
     leagues = [{"xp": 0, "name": "Bronze"}, {"xp": 500, "name": "Silber"}, {"xp": 2000, "name": "Gold"},
@@ -3482,7 +3497,7 @@ watch_daily() {
     [[ -f $STATE_DIR/daily-$today ]] && return 0
     # Nur regulaere Dateien, keinen Symlinks folgen, nicht an FIFOs haengen bleiben (Ordner gehoeren beammp).
     line=$(python3 -I - "$(( $(date +%s) / 86400 ))" "$SHARED" <<'PY'
-import glob, json, os, stat, sys
+import glob, json, os, re, stat, sys
 day, shared = int(sys.argv[1]), sys.argv[2]
 
 def load(path):
@@ -3504,7 +3519,7 @@ for path in glob.glob(os.path.join(shared, "players", "*.json")):
     r = load(path)
     km = r.get("dayKm") if r and r.get("day") == day else None
     if isinstance(km, (int, float)) and not isinstance(km, bool) and km > 0:
-        rows.append((float(km), str(r.get("name", "?"))))
+        rows.append((float(km), " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", str(r.get("name", "?"))).split())[:32] or "?"))
     j = r.get("dayJobs") if r and r.get("day") == day else None
     if isinstance(j, int) and not isinstance(j, bool) and 0 < j < 10000:
         jobs += j
@@ -3744,7 +3759,7 @@ PY
 # beamnet config: Spiel-Einstellungen in config.json ansehen und aendern (nur bekannte Schluessel, geprueft auf Typ und
 # Grenzen; das Plugin uebernimmt sie innerhalb einer Minute). "standard" setzt den Standardwert.
 read -r -d '' CONFIG_PY <<'PY'
-import json, os, re, stat, sys
+import json, math, os, re, stat, sys
 path, out, args = sys.argv[1], sys.argv[2], sys.argv[3:]
 # Schluessel: (Typ, Minimum, Maximum, Standard, Beschreibung). Standardwerte wie im Plugin (ein Test vergleicht).
 KEYS = {
@@ -3807,10 +3822,13 @@ def show(v):
     if isinstance(v, bool):
         return "an" if v else "aus"
     if isinstance(v, list):
-        return " ".join(str(x) for x in v)
+        return " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", "", str(x))[:40] for x in v[:20])
+    if isinstance(v, float) and not math.isfinite(v):
+        return "(ungültig)"
     if isinstance(v, float) and v == int(v):
         v = int(v)
-    return str(v).replace(".", ",") if isinstance(v, float) else (str(v) if v != "" else "–")
+    # config.json gehoert dem Dienst: Steuerzeichen (Terminal-Escape-Folgen) nie ins Terminal von root.
+    return str(v).replace(".", ",") if isinstance(v, float) else (re.sub(r"[\x00-\x1f\x7f-\x9f]", "", str(v))[:200] if v != "" else "–")
 if not args:
     for k, (t, lo, hi, d, desc) in KEYS.items():
         cur = cfg.get(k, d)
@@ -4151,12 +4169,18 @@ def load(path):
 
 
 def num(v, default=0.0):
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else default
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return default
+    try:
+        return v if math.isfinite(v) and abs(v) < 1e15 else default
+    except OverflowError:
+        return default
 
 
 cfg = load(os.path.join(shared, "config.json"))
 cfg = cfg if isinstance(cfg, dict) else {}
 xp_km, xp_min, base = num(cfg.get("xpPerKm"), 10), num(cfg.get("xpPerMinute"), 1), num(cfg.get("levelBase"), 25) or 25
+base = min(max(base, 1), 10000)
 leagues = cfg.get("leagues")
 if not (isinstance(leagues, list) and leagues and all(isinstance(l, dict) and isinstance(l.get("name"), str) for l in leagues)):
     leagues = [{"xp": 0, "name": "Bronze"}, {"xp": 500, "name": "Silber"}, {"xp": 2000, "name": "Gold"},
@@ -4164,7 +4188,7 @@ if not (isinstance(leagues, list) and leagues and all(isinstance(l, dict) and is
 
 
 def xp_of(r):
-    if isinstance(r.get("xp"), (int, float)):
+    if num(r.get("xp"), None) is not None:
         return int(r["xp"])
     return int(num(r.get("km")) * xp_km + num(r.get("seconds")) / 60 * xp_min + num(r.get("bonusXp")))
 
@@ -4363,9 +4387,9 @@ def month_xp(r):
     """Saison-XP: Zaehler monthXp (ab 1.9) oder Stand minus Startwert (1.8)."""
     if r.get("month") != month:
         return 0
-    if isinstance(r.get("monthXp"), (int, float)):
+    if num(r.get("monthXp"), None) is not None:
         return int(r["monthXp"])
-    if isinstance(r.get("monthStartXp"), (int, float)):
+    if num(r.get("monthStartXp"), None) is not None:
         return int(xp_of(r) - r["monthStartXp"])
     return 0
 
