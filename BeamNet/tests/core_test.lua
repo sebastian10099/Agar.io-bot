@@ -2808,6 +2808,23 @@ do
     os.remove(SHARED .. "/players/17878.json"); BN.savedRecently["17878"] = nil
 end
 
+-- --- Team der Woche ----------------------------------------------------------------------------------------------
+do
+    local keep = readJson(SHARED .. "/teams.json")
+    writeJson(SHARED .. "/teams.json", { teams = { a = { name = "Blitz", members = { ["1"] = true, ["2"] = true } },
+        b = { name = "Solo", members = { ["3"] = true } }, c = "kaputt" } })
+    local team = BN.teamOfWeek({ { id = "1", km = 10 }, { id = "2", km = 5 }, { id = "3", km = 12 } })
+    check(team and team.name == "Blitz" and team.km == 15, "Team der Woche: meiste Kilometer der Mitglieder")
+    check(BN.teamOfWeek({}) == nil, "Team der Woche: ohne Fahrten keins")
+    chatLog = {}
+    local saved = BN.weekRanking
+    BN.weekRanking = function() return { { id = "3", name = "Ana", km = 12 }, { id = "1", name = "Ben", km = 10 }, { id = "2", name = "Cem", km = 5 } } end
+    BN.announceWeek("2026-W42")
+    BN.weekRanking = saved
+    check(chatContains("🏅 Team der Woche: Blitz %(15[.,]0 km%)"), "Team der Woche: im Spiel angesagt")
+    if keep then writeJson(SHARED .. "/teams.json", keep) else os.remove(SHARED .. "/teams.json") end
+end
+
 -- --- Meilensteine fuer den Waechter (modlog) ------------------------------------------------------------------
 do
     writeJson(SHARED .. "/players/17979.json", { id = "17979", name = "Meilenstein", km = 999.5, seconds = 0 })

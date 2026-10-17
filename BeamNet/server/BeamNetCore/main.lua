@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.84"
+BN.VERSION = "1.85"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -614,6 +614,7 @@ local unpack = table.unpack or unpack
 local EN = {
     ["%s ist jetzt Level %d!"] = "%s reached level %d!",
     ["%s steigt in die Liga %s auf!"] = "%s moved up to the %s league!",
+    ["🏅 Team der Woche: %s (%s)"] = "🏅 Team of the week: %s (%s)",
     ["Wochensieger %s: %s"] = "Winners of %s: %s",
     ["KW %s"] = "week %s",
     ["%s – Lauf ungültig. Neuer Versuch: zurück zum Start von %s."] = "%s – run invalid. Try again: back to the start of %s.",
@@ -2377,6 +2378,8 @@ function BN.announceWeek(week)
     for i = 1, math.min(3, #list) do parts[#parts + 1] = string.format("%d. %s (%s)", i, list[i].name, fmtKm(list[i].km)) end
     local number = tostring(week):match("W(%d+)$") or tostring(week)
     sayEach(function(lang) return tr(lang, "Wochensieger %s: %s", tr(lang, "KW %s", number), table.concat(parts, " · ")) end)
+    local team = BN.teamOfWeek and BN.teamOfWeek(list)
+    if team then sayEach(function(lang) return tr(lang, "🏅 Team der Woche: %s (%s)", team.name, fmtKm(team.km)) end) end
 end
 
 function BN.rankOf(id)
@@ -4340,6 +4343,22 @@ local function memberCount(t)
     local n = 0
     for _ in pairs(t.members or {}) do n = n + 1 end
     return n
+end
+
+-- Team der Woche aus einer Wochenwertung (BN.weekRanking): meiste Kilometer seiner Mitglieder, sonst nil.
+function BN.teamOfWeek(list)
+    local byId = {}
+    for _, e in ipairs(list or {}) do if e.id then byId[tostring(e.id)] = tonumber(e.km) or 0 end end
+    local best
+    for _, t in pairs(BN.loadTeams().teams) do
+        if type(t) == "table" and type(t.members) == "table" then
+            local km = 0
+            for id in pairs(t.members) do km = km + (byId[tostring(id)] or 0) end
+            local name = clipText(tostring(t.name or "?"), 32)
+            if km > 0 and (not best or km > best.km or (km == best.km and name < best.name)) then best = { name = name, km = km } end
+        end
+    end
+    return best
 end
 
 -- Teams nach Kilometern: { {name, members, km}, ... }
