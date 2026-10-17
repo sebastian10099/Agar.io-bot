@@ -1813,7 +1813,7 @@ contains "$log" "getUpdates\\?offset=0" "telegram: holt neue Nachrichten"
 contains "$log" '"text":"👥 Gerade online: [0-9]+ Spieler' "telegram: /online beantwortet"
 contains "$log" '"text":"🏁 Bestenliste \(XP\):\\n1\. Vorn – 1000050 XP · 99999 km"' "telegram: /top aus dem Index"
 contains "$log" '"text":"🏆 Rekord: [0-9]+ Spieler gleichzeitig \([0-9.]+\) · heute bisher: [0-9]+"' "telegram: /rekord"
-contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name>"' "telegram: /hilfe"
+contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze"' "telegram: /hilfe"
 contains "$log" '"text":"📊 BeamNet: [0-9]+ Spieler · [0-9]+ von [0-9]+ Servern belegt' "telegram: /server mit Netzwerk-Uebersicht"
 [[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat, anderer Bot und normaler Text ignoriert)"
 [[ $(cat "$T/watch/telegram-offset") == 18 ]] && pass || fail "telegram: Offset gemerkt (der 6. Befehl bleibt für den nächsten Lauf)"
@@ -1880,6 +1880,15 @@ contains "$log" '"text":"⚡ XP-Event läuft: 2-fache XP bis [0-9:]+ Uhr \(von T
 contains "$log" '"text":"XP-Event beendet."' "telegram /event stop"
 contains "$("$TOOL" event 2>&1)" "Gerade läuft kein XP-Event" "telegram /event stop: beendet"
 rm -f "$E"
+# /plaetze: Auslastung der letzten 30 Tage und Vorschlag der Automatik.
+for d in 1 2 3 4 5; do echo "1 gridmap_v2 8 480" >"$T/watch/usage-$(date -d "-$d days" +%Y-%m-%d)"; done
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":80,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/plaetze"}}]}
+JSON
+rm -f "$T/watch/telegram-offset"; : >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+contains "$(cat "$T/curl.log")" '"text":"📊 Spielerplätze – letzte 30 Tage:\\nServer 1 · gridmap_v2: 8 Plätze, Spitze 8, [0-9]+ Tage voll → 📈 [0-9]+ Plätze' "telegram /plaetze: Auslastung und Vorschlag"
+rm -f "$T/watch/usage-"*
 # /spieler <Name>: Werte aus dem Bestenlisten-Index, fuer alle.
 cat >"$T/tg-updates.json" <<JSON
 {"ok":true,"result":[{"update_id":70,"message":{"chat":{"id":-1001234567890},"from":{"id":43},"date":$now,"text":"/spieler vorn"}},

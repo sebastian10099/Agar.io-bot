@@ -112,7 +112,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   Server; andere bekommen einen Hinweis, Bots werden ignoriert. **XP-Events aus Telegram:** `/event` zeigt allen, ob
   gerade ein XP-Event läuft und ob ein XP-Abend geplant ist; Admins starten mit `/event 2 2h` (Faktor 1,5–5, Dauer
   10m–6h) und beenden mit `/event stop`. **`/spieler <Name>`** (Teil des Namens reicht) zeigt Level, Liga, XP, Platz,
-  Kilometer, Fahrzeit, Spitze und Aufträge eines Spielers. Tipp: in @BotFather mit
+  Kilometer, Fahrzeit, Spitze und Aufträge eines Spielers; **`/plaetze`** die Auslastung der letzten 30 Tage je Server und
+  wo die Automatik mehr Plätze geben wird. Tipp: in @BotFather mit
   `/setcommands` die Befehle hinterlegen, dann schlägt Telegram sie vor.
 - **Netzwerk-Übersicht:** alle 10 Minuten (`NETWORK_REPORT=…`, 0 = aus), solange jemand spielt:
   ```

@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.84"
+VERSION="1.85"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -2977,6 +2977,7 @@ watch_telegram() {
             nichtadmin) reply="Nur für Admins (TELEGRAM_ADMINS in /etc/beamnet.conf)." ;;
             event) reply=$(event_status_text) ;;
             spieler) reply=$(telegram_player "$arg") ;;
+            plaetze) reply=$(telegram_slots) ;;
             eventset)
                 # Nur Telegram-Konten aus TELEGRAM_ADMINS: /event <Faktor> <Dauer> startet, /event stop beendet.
                 local esender=${arg%%$'\x1f'*} ef="" ed="" espec
@@ -3013,7 +3014,7 @@ print(f"🏆 Rekord: {best} Spieler gleichzeitig ({when}) · heute bisher: {toda
 PY
 )
                 ;;
-            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name>${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
+            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
         esac
         NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$reply" || true
     done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" "$admins" <<<"$raw" 2>/dev/null)
@@ -3061,6 +3062,8 @@ for u in data["result"][:100]:
                 cmd = "nichtadmin"
         elif word in ("event", "xpabend"):
             cmd = "event"
+        elif word in ("plaetze", "platz", "slots"):
+            cmd = "plaetze"
         elif word in ("spieler", "player", "profil", "stats"):
             cmd, arg = "spieler", body[:32]
     print(f"{nxt}\t{cmd}\t{arg}")
@@ -3102,6 +3105,26 @@ print("🏁 Bestenliste (XP):")
 for i, (xp, km, name) in enumerate(rows[:5], 1):
     print(f"{i}. {name} – {xp} XP · {km:.0f} km")
 PY
+}
+
+# /plaetze fuer Telegram: Auslastung der letzten 30 Tage je Server und ob die Automatik mehr Plaetze geben wird.
+telegram_slots() {
+    local nr mp cur new peak full hours why line out="" any=0 auto
+    auto=$(conf_get AUTO_SLOTS)
+    while read -r nr mp cur new peak full hours why; do
+        [[ $nr =~ ^[0-9]+$ ]] || continue
+        any=1
+        line="Server $nr · $mp: $cur Plätze, Spitze $peak, $full $( (( full == 1 )) && echo Tag || echo Tage) voll"
+        if (( new > cur )); then line+=" → 📈 $new Plätze (${why//_/ })"; fi
+        out+="$line"$'\n'
+    done < <(slots_plan 2>/dev/null)
+    if (( ! any )); then echo "Noch keine Auslastungsdaten (sammelt der Wächter jede Minute)."; return 0; fi
+    printf '📊 Spielerplätze – letzte 30 Tage:\n%s' "$out"
+    if [[ $auto == 0 ]]; then
+        echo "Automatik aus (AUTO_SLOTS=0) – übernehmen mit: beamnet slots apply"
+    else
+        echo "Die Automatik erhöht die Plätze einmal am Tag ab 6 Uhr, sobald der Server leer ist."
+    fi
 }
 
 # /spieler <Name> fuer Telegram: Level, Liga, XP, Platz, Kilometer, Fahrzeit, Spitze, Auftraege aus dem

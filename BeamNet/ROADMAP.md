@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.84 / Plugin 1.71)
+## Runde 2: mehr Spaß, mehr Plätze (Stand Werkzeug 1.85 / Plugin 1.71)
 
 - [x] Freundesliste `/freund`: Nachricht, sobald ein Freund irgendwo im Netzwerk online kommt (Plugin 1.30).
 - [x] Tages-Serie: jeden Tag ab 1 km fahren gibt ab Tag 2 Bonus-XP, bis +60 ab Tag 7; Erinnerung beim Betreten (1.31).
@@ -50,6 +50,8 @@
       Werkzeug 1.74).
 - [x] Aufträge auf jeder Map: Lieferpunkte aus echten Fahrten, wenn Admins (noch) keine Orte angelegt haben;
       Richtungshinweise unterwegs (Plugin 1.62).
+- [x] `/plaetze` im Telegram-Chat: Auslastung der letzten 30 Tage je Server und Vorschlag der Plätze-Automatik
+      (Werkzeug 1.85).
 - [x] Bestenlisten-Index Format 4 mit Konvoi-km und gewonnenen Jagden: `/top konvoi`, `/top jagd` im Spiel, „Meiste
       Konvoi-km“ auf der Statusseite (Plugin 1.71, Werkzeug 1.84; ältere Plugins lesen dann wie früher alle Dateien).
 - [x] `beamnet setup` fragt nach der Telegram-Admin-ID und bietet XP-Abende an (Werkzeug 1.83).
