@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "1.69"
+BN.VERSION = "1.70"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -1417,6 +1417,7 @@ function BN.addPlayer(pid)
     local xp = xpOf(session.record)
     session.level = BN.levelFor(xp)
     session.league = BN.leagueFor(xp).name
+    session.leagueXp = tonumber(BN.leagueFor(xp).xp) or 0
     BN.players[pid] = session
     return session
 end
@@ -1763,6 +1764,16 @@ function BN.checkAchievements(s)
         end
     end
     if #new == 0 then return end
+    if retro then
+        -- Nachtraeglich (frueherer Fortschritt, z. B. nach einem Update): nur dem Spieler sagen, sonst flutet bei vielen
+        -- Spielern der Chat.
+        if #new <= 2 then
+            for _, a in ipairs(new) do say(s.pid, "Erfolg für %s: %s (+%d XP)", s.name, tr(BN.langOf(s.pid), a.name), a.xp) end
+        else
+            say(s.pid, "%s hat %d Erfolge freigeschaltet (+%d XP) – /erfolge", s.name, #new, xp)
+        end
+        return
+    end
     if #new <= 2 then
         for _, a in ipairs(new) do
             sayEach(function(lang) return tr(lang, "Erfolg für %s: %s (+%d XP)", s.name, tr(lang, a.name), a.xp) end)
@@ -1780,13 +1791,18 @@ local function checkProgress(s)
     end
     if t.league.name ~= s.league then
         local league = t.league.name
-        sayEach(function(lang) return tr(lang, "%s steigt in die Liga %s auf!", s.name, tr(lang, league)) end)
-        -- Fuer den Waechter (Discord/Telegram): nur echte Aufstiege mit Konto, nicht der erste Blick nach dem Betreten.
-        if s.league and not s.guest and BN.modlog then
-            BN.modlog({ action = "liga", target = s.name, league = league, xp = t.xp })
+        -- Nur ein echter Aufstieg wird angesagt (eine XP-Korrektur beim Speichern kann auch in eine niedrigere Liga fuehren).
+        local up = (tonumber(t.league.xp) or 0) > (tonumber(s.leagueXp) or -1)
+        if up then
+            sayEach(function(lang) return tr(lang, "%s steigt in die Liga %s auf!", s.name, tr(lang, league)) end)
+            -- Fuer den Waechter (Discord/Telegram): nur mit Konto, nicht der erste Blick nach dem Betreten.
+            if s.league and not s.guest and BN.modlog then
+                BN.modlog({ action = "liga", target = s.name, league = league, xp = t.xp })
+            end
         end
         s.league = t.league.name
     end
+    s.leagueXp = tonumber(t.league.xp) or 0
     BN.checkAchievements(s)
     BN.checkChallenge(s)
     BN.checkTutorial(s, t)
@@ -1876,6 +1892,10 @@ function BN.track(pid, vid, pos, tim, vel)
             jump = true
         end
     end
+    -- Neue Position sofort merken: bricht einer der folgenden Schritte ab, bleibt sonst die alte stehen und jede weitere
+    -- Messung zaehlte die ganze Strecke ab dort noch einmal.
+    local cur = { x = x, y = y, z = z, tim = tim, at = now }
+    s.vehicles[vid] = cur
     if s.race then BN.raceUpdate(s, vid, v, { x = x, y = y, z = z, tim = tim, at = now }, jump) end
     -- Fahrauftrag: nur die Strecke des Auftragsfahrzeugs zaehlt, ein Sprung beendet den Auftrag.
     local j = s.job
@@ -1884,7 +1904,7 @@ function BN.track(pid, vid, pos, tim, vel)
     end
     -- Einsatz-Alarm: genauso – nur Fahrzeuge vom Alarmbeginn, ein Sprung scheidet das Fahrzeug aus.
     local e = BN.alert and BN.alert.entries[s.id]
-    local ev = e and e.pid == pid and e.vids[vid]
+    local ev = e and e.pid == pid and type(e.vids) == "table" and e.vids[vid]
     if ev then
         if jump then ev.out = true else ev.driven = ev.driven + counted end
     end
@@ -1902,7 +1922,7 @@ function BN.track(pid, vid, pos, tim, vel)
         local sustained = math.min(cand, v.cand or 0)
         if sustained <= C.maxSpeedMps then s.pendingTop = math.max(s.pendingTop, sustained * 3.6) end
     end
-    s.vehicles[vid] = { x = x, y = y, z = z, tim = tim, at = now, cand = cand }
+    cur.cand = cand
     return counted
 end
 
@@ -1912,7 +1932,7 @@ function BN.forgetVehicle(pid, vid)
     s.vehicles[vid] = nil
     if s.job and s.job.vid == vid then s.job.reset = true end   -- danach: weiter nur ohne Sprung (siehe jobTick)
     local e = BN.alert and BN.alert.entries[s.id]
-    if e and e.pid == pid and e.vids[vid] then e.vids[vid].out = true end   -- Zuruecksetzen/Fahrzeug weg: scheidet aus
+    if e and e.pid == pid and type(e.vids) == "table" and e.vids[vid] then e.vids[vid].out = true end   -- Zuruecksetzen/Fahrzeug weg: scheidet aus
     local r = s.race
     if r and r.vid == vid and r.state ~= "armed" then
         BN.raceInvalid(s, "Fahrzeug zurückgesetzt")
@@ -6001,6 +6021,14 @@ function BN.init()
     ensureDir(C.sharedDir)
     ensureDir(playersDir())
     ensureDir(serversDir())
+    -- Update im laufenden Betrieb: ein Einsatz-Alarm im alten Format (vor 1.55 ohne vids) wird verworfen.
+    if BN.alert then
+        local ok = type(BN.alert.entries) == "table"
+        for _, e in pairs(ok and BN.alert.entries or {}) do
+            if type(e) ~= "table" or type(e.vids) ~= "table" then ok = false end
+        end
+        if not ok then BN.alert = nil end
+    end
     -- Update im laufenden Betrieb: Sitzungen der alten Version um neue Felder ergaenzen.
     for pid, s in pairs(BN.players) do
         if not guarded("Sitzung " .. tostring(pid) .. " umstellen", BN.normalizeSession, s) then BN.players[pid] = nil end

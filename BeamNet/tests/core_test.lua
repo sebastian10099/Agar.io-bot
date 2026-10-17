@@ -2791,6 +2791,39 @@ do
     os.remove(SHARED .. "/players/17878.json"); BN.savedRecently["17878"] = nil
 end
 
+-- --- Live-Update: Einsatz-Alarm im alten Format, Abstieg, nachtraegliche Erfolge -------------------------------
+do
+    players[180] = { name = "Altalarm", ids = { beammp = "18080" }, vehicles = { [1] = { pos = { 120000, 0, 0 }, tim = 0 } } }
+    players[181] = { name = "Zuschauer", ids = { beammp = "18181" }, vehicles = {} }
+    _G[events.onPlayerJoin](180); _G[events.onPlayerJoin](181)
+    tick(1)
+    -- Alarm aus einer alten Version (Eintraege ohne vids): kein Fehler, Positionen laufen weiter.
+    BN.alert = { place = { name = "Alt", x = 0, y = 0, z = 0 }, at = clock, entries = { ["18080"] = { pid = 180, vid = 1, start = 500, driven = 0 } } }
+    local km0 = BN.players[180].pendingKm
+    for _ = 1, 10 do move(180, 1, 20); tick(1) end
+    near(BN.players[180].pendingKm - km0, 0.2, 0.01, "Live-Update: alter Alarm verfaelscht keine Kilometer")
+    check(pcall(BN.forgetVehicle, 180, 1), "Live-Update: Zuruecksetzen mit altem Alarm ohne Fehler")
+    BN.alert = nil
+    -- Abstieg (z. B. XP-Korrektur beim Speichern) wird nicht als Aufstieg angesagt.
+    local s = BN.players[180]
+    s.leagueXp, s.league = 1e9, "Gibtsnicht"
+    chatLog = {}
+    tick(1)
+    check(not chatContains("steigt in die Liga", 181), "Liga: Abstieg wird nicht angesagt")
+    -- Nachtraegliche Erfolge (z. B. nach einem Update) nur an den Spieler selbst, nicht an alle.
+    s.achChecked = false
+    s.record.achievements, s.unlocked = {}, {}
+    s.pendingKm = s.pendingKm + 20
+    chatLog = {}
+    BN.checkAchievements(s)
+    check(chatContains("Erfolg für Altalarm", 180) and not chatContains("Erfolg für Altalarm", 181), "Erfolge: nachtraegliche nur an den Spieler")
+    for pid = 180, 181 do
+        if BN.players[pid] then BN.players[pid].pendingKm, BN.players[pid].pendingBonus, BN.players[pid].unlocked = 0, 0, {} end
+        _G[events.onPlayerDisconnect](pid); players[pid] = nil
+    end
+    for _, id in ipairs({ "18080", "18181" }) do os.remove(SHARED .. "/players/" .. id .. ".json"); BN.savedRecently[id] = nil end
+end
+
 -- --- Rueckkehrer-Bonus ------------------------------------------------------------------------------------------
 do
     C.comebackXp = 50
