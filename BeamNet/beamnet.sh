@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.99"
+VERSION="2.00"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.80"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -4433,6 +4433,15 @@ if not (isinstance(bm, dict) and bm.get("map") == os.environ.get("BEAMNET_BONUS_
 if (isinstance(bm, dict) and isinstance(bm.get("map"), str) and __import__("re").fullmatch(r"[A-Za-z0-9_.-]+", bm["map"])
         and 1 < num(bm.get("factor")) <= 3 and now < num(bm.get("until")) < now + 2 * 86400):
     upcoming.append((now, f"🗺️ Bonus-Map heute: {E(bm['map'])} – +{int((num(bm.get('factor')) - 1) * 100 + 0.5)} % XP beim Fahren bis Mitternacht"))
+    bonus_map = bm["map"]
+else:
+    bonus_map = None
+# Tagesaufgabe aus dem frischesten Lebenszeichen (BeamNetCore ab 1.80).
+challenge = max(((num(s.get("updated")), s.get("challenge")) for s in servers if isinstance(s.get("challenge"), str)),
+                default=(0, ""))[1]
+challenge = " ".join(__import__("re").sub(r"[\x00-\x1f\x7f-\x9f]", " ", challenge).split())[:120]
+if challenge:
+    upcoming.append((now, f"✅ Tagesaufgabe: {E(challenge)} (im Spiel: /aufgabe, alles für heute: /heute)"))
 upcoming.sort(key=lambda x: x[0])
 DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 upcoming_rows = [f"<tr><td>{'jetzt' if at <= now else DAYS[time.localtime(at).tm_wday] + ' ' + time.strftime('%d.%m. %H:%M', time.localtime(at))}</td><td>{t}</td></tr>"
@@ -4495,7 +4504,7 @@ for s in servers:
     who = ", ".join(link({"name": n, "id": i}) if isinstance(i, str) and i in profile_ids else E(str(n))
                     for n, i in zip(names, ids))
     rows.append(f"<tr><td><b>{E(str(s.get('name', '?')))}</b>" + (f"<div class=small>{who}</div>" if who else "") +
-                f"</td><td>{E(map_name(s.get('map', '?')))}</td>"
+                f"</td><td>{E(map_name(s.get('map', '?')))}" + (" <span class=small>⭐ Bonus-Map</span>" if bonus_map and s.get("map") == bonus_map else "") + "</td>"
                 f"<td class=n>{int(num(s.get('players')))}/{int(num(s.get('max')))}</td></tr>")
 def achievements(r):
     a = r.get("achievements")

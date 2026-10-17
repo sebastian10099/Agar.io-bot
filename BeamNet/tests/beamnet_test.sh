@@ -704,7 +704,11 @@ echo italy >"$T/watch/bonusmap-$(date +%F)"
 "$TOOL" web run >/dev/null 2>&1
 lacks "$(cat "$T/web/index.html")" "Bonus-Map heute" "Statusseite: Bonus-Map nur, wenn der Waechter sie gewaehlt hat"
 echo utah >"$T/watch/bonusmap-$(date +%F)"
+echo "{\"name\":\"Utah-Server\",\"port\":30899,\"map\":\"utah\",\"players\":0,\"max\":8,\"names\":[],\"updated\":$now,\"challenge\":\"Fahre heute <b>15</b> km\"}" >"$T/root/shared/beamnet/servers/30899.json"
 "$TOOL" web run >/dev/null 2>&1
+contains "$(cat "$T/web/index.html")" "<b>Utah-Server</b></td><td>Utah, USA <span class=small>⭐ Bonus-Map</span></td>" "Statusseite: Bonus-Map in der Servertabelle"
+contains "$(cat "$T/web/index.html")" "<td>jetzt</td><td>✅ Tagesaufgabe: Fahre heute &lt;b&gt;15&lt;/b&gt; km" "Statusseite: Tagesaufgabe unter Demnächst (maskiert)"
+rm -f "$T/root/shared/beamnet/servers/30899.json"
 contains "$(cat "$T/web/index.html")" "<td>jetzt</td><td>🗺️ Bonus-Map heute: utah – \\+50 % XP beim Fahren bis Mitternacht</td>" "Statusseite: Bonus-Map unter Demnächst"
 contains "$(cat "$T/web/hilfe.html")" "<li><b>Bonus-Map des Tages</b>" "Hilfeseite: Bonus-Map"
 echo "{\"map\":\"utah\",\"factor\":1.5,\"until\":$((now - 60)),\"day\":\"x\"}" >"$T/root/shared/beamnet/bonusmap.json"
