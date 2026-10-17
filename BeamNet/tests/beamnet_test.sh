@@ -587,6 +587,9 @@ rm -f "$T/watch/usage-"* "$T/watch/slots-"*
 "$TOOL" watch >/dev/null 2>&1
 out=$("$TOOL" doctor 2>&1)
 contains "$out" "Wächter läuft \\(zuletzt vor [0-9]+ s\\)" "doctor: Wächter läuft"
+contains "$out" "Ein Lauf des Wächters dauert [0-9]+ s$" "doctor: Dauer eines Waechter-Laufs"
+echo 75 >"$T/watch/watch-seconds"
+contains "$("$TOOL" doctor 2>&1)" "Ein Lauf des Wächters dauert 75 s \\(er läuft jede Minute\\)" "doctor: Warnung bei langem Waechter-Lauf"
 contains "$out" "Server 3: tägliche Map-Rotation \\(italy utah\\)" "doctor: Rotation"
 contains "$out" "XP-Abende aus" "doctor: Hinweis auf XP-Abende"
 contains "$out" "beamnet event auto fr,sa 20:00 2 2h" "doctor: Befehl fuer XP-Abende"

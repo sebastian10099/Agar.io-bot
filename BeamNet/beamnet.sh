@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="1.96"
+VERSION="1.97"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -740,6 +740,16 @@ check_watch() {
         hint "systemctl enable --now beamnet-watch.timer   ·   journalctl -u beamnet-watch -n 20"
     else
         ok "Wächter läuft (zuletzt vor ${age} s)"
+    fi
+    local dur
+    dur=$(cat "$STATE_DIR/watch-seconds" 2>/dev/null)
+    if [[ $dur =~ ^[0-9]+$ ]]; then
+        if (( dur > 40 )); then
+            warn "Ein Lauf des Wächters dauert ${dur} s (er läuft jede Minute) – das kostet Rechenzeit neben den Spielservern"
+            hint "journalctl -u beamnet-watch -n 20   ·   beamnet report (zum Teilen)"
+        else
+            ok "Ein Lauf des Wächters dauert ${dur} s"
+        fi
     fi
     [[ $(conf_get MAP_VOTE) == 0 ]] || ok "Map-Abstimmung an ($(vote_maps | wc -w) Maps)"
     # Funktionen, die erst eingeschaltet werden muessen (nur Hinweise, keine Warnungen).
@@ -2364,7 +2374,7 @@ watch_peak() {
 
 watch_run() {
     mkdir -p "$STATE_DIR"
-    local nr state last name msgs=() auto hang
+    local nr state last name msgs=() auto hang t0=$SECONDS
     auto=$(conf_get AUTO_RESTART)
     watch_heartbeat
     watch_votes msgs
@@ -2441,6 +2451,8 @@ watch_run() {
         printf '%s\n' "${msgs[@]}"
         notify "$(printf '%s\n' "${msgs[@]}")"
     fi
+    # Dauer des Laufs (fuer beamnet doctor: der Waechter laeuft jede Minute neben den Spieleservern).
+    echo $(( SECONDS - t0 )) >"$STATE_DIR/watch-seconds"
     return 0
 }
 
