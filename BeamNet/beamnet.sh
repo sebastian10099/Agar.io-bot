@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.12"
+VERSION="2.13"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="1.89"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -4614,6 +4614,12 @@ for t in (teams_data.get("teams") or {}).values() if isinstance(teams_data, dict
         teams.append((sum(km_by_id.get(str(i), 0) for i in t["members"]), len(t["members"]), str(t["name"])[:20],
                       sum(week_by_id.get(str(i), 0) for i in t["members"])))
 teams.sort(key=lambda x: (-x[0], x[2]))
+# Team je Fahrer (fuer die Profilseiten).
+team_of = {}
+for t in (teams_data.get("teams") or {}).values() if isinstance(teams_data, dict) and isinstance(teams_data.get("teams"), dict) else []:
+    if isinstance(t, dict) and isinstance(t.get("members"), dict) and t.get("name"):
+        for i in list(t["members"])[:200]:
+            team_of[str(i)] = str(t["name"])[:20]
 team_rows = [f"<tr><td class=n>{i}</td><td>{E(n)}</td><td class=n>{m}</td><td class=n>{km(w)}</td><td class=n>{km(k)}</td></tr>"
              for i, (k, m, n, w) in enumerate(teams[:10], 1)]
 fastest = sorted([r for r in players if 0 < num(r.get("topSpeedKmh")) <= 600],
@@ -4888,6 +4894,8 @@ for rank, r in enumerate(ranked, 1):
         stat("Aufträge", int(num(r.get("jobsDone")))),
         stat("Tages-Serie", streak_text(r)),
         stat("Im Konvoi", km(num(r.get("convoyKm")))),
+        stat("Auf Bonus-Maps", km(num(r.get("bonusMapKm")))),
+        stat("Team", E(team_of[rid]) if rid in team_of else "–"),
     ])
     profile = f"""<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
