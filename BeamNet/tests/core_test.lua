@@ -2925,6 +2925,15 @@ do
     _G[events.onPlayerDisconnect](291); chatLog = {}
     _G[events.onPlayerJoin](291)
     check(not chatContains("^⏳", 291), "Saisonende-Hinweis: nicht frueher als 3 Tage vorher")
+    -- /heute nennt das Saisonende ebenfalls (nur in den letzten Tagen)
+    BN.seasonDaysLeft = function() return 3 end
+    chatLog = {}
+    say(291, "/heute")
+    check(chatContains("^⏳ Die Saison endet in 3 Tagen %(/saison%)$", 291), "/heute: Saisonende")
+    BN.seasonDaysLeft = function() return 9 end
+    chatLog = {}
+    say(291, "/heute")
+    check(not chatContains("^⏳", 291), "/heute: Saisonende erst in den letzten Tagen")
     BN.seasonDaysLeft, BN.seasonRanking = keepLeft, saved
     _G[events.onPlayerDisconnect](291); players[291] = nil
     os.remove(SHARED .. "/players/29191.json"); BN.savedRecently["29191"] = nil

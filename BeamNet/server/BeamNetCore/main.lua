@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "2.04"
+BN.VERSION = "2.05"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -953,6 +953,8 @@ local EN = {
     ["Noch %d XP bis Platz %d"] = "%d XP to go for rank %d",
     ["Diese Woche: %s · Saison: %d XP (Platz %s)"] = "This week: %s · season: %d XP (rank %s)",
     ["Diese Woche: %s"] = "This week: %s",
+    ["⏳ Letzter Tag der Saison (/saison)"] = "⏳ Last day of the season (/season)",
+    ["⏳ Die Saison endet in %d Tagen (/saison)"] = "⏳ The season ends in %d days (/season)",
     ["⏳ Letzter Tag der Saison – du bist Platz %d (/saison)"] = "⏳ Last day of the season – you are rank %d (/season)",
     ["⏳ Die Saison endet in %d Tagen – du bist Platz %d (/saison)"] = "⏳ The season ends in %d days – you are rank %d (/season)",
     ["Letzte Saison (%s): %s"] = "Last season (%s): %s",
@@ -6203,6 +6205,13 @@ function commands.heute(pid)
         end
     end
     commands.ziel(pid)
+    -- Letzte Tage der Saison (wie der Hinweis beim Betreten)
+    local left = BN.seasonDaysLeft()
+    if left == 1 then
+        say(pid, "⏳ Letzter Tag der Saison (/saison)")
+    elseif left <= BN.SEASON_HINT_DAYS then
+        say(pid, "⏳ Die Saison endet in %d Tagen (/saison)", left)
+    end
 end
 commands.today = commands.heute
 
