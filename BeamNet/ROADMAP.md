@@ -1,6 +1,6 @@
 # BeamNet – Roadmap
 
-## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.41 / Plugin 2.04)
+## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.42 / Plugin 2.04)
 
 - [x] `/heute` im Spiel: Tagesaufgabe, XP-Event oder XP-Abend, Bonus-Map, Serie und Wochenziel auf einen Blick; `/event`
       zeigt die Bonus-Map jetzt auch während eines XP-Events (Plugin 1.79).
@@ -61,7 +61,8 @@
       neue Mitglieder erst ab der Woche nach dem Beitritt, wie im Spiel (Werkzeug 2.37). `/saison` sagt, wie viele XP
       bis zum nächsten Platz fehlen (Plugin 2.01). In den letzten 3 Tagen der Saison nennt das Betreten einmal am Tag
       den eigenen Platz; die Restzeit rechnet in UTC wie der Saisonwechsel (Plugin 2.02). Am letzten Saisontag meldet
-      der Wächter ab 12 Uhr einmal den Zwischenstand mit führendem Team an Discord/Telegram (Werkzeug 2.38).
+      der Wächter ab 12 Uhr einmal den Zwischenstand mit führendem Team an Discord/Telegram (Werkzeug 2.38); `/heute` im
+      Telegram-Chat und auf der Konsole erinnert in den letzten 3 Tagen ans Saisonende (Werkzeug 2.42).
 - [x] Prüfung der Saison-Funktionen (7 kleine Funde, behoben in Plugin 2.03 / Werkzeug 2.39): Team-Saisonwertung mit
       derselben XP-Obergrenze im Spiel, im Telegram-Chat und auf der Statusseite; Endspurt mit einem Zeitpunkt in UTC
       (kein falscher Monat um Mitternacht); kein „Noch 1 XP“, wenn man schon vorn liegt; Beitrittszeit überall wie im

@@ -101,6 +101,7 @@ ME=$(/usr/bin/id -un)
 export BEAMNET_ROOT="$T/root" BEAMNET_USER="$ME" BEAMNET_SHARED="$T/root/shared/beamnet"
 export BEAMNET_CANARY=0          # Update zuerst auf einem Testserver: eigener Test weiter unten
 export BEAMNET_LASTDAY=0         # Endspurt am letzten Saisontag: nur im eigenen Test (sonst am echten Monatsletzten)
+export BEAMNET_SEASON_LEFT=10     # Saisonende-Hinweis in /heute: nur im eigenen Test
 export BEAMNET_TRUST_LINK_UID=-1   # die Tests laufen als root: alle Symlinks gehoeren root – keinem vertrauen
 export BEAMNET_LOGROTATE="$T/logrotate.d/beamnet"
 mkdir -p "$T/logrotate.d"
@@ -2215,6 +2216,9 @@ contains "$log" '"text":"📅 KW [0-9]+: [0-9]+ Fahrer, zusammen [0-9]+,[0-9] km
 contains "$log" 'Zweiter – 7,5 km' "telegram /woche: zweiter Fahrer"
 contains "$("$TOOL" woche 2>&1)" "^1\\. Wochenheld – 42,5 km$" "beamnet woche: dieselbe Wertung auf der Konsole"
 contains "$("$TOOL" heute 2>&1)" "^☀️ Heute im BeamNet:" "beamnet heute: Überblick auf der Konsole"
+contains "$(BEAMNET_SEASON_LEFT=2 "$TOOL" heute 2>&1)" "^⏳ Die Saison endet in 2 Tagen \\(/saison\\)$" "beamnet heute: Saisonende in 2 Tagen"
+contains "$(BEAMNET_SEASON_LEFT=1 "$TOOL" heute 2>&1)" "^⏳ Letzter Tag der Saison \\(/saison\\)$" "beamnet heute: letzter Saisontag"
+lacks "$(BEAMNET_SEASON_LEFT=10 "$TOOL" heute 2>&1)" "Saison" "beamnet heute: Saisonende erst in den letzten 3 Tagen"
 lacks "$log" "Altwoche" "telegram /woche: alte Wochen zaehlen nicht"
 contains "$log" '🎯 Wochenziel für alle: [0-9]+,[0-9] km von 100,0 km \([0-9]+ %\)' "telegram /woche: Wochenziel"
 # /teams: Wochenwertung der Teams; wer erst diese Woche beigetreten ist, zaehlt noch nicht.

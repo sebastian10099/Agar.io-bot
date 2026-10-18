@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.41"
+VERSION="2.42"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="2.04"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -3475,6 +3475,15 @@ PY
     line=$(bonusmap_line); [[ -n $line ]] && echo "$line"
     line=$(xpabend_line 7); [[ -n $line ]] && echo "$line"
     line=$(telegram_week | grep '^🎯'); [[ -n $line ]] && echo "$line"
+    # Letzte 3 Tage der Saison (UTC, wie im Spiel)
+    local left
+    left=${BEAMNET_SEASON_LEFT:-$(( 10#$(date -u -d "$(date -u +%Y-%m-01) +1 month -1 day" +%d) - 10#$(date -u +%d) + 1 ))}
+    [[ $left =~ ^[0-9]{1,2}$ ]] || left=99
+    if (( 10#$left == 1 )); then
+        echo "⏳ Letzter Tag der Saison (/saison)"
+    elif (( 10#$left >= 2 && 10#$left <= 3 )); then
+        echo "⏳ Die Saison endet in $left Tagen (/saison)"
+    fi
     return 0
 }
 
