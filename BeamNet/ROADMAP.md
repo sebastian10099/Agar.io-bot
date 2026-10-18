@@ -1,11 +1,16 @@
 # BeamNet – Roadmap
 
-## Runde 4: Fenster im Spiel (Stand Werkzeug 2.45 / Plugin 2.07)
+## Runde 4: Fenster im Spiel (Stand Werkzeug 2.49 / Plugin 2.07)
 
 - [x] BeamNet-Fenster (Client-Mod BeamNetUI): Rennen, Gruppenrennen und Duelle per Klick statt Chat-Befehl; die
       Herausforderung erscheint beim Gegner mit Annehmen/Ablehnen und Countdown. Der Server prüft jede Anfrage wie
       den Chat-Befehl (Plugin 2.07); `install-core`/`update` verteilt das Fenster auf alle Server, `CLIENT_UI=0` = aus
       (Werkzeug 2.45). Tests: Plugin-Schnittstelle, Spielseite unter LuaJIT, Darstellung und Klicks im Browser.
+- [x] Neues Fenster ohne Unterbrechung: der Wächter startet jeden Server neu, sobald er leer ist (Werkzeug 2.47).
+- [x] Telegram: Netzwerk-Übersicht und `/online` nennen die Spieler je Map gleich oben, `/maps` zeigt sie mit Servern
+      und Namen, `/status` ob alle Server laufen, unbekannte Befehle bekommen einen Hinweis (Werkzeug 2.46–2.49).
+- [ ] Vorschlag (braucht deine Freigabe): `/neustart <Nr>` im Telegram-Chat für Admins – die Sicherheitsprüfung dieser
+      Sitzung lässt Server-Steuerung aus dem Chat nicht zu.
 - [ ] Im echten Spiel ausprobieren (BeamNG + BeamMP): Fenster hinzufügen, Rennen und Duell klicken.
 - [ ] Weitere Reiter im Fenster: Fahraufträge (`/auftrag`), Bestenliste, Teams, Saison.
 

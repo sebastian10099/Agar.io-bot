@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.45"
+VERSION="2.49"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="2.07"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -1747,8 +1747,15 @@ install_client_on() {
     if [[ ! -d $dest ]]; then
         mkdir -p "$dest" && chown -h "$SERVICE_USER:$SERVICE_USER" "$dest"
     fi
+    # Unveraendert: nichts zu tun (auch kein Neustart).
+    if [[ -f $dest/BeamNetUI.zip ]] && cmp -s <(safe get "$dest/BeamNetUI.zip" 2>/dev/null) "$zip"; then
+        ok "Server $nr: Fenster (BeamNetUI) ist aktuell"
+        return 0
+    fi
     if safe put "$dest/BeamNetUI.zip" 644 "$SERVICE_USER" <"$zip"; then
-        ok "Server $nr: Fenster (BeamNetUI) installiert"
+        # BeamMP liest Resources/Client nur beim Start: der Waechter startet den Server neu, sobald er leer ist.
+        [[ -d $STATE_DIR && ! -L $STATE_DIR ]] && : >"$STATE_DIR/client-restart-$nr"
+        ok "Server $nr: Fenster (BeamNetUI) installiert – aktiv nach dem nächsten Neustart (der Wächter macht ihn, sobald der Server leer ist)"
     else
         bad "Server $nr: Fenster (BeamNetUI) konnte nicht geschrieben werden"
         return 1
@@ -2639,6 +2646,7 @@ watch_run() {
     done
     watch_rotation msgs
     watch_slots msgs
+    watch_client_restart msgs
     watch_load msgs
     watch_index
     watch_backup msgs
@@ -3193,8 +3201,9 @@ online_report_min() {
     if [[ $m =~ ^0+$ ]]; then echo 0; else echo 10; fi
 }
 
-# Netzwerk-Uebersicht: Kopfzeile mit Gesamtzahl, je belegtem Server Spieler/Plaetze und Namen (Gaeste gezaehlt), leere
-# Server und Server ohne Lebenszeichen in je einer Zeile, Auslastung je Map (am vollsten zuerst, 🔥 ab 80 %).
+# Netzwerk-Uebersicht: Kopfzeile mit Gesamtzahl und Zahl der befahrenen Maps, gleich darunter die Spieler je Map
+# (meiste zuerst, Spieler/Plaetze, 🔥 ab 80 %, ⭐ Bonus-Map), dann je belegtem Server Spieler/Plaetze und Namen (Gaeste
+# gezaehlt), leere Server, Server ohne Lebenszeichen und Maps ohne Spieler in je einer Zeile.
 network_lines() {
     local nr port pl cur mx mxs map names total=0 busy=0 count=0 empty="" silent="" body="" pct m maprows=""
     local -A map_pl=() map_mx=()
@@ -3225,27 +3234,101 @@ network_lines() {
         [[ -n $names ]] && body+=" – $names"
         body+=$'\n'
     done
-    printf '📊 BeamNet: %s Spieler · %s von %s Servern belegt\n' "$total" "$busy" "$count"
-    printf '%s' "$body"
-    [[ -n $empty ]] && printf 'Leer: Server %s\n' "$empty"
-    [[ -n $silent ]] && printf 'Ohne Lebenszeichen: Server %s\n' "$silent"
-    local mp mm bonus="" tag
+    local mp mm bonus="" tag nmaps=0 idle=""
     [[ $(bonusmap_line) =~ Bonus-Map\ heute:\ ([A-Za-z0-9_.-]+) ]] && bonus=${BASH_REMATCH[1]}
     for m in "${!map_pl[@]}"; do
         mp=${map_pl[$m]}
         mm=${map_mx[$m]}
+        if (( mp == 0 )); then
+            idle+="$m"$'\n'
+            continue
+        fi
+        nmaps=$(( nmaps + 1 ))
         tag=""
-        [[ $m == "$bonus" ]] && tag=" ⭐ Bonus"
-        if (( mm > 0 )); then
-            pct=$(( (mp * 100 + mm / 2) / mm ))
-            maprows+="$pct"$'\t'"$m $mp/$mm ($pct %$( (( pct >= 80 )) && printf ' 🔥'))$tag"$'\n'
+        (( mm > 0 && mp * 100 >= mm * 80 )) && tag+=" 🔥"
+        [[ $m == "$bonus" ]] && tag+=" ⭐ Bonus"
+        # Sortierschluessel: Spieler absteigend, dann Name
+        if (( mm > 0 )); then maprows+="$mp"$'\t'"$m $mp/$mm$tag"$'\n'; else maprows+="$mp"$'\t'"$m $mp$tag"$'\n'; fi
+    done
+    printf '📊 BeamNet: %s Spieler auf %s %s · %s von %s Servern belegt\n' "$total" "$nmaps" "$( (( nmaps == 1 )) && echo Map || echo Maps)" "$busy" "$count"
+    if [[ -n $maprows ]]; then
+        printf '🗺️ Spieler je Map: %s\n' "$(printf '%s' "$maprows" | sort -t$'\t' -k1,1nr -k2,2 | head -n 8 | cut -f2- | awk '{ printf "%s%s", (NR > 1 ? " · " : ""), $0 }')"
+    fi
+    printf '%s' "$body"
+    [[ -n $empty ]] && printf 'Leer: Server %s\n' "$empty"
+    [[ -n $silent ]] && printf 'Ohne Lebenszeichen: Server %s\n' "$silent"
+    [[ -n $idle ]] && printf 'Maps ohne Spieler: %s\n' "$(printf '%s' "$idle" | sort | head -n 8 | paste -sd, - | sed 's/,/, /g')"
+    return 0
+}
+
+# /status fuer Telegram: laeuft jeder Server, wie viele Spieler, Wartung, ohne Lebenszeichen (nur lesen).
+telegram_status() {
+    local nr pl map state up=0 count=0 lines=""
+    for nr in $(servers); do
+        count=$(( count + 1 ))
+        map=$(map_short "$(cfg "$nr" Map)")
+        if [[ -f $STATE_DIR/maintenance-$nr ]]; then
+            state="🔧 Wartung (aus)"
+        elif ! unit_active "$nr"; then
+            state="🔴 aus"
         else
-            maprows+="0"$'\t'"$m $mp Spieler$tag"$'\n'
+            up=$(( up + 1 ))
+            pl=$(players_of "$(cfg "$nr" Port)")
+            if [[ $pl =~ ^([0-9]+)/([0-9]*) ]]; then
+                state="✅ läuft · ${BASH_REMATCH[1]}/${BASH_REMATCH[2]:-?} Spieler"
+            else
+                state="⚠️ läuft, aber ohne Lebenszeichen"
+            fi
+        fi
+        lines+="Server $nr · ${map:-?}: $state"$'\n'
+    done
+    echo "🖥️ Status: $up von $count Servern laufen (BeamNet $VERSION)"
+    printf '%s' "$lines"
+}
+
+# /maps fuer Telegram (und beamnet maps-live): je Map, wie viele gerade darauf fahren – mit Servern und Namen, meiste
+# zuerst; Maps ohne Spieler in einer Zeile. Gezaehlt wie in der Netzwerk-Uebersicht (nur Server mit Lebenszeichen).
+telegram_maps() {
+    local nr port pl cur mx map names total=0 rows="" idle="" m
+    local -A mp=() mmx=() msrv=() mnames=()
+    for nr in $(servers); do
+        port=$(cfg "$nr" Port)
+        pl=$(players_of "$port")
+        [[ $pl =~ ^([0-9]+)/([0-9]*) ]] || continue
+        cur=${BASH_REMATCH[1]}
+        mx=${BASH_REMATCH[2]:-0}
+        map=$(map_short "$(cfg "$nr" Map)")
+        map=${map:-?}
+        total=$(( total + cur ))
+        mp[$map]=$(( ${mp[$map]:-0} + cur ))
+        mmx[$map]=$(( ${mmx[$map]:-0} + mx ))
+        msrv[$map]+="${msrv[$map]:+, }$nr"
+        if (( cur > 0 )); then
+            names=$(names_of "$port")
+            [[ -n $names ]] && mnames[$map]+="${mnames[$map]:+, }$names"
         fi
     done
-    if [[ -n $maprows ]]; then
-        printf '🗺️ Maps: %s\n' "$(printf '%s' "$maprows" | sort -t$'\t' -k1,1nr -k2,2 | head -n 8 | cut -f2- | awk '{ printf "%s%s", (NR > 1 ? " · " : ""), $0 }')"
+    local nmaps=0 n cap line
+    for m in "${!mp[@]}"; do
+        n=${mp[$m]}
+        cap=${mmx[$m]}
+        if (( n == 0 )); then idle+="$m"$'\n'; continue; fi
+        nmaps=$(( nmaps + 1 ))
+        line="$m: $n"
+        (( cap > 0 )) && line+="/$cap"
+        line+=" Spieler"
+        (( cap > 0 && n * 100 >= cap * 80 )) && line+=" 🔥"
+        line+=" (Server ${msrv[$m]})${mnames[$m]:+ – ${mnames[$m]}}"
+        rows+="$n"$'\t'"$line"$'\n'
+    done
+    if (( total == 0 )); then
+        echo "🗺️ Gerade fährt niemand."
+    else
+        echo "🗺️ Gerade befahren: $total Spieler auf $nmaps $( (( nmaps == 1 )) && echo Map || echo Maps)"
+        printf '%s' "$rows" | sort -t$'\t' -k1,1nr -k2,2 | cut -f2-
     fi
+    [[ -n $idle ]] && echo "Ohne Spieler: $(printf '%s' "$idle" | sort | paste -sd, - | sed 's/,/, /g')"
+    return 0
 }
 
 # Netzwerk-Uebersicht an Discord/Telegram: alle NETWORK_REPORT Minuten (Standard 10), solange jemand spielt. Ist sie
@@ -3334,9 +3417,18 @@ watch_telegram() {
                     [[ $pl =~ ^([0-9]+)/ ]] && total=$(( total + BASH_REMATCH[1] ))
                 done
                 reply="👥 Gerade online: $total Spieler"
-                (( total > 0 )) && reply+=$'\n'"$(online_lines)"
+                if (( total > 0 )); then
+                    # Spieler je Map wie in der Netzwerk-Uebersicht, dann je Server mit Namen
+                    local mapline
+                    mapline=$(network_lines | grep -m1 '^🗺️ ')
+                    [[ -n $mapline ]] && reply+=$'\n'"$mapline"
+                    reply+=$'\n'"$(online_lines)"
+                fi
                 ;;
             server) reply=$(network_lines) ;;
+            maps) reply=$(telegram_maps) ;;
+            status) reply=$(telegram_status) ;;
+            unbekannt) reply="Den Befehl /${arg//[^a-z0-9_]/} kenne ich nicht. Alle Befehle: /hilfe" ;;
             top) reply=$(telegram_top) ;;
             ansage)
                 # Nur Telegram-Konten aus TELEGRAM_ADMINS (der Parser prueft den Absender); Text wie bei beamnet ansage.
@@ -3403,7 +3495,7 @@ print(f"🏆 Rekord: {best} Spieler gleichzeitig ({when}) · heute bisher: {toda
 PY
 )
                 ;;
-            *) reply="BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute · /teams · /saison${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
+            *) reply="BeamNet-Bot: /online · /maps · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute · /teams · /saison · /status${admins:+ · /ansage und /event 2 2h (Admins)}" ;;
         esac
         NOTIFY_CHAT=$chat NOTIFY_TOKEN=$token send_chunks 4000 send_telegram "$reply" || true
     done < <(python3 -I -c "$TG_PARSE_PY" "$chat" "$botname" "$admins" <<<"$raw" 2>/dev/null)
@@ -3411,7 +3503,7 @@ PY
 }
 
 # Befehle fuer die Vorschlagsliste in Telegram (setMyCommands).
-TG_COMMANDS_JSON='{"commands":[{"command":"online","description":"Wer gerade fährt"},{"command":"server","description":"Netzwerk-Übersicht: Server, Spieler, Maps"},{"command":"top","description":"Bestenliste (XP)"},{"command":"heute","description":"Tagesaufgabe, Bonus-Map, XP-Event und Wochenziel"},{"command":"woche","description":"Wochenbeste und Wochenziel"},{"command":"teams","description":"Teams dieser Woche"},{"command":"saison","description":"Saisonwertung des Monats"},{"command":"spieler","description":"Werte eines Spielers: /spieler Name"},{"command":"event","description":"XP-Event, XP-Abend und Bonus-Map"},{"command":"rekord","description":"Spielerrekord"},{"command":"plaetze","description":"Auslastung und Spielerplätze"},{"command":"hilfe","description":"Alle Befehle"}]}'
+TG_COMMANDS_JSON='{"commands":[{"command":"online","description":"Wer gerade fährt"},{"command":"server","description":"Netzwerk-Übersicht: Server, Spieler, Maps"},{"command":"maps","description":"Wie viele gerade auf welcher Map fahren"},{"command":"status","description":"Laufen alle Server?"},{"command":"top","description":"Bestenliste (XP)"},{"command":"heute","description":"Tagesaufgabe, Bonus-Map, XP-Event und Wochenziel"},{"command":"woche","description":"Wochenbeste und Wochenziel"},{"command":"teams","description":"Teams dieser Woche"},{"command":"saison","description":"Saisonwertung des Monats"},{"command":"spieler","description":"Werte eines Spielers: /spieler Name"},{"command":"event","description":"XP-Event, XP-Abend und Bonus-Map"},{"command":"rekord","description":"Spielerrekord"},{"command":"plaetze","description":"Auslastung und Spielerplätze"},{"command":"hilfe","description":"Alle Befehle"}]}'
 
 # Antwort von getUpdates -> "naechster Offset<TAB>Befehl" je Nachricht (Befehl leer, wenn nicht fuer uns).
 read -r -d '' TG_PARSE_PY <<'PY'
@@ -3439,7 +3531,8 @@ for u in data["result"][:100]:
     if same and hit and not (bot and hit.group(2) and hit.group(2)[1:] != bot):
         word = hit.group(1)
         cmd = {"online": "online", "wer": "online", "top": "top", "bestenliste": "top", "rekord": "rekord",
-               "record": "rekord", "server": "server", "servers": "server"}.get(word, "hilfe" if word in ("hilfe", "help", "start") else "")
+               "record": "rekord", "server": "server", "servers": "server", "maps": "maps", "map": "maps",
+               "karten": "maps"}.get(word, "hilfe" if word in ("hilfe", "help", "start") else "")
         # Text nach dem Befehl (Original-Schreibweise), ohne Steuerzeichen und Tabulatoren, hoechstens 300 Zeichen.
         body = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", text.strip().split(None, 1)[1] if len(text.strip().split(None, 1)) > 1 else "").split())[:300]
         sender = m.get("from") if isinstance(m.get("from"), dict) else {}
@@ -3467,6 +3560,11 @@ for u in data["result"][:100]:
             cmd = "saison"
         elif word in ("spieler", "player", "profil", "stats"):
             cmd, arg = "spieler", body[:32]
+        elif word in ("status", "zustand"):
+            cmd = "status"
+        if not cmd:
+            # Unbekannter Befehl: kurzer Hinweis auf /hilfe statt Schweigen.
+            cmd, arg = "unbekannt", word[:24]
         # Flutschutz: aelter als 2 Minuten (Rueckstau) nicht mehr beantworten; hoechstens 3 Befehle je Absender und Lauf
         # (der Rest wird uebersprungen, damit die Befehle anderer nicht stundenlang warten).
         sid = sender.get("id") if isinstance(sender.get("id"), int) else None
@@ -3962,6 +4060,28 @@ PY
     [[ -n ${lines[0]:-} ]] && out+=("🏁 Wochensieger ${week/-W/ KW }: ${lines[0]}")
     [[ -n ${lines[1]:-} ]] && out+=("${lines[1]}")
     [[ -n ${lines[2]:-} ]] && out+=("${lines[2]}")
+    return 0
+}
+
+# Neues Fenster (BeamNetUI) installiert: BeamMP bietet Client-Mods erst nach einem Neustart an. Der Waechter startet
+# solche Server neu, sobald niemand darauf spielt – so fliegt keiner raus. Laeuft der Server nicht, genuegt der naechste Start.
+watch_client_restart() {
+    local -n cout_=$1
+    local f nr
+    for f in "$STATE_DIR"/client-restart-*; do
+        [[ -f $f ]] || continue
+        nr=${f##*-}
+        [[ $nr =~ ^[0-9]+$ && -f $ROOT/$nr/ServerConfig.toml ]] || { rm -f "$f"; continue; }
+        if ! unit_active "$nr"; then rm -f "$f"; continue; fi
+        [[ -f $STATE_DIR/maintenance-$nr || $RESTARTED_NOW == *" $nr "* ]] && continue
+        [[ $(players_of "$(cfg "$nr" Port)") == 0/* ]] || continue
+        rm -f "$f"
+        if systemctl restart "$(unit "$nr")"; then
+            cout_+=("🔄 Server $nr: neu gestartet (war leer) – das BeamNet-Fenster ist jetzt dort verfügbar.")
+        else
+            cout_+=("⚠️ Server $nr: Neustart für das BeamNet-Fenster fehlgeschlagen (beamnet logs $nr).")
+        fi
+    done
     return 0
 }
 
@@ -5663,6 +5783,7 @@ ${BOLD}BeamNet $VERSION${RESET} – Werkzeug für die BeamMP-Server unter $ROOT
   beamnet plugin-enable <name>   … und wieder einschalten
   beamnet players [json]         Wer gerade fährt, je Server mit Namen (mit Plugin BeamNetCore)
   beamnet heute|woche|teams|saison  Überblick wie im Telegram-Chat (Boni, Wochenbeste, Teams, Saison)
+  beamnet karten                 Wie viele gerade auf welcher Map fahren (wie /maps im Telegram-Chat)
   beamnet backup                 Sichert Konfigurationen, Plugins und Dienste nach $BACKUP_DIR
   beamnet restore [JJJJ-MM-TT|check]   Tägliche Datensicherungen anzeigen, prüfen oder einen Stand zurückholen
   beamnet install-core           Installiert das Plugin BeamNetCore (km, XP, Liga, Rennen, Moderation) auf allen Servern
@@ -5707,6 +5828,7 @@ main() {
         woche|week) telegram_week ;;
         teams) telegram_teams ;;
         saison|season) telegram_season ;;
+        karten|befahren) telegram_maps ;;
         logs|log) cmd_logs "$@" ;;
         plugins) cmd_plugins ;;
         plugin-disable) cmd_plugin_toggle disable "$@" ;;

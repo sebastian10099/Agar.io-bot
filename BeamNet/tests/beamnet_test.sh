@@ -604,6 +604,16 @@ contains "$(cat "$T/root/5/ServerConfig.toml")" '^Map = "/levels/italy/info.json
 : >"$T/actions"; status5 0
 BEAMNET_HOUR=08 "$TOOL" watch >/dev/null 2>&1
 lacks "$(cat "$T/actions")" "restart beammp-5" "slots: nur einmal am Tag"
+# Neues Fenster (BeamNetUI): Neustart erst, wenn der Server leer ist – niemand fliegt raus.
+: >"$T/watch/client-restart-5"; : >"$T/actions"; status5 3
+BEAMNET_HOUR=08 "$TOOL" watch >/dev/null 2>&1
+lacks "$(cat "$T/actions")" "restart beammp-5" "fenster: kein Neustart, solange jemand fährt"
+[[ -f $T/watch/client-restart-5 ]] && pass || fail "fenster: Neustart bleibt vorgemerkt"
+status5 0
+out=$(BEAMNET_HOUR=08 "$TOOL" watch 2>&1)
+contains "$(cat "$T/actions")" "restart beammp-5" "fenster: Neustart, sobald leer"
+contains "$out" "🔄 Server 5: neu gestartet \\(war leer\\) – das BeamNet-Fenster ist jetzt dort verfügbar" "fenster: Meldung"
+[[ ! -f $T/watch/client-restart-5 ]] && pass || fail "fenster: Vormerkung erledigt"
 # Von Hand setzen und pruefen.
 contains "$("$TOOL" slots 5 99 2>&1)" "Plätze: 2 bis 64" "slots: Grenzen beim Setzen"
 contains "$("$TOOL" slots 5 abc 2>&1)" "Aufruf: beamnet slots <nr> <plätze>" "slots: nur Zahlen"
@@ -1229,7 +1239,7 @@ contains "$out" "Werkzeug aktualisiert: $T/inst/beamnet" "update: Werkzeug"
 contains "$out" "Server 6: BeamNetCore installiert" "update: Plugin auf allen Servern"
 [[ -x $T/inst/beamnet && ! -e $T/inst/beamnet.new ]] && pass || fail "update: Werkzeug ersetzt, keine Reste"
 cmp -s "$T/root/1/Resources/Server/BeamNetCore/main.lua" "$HERE/../server/BeamNetCore/main.lua" && pass || fail "update: Plugin ist die neue Version"
-contains "$out" "Server 6: Fenster \\(BeamNetUI\\) installiert" "update: Fenster von GitHub geladen und verteilt"
+contains "$out" "Server 6: Fenster \\(BeamNetUI\\) (installiert|ist aktuell)" "update: Fenster von GitHub geladen und verteilt"
 # CLIENT_UI=0: das Fenster wird nicht verteilt
 rm -f "$T"/root/*/Resources/Client/BeamNetUI.zip
 sed -i '/^CLIENT_UI=/d' "$T/beamnet.conf"; echo "CLIENT_UI=0" >>"$T/beamnet.conf"
@@ -1237,6 +1247,13 @@ out=$("$TOOL" install-core -y 2>&1)
 lacks "$out" "Fenster" "CLIENT_UI=0: kein Fenster"
 ! compgen -G "$T/root/*/Resources/Client/BeamNetUI.zip" >/dev/null && pass || fail "CLIENT_UI=0: keine Zip"
 sed -i '/^CLIENT_UI=/d' "$T/beamnet.conf"
+# Neues Fenster: der Waechter startet den Server neu, sobald er leer ist (BeamMP liest Client-Mods nur beim Start).
+rm -f "$T"/watch/client-restart-*
+out=$("$TOOL" install-core -y 2>&1)
+contains "$out" "Server 1: Fenster \\(BeamNetUI\\) installiert – aktiv nach dem nächsten Neustart" "install-core: Hinweis auf Neustart"
+[[ -f $T/watch/client-restart-1 ]] && pass || fail "install-core: Neustart vorgemerkt"
+out=$("$TOOL" install-core -y 2>&1)
+contains "$out" "Server 1: Fenster \\(BeamNetUI\\) ist aktuell" "install-core: unveraendertes Fenster nicht neu geschrieben"
 out=$(BEAMNET_RAW="file:///gibt/es/nicht" "$T/inst/beamnet" update -y 2>&1)
 contains "$out" "Download fehlgeschlagen" "update: Fehler beim Laden"
 mv "$T/curl.stub" "$T/bin/curl"
@@ -2023,14 +2040,14 @@ echo "{\"port\":30815,\"players\":4,\"max\":8,\"names\":[\"Alt\"],\"updated\":$(
 : >"$T/curl.log"
 out=$(BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
 m3=$(sed -n 's|^Map = "/levels/\([^/]*\)/.*|\1|p' "$T/root/3/ServerConfig.toml")   # haengt von der Rotation (Tag) ab
-contains "$out" "📊 BeamNet: 3 Spieler · 2 von 6 Servern belegt" "online: Uebersicht mit Gesamtzahl (veraltetes Lebenszeichen zaehlt nicht)"
+contains "$out" "📊 BeamNet: 3 Spieler auf 2 Maps · 2 von 6 Servern belegt" "online: Uebersicht mit Gesamtzahl und Maps (veraltetes Lebenszeichen zaehlt nicht)"
 contains "$out" "Server 1 · gridmap_v2: 2/8 – Max, Sebi$" "online: Spieler/Plaetze und Namen je Server, sortiert, ohne Steuerzeichen"
 contains "$out" "Server 3 · $m3: 1/8 – Ana$" "online: zweiter Server"
 contains "$out" "Ohne Lebenszeichen: Server 2, 4, 5, 6$" "online: Server ohne aktuelles Lebenszeichen extra"
-contains "$out" "🗺️ Maps: gridmap_v2 2/8 \(25 %\) · $m3 1/8 \(13 %\)$" "online: Auslastung je Map, am vollsten zuerst"
+contains "$out" "🗺️ Spieler je Map: gridmap_v2 2/8 · $m3 1/8$" "online: Spieler je Map, meiste zuerst"
 contains "$(cat "$T/curl.log")" "https://api.telegram.org/bot123456:ABCDEFghijklmnop_1234567890/sendMessage" "online: an Telegram"
 lacks "$(cat "$T/curl.argv")" "ABCDEFghijklmnop" "online: Telegram-Token nie auf der Befehlszeile (ps)"
-contains "$(cat "$T/curl.log")" '\{"chat_id":"-1001234567890","text":"📊 BeamNet: 3 Spieler · 2 von 6 Servern belegt\\n   Server 1 · gridmap_v2: 2/8 – Max, Sebi\\n   Server 3 · '"$m3"': 1/8 – Ana\\n   Ohne Lebenszeichen: Server 2, 4, 5, 6\\n   🗺️ Maps: gridmap_v2 2/8 \(25 %\) · '"$m3"' 1/8 \(13 %\)","disable_web_page_preview":true\}' "online: Telegram-JSON (reiner Text)"
+contains "$(cat "$T/curl.log")" '\{"chat_id":"-1001234567890","text":"📊 BeamNet: 3 Spieler auf 2 Maps · 2 von 6 Servern belegt\\n   🗺️ Spieler je Map: gridmap_v2 2/8 · '"$m3"' 1/8\\n   Server 1 · gridmap_v2: 2/8 – Max, Sebi\\n   Server 3 · '"$m3"': 1/8 – Ana\\n   Ohne Lebenszeichen: Server 2, 4, 5, 6","disable_web_page_preview":true\}' "online: Telegram-JSON (reiner Text)"
 contains "$(cat "$T/curl.log")" "https://discord.com/api/webhooks/1/abc" "online: weiterhin an Discord"
 : >"$T/curl.log"
 echo $(( $(date +%s) - 61 )) >"$T/watch/online-at"
@@ -2053,14 +2070,20 @@ echo 0 >"$T/watch/online-at"
 out=$(BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
 contains "$out" "Server 1 · gridmap_v2: 7/8 🔥 – Ana, Ben, Max, Sebi \+3 Gäste$" "online: Konten mit Namen, Gaeste gezaehlt, voller Server"
 lacks "$out" "guest123" "online: keine Gast-Namen"
-contains "$out" "🗺️ Maps: gridmap_v2 7/8 \(88 % 🔥\)" "online: volle Map markiert"
+contains "$out" "🗺️ Spieler je Map: gridmap_v2 7/8 🔥" "online: volle Map markiert"
 lacks "$out" "⭐ Bonus" "online: ohne Bonus-Map keine Markierung"
 echo "{\"map\":\"gridmap_v2\",\"factor\":1.5,\"until\":$(( $(date +%s) + 3600 ))}" >"$T/root/shared/beamnet/bonusmap.json"
 cp "$T/watch/bonusmap-$(date +%F)" "$T/bm-stamp.keep" 2>/dev/null || : >"$T/bm-stamp.keep"
 echo gridmap_v2 >"$T/watch/bonusmap-$(date +%F)"
 echo 0 >"$T/watch/online-at"
 out=$(BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
-contains "$out" "🗺️ Maps: gridmap_v2 7/8 \(88 % 🔥\) ⭐ Bonus" "online: Bonus-Map markiert"
+contains "$out" "🗺️ Spieler je Map: gridmap_v2 7/8 🔥 ⭐ Bonus" "online: Bonus-Map markiert"
+# Leere Map in eigener Zeile, gezaehlt werden nur befahrene Maps
+echo "{\"port\":30816,\"players\":0,\"max\":8,\"names\":[],\"updated\":$(date +%s)}" >"$T/root/shared/beamnet/servers/30816.json"
+echo 0 >"$T/watch/online-at"
+out=$(BEAMNET_HOUR=12 "$TOOL" watch 2>&1)
+contains "$out" "📊 BeamNet: 7 Spieler auf 1 Map · 1 von 6 Servern belegt" "online: eine Map (Einzahl)"
+contains "$out" "Maps ohne Spieler: $m3$" "online: leere Map extra"
 rm -f "$T/root/shared/beamnet/bonusmap.json"
 cp "$T/bm-stamp.keep" "$T/watch/bonusmap-$(date +%F)"
 # Alle weg: einmal "niemand online", danach Ruhe.
@@ -2121,10 +2144,12 @@ echo "BeamNetBot" >"$T/watch/telegram-bot"
 log=$(cat "$T/curl.log")
 contains "$log" "getUpdates\\?offset=0" "telegram: holt neue Nachrichten"
 contains "$log" '"text":"👥 Gerade online: [0-9]+ Spieler' "telegram: /online beantwortet"
+if [[ $log =~ Gerade\ online:\ ([1-9][0-9]*)\ Spieler ]]; then contains "$log" "Gerade online: [0-9]+ Spieler\\\\n🗺️ Spieler je Map: [a-z_0-9]+ [0-9]+" "telegram: /online nennt Spieler je Map"; fi
 contains "$log" '"text":"🏁 Bestenliste \(XP\):\\n1\. Vorn – 1000050 XP · 99999 km"' "telegram: /top aus dem Index"
 contains "$log" '"text":"🏆 Rekord: [0-9]+ Spieler gleichzeitig \([0-9.]+\) · heute bisher: [0-9]+"' "telegram: /rekord"
-contains "$log" '"text":"BeamNet-Bot: /online · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute · /teams · /saison"' "telegram: /hilfe"
-contains "$log" '"text":"📊 BeamNet: [0-9]+ Spieler · [0-9]+ von [0-9]+ Servern belegt' "telegram: /server mit Netzwerk-Uebersicht"
+contains "$log" '"text":"BeamNet-Bot: /online · /maps · /top · /rekord · /server · /event · /spieler <Name> · /plaetze · /woche · /heute · /teams · /saison · /status"' "telegram: /hilfe"
+contains "$log" '"text":"📊 BeamNet: [0-9]+ Spieler auf [0-9]+ Maps? · [0-9]+ von [0-9]+ Servern belegt' "telegram: /server mit Netzwerk-Uebersicht"
+contains "$log" '"command":"maps","description":"Wie viele gerade auf welcher Map fahren"' "telegram: /maps in der Befehlsliste"
 [[ $(grep -c "sendMessage" <<<"$log") == 5 ]] && pass || fail "telegram: genau 5 Antworten (fremder Chat, anderer Bot und normaler Text ignoriert)"
 [[ $(cat "$T/watch/telegram-offset") == 18 ]] && pass || fail "telegram: Offset gemerkt (der 6. Befehl bleibt für den nächsten Lauf)"
 lacks "$log" "getMe" "telegram: Bot-Name nur einmal am Tag abgefragt"
@@ -2134,6 +2159,37 @@ contains "$log" '"command":"woche","description":"Wochenbeste und Wochenziel"' "
 contains "$(cat "$T/curl.log")" "getUpdates\\?offset=18" "telegram: naechster Abruf ab dem Offset"
 lacks "$(cat "$T/curl.log")" "setMyCommands" "telegram: Befehlsliste nur einmal je Version"
 lacks "$(cat "$T/curl.argv")" "ABCDEFghijklmnop" "telegram: Token auch beim Abruf nie auf der Befehlszeile"
+# /maps: Spieler je Map mit Servern und Namen (meiste zuerst), leere Maps extra; auch beamnet karten.
+hb_now=$(date +%s)
+echo "{\"port\":30814,\"players\":3,\"max\":8,\"names\":[\"Sebi\",\"Max\",\"guest1\"],\"ids\":[\"1\",\"2\",\"\"],\"updated\":$hb_now}" >"$T/root/shared/beamnet/servers/30814.json"
+echo "{\"port\":30816,\"players\":1,\"max\":8,\"names\":[\"Ana\"],\"updated\":$hb_now}" >"$T/root/shared/beamnet/servers/30816.json"
+echo "{\"port\":30818,\"players\":0,\"max\":8,\"names\":[],\"updated\":$hb_now}" >"$T/root/shared/beamnet/servers/30818.json"
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":19,"message":{"chat":{"id":-1001234567890},"text":"/maps"}}]}
+JSON
+: >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+m1=$(sed -n 's|^Map = "/levels/\([^/]*\)/.*|\1|p' "$T/root/1/ServerConfig.toml")
+m3=$(sed -n 's|^Map = "/levels/\([^/]*\)/.*|\1|p' "$T/root/3/ServerConfig.toml")
+m5=$(sed -n 's|^Map = "/levels/\([^/]*\)/.*|\1|p' "$T/root/5/ServerConfig.toml")
+log=$(cat "$T/curl.log")
+if [[ $m5 == "$m3" ]]; then exp3='1/16 Spieler \(Server 3, 5\)'; else exp3='1/8 Spieler \(Server 3\)'; fi
+contains "$log" '"text":"🗺️ Gerade befahren: 4 Spieler auf 2 Maps\\n'"$m1"': 3/8 Spieler \(Server 1\) – Max, Sebi \+1 Gast\\n'"$m3: $exp3"' – Ana' "telegram /maps: Spieler je Map mit Namen (gleiche Map zusammengezaehlt)"
+[[ $m5 != "$m1" && $m5 != "$m3" ]] && { contains "$log" "Ohne Spieler: [^\"]*$m5" "telegram /maps: leere Map extra"; }
+contains "$("$TOOL" karten 2>&1)" "^🗺️ Gerade befahren: 4 Spieler auf 2 Maps$" "beamnet karten: dasselbe auf der Konsole"
+rm -f "$T/root/shared/beamnet/servers/30816.json" "$T/root/shared/beamnet/servers/30818.json"
+# /status: laeuft jeder Server (nur lesen); unbekannte Befehle bekommen einen Hinweis auf /hilfe.
+cat >"$T/tg-updates.json" <<JSON
+{"ok":true,"result":[{"update_id":21,"message":{"chat":{"id":-1001234567890},"text":"/status"}},
+ {"update_id":22,"message":{"chat":{"id":-1001234567890},"text":"/gibtsnicht"}}]}
+JSON
+: >"$T/curl.log"
+"$TOOL" watch >/dev/null 2>&1
+log=$(cat "$T/curl.log")
+contains "$log" '"text":"🖥️ Status: [0-9]+ von 6 Servern laufen \(BeamNet [0-9.]+\)\\nServer 1 · [a-z_0-9]+: ' "telegram /status: Kopf und Server"
+contains "$log" 'Server [0-9] · [a-z_0-9]+: (✅ läuft · [0-9]+/[0-9?]+ Spieler|🔴 aus|🔧 Wartung \(aus\)|⚠️ läuft, aber ohne Lebenszeichen)' "telegram /status: Zustand je Server"
+contains "$log" '"text":"Den Befehl /gibtsnicht kenne ich nicht. Alle Befehle: /hilfe"' "telegram: unbekannter Befehl bekommt Hinweis"
+contains "$(grep -m1 '^TG_COMMANDS_JSON=' "$TOOL")" '"command":"status"' "telegram: /status in der Befehlsliste"
 # /ansage aus Telegram: nur fuer Konten aus TELEGRAM_ADMINS.
 now=$(date +%s)
 cat >"$T/tg-updates.json" <<JSON

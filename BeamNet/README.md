@@ -120,7 +120,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   wo die Automatik mehr Plätze geben wird; **`/woche`** die Top 5 der Kalenderwoche nach Kilometern und den Stand des
   Wochenziels für alle; **`/heute`** Tagesaufgabe, laufendes XP-Event, Bonus-Map, nächsten XP-Abend, Wochenziel und Saisonende auf
   einen Blick; **`/teams`** die Teams nach Kilometern dieser Woche; **`/saison`** die Top 5 der laufenden Saison, das
-  führende Team und die Sieger der letzten Saison. Die Befehlsliste trägt der Wächter selbst bei Telegram ein (einmal je Version), Telegram
+  führende Team und die Sieger der letzten Saison; **`/maps`** wie viele gerade auf welcher Map fahren (mit Servern und
+  Namen); **`/status`**, ob alle Server laufen. Unbekannte Befehle bekommen einen Hinweis auf `/hilfe`. Die Befehlsliste trägt der Wächter selbst bei Telegram ein (einmal je Version), Telegram
   schlägt die Befehle dann beim Tippen von „/“ vor – ohne Umweg über @BotFather.
 - **Netzwerk-Übersicht:** alle 10 Minuten (`NETWORK_REPORT=…`, 0 = aus), solange jemand spielt:
   ```
@@ -398,6 +399,8 @@ Statt Chat-Befehle zu tippen, gibt es ein **BeamNet-Fenster** am Bildschirmrand.
 `beamnet update`) legt es als Client-Mod `BeamNetUI.zip` in `Resources/Client` jedes Servers; BeamMP lädt es beim
 Verbinden automatisch herunter. Einmal im Spiel hinzufügen: **Esc → UI-Apps → „BeamNet“**, danach bleibt es auf dem
 Bildschirm (mit „–“ einklappen, mit 🏁 wieder öffnen). `/fenster` im Chat erklärt das und klappt es auf.
+BeamMP bietet neue Client-Mods erst nach einem Neustart an: Der Wächter startet jeden Server neu, sobald er leer ist –
+niemand fliegt raus. Das Plugin selbst lädt BeamMP sofort neu, ohne Neustart.
 
 - **Rennen:** alle Strecken der Map mit Rekord, ★ = Strecke der Woche. **Fahren** startet den Lauf, **Gruppe** ein
   Gruppenrennen; läuft eins, erscheint oben **Mitfahren**.
