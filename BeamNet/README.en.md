@@ -91,6 +91,17 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
   verfügbar … sudo beamnet update"). It never installs anything itself; `UPDATE_CHECK=0` turns it off.
 - It never fights you: servers stopped with `beamnet stop` count as maintenance until `beamnet start`.
 
+## In-game window
+
+Instead of typing chat commands, players get a **BeamNet window** at the edge of the screen: all tracks with records
+(**Drive**, **Group**, **Join**), and a **Duel** tab (pick opponent and track, **Challenge**; the opponent's window opens
+with **Accept** / **Decline** and a countdown). `beamnet install-core` / `beamnet update` puts the client mod
+`BeamNetUI.zip` into `Resources/Client` of every server; BeamMP downloads it on connect. Add it once in game:
+**Esc → UI Apps → "BeamNet"**; `/window` in the chat explains it. The server checks every click exactly like the chat
+command. `CLIENT_UI=0` in `/etc/beamnet.conf` turns distribution off.
+
+<p><img src="docs/fenster-rennen.png" alt="BeamNet window: tracks and a group race (preview with test data)" width="640"></p>
+
 ## In-game chat commands
 
 Every player can switch to English with `/lang en`; the German commands work too.

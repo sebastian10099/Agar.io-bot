@@ -1,0 +1,10 @@
+{
+  "name": "BeamNet",
+  "author": "BeamNet",
+  "version": "1.0",
+  "description": "BeamNet: Rennen, Gruppenrennen und Duelle per Klick / races, group races and duels with one click",
+  "directive": "beamnetWindow",
+  "domElement": "<beamnet-window></beamnet-window>",
+  "css": { "width": "340px", "height": "560px", "top": "120px", "right": "8px" },
+  "types": ["ui.apps.categories.multiplayer"]
+}

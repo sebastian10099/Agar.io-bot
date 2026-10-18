@@ -13,6 +13,16 @@ if (( lua_rc != 0 )) || grep -q "FEHLER" <<<"$lua_out" || ! grep -q "Prüfungen 
     echo "-> Plugin: ROT"; rc=1
 fi
 
+echo "== Fenster BeamNetUI =="
+for rt in luajit21 lua53; do
+    if ! BEAMNET_LUA=$rt python3 tests/run_client_tests.py; then echo "-> Fenster (Spielseite): ROT"; rc=1; fi
+done
+if command -v node >/dev/null; then
+    if ! node tests/ui_window_test.js; then echo "-> Fenster (Darstellung): ROT"; rc=1; fi
+else
+    echo "(node nicht installiert – Fenster-Darstellung übersprungen)"
+fi
+
 echo "== Werkzeug beamnet.sh =="
 sh_out=$(bash tests/beamnet_test.sh 2>&1)
 sh_rc=$?

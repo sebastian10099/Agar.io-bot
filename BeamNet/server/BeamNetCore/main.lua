@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "2.06"
+BN.VERSION = "2.07"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -634,6 +634,9 @@ end
 -- Spieler
 
 local function chat(pid, text)
+    -- Waehrend einer Anfrage aus dem Fenster (BeamNetUI) die letzte Antwort an diesen Spieler mitschneiden.
+    local cap = BN.uiCapture
+    if cap and cap.pid == pid then cap.msg = text end
     if MP and MP.SendChatMessage then MP.SendChatMessage(pid, text) end
 end
 
@@ -673,8 +676,8 @@ local EN = {
     ["Du bist noch %d s stummgeschaltet."] = "You are muted for another %d s.",
     ["Bitte nicht spammen – du bist %d s stummgeschaltet."] = "Please don't spam – you are muted for %d s.",
     ["BeamNet-Befehle:"] = "BeamNet commands:",
-    ["Spielen: /heute · /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote"] =
-        "Play: /today · /job · /race · /series · /duel <name> <track> · /chase · /convoy · /daily · /goal · /vote",
+    ["Spielen: /fenster · /heute · /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote"] =
+        "Play: /window · /today · /job · /race · /series · /duel <name> <track> · /chase · /convoy · /daily · /goal · /vote",
     ["☀️ Heute im BeamNet:"] = "☀️ Today on BeamNet:",
     ["👥 Team %s: %s diese Woche · Platz %s (/team woche)"] = "👥 Team %s: %s this week · rank %s (/team week)",
     ["Neue Erfolge: Entdecker und Pionier – fahr auf der Bonus-Map des Tages (/heute)"] =
@@ -951,6 +954,9 @@ local EN = {
     ["Noch keine Punkte in dieser Saison – einfach losfahren!"] = "No points in this season yet – just start driving!",
     ["Du: Platz %s mit %d XP in dieser Saison"] = "You: rank %s with %d XP this season",
     ["Noch %d XP bis Platz %d"] = "%d XP to go for rank %d",
+    ["Diesen Spieler gibt es auf diesem Server nicht mehr."] = "That player is no longer on this server.",
+    ["🏁 BeamNet-Fenster: Rennen, Gruppenrennen und Duelle per Klick. Einmal hinzufügen: Esc → UI-Apps → „BeamNet“."] =
+        "🏁 BeamNet window: races, group races and duels with one click. Add it once: Esc → UI Apps → \"BeamNet\".",
     ["Diese Woche: %s · Saison: %d XP (Platz %s)"] = "This week: %s · season: %d XP (rank %s)",
     ["Diese Woche: %s"] = "This week: %s",
     ["⏳ Letzter Tag der Saison (/saison)"] = "⏳ Last day of the season (/season)",
@@ -3435,7 +3441,7 @@ commands.einsteiger = commands.start
 function commands.hilfe(pid)
     -- In Gruppen: eine einzige lange Zeile wird im BeamNG-Chat schlecht lesbar oder abgeschnitten.
     say(pid, "BeamNet-Befehle:")
-    say(pid, "Spielen: /heute · /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote")
+    say(pid, "Spielen: /fenster · /heute · /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote")
     say(pid, "Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|konvoi|jagd|woche|teams|saison]")
     say(pid, "Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event")
     say(pid, "Sonst: /start · /regeln · /melden <Name> <Grund> · /lang en")
@@ -3719,28 +3725,38 @@ function commands.duell(pid, arg)
         say(pid, "Aufruf: /duell <Name> <Strecke> · annehmen: /duell ja · ablehnen: /duell nein")
         return
     end
-    if target.pid == pid then say(pid, "Gegen dich selbst geht kein Duell.") return end
+    BN.duelChallenge(pid, target, name)
+end
+commands.duel = commands.duell
+
+-- Herausforderung senden (aus dem Chat oder dem Fenster): target ist die Sitzung des Gegners. true, wenn gesendet.
+function BN.duelChallenge(pid, target, name)
+    local s = session(pid)
+    local now = BN.now()
+    if target.pid == pid then say(pid, "Gegen dich selbst geht kein Duell.") return false end
     local track = BN.loadTracks().tracks[name]
     if type(track) ~= "table" or not track.finish then
         say(pid, "Strecke \"%s\" gibt es auf dieser Map nicht. Liste: /rennen", name)
-        return
+        return false
     end
     if s.mutedUntil and now < s.mutedUntil then
         say(pid, "Du bist noch %d s stummgeschaltet.", s.mutedUntil - now)
-        return
+        return false
     end
     if s.lastDuelAt and now - s.lastDuelAt < 60 then
         say(pid, "Bitte warte noch %d s vor der nächsten Herausforderung.", 60 - (now - s.lastDuelAt))
-        return
+        return false
     end
-    if BN.group then say(pid, "Gerade läuft ein Gruppenrennen – danach geht's.") return end
+    if BN.group then say(pid, "Gerade läuft ein Gruppenrennen – danach geht's.") return false end
     s.lastDuelAt = now
     BN.duelInvites[target.pid] = { from = pid, fromId = s.id, fromName = s.name, toId = target.id, toName = target.name,
                                    track = name, at = now }
     say(target.pid, "⚔️ %s fordert dich zum Duell auf %s heraus! Annehmen: /duell ja · ablehnen: /duell nein (60 s)", s.name, name)
     say(pid, "Herausforderung an %s gesendet.", target.name)
+    -- Im Fenster des Gegners erscheint die Anfrage sofort (mit Annehmen/Ablehnen).
+    BN.uiSend(target.pid)
+    return true
 end
-commands.duel = commands.duell
 
 -- Strecke der Woche: aus allen Strecken mit Ziel auf allen Maps (races/*.json), nach Map und Name sortiert, je
 -- Kalenderwoche eine – auf allen Servern dieselbe. Die Wahl steht in weekly-track.json (fuer die Statusseite).
@@ -6585,6 +6601,132 @@ function BN.init()
 end
 
 -- ---------------------------------------------------------------------------------------------------------------------
+-- Fenster im Spiel (Client-Mod BeamNetUI, liegt in Resources/Client und wird beim Verbinden geladen): Das Fenster
+-- schickt kurze Anfragen (Ereignis BN_UIReq, JSON: { a = Aktion, track = Strecke, target = Spielernummer }), das
+-- Plugin fuehrt dieselben Befehle wie im Chat aus und schickt den Stand zurueck (Ereignis BN_UI). Jede Eingabe wird
+-- geprueft wie im Chat; hoechstens 4 Anfragen je Sekunde und Spieler.
+BN.UI_MAX_REQ = 512
+BN.uiRate = BN.uiRate or {}
+
+function BN.uiState(pid)
+    local s = BN.players[pid]
+    if not s then return nil end
+    local lang = BN.langOf(pid)
+    local now = BN.now()
+    local t = BN.totals(s)
+    local state = { v = 1, lang = lang, map = tostring(BN.server.map or ""), server = tostring(BN.server.name or ""),
+        me = { name = clipText(tostring(s.name or "?"), 32), guest = s.guest and true or false, level = t.level,
+               league = tr(lang, t.league.name), xp = math.floor(t.xp), weekKm = fmtKm(t.weekKm),
+               seasonXp = math.floor(t.monthXp or 0) } }
+    -- Andere Spieler auf diesem Server (zum Herausfordern)
+    local others = {}
+    for opid, o in pairs(BN.players) do
+        if opid ~= pid and o.name then
+            others[#others + 1] = { pid = opid, name = clipText(tostring(o.name), 32), level = BN.totals(o).level }
+        end
+    end
+    table.sort(others, function(a, b) return a.name:lower() < b.name:lower() end)
+    while #others > 64 do others[#others] = nil end
+    state.players = others
+    -- Strecken dieser Map mit Ziel, mit Rekord; Strecke der Woche markiert
+    local w = BN.trackOfWeek()
+    local tracks = {}
+    for name, tk in pairs(BN.loadTracks().tracks) do
+        if type(tk) == "table" and tk.finish then
+            local best = type(tk.records) == "table" and tk.records[1]
+            tracks[#tracks + 1] = { name = name,
+                record = type(best) == "table" and tonumber(best.time) and BN.fmtRaceTime(tonumber(best.time)) or nil,
+                by = type(best) == "table" and best.name and clipText(tostring(best.name), 32) or nil,
+                weekly = (w and w.map == BN.mapKey() and w.name == name) or nil }
+        end
+    end
+    table.sort(tracks, function(a, b) return a.name:lower() < b.name:lower() end)
+    while #tracks > 60 do tracks[#tracks] = nil end
+    state.tracks = tracks
+    -- Offene Herausforderung an mich
+    local inv = BN.duelInvites[pid]
+    if inv and now - inv.at <= 60 and BN.players[inv.from] then
+        state.invite = { from = clipText(tostring(inv.fromName), 32), track = inv.track, left = 60 - (now - inv.at) }
+    end
+    -- Gruppenrennen oder Duell, eigener Lauf
+    local g = BN.group
+    if g then
+        local n = 0
+        for _ in pairs(g.members) do n = n + 1 end
+        state.group = { track = g.name, by = clipText(tostring(g.by or "?"), 32), startsIn = math.max(0, g.startAt - now),
+                        duel = g.duel and true or false, members = n, joined = g.members[pid] and true or false,
+                        started = g.started and true or false }
+    end
+    if s.race then state.race = { track = s.race.name, state = s.race.state } end
+    return state
+end
+
+function BN.uiSend(pid, extra)
+    if not (MP and MP.TriggerClientEvent) then return end
+    local state = BN.uiState(pid)
+    if not state then return end
+    for k, v in pairs(extra or {}) do state[k] = v end
+    MP.TriggerClientEvent(pid, "BN_UI", json.encode(state))
+end
+
+local UI_ACTIONS = { state = true, race = true, group = true, join = true, stop = true, duel = true, accept = true,
+                     decline = true }
+
+function BN.uiRequest(pid, data)
+    if not BN.players[pid] or type(data) ~= "string" or #data > BN.UI_MAX_REQ then return end
+    local now = BN.now()
+    local rate = BN.uiRate[pid]
+    if rate and rate.at == now then
+        if rate.n >= 4 then return end
+        rate.n = rate.n + 1
+    else
+        BN.uiRate[pid] = { at = now, n = 1 }
+    end
+    local ok, req = pcall(json.decode, data)
+    if not ok or type(req) ~= "table" or not UI_ACTIONS[req.a] then return end
+    local track = type(req.track) == "string" and trackName(req.track) or nil
+    BN.uiCapture = { pid = pid }
+    local done, err = pcall(function()
+        if req.a == "race" and track then
+            commands.rennen(pid, track)
+        elseif req.a == "group" and track then
+            commands.rennen(pid, "gruppe " .. track)
+        elseif req.a == "join" then
+            commands.rennen(pid, "mit")
+        elseif req.a == "stop" then
+            commands.rennen(pid, "stop")
+        elseif req.a == "accept" then
+            commands.duell(pid, "ja")
+        elseif req.a == "decline" then
+            commands.duell(pid, "nein")
+        elseif req.a == "duel" and track then
+            local target = BN.players[math.tointeger and math.tointeger(tonumber(req.target)) or tonumber(req.target)]
+            if target then
+                BN.duelChallenge(pid, target, track)
+            else
+                say(pid, "Diesen Spieler gibt es auf diesem Server nicht mehr.")
+            end
+        end
+    end)
+    local msg = BN.uiCapture and BN.uiCapture.msg
+    BN.uiCapture = nil
+    if not done then print("[BeamNetCore] Fehler im Fenster: " .. tostring(err)) end
+    BN.uiSend(pid, msg and { msg = msg } or nil)
+    -- Annehmen/Ablehnen aendert auch das Fenster des Herausforderers
+    if req.a == "accept" or req.a == "decline" then
+        for opid, o in pairs(BN.players) do
+            if opid ~= pid and o.race and o.race.group then BN.uiSend(opid) end
+        end
+    end
+end
+
+-- /fenster: oeffnet das Fenster (Client-Mod BeamNetUI) oder erklaert, wo man es findet.
+function commands.fenster(pid)
+    say(pid, "🏁 BeamNet-Fenster: Rennen, Gruppenrennen und Duelle per Klick. Einmal hinzufügen: Esc → UI-Apps → „BeamNet“.")
+    BN.uiSend(pid, { open = true })
+end
+commands.window, commands.menu, commands.menue = commands.fenster, commands.fenster, commands.fenster
+
 -- BeamMP-Ereignisse (globale Funktionen, weil MP.RegisterEvent Funktionsnamen erwartet)
 
 function BN_onInit()
@@ -6796,6 +6938,11 @@ function BN_Tick()
     if not ok then print("[BeamNetCore] Fehler im Takt: " .. tostring(err)) end
 end
 
+function BN_UIReq(pid, data)
+    local ok, err = pcall(BN.uiRequest, pid, data)
+    if not ok then print("[BeamNetCore] Fehler im Fenster: " .. tostring(err)) end
+end
+
 function BN_RaceTick()
     local ok, err = pcall(BN.raceTick)
     if not ok then print("[BeamNetCore] Fehler im Renntakt: " .. tostring(err)) end
@@ -6814,6 +6961,7 @@ if MP and MP.RegisterEvent then
     if MP.CancelEventTimer then pcall(MP.CancelEventTimer, "BN_Tick") end
     MP.CreateEventTimer("BN_Tick", C.tickMs)
     MP.RegisterEvent("BN_RaceTick", "BN_RaceTick")
+    MP.RegisterEvent("BN_UIReq", "BN_UIReq")
     if MP.CancelEventTimer then pcall(MP.CancelEventTimer, "BN_RaceTick") end
     MP.CreateEventTimer("BN_RaceTick", C.raceTickMs)
     -- Beim Neuladen des Plugins (Spieler schon online) sofort initialisieren; onInit kommt dann nicht erneut.

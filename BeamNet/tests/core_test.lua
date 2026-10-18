@@ -27,6 +27,8 @@ function MP.RegisterEvent(ev, fn) events[ev] = fn end
 function MP.CreateEventTimer(ev, ms) timers[ev] = ms end
 function MP.CancelEventTimer(ev) timers[ev] = nil end
 function MP.SendChatMessage(pid, msg) chatLog[#chatLog + 1] = { pid = pid, msg = msg } end
+clientLog = {}
+function MP.TriggerClientEvent(pid, ev, data) clientLog[#clientLog + 1] = { pid = pid, ev = ev, data = data }; return true end
 local drops = {}
 function MP.DropPlayer(pid, reason)
     drops[#drops + 1] = { pid = pid, reason = reason }
@@ -264,7 +266,7 @@ check(chatContains("Sebi ist jetzt Level %d!"), "Level-Aufstieg verkuendet")
 
 -- --- Befehle -------------------------------------------------------------------------------------------------------
 eq(_G[events.onChatMessage](1, "Sebi", "/hilfe"), 1, "/hilfe abgefangen")
-check(chatContains("^Du: /stats", 1) and chatContains("^Spielen: /heute · /auftrag", 1), "/hilfe zeigt Befehle (in Gruppen)")
+check(chatContains("^Du: /stats", 1) and chatContains("^Spielen: /fenster · /heute · /auftrag", 1), "/hilfe zeigt Befehle (in Gruppen)")
 eq(_G[events.onChatMessage](1, "Sebi", "Hallo zusammen"), nil, "Normale Nachricht bleibt")
 eq(_G[events.onChatMessage](1, "Sebi", "/xp"), nil, "Fremde Befehle bleiben fuer andere Plugins")
 _G[events.onChatMessage](1, "Sebi", "/km")
@@ -785,7 +787,7 @@ check(chatContains("Language set to English%.", 5), "/lang en")
 say(5, "/km")
 check(chatContains("You have driven %d+%.%d km %(this week", 5), "/km auf Englisch")
 say(5, "/help")
-check(chatContains("^BeamNet commands:$", 5) and chatContains("^Play: /today · /job · /race", 5) and chatContains("^You: /stats %[name%]", 5), "/help auf Englisch")
+check(chatContains("^BeamNet commands:$", 5) and chatContains("^Play: /window · /today · /job · /race", 5) and chatContains("^You: /stats %[name%]", 5), "/help auf Englisch")
 say(5, "/league")
 check(chatContains("Leagues %(XP%): .+ from 0", 5), "/league auf Englisch")
 eq(BN.tr("en", "Silber"), "Silver", "Standard-Liga uebersetzt")
@@ -2135,6 +2137,100 @@ do
         _G[events.onPlayerDisconnect](pid); players[pid] = nil
         os.remove(SHARED .. "/players/" .. tostring(11000 + pid) .. ".json"); BN.savedRecently[tostring(11000 + pid)] = nil
     end
+    C.admins = savedAdmins
+end
+
+-- --- Fenster im Spiel (BeamNetUI) -------------------------------------------------------------------------------
+do
+    eq(events.BN_UIReq, "BN_UIReq", "Fenster: Ereignis registriert")
+    local savedAdmins = C.admins
+    C.admins = { "Bahnbauer" }
+    for pid, name in pairs({ [120] = "Bahnbauer", [121] = "Klicker", [122] = "Gegner" }) do
+        players[pid] = { name = name, ids = { beammp = tostring(12000 + pid) }, vehicles = {} }
+        _G[events.onPlayerJoin](pid)
+    end
+    BN.track(120, 0, { 7000, 0, 0 }, 1); say(120, "/rennen neu fensterbahn")
+    BN.track(120, 0, { 7600, 0, 0 }, 2); say(120, "/rennen ziel fensterbahn")
+    BN.duelInvites, BN.group, BN.groupStarts = {}, nil, {}
+    local function lastState(pid)
+        for i = #clientLog, 1, -1 do
+            local e = clientLog[i]
+            if e.pid == pid and e.ev == "BN_UI" then return BN.json.decode(e.data) end
+        end
+    end
+    local function ui(pid, req) clock = clock + 1; clientLog = {}; _G[events.BN_UIReq](pid, BN.json.encode(req)) end
+    ui(121, { a = "state" })
+    local st = lastState(121)
+    check(st and st.me and st.me.name == "Klicker" and st.lang == "de", "Fenster: Zustand mit eigenem Profil")
+    local names = {}
+    for _, p in ipairs(st and st.players or {}) do names[#names + 1] = p.name end
+    local list = "," .. table.concat(names, ",") .. ","
+    check(list:find(",Bahnbauer,", 1, true) and list:find(",Gegner,", 1, true) and not list:find(",Klicker,", 1, true),
+        "Fenster: andere Spieler (ohne sich selbst) " .. list)
+    check(list:find("Bahnbauer", 1, true) < list:find("Gegner", 1, true), "Fenster: Spieler sortiert")
+    local tk = st and st.tracks and st.tracks[1]
+    check(tk and tk.name == "fensterbahn", "Fenster: Strecken mit Ziel")
+    -- Rennen starten per Klick: dieselbe Logik wie /rennen <Name>
+    ui(121, { a = "race", track = "fensterbahn" })
+    st = lastState(121)
+    check(BN.players[121].race and BN.players[121].race.name == "fensterbahn" and st.race and st.race.track == "fensterbahn",
+        "Fenster: Rennen starten")
+    check(st.msg and st.msg:find("Fahr zum Start", 1, true), "Fenster: Antwort des Plugins im Fenster")
+    ui(121, { a = "stop" })
+    check(BN.players[121].race == nil and lastState(121).race == nil, "Fenster: Rennen beenden")
+    -- Duell per Klick: Gegner nach Spielernummer, Anfrage erscheint sofort in seinem Fenster
+    ui(121, { a = "duel", target = 122, track = "fensterbahn" })
+    check(BN.duelInvites[122] and BN.duelInvites[122].from == 121, "Fenster: Herausforderung gesendet")
+    local inv = lastState(122)
+    check(inv and inv.invite and inv.invite.from == "Klicker" and inv.invite.track == "fensterbahn" and inv.invite.left == 60,
+        "Fenster: Anfrage erscheint beim Gegner")
+    ui(122, { a = "accept" })
+    check(BN.group and BN.group.duel and BN.group.members[121] and BN.group.members[122], "Fenster: Duell angenommen")
+    local g = lastState(122)
+    check(g and g.group and g.group.duel and g.group.joined and g.group.startsIn == 15, "Fenster: Duell im Fenster sichtbar")
+    check(lastState(121) and lastState(121).group, "Fenster: auch der Herausforderer sieht das Duell")
+    BN.group = nil
+    for _, pid in ipairs({ 121, 122 }) do BN.players[pid].race = nil end
+    BN.groupStarts = {}
+    -- Ungueltiges wird ignoriert oder wie im Chat abgelehnt
+    ui(121, { a = "duel", target = 999, track = "fensterbahn" })
+    check(lastState(121).msg == "Diesen Spieler gibt es auf diesem Server nicht mehr.", "Fenster: unbekannter Gegner")
+    ui(121, { a = "race", track = "../x" })
+    check(BN.players[121].race == nil, "Fenster: ungueltiger Streckenname")
+    ui(121, { a = "rm -rf" })
+    check(#clientLog == 0, "Fenster: unbekannte Aktion ignoriert")
+    clientLog = {}
+    _G[events.BN_UIReq](121, "{kaputt")
+    _G[events.BN_UIReq](121, string.rep("x", 600))
+    _G[events.BN_UIReq](121, nil)
+    check(#clientLog == 0, "Fenster: kaputte Anfragen ignoriert")
+    -- Hoechstens 4 Anfragen je Sekunde
+    clock = clock + 1
+    clientLog = {}
+    for _ = 1, 10 do _G[events.BN_UIReq](121, '{"a":"state"}') end
+    eq(#clientLog, 4, "Fenster: Anfragen je Sekunde begrenzt")
+    -- Gruppenrennen per Klick und Mitfahren
+    clock = clock + 1
+    ui(121, { a = "group", track = "fensterbahn" })
+    check(BN.group and BN.group.members[121], "Fenster: Gruppenrennen starten")
+    ui(122, { a = "join" })
+    check(BN.group.members[122] and lastState(122).group.joined, "Fenster: Gruppenrennen mitfahren")
+    BN.group = nil
+    -- Englisch und /fenster
+    BN.players[122].lang = "en"
+    chatLog = {}
+    clientLog = {}
+    say(122, "/fenster")
+    local o = lastState(122)
+    check(o and o.open == true and o.lang == "en", "Fenster: /fenster oeffnet (Englisch)")
+    check(chatContains("BeamNet window: races, group races and duels", 122), "Fenster: /fenster erklaert es")
+    say(120, "/rennen loeschen fensterbahn")
+    for _, pid in ipairs({ 120, 121, 122 }) do
+        BN.players[pid].race = nil
+        _G[events.onPlayerDisconnect](pid); players[pid] = nil
+        os.remove(SHARED .. "/players/" .. tostring(12000 + pid) .. ".json"); BN.savedRecently[tostring(12000 + pid)] = nil
+    end
+    BN.groupStarts = {}
     C.admins = savedAdmins
 end
 

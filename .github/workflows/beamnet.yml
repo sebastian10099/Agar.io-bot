@@ -34,6 +34,12 @@ jobs:
       - name: Werkzeug-Tests (nachgebaute Server-Umgebung)
         run: bash BeamNet/tests/beamnet_test.sh
 
+      - name: Fenster BeamNetUI (Spielseite unter LuaJIT wie BeamNG und Lua 5.3, Darstellung mit Node)
+        run: |
+          BEAMNET_LUA=luajit21 python3 BeamNet/tests/run_client_tests.py
+          BEAMNET_LUA=lua53 python3 BeamNet/tests/run_client_tests.py
+          node BeamNet/tests/ui_window_test.js
+
       - name: Plugin-Tests (Lua 5.3 wie BeamMP, 5.4, LuaJIT)
         env:
           BEAMNET_ALL_RUNTIMES: '1'

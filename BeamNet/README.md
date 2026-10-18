@@ -282,6 +282,7 @@ beamnet restart all
 | Wochen-Rückblick | Beim ersten Besuch in einer neuen Woche: „📅 Deine letzte Woche: 42,5 km · Platz 3 von 17 – neue Woche, neue Kilometer! (/top vorwoche)“ |
 | Tipps im Chat | Alle 15 Minuten ein Tipp zu einer Funktion (`/auftrag`, `/fangen`, `/ziel`, `/freund` …), der Reihe nach und in der Sprache des Spielers; `tipEverySec` in `config.json` (0 = aus) |
 | `/serie [Name]` | **Rennserien:** Admins fassen 2–5 Strecken einer Map zusammen (`/serie neu tour sprint bergauf hafen`); Spieler fahren sie mit `/serie tour` nacheinander (nach jedem Ziel ist die nächste Strecke vorbereitet), die Zeiten werden addiert (30 Minuten Zeit). Eigene Bestenliste je Serie, +40 XP für die erste Runde oder eine um mindestens 2 % bessere eigene Bestzeit (höchstens einmal am Tag je Serie), Serienrekord +XP und Ansage an alle. Jede Strecke nur einmal je Serie; wird eine Strecke gelöscht, verschwinden ihre Serien mit. `/serie` listet, `/serie stop` bricht ab, `/serie weg <Name>` löscht (englisch `/series`) |
+| `/fenster` | Öffnet das **BeamNet-Fenster** (Rennen, Gruppenrennen, Duelle per Klick; siehe unten), englisch `/window` |
 | `/duell <Name> <Strecke>` | **Duell:** fordert einen Spieler auf diesem Server zu einem Zeitrennen heraus; mit `/duell ja` (60 s) startet ein Rennen nur für die beiden (Start nach 15 s, Fehlstart wie beim Gruppenrennen). Der Sieger bekommt +30 XP, wenn beide im Ziel sind. Ablehnen: `/duell nein`, höchstens eine Herausforderung je Minute (englisch `/duel`) |
 | `/orte` · `/ort neu <Typ> <Name>` | Orte der Map anzeigen; Admins legen an ihrer Position neue an: `krankenhaus`, `schule`, `feuerwehr`, `polizei`, `tankstelle`, `werkstatt`, `supermarkt`, `bahnhof`, `flughafen`, `hafen`, `hotel`, `ort` (höchstens 100 je Map, `/ort weg <Name>` löscht; englisch `/place new hospital …`). **Spieler schlagen Orte vor:** `/ort vorschlag krankenhaus St. Marien` an der eigenen Position (einer alle 10 Minuten, höchstens 3 offene je Spieler, gespeichert in `placesuggest/<Map>.json`); Admins bekommen Bescheid und entscheiden mit `/ort vorschlaege`, `/ort annehmen <Nr>`, `/ort ablehnen <Nr>` (die feste Nummer `#12345` aus der Liste). Ist die Orte-Datei kaputt, ändert `/ort` nichts und verweist auf `beamnet doctor` |
 | `/freund <Name>` | Freundesliste (bis 20): Du bekommst eine Nachricht, sobald ein Freund auf irgendeinem BeamNet-Server online kommt; beim Betreten siehst du, welche Freunde wo fahren. `/freund` zeigt die Liste, `/freund weg <Name>` entfernt (englisch `/friend`, `/friend remove`) |
@@ -390,6 +391,30 @@ Gemessen wird mit der Spieluhr des Fahrzeugs, der Moment des Überfahrens von St
 Messpunkten eingerechnet (etwa eine Zehntelsekunde genau, Messung viermal pro Sekunde während eines Laufs).
 Zurücksetzen, Teleport oder mehr als 30 Minuten machen einen Lauf ungültig. Neuer Streckenrekord → Meldung an alle.
 Gäste bekommen ihre Zeit, kommen aber nicht in die Rekordliste. Strecken gelten je Map (`races/<Map>.json`).
+
+### Fenster im Spiel: Rennen und Duelle per Klick
+
+Statt Chat-Befehle zu tippen, gibt es ein **BeamNet-Fenster** am Bildschirmrand. `beamnet install-core` (und damit
+`beamnet update`) legt es als Client-Mod `BeamNetUI.zip` in `Resources/Client` jedes Servers; BeamMP lädt es beim
+Verbinden automatisch herunter. Einmal im Spiel hinzufügen: **Esc → UI-Apps → „BeamNet“**, danach bleibt es auf dem
+Bildschirm (mit „–“ einklappen, mit 🏁 wieder öffnen). `/fenster` im Chat erklärt das und klappt es auf.
+
+- **Rennen:** alle Strecken der Map mit Rekord, ★ = Strecke der Woche. **Fahren** startet den Lauf, **Gruppe** ein
+  Gruppenrennen; läuft eins, erscheint oben **Mitfahren**.
+- **Duell:** Gegner und Strecke auswählen, **Herausfordern** – beim Gegner klappt das Fenster auf, mit **Annehmen** /
+  **Ablehnen** und Countdown (60 s). Danach zeigt es den Start (15 s) und den eigenen Lauf mit **Beenden**.
+- Unten steht jeweils die Antwort des Servers, oben Level, Liga und Saison-XP. Deutsch oder Englisch wie `/lang`.
+
+Das Fenster schickt nur kurze Anfragen; der Server prüft sie genau wie die Chat-Befehle (dieselben Sperren und
+Wartezeiten, höchstens 4 Anfragen je Sekunde). Die Chat-Befehle funktionieren weiter. `CLIENT_UI=0` in
+`/etc/beamnet.conf` verteilt das Fenster nicht.
+
+<p><img src="docs/fenster-rennen.png" alt="BeamNet-Fenster: Strecken, Gruppenrennen mit Mitfahren (Vorschau mit Testdaten)" width="640"></p>
+<p><img src="docs/fenster-duell.png" alt="BeamNet-Fenster: Gegner und Strecke für ein Duell wählen" width="640"></p>
+<p><img src="docs/fenster-anfrage.png" alt="BeamNet-Fenster beim Gegner: Herausforderung annehmen oder ablehnen" width="640"></p>
+
+Die Bilder sind eine Vorschau mit Testdaten (das Fenster im Browser, `BEAMNET_SHOTS=1 node tests/ui_window_test.js`);
+im Spiel sieht es genauso aus, nur mit der echten Spielszene dahinter.
 
 ### So wird gezählt
 

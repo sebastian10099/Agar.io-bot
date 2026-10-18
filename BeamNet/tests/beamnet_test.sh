@@ -247,6 +247,22 @@ out=$("$TOOL" install-core -y 2>&1)
 contains "$out" "Server 6: BeamNetCore installiert" "install-core installiert"
 [[ -f $T/root/3/Resources/Server/BeamNetCore/main.lua ]] && pass || fail "install-core: Datei fehlt"
 [[ -d $T/root/shared/beamnet/players && -d $T/root/shared/beamnet/servers ]] && pass || fail "install-core: gemeinsamer Ordner fehlt"
+# Fenster im Spiel: Client-Mod als Zip in Resources/Client jedes Servers, immer gleich gepackt.
+contains "$out" "Server 6: Fenster \\(BeamNetUI\\) installiert" "install-core: Fenster installiert"
+z="$T/root/3/Resources/Client/BeamNetUI.zip"
+[[ -f $z ]] && pass || fail "install-core: BeamNetUI.zip fehlt"
+contains "$(python3 -c 'import sys, zipfile; print("\n".join(zipfile.ZipFile(sys.argv[1]).namelist()))' "$z")" "^ui/modules/apps/BeamNet/app.js$" "install-core: Fenster-App in der Zip"
+contains "$(python3 -c 'import sys, zipfile; print("\n".join(zipfile.ZipFile(sys.argv[1]).namelist()))' "$z")" "^scripts/beamnetUI/modScript.lua$" "install-core: modScript in der Zip"
+sum1=$(sha256sum "$z" | cut -d' ' -f1)
+"$TOOL" install-core -y >/dev/null 2>&1
+[[ $(sha256sum "$z" | cut -d' ' -f1) == "$sum1" ]] && pass || fail "install-core: gleiche Zip bei gleichem Inhalt (Spieler laden nicht neu)"
+cmp -s <(python3 -c 'import sys, zipfile; sys.stdout.buffer.write(zipfile.ZipFile(sys.argv[1]).read("ui/modules/apps/BeamNet/app.js"))' "$z") "$HERE/../client/BeamNetUI/ui/modules/apps/BeamNet/app.js" && pass || fail "install-core: Zip enthaelt die aktuelle app.js"
+# Symlink als Client-Ordner: nicht folgen
+mv "$T/root/3/Resources/Client" "$T/client3.keep"; mkdir -p "$T/fremd-client"; ln -s "$T/fremd-client" "$T/root/3/Resources/Client"
+out=$("$TOOL" install-core -y 2>&1)
+contains "$out" "Server 3: Ordner Resources/Client ist ein Symlink" "install-core: Client-Symlink abgelehnt"
+[[ ! -e $T/fremd-client/BeamNetUI.zip ]] && pass || fail "install-core: keinem Client-Symlink gefolgt"
+rm -f "$T/root/3/Resources/Client"; mv "$T/client3.keep" "$T/root/3/Resources/Client"; rm -rf "$T/fremd-client"
 out=$("$TOOL" plugins)
 contains "$out" "Server 1 +.*BeamNetCore" "plugins listet BeamNetCore"
 contains "$out" "XPSystem" "plugins listet vorhandene Plugins"
@@ -1213,6 +1229,14 @@ contains "$out" "Werkzeug aktualisiert: $T/inst/beamnet" "update: Werkzeug"
 contains "$out" "Server 6: BeamNetCore installiert" "update: Plugin auf allen Servern"
 [[ -x $T/inst/beamnet && ! -e $T/inst/beamnet.new ]] && pass || fail "update: Werkzeug ersetzt, keine Reste"
 cmp -s "$T/root/1/Resources/Server/BeamNetCore/main.lua" "$HERE/../server/BeamNetCore/main.lua" && pass || fail "update: Plugin ist die neue Version"
+contains "$out" "Server 6: Fenster \\(BeamNetUI\\) installiert" "update: Fenster von GitHub geladen und verteilt"
+# CLIENT_UI=0: das Fenster wird nicht verteilt
+rm -f "$T"/root/*/Resources/Client/BeamNetUI.zip
+sed -i '/^CLIENT_UI=/d' "$T/beamnet.conf"; echo "CLIENT_UI=0" >>"$T/beamnet.conf"
+out=$("$TOOL" install-core -y 2>&1)
+lacks "$out" "Fenster" "CLIENT_UI=0: kein Fenster"
+! compgen -G "$T/root/*/Resources/Client/BeamNetUI.zip" >/dev/null && pass || fail "CLIENT_UI=0: keine Zip"
+sed -i '/^CLIENT_UI=/d' "$T/beamnet.conf"
 out=$(BEAMNET_RAW="file:///gibt/es/nicht" "$T/inst/beamnet" update -y 2>&1)
 contains "$out" "Download fehlgeschlagen" "update: Fehler beim Laden"
 mv "$T/curl.stub" "$T/bin/curl"

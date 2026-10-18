@@ -1,5 +1,14 @@
 # BeamNet – Roadmap
 
+## Runde 4: Fenster im Spiel (Stand Werkzeug 2.45 / Plugin 2.07)
+
+- [x] BeamNet-Fenster (Client-Mod BeamNetUI): Rennen, Gruppenrennen und Duelle per Klick statt Chat-Befehl; die
+      Herausforderung erscheint beim Gegner mit Annehmen/Ablehnen und Countdown. Der Server prüft jede Anfrage wie
+      den Chat-Befehl (Plugin 2.07); `install-core`/`update` verteilt das Fenster auf alle Server, `CLIENT_UI=0` = aus
+      (Werkzeug 2.45). Tests: Plugin-Schnittstelle, Spielseite unter LuaJIT, Darstellung und Klicks im Browser.
+- [ ] Im echten Spiel ausprobieren (BeamNG + BeamMP): Fenster hinzufügen, Rennen und Duell klicken.
+- [ ] Weitere Reiter im Fenster: Fahraufträge (`/auftrag`), Bestenliste, Teams, Saison.
+
 ## Runde 3: mehr Überblick für Spieler und Betreiber (Stand Werkzeug 2.44 / Plugin 2.06)
 
 - [x] `/heute` im Spiel: Tagesaufgabe, XP-Event oder XP-Abend, Bonus-Map, Serie und Wochenziel auf einen Blick; `/event`

@@ -11,9 +11,9 @@
 
 set -uo pipefail
 
-VERSION="2.44"
+VERSION="2.45"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="2.06"
+CORE_VERSION="2.07"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -1705,6 +1705,56 @@ install_core_on() {
     fi
 }
 
+# Client-Mod BeamNetUI (Fenster im Spiel: Rennen, Gruppenrennen, Duelle per Klick). BeamMP schickt alles aus
+# Resources/Client beim Verbinden an die Spieler. Die Zip entsteht aus den Dateien neben dem Skript (sonst von GitHub)
+# immer gleich (feste Zeitstempel): gleicher Inhalt = gleiche Datei, die Spieler laden sie nur nach echten Aenderungen neu.
+CLIENT_FILES=(scripts/beamnetUI/modScript.lua lua/ge/extensions/beamnetUI.lua ui/modules/apps/BeamNet/app.json
+              ui/modules/apps/BeamNet/app.js)
+client_zip() {
+    local src="$SCRIPT_DIR/client/BeamNetUI" dir f
+    command -v python3 >/dev/null || return 1
+    dir=$(mktemp -d)
+    for f in "${CLIENT_FILES[@]}"; do
+        mkdir -p "$dir/files/$(dirname "$f")"
+        if [[ -f $src/$f && ${BEAMNET_FORCE_DOWNLOAD:-0} != 1 ]]; then
+            cp "$src/$f" "$dir/files/$f"
+        elif ! curl -fsSL "$RAW_BASE/client/BeamNetUI/$f" -o "$dir/files/$f"; then
+            rm -rf "$dir"
+            return 1
+        fi
+    done
+    python3 -I - "$dir/files" "$dir/BeamNetUI.zip" "${CLIENT_FILES[@]}" <<'PY' || { rm -rf "$dir"; return 1; }
+import sys, zipfile
+base, out, files = sys.argv[1], sys.argv[2], sys.argv[3:]
+with zipfile.ZipFile(out, "w") as z:
+    for name in files:
+        info = zipfile.ZipInfo(name, date_time=(2020, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o644 << 16
+        with open(base + "/" + name, "rb") as fh:
+            z.writestr(info, fh.read())
+PY
+    echo "$dir/BeamNetUI.zip"
+}
+
+# Client-Mod auf einen Server legen (Resources/Client/BeamNetUI.zip, dem Dienstkonto, keinem Symlink folgen).
+install_client_on() {
+    local nr=$1 zip=$2 dest="$ROOT/$1/Resources/Client"
+    if [[ -L $ROOT/$nr/Resources || -L $dest ]]; then
+        bad "Server $nr: Ordner Resources/Client ist ein Symlink – Fenster nicht installiert (bitte prüfen)"
+        return 1
+    fi
+    if [[ ! -d $dest ]]; then
+        mkdir -p "$dest" && chown -h "$SERVICE_USER:$SERVICE_USER" "$dest"
+    fi
+    if safe put "$dest/BeamNetUI.zip" 644 "$SERVICE_USER" <"$zip"; then
+        ok "Server $nr: Fenster (BeamNetUI) installiert"
+    else
+        bad "Server $nr: Fenster (BeamNetUI) konnte nicht geschrieben werden"
+        return 1
+    fi
+}
+
 # Testserver fuer ein Update: laufend, mit aktuellem Lebenszeichen, moeglichst wenige Spieler.
 pick_canary() {
     local nr pl best="" fewest=1000000
@@ -1769,6 +1819,16 @@ cmd_install_core() {
         [[ $nr == "$canary" ]] && continue
         install_core_on "$nr" "$src" || true
     done
+    # Fenster im Spiel (CLIENT_UI=0 in /etc/beamnet.conf = nicht verteilen)
+    if [[ $(conf_get CLIENT_UI) != 0 ]]; then
+        local zip
+        if zip=$(client_zip); then
+            for nr in $list; do install_client_on "$nr" "$zip" || true; done
+            rm -rf "$(dirname "$zip")"
+        else
+            warn "Fenster (BeamNetUI) konnte nicht gepackt werden – das Plugin läuft trotzdem, Befehle gehen weiter im Chat"
+        fi
+    fi
     echo "Gemeinsame Daten: $SHARED"
     echo "BeamMP lädt das Plugin innerhalb weniger Sekunden selbst neu – ein Neustart ist nicht nötig."
     echo "Prüfen: beamnet doctor (BeamNetCore aktiv?)"
@@ -4131,6 +4191,8 @@ DAILY_HOUR=22
 MODLOG_NOTIFY=1
 # Erfolge von Spielern melden: neue Spieler, Liga-Aufstiege und Meilensteine (Level 25/50/75/100, 1000/5000/10000/25000 km). 0 = aus.
 MILESTONE_NOTIFY=1
+# Fenster im Spiel (Client-Mod BeamNetUI: Rennen, Gruppenrennen, Duelle per Klick) mit install-core/update verteilen. 0 = aus.
+CLIENT_UI=1
 # Taegliche Datensicherung der Spielerdaten nach /root/beamnet-backups/daten-<Datum>.tgz: ab BACKUP_HOUR Uhr,
 # BACKUP_KEEP Tage aufbewahren (zurueckholen: beamnet restore). DATA_BACKUP=0 schaltet ab.
 DATA_BACKUP=1
@@ -5382,6 +5444,7 @@ COMMANDS = [
     ("/fangen", "Verfolgungsjagd: einer flüchtet, alle anderen jagen ihn – XP fürs Fangen und fürs Entkommen (/fangen mit)"),
     ("/konvoi", "Zusammen fahren: wer nah bei anderen Spielern fährt, bekommt Bonus-XP – zeigt auch, wer in der Nähe ist"),
     ("/duell &lt;Name&gt; &lt;Strecke&gt;", "Fordere einen Spieler zum Zeitrennen heraus (annehmen: /duell ja) – der Sieger bekommt Bonus-XP"),
+    ("/fenster", "Das BeamNet-Fenster im Spiel: Rennen, Gruppenrennen und Duelle per Klick (einmal hinzufügen: Esc → UI-Apps → BeamNet)"),
     ("/km", "Kilometer dieser Sitzung"), ("/rennen &lt;Strecke&gt;", "Zeitrennen starten (Strecken: /rennen)"),
     ("/serie [Name]", "Rennserie: mehrere Strecken nacheinander, die Zeiten werden addiert – eigene Bestenliste"),
     ("/rekorde", "Streckenrekorde dieser Map"), ("/vote map &lt;Name&gt;", "Abstimmung über eine andere Map"),
