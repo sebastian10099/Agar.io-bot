@@ -65,7 +65,7 @@ Configured in `/etc/beamnet.conf` (Discord webhook and/or Telegram bot), tested 
   newest backup once a week.
 - Reports moderation (bans, kicks, mutes, warnings), in-game reports, league promotions and new track records; posts
   weekly and season winners (with the team of the week), a final-day standing on the last day of each season (from noon,
-  top 3 and leading team) and a daily summary (with the next XP evening).
+  top 3 and leading team) and a daily summary (with the next XP evening and who leads the season).
 - Map rotation, map votes from the chat and automatic player slots (only while a server is empty).
 - The Telegram bot answers `/online`, `/top`, `/rekord`, `/server`, `/event` (XP event running? next XP evening?) and
   `/spieler <name>` (level, league, XP, rank, kilometres, jobs, this week's kilometres, season XP and rank, team of a player) and `/plaetze` (slot usage of the last 30

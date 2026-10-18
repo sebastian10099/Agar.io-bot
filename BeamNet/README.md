@@ -192,7 +192,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   Wächter funktioniert alles weiter wie bisher, nur langsamer.
 - Er merkt sich den **Spielerrekord** (meiste Spieler gleichzeitig im ganzen Netzwerk): neuer Rekord ab 5 Spielern
   nach Discord/Telegram mit den Spielern je Server (höchstens alle 30 Minuten), die Tagesspitze steht in der
-  Tageszusammenfassung, der Rekord auf der Statusseite und in `api.json` (`peak`).
+  Tageszusammenfassung, der Rekord auf der Statusseite und in `api.json` (`peak`). Die Tageszusammenfassung nennt
+  außerdem, wer in der Saison vorn liegt und welches Team führt.
 - Er wechselt bei eingerichteter **Map-Rotation** (`beamnet rotation 5 italy utah west_coast_usa`) einmal am Tag ab
   6 Uhr (`ROTATE_HOUR`) die Map – aber nur, wenn gerade niemand auf dem Server fährt; sonst versucht er es später.
 - Er setzt **Map-Abstimmungen** aus dem Chat um (siehe unten): Map in der Konfiguration ändern (alte Datei als

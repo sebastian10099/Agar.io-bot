@@ -1273,6 +1273,15 @@ rm -f "$T/watch/daily-$todaydate"
 echo 9 >"$T/watch/peak-$todaydate"
 out=$(BEAMNET_HOUR=09 "$TOOL" watch 2>&1)
 contains "$out" "1 neuer Streckenrekord · Spitze: [0-9]+ Spieler gleichzeitig$" "daily: Tagesspitze"
+lacks "$out" "Saison vorn" "daily: ohne Saison-XP keine Saisonzeile"
+# Saison: wer vorn liegt (aus dem Index wie /saison).
+python3 - "$P/1.json" "$(date -u +%Y-%m)" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1])); r["id"], r["month"], r["monthXp"] = "1", sys.argv[2], 250; json.dump(r, open(sys.argv[1], "w"))
+PY
+rm -f "$T/watch/daily-$todaydate"
+out=$(BEAMNET_HOUR=09 "$TOOL" watch 2>&1)
+contains "$out" "^   🏆 Saison vorn: Sebi \\(250 XP\\)$" "daily: Saison-Spitzenreiter"
 contains "$("$TOOL" watch status 2>&1)" "Tageszusammenfassung: an \\(täglich ab 8 Uhr\\)" "watch status: Tageszusammenfassung"
 # Niemand gefahren: keine Meldung.
 rm -f "$T/watch/daily-$todaydate" "$P"/1.json

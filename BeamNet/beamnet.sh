@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.43"
+VERSION="2.44"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="2.06"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -4069,6 +4069,16 @@ PY
         dout+=("📊 Heute im Netzwerk: $line")
         line=$(xpabend_line 3)
         [[ -n $line ]] && dout+=("   $line")
+        # Saison: wer vorn liegt und welches Team (wie /saison im Telegram-Chat)
+        local l first="" lead=""
+        while IFS= read -r l; do
+            if [[ -z $first && $l =~ ^1\.\ (.*)\ –\ ([0-9]+)\ XP$ ]]; then
+                first="${BASH_REMATCH[1]} (${BASH_REMATCH[2]} XP)"
+            elif [[ $l == "🏅 Führendes Team: "* ]]; then
+                lead=${l#"🏅 Führendes Team: "}
+            fi
+        done < <(telegram_season)
+        [[ -n $first ]] && dout+=("   🏆 Saison vorn: $first${lead:+ · Team: $lead}")
     fi
     find "$STATE_DIR" -maxdepth 1 -name 'daily-*' -mtime +7 -delete 2>/dev/null
     return 0
