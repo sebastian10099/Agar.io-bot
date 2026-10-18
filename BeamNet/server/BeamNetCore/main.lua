@@ -18,7 +18,7 @@
 BeamNetCore = BeamNetCore or {}
 local BN = BeamNetCore
 
-BN.VERSION = "2.05"
+BN.VERSION = "2.06"
 
 local defaults = {
     sharedDir = os.getenv("BEAMNET_SHARED") or "/srv/beammp/shared/beamnet",
@@ -735,8 +735,8 @@ local EN = {
     ["Die Serie \"%s\" gibt es auf dieser Map nicht. Liste: /serie"] = "The series \"%s\" does not exist on this map. List: /series",
     ["Erst das Gruppenrennen beenden."] = "Finish the group race first.",
     ["Serie %s: %s – Zeiten werden addiert, 30 Minuten Zeit."] = "Series %s: %s – times are added up, 30 minutes.",
-    ["Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|konvoi|jagd|woche|teams]"] =
-        "You: /stats [name] · /km · /achievements · /league · /season · /top [km|xp|speed|jobs|convoy|chase|week|teams]",
+    ["Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|konvoi|jagd|woche|teams|saison]"] =
+        "You: /stats [name] · /km · /achievements · /league · /season · /top [km|xp|speed|jobs|convoy|chase|week|teams|season]",
     ["Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event"] =
         "Network: /server · /where <name> · /friend <name> · /team · /places · /records · /event",
     ["Sonst: /start · /regeln · /melden <Name> <Grund> · /lang en"] = "Other: /start · /rules · /report <name> <reason> · /lang de",
@@ -3436,7 +3436,7 @@ function commands.hilfe(pid)
     -- In Gruppen: eine einzige lange Zeile wird im BeamNG-Chat schlecht lesbar oder abgeschnitten.
     say(pid, "BeamNet-Befehle:")
     say(pid, "Spielen: /heute · /auftrag · /rennen · /serie · /duell <Name> <Strecke> · /fangen · /konvoi · /aufgabe · /ziel · /vote")
-    say(pid, "Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|konvoi|jagd|woche|teams]")
+    say(pid, "Du: /stats [Name] · /km · /erfolge · /liga · /saison · /top [km|xp|speed|auftraege|konvoi|jagd|woche|teams|saison]")
     say(pid, "Netzwerk: /server · /wo <Name> · /freund <Name> · /team · /orte · /rekorde · /event")
     say(pid, "Sonst: /start · /regeln · /melden <Name> <Grund> · /lang en")
     if BN.isAdmin(BN.players[pid]) then
@@ -3497,6 +3497,7 @@ function commands.top(pid, arg)
     local mode = (arg or ""):lower()
     -- Teams dieser Woche (wie /team woche).
     if mode == "teams" or mode == "team" then return commands.team(pid, "woche") end
+    if mode == "saison" or mode == "season" then return commands.saison(pid) end
     local lang = BN.langOf(pid)
     local list = {}
     for _, rec in ipairs(BN.refreshBoard(false)) do list[#list + 1] = rec end

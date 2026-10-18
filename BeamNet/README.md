@@ -260,7 +260,7 @@ beamnet restart all
 |---|---|
 | `/hilfe` | Liste der Befehle |
 | `/stats [Name]` | Level, Liga, XP, Kilometer, Fahrzeit, Höchstgeschwindigkeit, Rang, XP bis zum nächsten Level, Kilometer dieser Woche, Saison-XP mit Platz, Team |
-| `/top [km \| xp \| speed \| auftraege \| konvoi \| jagd \| woche \| vorwoche \| teams]` | Bestenliste (Top 5) – nach XP, Gesamtkilometern, Höchstgeschwindigkeit, Aufträgen, Kilometern im Konvoi, gewonnenen Verfolgungsjagden, Kilometern dieser oder der letzten Woche; `teams` = Teams dieser Woche |
+| `/top [km \| xp \| speed \| auftraege \| konvoi \| jagd \| woche \| vorwoche \| teams \| saison]` | Bestenliste (Top 5) – nach XP, Gesamtkilometern, Höchstgeschwindigkeit, Aufträgen, Kilometern im Konvoi, gewonnenen Verfolgungsjagden, Kilometern dieser oder der letzten Woche; `teams` = Teams dieser Woche, `saison` = Saisonwertung |
 | `/liga` | Alle Ligen und wie weit es bis zur nächsten ist |
 | `/server` | Alle BeamNet-Server mit Map und Spielerzahl (wechseln geht im BeamMP-Launcher) |
 | `/team` | **Teams**: `/team gründen <Name>`, `/team beitreten <Name>`, `/team verlassen`, `/team liste` (Rangliste nach Kilometern aller Mitglieder), `/team woche` (Rangliste dieser Woche); kommt ein Teamkollege irgendwo im Netzwerk online, gibt es eine Nachricht (wie bei Freunden); `/team` zeigt Platz und Wochenkilometer des eigenen Teams. Montags wird das **Team der Woche** angesagt; wer dort mitgefahren ist (mindestens 5 km), bekommt beim nächsten Besuch einmal +50 XP (`teamWeekXp`). Neue Mitglieder zählen ab der Woche nach ihrem Beitritt; das Team der Woche wird beim Wochenwechsel festgehalten (`teamweek-<Woche>.json`), spätere Teamwechsel ändern nichts mehr. Höchstens 20 Mitglieder, netzweit; auch auf der Statusseite |

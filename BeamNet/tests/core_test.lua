@@ -2874,6 +2874,11 @@ do
     say(291, "/saison")
     BN.seasonRanking = saved
     check(chatContains("^🏅 Führendes Team: Saisonteam %(800 XP%)$", 291), "/saison: fuehrendes Team")
+    BN.seasonRanking = function() return { { id = "801", name = "A", xp = 500 } } end
+    chatLog = {}
+    say(291, "/top saison")
+    BN.seasonRanking = saved
+    check(chatContains("^Saison .* %(noch %d+ Tage%):$", 291), "/top saison zeigt die Saisonwertung")
     -- Abstand zum naechsten Platz
     BN.seasonRanking = function() return { { id = "803", name = "C", xp = 900 }, { id = "29191", name = "Saisonfrager", xp = 0 } } end
     chatLog = {}

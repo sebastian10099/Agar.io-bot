@@ -99,7 +99,7 @@ Every player can switch to English with `/lang en`; the German commands work too
 |---|---|
 | `/help` | List of commands |
 | `/stats [name]` | Level, league, XP, kilometres, driving time, top speed, rank, XP to the next level, this week's kilometres, season XP and rank, team |
-| `/top [km \| xp \| speed \| jobs \| convoy \| chase \| week \| teams]` | Leaderboard (top 5); `teams` = teams this week |
+| `/top [km \| xp \| speed \| jobs \| convoy \| chase \| week \| teams \| season]` | Leaderboard (top 5); `teams` = teams this week, `season` = season standings |
 | `/league` | All leagues and how far it is to the next one |
 | `/season` | Season table (calendar month), leading team, your place and the gap to the next one, last season's winners. In the last 3 days of a season, drivers with season XP are told their rank when they join (once a day) |
 | `/server` | All BeamNet servers with map and player count (switch servers in the BeamMP launcher) |

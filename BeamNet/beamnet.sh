@@ -13,7 +13,7 @@ set -uo pipefail
 
 VERSION="2.43"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
-CORE_VERSION="2.05"
+CORE_VERSION="2.06"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
 UNIT_PREFIX="${BEAMNET_UNIT_PREFIX:-beammp-}"
 SERVICE_USER="${BEAMNET_USER:-beammp}"
@@ -5358,7 +5358,7 @@ if not (isinstance(rules, list) and len(rules) <= 10 and all(isinstance(r, str) 
     rules = RULES
 COMMANDS = [
     ("/hilfe", "Alle Befehle im Chat"), ("/start", "Einsteiger-Pfad: fünf kleine Schritte mit Bonus-XP für neue Fahrer"), ("/stats [Name]", "Deine Werte oder die eines anderen Fahrers"),
-    ("/top [km|xp|speed|auftraege|konvoi|jagd|woche|vorwoche|teams]", "Bestenliste (XP, Kilometer, Spitze, Aufträge, Konvoi, Verfolgungsjagden, diese oder letzte Woche, Teams dieser Woche)"),
+    ("/top [km|xp|speed|auftraege|konvoi|jagd|woche|vorwoche|teams|saison]", "Bestenliste (XP, Kilometer, Spitze, Aufträge, Konvoi, Verfolgungsjagden, diese oder letzte Woche, Teams dieser Woche, Saison)"),
     ("/liga", "Ligen und was dir bis zur nächsten fehlt"), ("/saison", "Saisonwertung des Monats mit führendem Team und deinem Abstand zum nächsten Platz – in den letzten 3 Tagen erinnert dich das Betreten an deinen Platz"),
     ("/aufgabe", "Tagesaufgabe mit Bonus-XP"), ("/erfolge", "Deine Erfolge"),
     ("/server", "Alle BeamNet-Server mit Map und Spielerzahl"), ("/wo &lt;Name&gt;", "Auf welchem Server fährt jemand gerade?"),
