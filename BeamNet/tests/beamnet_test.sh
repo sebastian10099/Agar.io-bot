@@ -642,6 +642,17 @@ broken_out=$("$TOOL" watch 2>&1)
 contains "$broken_out" "beiseitegelegt: players/99\\.json\\.kaputt-789 \\(\\+1 weitere\\)" "watch: umbenannte alte Datei gemeldet, seltsamer Name nur gezaehlt"
 lacks "$broken_out" "anmelden" "watch: kein fremder Text aus Dateinamen"
 rm -f "$T/root/shared/beamnet/players/99.json.kaputt-789" "$T/root/shared/beamnet/players/"*anmelden*
+# Saisonarchiv des Vormonats fehlt, obwohl gefahren wurde: doctor meldet es (ab dem 2. des Monats).
+pm=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
+echo "{\"id\":\"9401\",\"name\":\"Altsaison\",\"km\":5,\"lastMonth\":\"$pm\",\"lastMonthXp\":50}" >"$T/root/shared/beamnet/players/9401.json"
+"$TOOL" watch >/dev/null 2>&1
+rm -f "$T/root/shared/beamnet/seasons/$pm.json"
+contains "$(BEAMNET_DOM=05 "$TOOL" doctor 2>&1)" "Saison $pm ist nicht archiviert" "doctor: fehlendes Saisonarchiv"
+lacks "$(BEAMNET_DOM=01 "$TOOL" doctor 2>&1)" "nicht archiviert" "doctor: Saisonarchiv am 1. noch nicht verlangt"
+mkdir -p "$T/root/shared/beamnet/seasons"; echo "{\"month\":\"$pm\",\"top\":[]}" >"$T/root/shared/beamnet/seasons/$pm.json"
+lacks "$(BEAMNET_DOM=05 "$TOOL" doctor 2>&1)" "nicht archiviert" "doctor: Saisonarchiv vorhanden"
+rm -f "$T/root/shared/beamnet/seasons/$pm.json" "$T/root/shared/beamnet/players/9401.json"
+"$TOOL" watch >/dev/null 2>&1
 echo 75 >"$T/watch/watch-seconds"
 contains "$("$TOOL" doctor 2>&1)" "Ein Lauf des Wächters dauert 75 s \\(er läuft jede Minute\\)" "doctor: Warnung bei langem Waechter-Lauf"
 contains "$out" "Server 3: tägliche Map-Rotation \\(italy utah\\)" "doctor: Rotation"

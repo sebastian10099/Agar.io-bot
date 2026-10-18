@@ -155,6 +155,8 @@ beamnet watch test         # Testnachricht an Discord/Telegram
   `MODLOG_NOTIFY=0` nur die Moderationsmeldungen.
 - **Kaputte Dateien:** Legt BeamNetCore eine beschädigte Spieler- oder Teamdatei beiseite (`*.kaputt-*`), meldet er das
   einmal („⚠️ BeamNetCore hat kaputte Dateien beiseitegelegt …“) – die Daten lassen sich mit `beamnet restore` zurückholen.
+  `beamnet doctor` warnt außerdem, wenn ab dem 2. des Monats das Saisonarchiv des Vormonats fehlt (seit dem
+  Monatswechsel lief kein Server mit BeamNetCore; der erste, der wieder läuft, holt es nach).
 - **Update-Hinweis:** Einmal am Tag sieht er auf GitHub nach, ob es ein neueres BeamNet gibt, und meldet jede neue
   Version einmal („🆕 BeamNet-Update verfügbar: Werkzeug 1.94 (installiert: 1.93) – auf dem Server: sudo beamnet
   update“). Er installiert nichts selbst; `UPDATE_CHECK=0` schaltet ab.

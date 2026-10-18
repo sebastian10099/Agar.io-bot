@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.42"
+VERSION="2.43"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="2.05"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -727,6 +727,7 @@ cmd_doctor() {
     title "BeamNet-Dienste"
     check_watch
     check_broken
+    check_season_archive
 
     title "Andere Programme, die an den Servern drehen"
     check_agent
@@ -841,6 +842,25 @@ ver_lt() {
 
 # Hat das Plugin in den letzten 30 Tagen kaputte Dateien beiseitegelegt (<datei>.kaputt-<Zeit>)? Dann haben die
 # betroffenen Spieler bzw. Teams neu angefangen – aus der Datensicherung zurueckholbar.
+# Saisonarchiv des Vormonats (seasons/<Monat>.json) fehlt, obwohl jemand in der Saison gefahren ist: dann lief seit
+# dem Monatswechsel kein Server mit BeamNetCore – die Saisonsieger wurden noch nicht verkuendet (der erste Server, der
+# wieder laeuft, holt das Archiv still nach). Am 1. noch nicht (der Wechsel kann gerade erst passieren).
+check_season_archive() {
+    [[ -d $SHARED && ! -L $SHARED ]] || return 0
+    local dom prev idx=$SHARED/players-index.tsv
+    dom=${BEAMNET_DOM:-$(date -u +%d)}
+    [[ $dom =~ ^[0-9]{1,2}$ ]] && (( 10#$dom >= 2 )) || return 0
+    prev=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%Y-%m)
+    [[ -e $SHARED/seasons/$prev.json || -L $SHARED/seasons/$prev.json ]] && return 0
+    [[ -f $idx && ! -L $idx ]] || return 0
+    if timeout 10 awk -F'\t' -v m="$prev" 'NR > 1 && (($10 == m && $11 + 0 > 0) || ($12 == m && $13 + 0 > 0)) { f = 1; exit }
+            END { exit !f }' "$idx" 2>/dev/null; then
+        warn "Saison $prev ist nicht archiviert – seit dem Monatswechsel lief kein Server mit BeamNetCore, die Saisonsieger fehlen noch"
+        hint "beamnet start   (der erste Server mit BeamNetCore holt das Archiv nach)   ·   beamnet status"
+    fi
+    return 0
+}
+
 check_broken() {
     [[ -d $SHARED && ! -L $SHARED ]] || return 0
     local n
