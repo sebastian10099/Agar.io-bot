@@ -811,6 +811,7 @@ contains "$prof" "<div>Team der Woche<b>2×</b></div>" "Profilseite: wie oft im 
 contains "$prof" "<div>Team<b>&lt;i&gt;Crew&lt;/i&gt;</b></div>" "Profilseite: Team (maskiert)"
 if [[ -f $T/teams-prof.keep ]]; then cp "$T/teams-prof.keep" "$T/root/shared/beamnet/teams.json"; else rm -f "$T/root/shared/beamnet/teams.json"; fi
 contains "$prof" "<div>Aufträge<b>14</b></div>" "Profilseite: Aufträge"
+contains "$prof" "<div>Diese Woche<b>7[.,]0 km</b></div>" "Profilseite: Kilometer dieser Woche"
 contains "$prof" "<div>Tages-Serie<b>3 Tage \\(beste: 9\\)</b></div>" "Profilseite: Tages-Serie"
 contains "$prof" "<div>Im Konvoi<b>42[.,]2 km</b></div>" "Profilseite: Konvoi-Kilometer"
 contains "$prof" "<h2>Kilometer je Woche</h2>" "Profilseite: Wochen-Diagramm"

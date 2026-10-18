@@ -11,7 +11,7 @@
 
 set -uo pipefail
 
-VERSION="2.40"
+VERSION="2.41"
 # Plugin-Version, die zu diesem Werkzeug gehoert (ein Test vergleicht sie mit BN.VERSION in main.lua).
 CORE_VERSION="2.04"
 ROOT="${BEAMNET_ROOT:-/srv/beammp}"
@@ -5233,6 +5233,7 @@ for rank, r in enumerate(ranked, 1):
     body = "".join([
         stat("Level", lvl), stat("Liga", E(league_of(xp))), stat("XP", xp), stat("Rang", f"{rank} von {len(ranked)}"),
         stat("Kilometer", km(num(r.get("km")))), stat("Fahrzeit", hours(r.get("seconds"))),
+        stat("Diese Woche", km(num(r.get("weekKm")) if r.get("week") == week else 0)),
         stat("Spitze", f"{int(num(r.get('topSpeedKmh')))} km/h"), stat("Rennen", int(num(r.get("racesFinished")))),
         stat(f"Saison {E(season_title)}", f"{month_xp(r)} XP" + (f" · Platz {sr}" if sr else "")),
         stat("Lieblingsmap", E(map_name(fav)) if fav else "–"),
