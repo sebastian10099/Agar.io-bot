@@ -2401,6 +2401,12 @@ class PaperLiveSnapshotTests(unittest.TestCase):
             self.assertIn("Kurve", page)
             self.assertIn("| Bankroll (realisiert) |", report); self.assertNotIn("</script>|x", report)
             self.assertEqual(json.loads((out / "state.json").read_text())["app"], "new-token-bot")
+            (out / "backtest.txt").write_text("54 Kandidaten mit Kursverlauf <b>\n  Liq ≥ 8k")             # the workflow's files
+            (out / "audit.txt").write_text("7 von 7 Laufzeit-Prüfungen bestanden.")
+            pl.write(state, out)
+            page = (out / "index.html").read_text()
+            self.assertIn("Backtest auf den Kursverläufen", page); self.assertIn("Liq ≥ 8k", page)
+            self.assertIn("&lt;b&gt;", page); self.assertIn("7 von 7 Laufzeit-Prüfungen", page)
             pl.write({"candidates": [], "open_positions": [], "closed": [], "stats": {}}, out)        # a bot that has not polled yet
             self.assertIn("noch kein Poll", (out / "REPORT.md").read_text())
             store.close()

@@ -21,10 +21,11 @@ def _scale(x: float, lo: float, hi: float, pts: float) -> float:
     return _clamp((x - lo) / (hi - lo), 0.0, 1.0) * pts
 
 
-# The launchpads' own graduation pools: RugCheck calls their liquidity "unlocked", and in the
-# live test of October 2026 exactly those tokens were the winners (41 of them: +39 % after
-# costs at 15 minutes, 61 % up). There it is a warning, not a verdict.
-LP_MANAGED_DEXES = {"pumpswap", "meteora"}
+# PumpSwap, where a pump.fun coin moves after its curve: RugCheck calls nearly every pool's
+# liquidity "unlocked", and there it is a warning, not a verdict. Not on Meteora: with reserve
+# prices, 3 of 5 Meteora buys flagged so lost everything within three minutes - the liquidity
+# was pulled (live, 19 Oct 2026; the earlier "+39 %" came from last-trade prices).
+LP_MANAGED_DEXES = {"pumpswap"}
 
 
 def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, Any]) -> dict[str, Any]:

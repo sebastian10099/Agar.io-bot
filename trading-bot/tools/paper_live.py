@@ -209,10 +209,11 @@ section { margin-bottom:14px; overflow-x:auto; } table { width:100%; border-coll
 th { color:var(--muted); font-weight:600; font-size:12px; } td.num, th.num { text-align:right; } td.why { white-space:normal; color:var(--muted); min-width:220px; }
 .pos { color:var(--pos); } .neg { color:var(--neg); } a { color:var(--accent); text-decoration:none; } .muted { color:var(--muted); } .pill { display:inline-block; padding:1px 8px; border-radius:99px; border:1px solid var(--line); font-size:12px; }
 .bar { height:6px; background:var(--accent); border-radius:3px; } ul { margin:0; padding-left:18px; } li { margin:2px 0; }
+.pre { margin:0; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre; overflow-x:auto; }
 """
 
 
-def render_html(m: dict[str, Any]) -> str:
+def render_html(m: dict[str, Any], extras: Optional[dict[str, str]] = None) -> str:
     total_cls = _cls(m["total_pnl"])
     hit = _hit(m)
     live = (f"letzter Poll vor {m['last_poll_ago']:.0f} s" if m["last_poll_ago"] is not None else "noch kein Poll")
@@ -261,6 +262,8 @@ def render_html(m: dict[str, Any]) -> str:
     src = "".join(f"<li>{_h(s['label'])}: {'liefert' if s.get('ok') else 'Pause (Rate-Limit)' if s.get('throttled') else 'gestört' if s.get('ok') is False else 'wartet'}"
                   f"{(' – ' + _h(s.get('error'))) if s.get('error') else ''}</li>" for s in m["sources"] if s.get("enabled"))
     ev = "".join(f"<li><span class=muted>{_h(_t(e['at'], '%H:%M:%S'))}</span> {_h(e['message'])}</li>" for e in m["events"])
+    for title, text in (extras or {}).items():           # the run's audit and backtest, as the report shows them
+        parts.append(f"<section><h2>{_h(title)}</h2><pre class=pre>{_h(text)}</pre></section>")
     parts.append(f"<section><h2>Quellen</h2><ul>{src}</ul></section><section><h2>Protokoll</h2><ul>{ev}</ul></section>")
     parts.append("<p class=muted>Nur Ansicht. Der Bot handelt mit Spielgeld gegen echte Kurse; gesteuert wird er nicht von hier. "
                  "Rohdaten: <a href='state.json'>state.json</a> · Text: <a href='REPORT.md'>REPORT.md</a></p></main></body></html>")
@@ -270,7 +273,9 @@ def render_html(m: dict[str, Any]) -> str:
 def write(state: dict[str, Any], out: Path, site: Optional[str] = None, now: Optional[float] = None) -> None:
     out.mkdir(parents=True, exist_ok=True)
     m = model(state, now or time.time())
-    (out / "index.html").write_text(render_html(m), encoding="utf-8")
+    extras = {title: (out / name).read_text(encoding="utf-8").strip() for title, name in
+              (("Laufzeit-Prüfung", "audit.txt"), ("Backtest auf den Kursverläufen", "backtest.txt")) if (out / name).is_file()}
+    (out / "index.html").write_text(render_html(m, extras), encoding="utf-8")
     (out / "REPORT.md").write_text(render_md(m, site), encoding="utf-8")
     (out / "state.json").write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
