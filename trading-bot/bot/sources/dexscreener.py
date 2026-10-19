@@ -16,6 +16,8 @@ BASE = "https://api.dexscreener.com"
 # curves keep their own price while listed and follow the token only once the pair is gone.
 CURVE_SUCCESSORS = {"pumpfun": {"pumpswap"}, "pump-fun": {"pumpswap"}}
 LEARNED_QUOTES = {"So11111111111111111111111111111111111111112"}   # wrapped SOL: what pools are priced in
+MONEY = LEARNED_QUOTES | {"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",   # USDC
+                          "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"}   # USDT: a quote whose dollar price is known
 SUCCESSOR_MIN_LIQ = 1000.0    # a real pool this deep outranks a bonding curve: the curve has completed and moved there
 
 
@@ -54,10 +56,17 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
     # bonding curves come without a liquidity figure (pump.fun's is read from the chain later)
     liq = p.get("liquidity") or {}
     reported = liq.get("usd")
-    price_usd, price_native = _f(p.get("priceUsd")), _f(p.get("priceNative"))
-    # each side's value: the base at its price, the quote at its own (priceUsd / priceNative)
-    base_usd = _f(liq.get("base")) * price_usd if liq.get("base") is not None else None
-    quote_usd = _f(liq.get("quote")) * price_usd / price_native if liq.get("quote") is not None and price_native > 0 else None
+    last_usd, price_native = _f(p.get("priceUsd")), _f(p.get("priceNative"))
+    unit_quote = last_usd / price_native if price_native > 0 else 0.0     # the quote token in USD
+    base_amount, quote_amount = _f(liq.get("base")), _f(liq.get("quote"))
+    # DexScreener's price is its last trade's; what the pool pays now is the ratio of its reserves
+    # (live: up to a third lower on busy PumpSwap pools). A bonding curve's reserves are virtual: its own.
+    price_usd = quote_amount * unit_quote / base_amount \
+        if base_amount > 0 and quote_amount > 0 and unit_quote > 0 and canon(quote.get("address")) in MONEY \
+        and not curve.is_curve(p.get("dexId")) else last_usd
+    # each side's value: the base at its price, the quote at its own
+    base_usd = base_amount * price_usd if liq.get("base") is not None else None
+    quote_usd = quote_amount * unit_quote if liq.get("quote") is not None and price_native > 0 else None
     created_ms = p.get("pairCreatedAt")
     age_min = (now - created_ms / 1000.0) / 60.0 if created_ms else None
     return {
@@ -70,7 +79,8 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
         "name": base.get("name"),
         "url": safe_url(p.get("url")),
         "price_usd": price_usd,
-        "price_native": price_native,                    # the base token in units of the quote token
+        "price_last_usd": last_usd,                      # DexScreener's own figure: its last trade
+        "price_native": price_native,                    # the base token in units of the quote token (last trade)
         "liquidity_usd": _real_liquidity(_f(reported), quote_usd),
         "liquidity_reported_usd": _f(reported),
         "liquidity_base_usd": base_usd,
@@ -122,8 +132,9 @@ def token_price(n: dict[str, Any], token: Optional[str]) -> Optional[float]:
     token = canon(token)
     if not token or canon(n.get("token")) == token:
         return n["price_usd"] if n["price_usd"] > 0 else None
-    if canon(n.get("quote_token")) == token and n["price_usd"] > 0 and n.get("price_native", 0) > 0:
-        return n["price_usd"] / n["price_native"]
+    last = n.get("price_last_usd", n["price_usd"])
+    if canon(n.get("quote_token")) == token and last > 0 and n.get("price_native", 0) > 0:
+        return last / n["price_native"]
     return None
 
 
@@ -149,9 +160,10 @@ class DexScreener:
 
     def _learn(self, n: dict[str, Any]) -> None:
         quote = n.get("quote_token")
-        if quote in LEARNED_QUOTES and n["price_usd"] > 0 and n.get("price_native", 0) > 0:
+        last = n.get("price_last_usd", n["price_usd"])        # priceUsd and priceNative are the same trade
+        if quote in LEARNED_QUOTES and last > 0 and n.get("price_native", 0) > 0:
             seen = self._quotes.setdefault(quote, [])
-            seen.append(n["price_usd"] / n["price_native"])
+            seen.append(last / n["price_native"])
             del seen[:-25]
 
     def recent_token_addresses(self, chains: Iterable[str]) -> dict[str, list[str]]:

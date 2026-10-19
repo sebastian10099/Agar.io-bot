@@ -289,6 +289,21 @@ Seitdem:
   (unbekannt statt +3.400.000 %), und die Laufzeit-Prüfung schlägt bei jedem
   solchen Sprung an.
 
+**Der Kurs ist, was die Reserven zahlen** – ein Abgleich mit der Chain (CI,
+19.10.2026) zeigte: DexScreeners Kurs ist der des letzten Trades und lag bei
+PumpSwap-Pools meist deutlich über dem, was die Reserven des Pools beim
+Verkauf zahlen – 5–17 % bei lebhaften Pools, 27 % bei einem ruhigen, 59 % und
+89 % bei zwei Pools ohne Trade seit Minuten. Die Tresore auf der Chain
+stimmten dabei auf den Token genau mit DexScreeners eigenen Reserve-Zahlen
+überein. Der Bot rechnet deshalb überall – Kauf, Ausstiege, Tracker – mit dem
+Kurs der Reserven (Gegenseite in SOL/USDC durch Token-Seite), nicht mit dem
+letzten Trade; der steht als `price_last_usd` daneben. Auf DexScreeners Seite
+steht darum oft ein höherer Kurs als in der Steuerseite. **Folge für die
+Auswertungen oben:** sie stammen aus Zeiten vor dieser Korrektur und
+bewerten gerade sterbende Coins zu hoch (DexScreener zeigt dort den alten
+Kurs weiter) – die Edge-Zahlen sind eher zu optimistisch, ein neuer Lauf
+misst sie ehrlich.
+
 **Kurse direkt von der Chain** – DexScreener frischt ein Paar nur etwa alle
 30 Sekunden auf (im Live-Lauf derselbe Kurs drei Polls lang). Ein Stop-Loss
 feuerte so bis zu einer halben Minute zu spät, und ein Kauf wurde zu einem
@@ -301,7 +316,14 @@ SOL-Kurs dazu kommt aus DexScreeners SOL-Paaren (Median). Gekauft wird zum
 Chain-Kurs; ist der seit DexScreeners Zahl schon bis zum Stop-Loss gefallen,
 gar nicht. Liegt der Chain-Kurs mehr als das Dreifache über DexScreener, gilt
 er als Lesefehler und DexScreener zählt. Andere Pools und Ausfälle des Knotens:
-weiter DexScreener. Jeder Mac-CI-Lauf vergleicht beide Kurse an echten Pools.
+weiter DexScreener (dessen Reserven – dieselbe Definition, nur bis zu 30 s
+alt). Zwischen den Polls schaut eine **Exit-Wache** alle 2 Sekunden auf die
+Chain-Kurse der offenen Positionen: ein Stop-Loss feuert Sekunden nach dem
+Fall, nicht erst beim nächsten Poll. Jeder Mac-CI-Lauf vergleicht Chain und
+Reserven an echten Pools (ruhige Pools müssen auf 5 % stimmen). Der öffentliche
+Solana-Knoten drosselt geteilte Adressen (HTTP 429) – auf dem eigenen VPS mit
+eigenem Knoten (`SOLANA_RPC_URL`, z. B. ein kostenloser Helius-Schlüssel)
+klappt das zuverlässig.
 
 **Harte Filter** (ein Verstoß = `skip`, Grund wird gespeichert):
 

@@ -2185,7 +2185,7 @@ class GraduationTests(unittest.TestCase):
         fake = self.raw("Fake10", "Mint10", "meteora", 1.017, native=1.017)
         fake.update(quoteToken=usdc, liquidity={"usd": 1_000_000, "base": 983_000, "quote": 3})
         side = self.raw("Side10", "Mint10", "raydium", 3.1e-5)
-        side["liquidity"] = {"usd": 20_000, "base": 3.2e8, "quote": 66.7}            # 66.7 SOL = $10,000 paired
+        side["liquidity"] = {"usd": 20_000, "base": 66.7 * 150 / 3.1e-5, "quote": 66.7}   # 66.7 SOL = $10,000 paired
         self.assertEqual(normalize_pair(fake)["liquidity_usd"], 6.0)                 # 3 USDC is all one could sell into
         self.assertAlmostEqual(normalize_pair(side)["liquidity_usd"], 20_000, delta=50)
         fetch, _ = self.fake_http([fake, side])
@@ -2199,6 +2199,26 @@ class GraduationTests(unittest.TestCase):
                        liquidity={"usd": 500_000, "base": 100_000, "quote": 0})
         fetch, _ = self.fake_http([flipped])
         self.assertEqual(DexScreener(fetch=fetch).prices("solana", ["Main10"], {"Main10": "Mint10"}), {})
+
+    def test_a_pool_is_priced_by_its_reserves_not_by_its_last_trade(self):
+        """Live probe: DexScreener's price sat 27 % above what a quiet PumpSwap pool's
+        reserves pay (89 % on one with no trade for minutes) - the vaults on the chain
+        matched DexScreener's own reserve figures to the token. A sale gets the reserves'
+        price; the last trade's is history."""
+        from bot.sources.dexscreener import normalize_pair, token_price
+        lion = self.raw("Lion1", "LionMint", "pumpswap", 2.392e-05, native=2.392e-05 / 104.54)
+        lion["liquidity"] = {"usd": 11446, "base": 276543383, "quote": 46.22}
+        n = normalize_pair(lion)
+        self.assertAlmostEqual(n["price_usd"], 46.22 * 104.54 / 276543383)          # 1.747e-05, not 2.392e-05
+        self.assertEqual(n["price_last_usd"], 2.392e-05)
+        self.assertAlmostEqual(token_price(n, "LionMint"), n["price_usd"])
+        self.assertAlmostEqual(n["liquidity_base_usd"], n["liquidity_quote_usd"])    # at the true price both sides weigh the same
+        curve = self.raw("Curve9", "CurveMint", "pumpfun", 1e-5)
+        curve["liquidity"] = {"base": 8e8, "quote": 30}                               # a curve's reserves are virtual: its own price
+        self.assertEqual(normalize_pair(curve)["price_usd"], 1e-5)
+        odd = self.raw("Odd9", "OddMint", "meteora", 2e-5)
+        odd.update(quoteToken={"address": "SomeMemeMint", "symbol": "MEME"}, liquidity={"usd": 9000, "base": 1, "quote": 1})
+        self.assertEqual(normalize_pair(odd)["price_usd"], 2e-5)                      # an unknown quote: no dollar price for it
 
     def test_a_price_always_belongs_to_the_token_held(self):
         """Live data showed outcomes of +9,000,000 % in 15 minutes: a pool listing the token
@@ -2629,7 +2649,9 @@ class ChainPriceTests(unittest.TestCase):
         from bot.sources.dexscreener import DexScreener
         sol = {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"}
         pairs = [{"chainId": "solana", "dexId": "pumpswap", "pairAddress": f"P{i}", "baseToken": {"address": f"T{i}"},
-                  "quoteToken": sol, "priceUsd": str(0.00001 * px), "priceNative": "0.00001"} for i, px in enumerate((149, 150, 151, 9999))]
+                  "quoteToken": sol, "priceUsd": str(0.00001 * px), "priceNative": "0.00001",
+                  "liquidity": {"usd": 9000, "base": 4e8, "quote": 30}}             # reserves at another price than the last trade
+                 for i, px in enumerate((149, 150, 151, 9999))]
         dex = DexScreener(fetch=lambda url, **kw: {"pairs": pairs})
         dex.prices("solana", ["P0", "P1", "P2", "P3"])
         self.assertAlmostEqual(dex.quote_usd["So11111111111111111111111111111111111111112"], 151.0)   # the median, not the outlier
@@ -2667,4 +2689,24 @@ class ChainPriceTests(unittest.TestCase):
             self.assertAlmostEqual(eng._position_prices([store.position(pid)])[pid], listed * 0.9)
             chain_price[0] = listed * 5                                                  # no half minute explains that
             self.assertAlmostEqual(eng._position_prices([store.position(pid)])[pid], listed)
+            store.close()
+
+    def test_the_exit_watch_sells_between_polls(self):
+        with tempfile.TemporaryDirectory() as d:
+            chain_price = [None]
+            eng, store, run, t = self.engine(d, chain_price)
+            pid = eng.paper.open(run, t[0]); store.tick(pid, t[0], run["price_usd"])
+            ticks = lambda: len(store.ticks_for(pid))
+            t[0] += 2
+            self.assertEqual(eng._watch_exits(t[0]), 0)                                  # the chain cannot price it: nothing
+            chain_price[0] = run["price_usd"] * 1.05
+            t[0] += 2
+            self.assertEqual(eng._watch_exits(t[0]), 0)
+            self.assertEqual(ticks(), 1)                                                 # no tick every two seconds
+            chain_price[0] = run["price_usd"] * 0.6                                      # the fall, seconds before the poll
+            t[0] += 2
+            self.assertEqual(eng._watch_exits(t[0]), 1)
+            pos = store.position(pid)
+            self.assertEqual(pos["exit_reason"], "stop_loss")
+            self.assertEqual(ticks(), 2)                                                 # the price it sold at is on the chart
             store.close()

@@ -42,6 +42,21 @@ jobs:
           if git fetch -q --depth 1 origin paper-live 2>/dev/null && git show origin/paper-live:bot.sqlite.gz > "$RUNNER_TEMP/bot.sqlite.gz" 2>/dev/null; then
             gunzip -c "$RUNNER_TEMP/bot.sqlite.gz" > "$NEW_TOKEN_BOT_HOME/bot.sqlite"
             echo "Paper-Konto vom letzten Lauf fortgesetzt"
+            # a new "reset" mark in .github/paper-live.json starts the paper book afresh, once: positions,
+            # fills and ticks go, the judged tokens and their measured outcomes (the edge data) stay
+            (cd trading-bot && python3 - "$NEW_TOKEN_BOT_HOME/bot.sqlite" <<'PY'
+          import json, sys
+          from bot.store import Store
+          mark = json.load(open("../.github/paper-live.json")).get("reset")
+          store = Store(sys.argv[1])
+          if mark and store.get("paper_live_reset") != mark:
+              store.reset("positions")
+              store.set("paper_live_reset", mark)
+              store.log("info", f"Paper-Live: Konto neu begonnen ({mark}), Kandidaten und Ergebnisse bleiben")
+              print(f"Paper-Konto neu begonnen ({mark}) – Kandidaten und Ergebnisse bleiben")
+          store.close()
+          PY
+            )
           else
             echo "Erster Lauf: neues Paper-Konto mit 1.000 $ Spielgeld"
           fi

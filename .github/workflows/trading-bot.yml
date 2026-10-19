@@ -209,7 +209,6 @@ jobs:
           PY
       - name: Kurse direkt von der Chain (PumpSwap-Pools) gegen DexScreener
         working-directory: trading-bot
-        continue-on-error: true
         run: |
           # the pool layout (vaults at bytes 139-203) and the decimals, checked on live pools: the chain's
           # price this second must agree with DexScreener's (up to half a minute old) within reason
@@ -237,8 +236,8 @@ jobs:
               dev = (chain / n["price_usd"] - 1) * 100 if chain and n["price_usd"] else None
               if dev is not None:
                   devs.append(dev)
-              print(f"  {n['symbol']!s:>12} {n['pair'][:8]} DexScreener {n['price_usd']:.6g} · Chain {chain if chain is None else f'{chain:.6g}'}"
-                    + ("" if dev is None else f" · {dev:+.1f} %"))
+              print(f"  {n['symbol']!s:>12} {n['pair'][:8]} Reserven {n['price_usd']:.6g} (letzter Trade {n['price_last_usd']:.6g})"
+                    f" · Chain {chain if chain is None else f'{chain:.6g}'}" + ("" if dev is None else f" · {dev:+.1f} %"))
               # where does a gap come from: DexScreener's own reserves, the vaults, the pool's activity
               pool = reader._pools.get(n["pair"])
               raw = n.get("liquidity_base_usd"), n.get("liquidity_quote_usd")
@@ -251,15 +250,17 @@ jobs:
                   line += f" · Tresore {b} Token / {q} SOL (Dez. {pool['base_decimals']}/{pool['quote_decimals']})"
                   if raw[0] and n["price_usd"] and sol:
                       line += f" · DS-Reserven {raw[0] / n['price_usd']:.0f} Token / {(raw[1] or 0) / sol:.2f} SOL"
-              if raw[0] and raw[1] and n["price_usd"]:
-                  # the price the reserves pay: DexScreener's own reserve figures, base side valued at its price
-                  line += f" · Reserven-Kurs laut DS {n['price_usd'] * raw[1] / raw[0]:.6g} ({(raw[1] / raw[0] - 1) * 100:+.1f} % zum DS-Kurs)"
               print(line)
           if len(pools) >= 3 and not got and reader.fails == 0:
               sys.exit("kein einziger Pool von der Chain gelesen – Layout oder Dezimalstellen stimmen nicht")
-          if devs and statistics.median(abs(d) for d in devs) > 25:
-              sys.exit(f"Chain und DexScreener weichen im Median um {statistics.median(abs(d) for d in devs):.0f} % ab – Layout prüfen")
-          print(f"{len(devs)} von {len(pools)} Pools von der Chain bepreist" + (f", Abweichung im Median {statistics.median(abs(d) for d in devs):.1f} %" if devs else ""))
+          # the bot's price is the reserves' (DexScreener's reserve figures); a quiet pool's reserves stand
+          # still for DexScreener's half minute, so there the chain must agree to the percent
+          quiet = [abs(got[n["pair"]] / n["price_usd"] - 1) * 100 for n in pools
+                   if got.get(n["pair"]) and n["price_usd"] and n["buys_m5"] + n["sells_m5"] < 20]
+          if quiet and statistics.median(quiet) > 5:
+              sys.exit(f"ruhige Pools: Chain und Reserven laut DexScreener weichen im Median um {statistics.median(quiet):.1f} % ab – Layout prüfen")
+          print(f"{len(devs)} von {len(pools)} Pools von der Chain bepreist" + (f", Abweichung im Median {statistics.median(abs(d) for d in devs):.1f} %" if devs else "")
+                + (f", ruhige Pools {statistics.median(quiet):.2f} %" if quiet else ""))
           PY
       - name: Ein echter Poll gegen die Live-Märkte
         working-directory: trading-bot

@@ -25,6 +25,7 @@ PRICE_JUMP_MAX = 10.0
 # a pool's price read on the chain is this second's, DexScreener's up to half a minute old: the chain's
 # wins - unless it is this many times above DexScreener's, which no half minute explains (a misread)
 CHAIN_MAX_ABOVE = 3.0
+EXIT_WATCH_S = 2.0           # between polls, holdings priced on the chain are checked this often
 
 
 _PRESETS: Optional[dict[str, dict[str, Any]]] = None
@@ -98,6 +99,7 @@ class Engine:
         self._last_priced: dict[int, float] = {p["id"]: clock() for p in store.open_positions()}
         self._good_price: dict[int, float] = {}       # position id -> its last believable price
         self._refused: dict[int, float] = {}          # position id -> the bad quote last logged for it
+        self._watch_error = ""
         self._dex_answered = False                # did DexScreener itself answer during the last discovery?
         self._dex_answered_now = False
         self._deferred_last = 0
@@ -311,25 +313,7 @@ class Engine:
                 self._maybe_write_off(listed, now, dex_answered, counts)
                 continue
             self._last_priced[listed["id"]] = now
-            with self._lock:
-                # re-read: a manual close or partial sell may have happened while we waited
-                pos = self.store.position(listed["id"])
-                if pos is None or pos["status"] != "open":
-                    continue
-                good = self._believable(pos, price)
-                if good is None:
-                    # stops and the time stop keep working on the last believable price
-                    self.paper.update(pos, self._reference_price(pos), now)
-                else:
-                    self.last_prices[pos["pair"]] = good
-                    self.paper.update(pos, good, now)
-                    if pos["opened_at"] < now:         # the entry already wrote this poll's tick
-                        self.store.tick(pos["id"], now, good)
-                if pos["status"] != "open":
-                    counts["exits"] += 1
-                    self._last_priced.pop(pos["id"], None)
-                    self._good_price.pop(pos["id"], None)
-                    self._refused.pop(pos["id"], None)
+            self._apply_price(listed["id"], price, now, counts, tick=True)
 
         try:
             self._discover(now, counts)
@@ -357,6 +341,43 @@ class Engine:
         self.last_poll_wall = time.time()
         self.poll_count += 1
         return counts
+
+    def _apply_price(self, pid: int, price: float, now: float, counts: dict[str, int], tick: bool) -> None:
+        """One price for one holding: its stops, ladder and time stop."""
+        with self._lock:
+            # re-read: a manual close or partial sell may have happened while we waited
+            pos = self.store.position(pid)
+            if pos is None or pos["status"] != "open":
+                return
+            good = self._believable(pos, price)
+            if good is None:
+                # stops and the time stop keep working on the last believable price
+                self.paper.update(pos, self._reference_price(pos), now)
+            else:
+                self.last_prices[pos["pair"]] = good
+                before = pos["remaining_frac"]
+                self.paper.update(pos, good, now)
+                # the entry already wrote this poll's tick; between polls only a sale leaves one
+                if pos["opened_at"] < now and (tick or pos["remaining_frac"] < before):
+                    self.store.tick(pos["id"], now, good)
+            if pos["status"] != "open":
+                counts["exits"] += 1
+                self._last_priced.pop(pos["id"], None)
+                self._good_price.pop(pos["id"], None)
+                self._refused.pop(pos["id"], None)
+
+    def _watch_exits(self, now: float) -> int:
+        """Between polls: each holding's price on the chain every few seconds, so a
+        stop loss fires within seconds of the fall, not at the next poll. Holdings
+        the chain cannot price wait for the poll as before."""
+        held = [p for p in self.store.open_positions() if p["chain"] == "solana"]
+        fresh = self._chain_prices("solana", {p["pair"]: p["token"] for p in held}) if held else {}
+        counts = {"exits": 0}
+        for pos in held:
+            if fresh.get(pos["pair"]):
+                self._last_priced[pos["id"]] = now
+                self._apply_price(pos["id"], fresh[pos["pair"]], now, counts, tick=False)
+        return counts["exits"]
 
     def _position_prices(self, positions: list[dict[str, Any]]) -> dict[int, float]:
         """Current price per open position: one batch request per chain when the
@@ -486,7 +507,20 @@ class Engine:
                 self.errors += 1
                 self.store.log("error", f"{type(error).__name__}: {error}")
             interval = float(self.cfg["poll_seconds"])
-            self._wake.wait(max(1.0, interval - (time.time() - started)))
+            deadline = started + max(1.0, interval)
+            while not self._stop.is_set():
+                left = deadline - time.time()
+                if left <= 0 or self._wake.wait(min(left, EXIT_WATCH_S)):
+                    break
+                if getattr(self.curves, "pool_prices", None) is None:
+                    continue
+                try:
+                    if self._watch_exits(self.clock()):
+                        self.store.log("poll", "exits zwischen den Polls (Kurs von der Chain)")
+                except Exception as error:  # noqa: BLE001 - the next poll prices the holdings anyway
+                    if f"{error}" != self._watch_error:          # once, not every two seconds
+                        self.store.log("error", f"Exit-Wache: {type(error).__name__}: {error}")
+                    self._watch_error = f"{error}"
             self._wake.clear()
         self.store.log("info", "engine stopped")
 
