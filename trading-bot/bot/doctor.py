@@ -7,7 +7,6 @@ so in the demo it checks the fakes and on the Mac it checks the real APIs.
 """
 from __future__ import annotations
 
-import os
 import ssl
 import sys
 import time
