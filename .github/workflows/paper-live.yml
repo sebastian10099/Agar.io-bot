@@ -53,6 +53,21 @@ jobs:
         run: |
           HOURS="${HOURS:-$(python3 -c "import json; print(json.load(open('../.github/paper-live.json')).get('hours', 5))")}"
           END=$(python3 -c "import time; print(int(time.time() + min(5.5, float('$HOURS')) * 3600))")
+          # a filter profile from .github/paper-live.json ("profile": a name from bot/presets.json) becomes the run's config
+          python3 - "$NEW_TOKEN_BOT_HOME/config.json" <<'PY'
+          import json, sys
+          name = json.load(open("../.github/paper-live.json")).get("profile")
+          if name:
+              flat = json.load(open("bot/presets.json"))[name]
+              cfg = {}
+              for path, value in flat.items():
+                  head, _, key = path.rpartition(".")
+                  (cfg.setdefault(head, {}) if head else cfg)[key] = value
+              json.dump(cfg, open(sys.argv[1], "w"), ensure_ascii=False, indent=2)
+              print(f"Profil: {name}")
+          else:
+              print("Profil: Standard")
+          PY
           /bin/bash ./launch.sh --no-open --port 8765 > "$RUNNER_TEMP/bot.out" 2>&1 &
           for i in $(seq 1 120); do curl -s -m 2 http://127.0.0.1:8765/api/state | grep -q '"app": "new-token-bot"' && break; sleep 1; done
           head -20 "$RUNNER_TEMP/bot.out"

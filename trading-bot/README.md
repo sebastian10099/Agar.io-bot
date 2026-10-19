@@ -199,7 +199,13 @@ Protokoll und in der Quellen-Karte – die anderen laufen weiter.
 erneut bewertet, ein `watch` alle fünf Minuten (seine Zahlen bewegen sich
 schnell), ein harter `skip` (RugCheck-Gefahr, zu alt, parabolisch) erst nach
 einer halben Stunde. So verpasst der Bot nicht das Fenster zwischen Minute 2
-und 30, nur weil er den Token in Minute 1 schon gesehen hat.
+und 30, nur weil er den Token in Minute 1 schon gesehen hat. GeckoTerminal und
+pump.fun listen nur die letzten paar Dutzend Starts – wenn ein Token alt genug
+ist, steht er dort längst nicht mehr. Der Bot merkt sich deshalb jeden Token,
+der nur „zu neu“ war, und holt ihn selbst wieder, sobald er das Mindestalter
+erreicht (mit den aktuellen Zahlen von DexScreener; listet DexScreener ihn
+zehn Minuten danach noch immer nicht, wird er vergessen). Ohne das sah der Bot
+neue Tokens nur zu früh und die beworbenen nur zu spät – und kaufte nie.
 
 **Harte Filter** (ein Verstoß = `skip`, Grund wird gespeichert):
 
@@ -317,7 +323,13 @@ pump.fun-Kurve, Pools, Locker –, zählen nicht mit; man erkennt sie wie auf de
 Chain selbst daran, dass ihre Adresse nicht auf der Ed25519-Kurve liegt. Diese
 Eigenprüfung sieht keine LP-Locks und keine Insider-Verbindungen und bekommt
 deshalb nur die Hälfte der Score-Punkte. Erst wenn beide nichts liefern, wird
-nur beobachtet.
+nur beobachtet. Die Halter-Abfrage (`getTokenLargestAccounts`) drosselt der
+öffentliche RPC hart, und kein freier öffentlicher Knoten beantwortet sie ohne
+Schlüssel (geprüft: publicnode, drpc, ankr, onfinality, omniatech). Ohne
+Antwort steht beim Token „Halterverteilung unbekannt“ als Warnung. Wer einen
+kostenlosen Schlüssel hat (z. B. Helius), trägt den Knoten in
+`SOLANA_HOLDER_RPCS` ein (mehrere mit Komma); der Bot probiert sie der Reihe
+nach und bleibt beim ersten, der antwortet.
 
 **Verschwundene Paare:** Liefert DexScreener für eine offene Position keinen Kurs
 mehr, während andere Kurse kommen, ist das Paar meist entfernt worden (Rug). Ist
@@ -342,7 +354,9 @@ alle zwei Minuten einen Schnappschuss im Branch `paper-live`:
   Lauf setzt es fort, Bankroll und Edge-Report wachsen also über mehrere Läufe.
 
 Gestartet wird ein Lauf durch eine Änderung an `.github/paper-live.json`
-(`{"hours": 5}`) auf dem Branch des Bots, oder – sobald der Workflow auf dem
+(`{"hours": 5, "profile": "★ Locker – mehr Kandidaten (Paper)"}` – `profile` ist
+ein Name aus `bot/presets.json` und wählt die Filter des Laufs, ohne ihn gilt
+der Standard) auf dem Branch des Bots, oder – sobald der Workflow auf dem
 Hauptbranch liegt – über *Actions → Paper-Live → Run workflow*. Ein neuer
 Start ersetzt einen laufenden; das Konto wird vorher gesichert. Steuern lässt
 sich der Bot dort nicht: Die Seite ist eine reine Ansicht. Auf dem Mac läuft

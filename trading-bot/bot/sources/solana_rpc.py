@@ -88,6 +88,16 @@ def rpc_url() -> str:
     return os.environ.get("SOLANA_RPC_URL") or DEFAULT_RPC
 
 
+def holder_urls() -> list[str]:
+    """getTokenLargestAccounts is the one call the public mainnet endpoint throttles
+    hard ("Too many requests for a specific RPC call"), and no free public endpoint
+    answers it without a key (checked October 2026: publicnode, drpc, ankr,
+    onfinality, omniatech). SOLANA_HOLDER_RPCS adds endpoints, comma-separated -
+    e.g. a free Helius key URL - that are tried in turn."""
+    extra = [u.strip() for u in os.environ.get("SOLANA_HOLDER_RPCS", "").split(",") if u.strip()]
+    return list(dict.fromkeys([rpc_url()] + extra))
+
+
 def assess_mint(value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
     """getAccountInfo(jsonParsed).result.value of a mint -> safety summary, or None if it is no SPL mint."""
     if not isinstance(value, dict):
@@ -149,6 +159,7 @@ class OnChainCheck:
                  clock: Callable[[], float] = time.time) -> None:
         self.post = post
         self.url = url or rpc_url()
+        self.holder_urls = [self.url] + [u for u in holder_urls() if u != self.url] if url is None else [self.url]
         self.clock = clock
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
         self.calls = 0
@@ -161,8 +172,8 @@ class OnChainCheck:
         return {"calls": self.calls, "fails": self.fails, "last_error": self.last_error,
                 "ok": None if not self.calls else (self.last_error == "")}
 
-    def _rpc(self, method: str, params: list[Any]) -> Any:
-        answer = self.post(self.url, {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=TIMEOUT_S)
+    def _rpc(self, method: str, params: list[Any], url: Optional[str] = None) -> Any:
+        answer = self.post(url or self.url, {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=TIMEOUT_S)
         if not isinstance(answer, dict):
             raise RuntimeError("unerwartete Antwort")
         if answer.get("error"):
@@ -171,7 +182,19 @@ class OnChainCheck:
 
     def holders(self, mint: str, supply_raw: int) -> Optional[dict[str, Any]]:
         """Share of the supply in the largest wallets, program-owned accounts left out."""
-        largest = self._rpc("getTokenLargestAccounts", [mint, {"commitment": "confirmed"}])
+        largest, last = None, None
+        for url in list(self.holder_urls):
+            try:
+                largest = self._rpc("getTokenLargestAccounts", [mint, {"commitment": "confirmed"}], url)
+            except Exception as error:  # noqa: BLE001 - throttled or refused: the next endpoint
+                last = error
+                continue
+            if url != self.holder_urls[0]:                  # remember the one that answers
+                self.holder_urls.remove(url)
+                self.holder_urls.insert(0, url)
+            break
+        else:
+            raise last or RuntimeError("kein RPC-Endpunkt")
         if not isinstance(largest, list) or supply_raw <= 0:
             return None
         accounts = [a for a in largest if isinstance(a, dict) and a.get("address")][:20]

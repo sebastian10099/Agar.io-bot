@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from bot import settings
 from bot.demo import FakeDex, FakeRug, demo_feeds
@@ -714,8 +715,9 @@ class PumpFunTests(unittest.TestCase):
             # a mint DexScreener does not know yet is simply not judged (no numbers), no crash
             feeds["pumpfun"].discover = lambda chains: {"solana": [{"token": "UnknownMint", "snapshot": {"pair": "x", "token": "UnknownMint", "price_usd": 0.0, "age_min": 0.5}}]}
             t[0] += 600
-            counts = eng.poll_once()
-            self.assertEqual(counts["seen"], 0)
+            eng.poll_once()                                    # (launches judged too new in the first poll come back)
+            self.assertFalse([c for c in store.candidates() if c["token"] == "UnknownMint"])
+            self.assertEqual(eng.errors, 0)
             store.close()
 
 
@@ -1026,6 +1028,61 @@ class FeedOnlyBuyTests(unittest.TestCase):
             self.assertEqual(c["decision"], "skip")
             self.assertTrue(c["reasons"][0].startswith("too new"), c["reasons"])
             self.assertFalse(any("nur beobachten" in r for r in c["reasons"]), c["reasons"])
+            store.close()
+
+
+class YoungFollowTests(unittest.TestCase):
+    """GeckoTerminal and pump.fun list only the last few dozen launches: a token
+    judged too new is gone from them by the time it is old enough."""
+
+    def setUp(self):
+        import bot.demo as demo
+        cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
+
+    def test_a_launch_is_judged_again_after_its_feed_moved_on(self):
+        from bot.engine import RESEE_TOO_NEW
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            feed = StubFeed({"solana": [{"token": "mintTooNew111111111111111111111111111111", "snapshot": None}]})
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["gecko"]
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds={"gecko": feed})
+            def seen(): return [c for c in store.candidates() if c["symbol"] == "NEW"]
+            eng.poll_once()
+            self.assertTrue(seen()[0]["reasons"][0].startswith("too new"), seen()[0]["reasons"])
+            feed.items = {}                                   # the launch list has moved on
+            t[0] = dex.started + RESEE_TOO_NEW - 30; eng.poll_once()
+            self.assertEqual(len(seen()), 1)                  # not old enough yet: not asked for
+            t[0] = dex.started + RESEE_TOO_NEW + 30; eng.poll_once()
+            self.assertEqual(len(seen()), 2)
+            again = seen()[0]
+            self.assertFalse(any("too new" in r for r in again["reasons"]), again["reasons"])
+            self.assertEqual(again["snapshot"]["source"], "gecko")    # still credited to the feed that found it
+            self.assertEqual(eng._young, {})                  # judged at its real age: no longer followed
+            store.close()
+
+    def test_waits_until_the_minimum_age_and_gives_up_on_a_token_never_listed(self):
+        from bot.engine import YOUNG_GRACE_S
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            run = next(p for p in dex.pairs_for_tokens("solana", dex.recent_token_addresses(["solana"])["solana"]) if p["symbol"] == "RUN")
+            ghost = dict(run, token="GhostMint", pair="GhostPool", symbol="GHOST", age_min=0.5)
+            feed = StubFeed({"solana": [{"token": "GhostMint", "snapshot": ghost}]})
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["gecko"]; cfg["filters"]["min_age_minutes"] = 6
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds={"gecko": feed})
+            eng.poll_once(); feed.items = {}
+            info = eng._young[("solana", "GhostMint")]
+            self.assertAlmostEqual(info["ready_at"] - dex.started, 5.5 * 60)      # at 6 min of age, not every 2 min
+            asked = []
+            orig = dex.pairs_for_tokens
+            dex.pairs_for_tokens = lambda chain, addrs: asked.extend(addrs) or orig(chain, addrs)
+            t[0] = dex.started + 4 * 60; eng.poll_once()
+            self.assertNotIn("GhostMint", asked)
+            t[0] = dex.started + 6 * 60; eng.poll_once()
+            self.assertIn("GhostMint", asked)                 # asked for, but DexScreener does not know it
+            self.assertEqual(len([c for c in store.candidates() if c["symbol"] == "GHOST"]), 1)
+            t[0] = dex.started + 5.5 * 60 + YOUNG_GRACE_S + 1; eng.poll_once()
+            self.assertNotIn(("solana", "GhostMint"), eng._young)
             store.close()
 
 
@@ -1843,6 +1900,27 @@ class HolderTests(unittest.TestCase):
         self.assertIsNotNone(r); self.assertEqual(r["danger"], [])
         self.assertIn("Halterverteilung unbekannt (RPC ohne Antwort)", r["warn"])
         self.assertEqual(oc.fails, 0)                                  # the check itself answered
+
+    def test_extra_holder_endpoints_are_tried_and_the_answering_one_kept_first(self):
+        from bot.sources import solana_rpc
+        post, calls = self.rpc([(self.WALLETS[0], 5.0)])
+        asked = []
+        def routed(url, body, timeout=None):
+            if body["method"] == "getTokenLargestAccounts":
+                asked.append(url)
+                if url != "https://keyed.example/?api-key=k":
+                    return {"error": {"code": 429, "message": "Too many requests for a specific RPC call"}}
+            return post(url, body, timeout)
+        env = {"SOLANA_RPC_URL": "https://public.example", "SOLANA_HOLDER_RPCS": " https://busy.example , https://keyed.example/?api-key=k,"}
+        with mock.patch.dict(os.environ, env):
+            self.assertEqual(solana_rpc.holder_urls(), ["https://public.example", "https://busy.example", "https://keyed.example/?api-key=k"])
+            oc = solana_rpc.OnChainCheck(post=routed)
+        r = oc.summary("M1")
+        self.assertEqual(r["holders"]["top1"], 5.0); self.assertEqual(oc.health()["last_error"], "")
+        self.assertEqual(asked, ["https://public.example", "https://busy.example", "https://keyed.example/?api-key=k"])
+        oc.summary("M2")
+        self.assertEqual(asked[3:], ["https://keyed.example/?api-key=k"])     # straight to the one that answers
+        self.assertEqual(solana_rpc.OnChainCheck(post=routed, url="x").holder_urls, ["x"])   # an explicit URL is used alone
 
     def test_results_expire_so_holders_are_looked_at_again(self):
         from bot.sources.solana_rpc import CACHE_TTL_S, OnChainCheck
