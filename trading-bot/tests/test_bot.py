@@ -73,8 +73,14 @@ class StrategyTests(unittest.TestCase):
         self.assertTrue(any("rugcheck unavailable" in r for r in v["reasons"]))
         cfg = json.loads(json.dumps(CFG)); cfg["filters"]["allow_rugcheck_unknown"] = True
         v = evaluate(p, None, cfg)
-        self.assertFalse(v["watch_only"])                      # tolerated: the score alone decides (rugcheck part is neutral)
         self.assertNotIn("rugcheck unavailable", " ".join(v["reasons"]))
+        self.assertTrue(v["watch_only"])                       # tolerated - but nobody knows the holders
+        self.assertTrue(v["reasons"][0].startswith("holder check missing"), v["reasons"])
+        cfg["filters"]["require_holder_check"] = False
+        v = evaluate(p, None, cfg)
+        self.assertFalse(v["watch_only"])                      # both switched off: the score alone decides
+        cfg["filters"]["require_holder_check"] = True; cfg["filters"]["require_rugcheck"] = False
+        self.assertTrue(evaluate(p, None, cfg)["watch_only"])  # the holder rule stands on its own
 
 
 

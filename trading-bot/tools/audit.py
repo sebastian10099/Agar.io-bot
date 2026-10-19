@@ -136,13 +136,15 @@ def _audit(db: sqlite3.Connection, cfg: dict[str, Any], state: Optional[dict[str
     if low < -EPS_USD:
         bad.append(f"Bargeld fiel auf {low:.2f} $")
     if state is not None and state.get("bankroll") is not None:
-        shown = int((state.get("stats") or {}).get("closed", -1)) + len(state.get("open_positions") or [])
-        last_fill = max((e["at"] for e in state.get("events") or [] if e.get("level") == "trade"), default=None)
-        same = shown == len(every) and (last_fill is None or not trades or abs(last_fill - trades[-1]["at"]) < 1.0)
-        if same:                                       # the same moment: same positions, same last fill
-            want = initial + sum(p["realized_usd"] for p in every)
+        closed_shown = state.get("closed") or []
+        if len(closed_shown) == int((state.get("stats") or {}).get("closed", -1)):   # the page lists every position
+            want = initial + sum(p["realized_usd"] for p in closed_shown + (state.get("open_positions") or []))
             if abs(float(state["bankroll"]) - want) > EPS_USD:
                 bad.append(f"Bankroll {state['bankroll']:.2f} ≠ Start + realisiert {want:.2f}")
+        db_realized = {p["id"]: p["realized_usd"] for p in every if p["status"] == "closed"}
+        for p in closed_shown:                         # a closed position never changes: page and database agree
+            if p["id"] in db_realized and abs(db_realized[p["id"]] - p["realized_usd"]) > EPS_USD:
+                bad.append(f"#{p['id']} {p.get('symbol')}: Seite {p['realized_usd']:.2f}, Datenbank {db_realized[p['id']]:.2f}")
     check("Bargeld nie negativ, Bankroll = Start + realisiert", bad, len(trades))
 
     # 5. every automatic buy met the filters, the holder rule and the re-entry pause
@@ -160,11 +162,14 @@ def _audit(db: sqlite3.Connection, cfg: dict[str, Any], state: Optional[dict[str
         tag = f"#{p['id']} {p['symbol']}"
         snap = json.loads(c["snapshot"] or "{}")
         verdict = evaluate(snap, snap.get("rug"), cfg)
-        if verdict["decision"] != "buy":
+        # in "decide" mode Claude may lift a rule "watch" (score below the bar) to a buy - never a skip
+        # or a blocked token (watch_only)
+        ai_lifted = (cfg.get("ai") or {}).get("mode") == "decide" and snap.get("ai_decision") == "buy"
+        if verdict["decision"] == "skip" or verdict.get("watch_only") or (verdict["decision"] != "buy" and not ai_lifted):
             bad.append(f"{tag}: nach den Regeln {verdict['decision']} – {'; '.join(verdict['reasons'][:2])}")
-        rug = snap.get("rug") or {}
-        if cfg["filters"].get("require_holder_check", True) and rug.get("source") == "onchain" \
-                and not rug.get("holders") and not rug.get("creator"):
+        rug = snap.get("rug")
+        if cfg["filters"].get("require_holder_check", True) and p["chain"] == "solana" and not (
+                rug and (rug.get("source") != "onchain" or rug.get("holders") or rug.get("creator"))):
             bad.append(f"{tag}: gekauft ohne Halter- oder Ersteller-Prüfung")
         for chain, token, at in closed_at:
             if (chain, token) == (p["chain"], p["token"]) and 0 <= p["opened_at"] - at < pause:
@@ -173,8 +178,12 @@ def _audit(db: sqlite3.Connection, cfg: dict[str, Any], state: Optional[dict[str
 
     # 6. no verdict says "buy" while its reasons say it must not be bought
     rows = _rows(db, "SELECT id, symbol, reasons FROM candidates WHERE decision='buy' AND seen_at >= ?", (since,))
-    bad = [f"Kandidat #{r['id']} {r['symbol']}: {r['reasons'][:80]}" for r in rows
-           if any(k in (r["reasons"] or "") for k in ("watch only", "not opened", "holder check missing"))]
+    bad = []
+    for r in rows:
+        rule_reasons = [x for x in json.loads(r["reasons"] or "[]") if not str(x).startswith("KI ")]   # Claude's own words
+        hit = [x for x in rule_reasons if any(k in str(x) for k in ("watch only", "not opened", "holder check missing"))]
+        if hit:
+            bad.append(f"Kandidat #{r['id']} {r['symbol']}: {hit[0][:80]}")
     check("kein Kauf-Urteil mit Sperrgrund", bad, len(rows))
     return checks
 
@@ -202,7 +211,10 @@ def main(argv: list[str]) -> int:
     cfg = load_config(db_path.parent)
     cfg.pop("_dropped", None)
     state = json.loads(Path(args[1]).read_text()) if len(args) > 1 else None
-    since = float((state or {}).get("started_at") or 0) if "--since-start" in flags else 0.0
+    if "--since-start" in flags and not (state or {}).get("started_at"):
+        print("--since-start braucht die state.json des Laufs (mit started_at)")
+        return 2
+    since = float(state["started_at"]) if "--since-start" in flags else 0.0
     checks = audit(db_path, cfg, state, since)
     print(render(checks))
     return 0 if all(c["ok"] for c in checks) else 1

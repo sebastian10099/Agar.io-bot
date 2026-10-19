@@ -1202,6 +1202,36 @@ class AuditTests(unittest.TestCase):
             strict = copy.deepcopy(CFG); strict["filters"]["min_liquidity_usd"] = 10_000_000       # other rules
             self.assertFalse(next(c for c in audit.audit(db, strict) if c["name"].startswith("automatische"))["ok"])
 
+    def test_state_cross_check_ai_lift_and_claudes_words(self):
+        import sqlite3
+        audit = self.load()
+        with tempfile.TemporaryDirectory() as d:
+            db = Path(d) / "bot.sqlite"
+            store = Store(db); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            eng = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            for _ in range(360):
+                eng.poll_once(); t[0] += 10
+            state = json.loads(json.dumps(eng.state()))
+            store.close()
+            cash = lambda cs: next(c for c in cs if c["name"].startswith("Bargeld"))
+            auto = lambda cs: next(c for c in cs if c["name"].startswith("automatische"))
+            self.assertTrue(cash(audit.audit(db, copy.deepcopy(CFG), state))["ok"])
+            wrong = dict(state, bankroll=state["bankroll"] + 10)
+            self.assertFalse(cash(audit.audit(db, copy.deepcopy(CFG), wrong))["ok"])            # page and books disagree
+            # Claude in "decide" mode lifted a score "watch" to a buy: allowed - but only in that mode
+            higher = copy.deepcopy(CFG); higher["scoring"]["min_score"] = 99
+            self.assertFalse(auto(audit.audit(db, higher))["ok"])
+            con = sqlite3.connect(db)
+            for cid, snap, reasons in con.execute("SELECT id, snapshot, reasons FROM candidates WHERE decision='buy'").fetchall():
+                sn = json.loads(snap); sn["ai_decision"] = "buy"
+                con.execute("UPDATE candidates SET snapshot=?, reasons=? WHERE id=?",
+                            (json.dumps(sn), json.dumps(json.loads(reasons) + ["KI buy (80%): not opened before, watch only later"]), cid))
+            con.commit(); con.close()
+            higher["ai"]["mode"] = "decide"
+            checks = audit.audit(db, higher)
+            self.assertTrue(auto(checks)["ok"], audit.render(checks))
+            self.assertTrue(next(c for c in checks if c["name"].startswith("kein Kauf"))["ok"])  # Claude's words are no rule reason
+
 
 class CashTests(unittest.TestCase):
     def test_cash_never_goes_negative_when_the_book_fills_up(self):

@@ -78,13 +78,16 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
             # own on-chain check (RugCheck had no answer): authorities and Token-2022 traps
             if rug["danger"]:
                 reasons.append("onchain danger: " + ", ".join(rug["danger"][:3]))
-            if f.get("require_holder_check", True) and not rug.get("holders") and not rug.get("creator"):
-                holders_unknown = True     # nobody knows who could dump on the buyers: never bought, still tracked
         else:
             if rug["danger"]:
                 reasons.append("rugcheck danger: " + ", ".join(rug["danger"][:3]))
             if rug["score"] > f["max_rugcheck_score"]:
                 reasons.append(f"rugcheck score {rug['score']:.0f} > {f['max_rugcheck_score']}")
+    if f.get("require_holder_check", True) and p.get("chain") == "solana":
+        # who could dump on the buyers? RugCheck looks at the holders; the own check only when it got
+        # the distribution or the creator's share. No answer at all is no answer either.
+        known = rug is not None and (rug.get("source") != "onchain" or rug.get("holders") or rug.get("creator"))
+        holders_unknown = not known                # never bought, still tracked
 
     if reasons:
         return {"decision": "skip", "score": 0.0, "reasons": reasons}
