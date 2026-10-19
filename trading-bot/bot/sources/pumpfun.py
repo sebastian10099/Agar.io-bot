@@ -61,13 +61,23 @@ class PumpFun:
         self.min_interval = min_interval
         self.clock = clock
         self._last: Optional[tuple[float, list[dict[str, Any]]]] = None
+        self._failed: Optional[tuple[float, str]] = None   # when and why the last call failed
         self.calls = 0
 
     def latest(self) -> list[dict[str, Any]]:
         now = self.clock()
         if self._last and now - self._last[0] < self.min_interval:
             return self._last[1]
+        if self._failed and now - self._failed[0] < self.min_interval:
+            raise RuntimeError(self._failed[1])        # a blocked feed is not asked more often than a working one
         self.calls += 1
+        try:
+            return self._fetch_latest(now)
+        except Exception as error:
+            self._failed = (now, f"{type(error).__name__}: {str(error)[:160]}")
+            raise
+
+    def _fetch_latest(self, now: float) -> list[dict[str, Any]]:
         data = self.fetch(URL, headers=HEADERS, retries=0)
         if isinstance(data, list):
             coins = data
@@ -86,6 +96,7 @@ class PumpFun:
         if coins and not out:
             raise RuntimeError("pump.fun-Antwort ohne mint-Feld – Format geändert?")
         self._last = (now, out)
+        self._failed = None
         return out
 
     def discover(self, chains: list[str]) -> dict[str, list[dict[str, Any]]]:

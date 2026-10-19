@@ -1344,6 +1344,57 @@ class EngineSafetyTests(unittest.TestCase):
             store.close()
 
 
+class SourceHygieneTests(unittest.TestCase):
+    """Faults found by a review of the data sources, each with the case that proved it."""
+
+    def test_a_failing_feed_is_not_asked_more_often_than_a_working_one(self):
+        from bot.sources.geckoterminal import GeckoTerminal
+        from bot.sources.http import HttpError
+        from bot.sources.pumpfun import PumpFun
+        calls = []
+        def down(url, **kw):
+            calls.append(url); raise HttpError(503, "Service Unavailable")
+        t = [0.0]
+        gecko = GeckoTerminal(fetch=down, min_interval=15.0, clock=lambda: t[0])
+        pump = PumpFun(fetch=down, min_interval=10.0, clock=lambda: t[0])
+        for _ in range(30):                                   # a minute of 2-second polls on four chains
+            for chain in ("solana", "base", "ethereum", "bsc"):
+                with self.assertRaises(Exception):
+                    gecko.new_pools(chain)
+            with self.assertRaises(Exception):
+                pump.latest()
+            t[0] += 2
+        self.assertLessEqual(sum("geckoterminal" in u for u in calls), 4 * 4)   # one per chain and 15 s, not 120
+        self.assertLessEqual(sum("pump.fun" in u for u in calls), 6)
+
+    def test_a_rate_limit_pause_is_logged_once(self):
+        from bot.sources.geckoterminal import GeckoTerminal
+        from bot.sources.http import HttpError
+        def limited(url, **kw): raise HttpError(429, "Too Many Requests")
+        t = [0.0]; lines = []
+        gecko = GeckoTerminal(fetch=limited, clock=lambda: t[0])
+        disc = Discovery({"discovery": {"sources": ["geckoterminal"]}}, {"geckoterminal": gecko}, log=lambda lvl, msg: lines.append(msg))
+        for _ in range(30):
+            disc.recent(["solana"]); t[0] += 2
+        self.assertEqual(len(lines), 1, lines)
+
+    def test_rugcheck_looks_again_and_one_unknown_token_pauses_nothing(self):
+        from bot.sources.http import HttpError
+        from bot.sources.rugcheck import CACHE_TTL_S, RugCheck
+        level = ["warn"]; t = [0.0]
+        def fetch(url, **kw):
+            if "Unknown" in url:
+                raise HttpError(404, '{"error":"not found"}')
+            return {"score_normalised": 5, "risks": [{"name": "Top holders", "level": level[0]}]}
+        rc = RugCheck(fetch=fetch, clock=lambda: t[0])
+        self.assertEqual(rc.summary("Good")["danger"], [])
+        level[0] = "danger"; t[0] += CACHE_TTL_S + 1                # the token turned dangerous meanwhile
+        self.assertEqual(rc.summary("Good")["danger"], ["Top holders"])
+        for i in range(5):
+            self.assertIsNone(rc.summary(f"Unknown{i}"))            # not indexed yet
+        self.assertIsNotNone(rc.summary("Other"))                   # RugCheck is not paused for everyone
+
+
 class CashTests(unittest.TestCase):
     def test_cash_never_goes_negative_when_the_book_fills_up(self):
         from bot.paper import Paper

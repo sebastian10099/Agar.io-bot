@@ -106,6 +106,7 @@ class GeckoTerminal:
         self.min_interval = min_interval
         self.clock = clock
         self._last: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+        self._failed: dict[str, tuple[float, str]] = {}   # chain -> when and why the last call failed
         self._paused_until = 0.0
         self.calls = 0
 
@@ -117,8 +118,12 @@ class GeckoTerminal:
         now = self.clock()
         if cached and now - cached[0] < self.min_interval:
             return cached[1]
+        # one message for the whole pause (a countdown would log a new line every poll)
         if now < self._paused_until:
-            raise RuntimeError(f"Rate-Limit (HTTP 429) – Pause, nächste Abfrage in {self._paused_until - now:.0f} s")
+            raise RuntimeError(f"Rate-Limit (HTTP 429) – Pause {RATE_LIMIT_PAUSE_S:.0f} s")
+        failed = self._failed.get(chain)
+        if failed and now - failed[0] < self.min_interval:
+            raise RuntimeError(failed[1])               # a failing source is not asked more often than a working one
         self.calls += 1
         try:
             data = self.fetch(f"{BASE}/networks/{net}/new_pools?include=base_token&page=1", headers=HEADERS, retries=0)
@@ -126,7 +131,12 @@ class GeckoTerminal:
             if error.status == 429:
                 self._paused_until = now + RATE_LIMIT_PAUSE_S
                 raise RuntimeError(f"Rate-Limit (HTTP 429) – Pause {RATE_LIMIT_PAUSE_S:.0f} s") from None
+            self._failed[chain] = (now, f"{type(error).__name__}: {str(error)[:160]}")
             raise
+        except Exception as error:
+            self._failed[chain] = (now, f"{type(error).__name__}: {str(error)[:160]}")
+            raise
+        self._failed.pop(chain, None)
         tokens = {t.get("id"): (t.get("attributes") or {})
                   for t in (data or {}).get("included") or [] if t.get("type") == "token"}
         out = []
