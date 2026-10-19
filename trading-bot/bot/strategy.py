@@ -125,6 +125,16 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
                 reasons.append("rugcheck danger: " + ", ".join(danger[:3]))
             if rug["score"] > f["max_rugcheck_score"]:
                 reasons.append(f"rugcheck score {rug['score']:.0f} > {f['max_rugcheck_score']}")
+    # two of RugCheck's warnings as hard filters (off by default): in the Frühkauf test 4 of 5 coins
+    # whose creator can still change them ("Mutable metadata") and 2 of 3 with one wallet over 10 %
+    # were pulled to zero (19 Oct 2026, 32 trades - tested from then on, on new data only)
+    if rug is not None:
+        top1 = (rug.get("holders") or {}).get("top1")
+        cap = float(f.get("max_top_holder_pct", 100) or 100)
+        if cap < 100 and top1 is not None and float(top1) > cap:
+            reasons.append(f"top holder {float(top1):.0f} % > {cap:g} %")
+        if f.get("reject_mutable_metadata") and any("Mutable metadata" in str(w) for w in rug.get("warn") or []):
+            reasons.append("mutable metadata: its creator can still change the coin")
     if f.get("require_holder_check", True) and p.get("chain") == "solana":
         # who could dump on the buyers? RugCheck looks at the holders; the own check only when it got
         # the distribution or the creator's share. No answer at all is no answer either.

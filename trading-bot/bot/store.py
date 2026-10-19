@@ -243,6 +243,8 @@ class Store:
         ("holder check missing", "Halter unbekannt (nur beobachtet)", "filters.require_holder_check"),
         ("LP unknown", "LP-Halter unbekannt – nur Eigenprüfung (nur beobachtet)", "filters.require_rugcheck"),
         ("early mode", "Frühkauf: nur selbst eröffnete PumpSwap-Pools", "filters.early_own_pools"),
+        ("top holder", "Größte Wallet hält zu viel", "filters.max_top_holder_pct"),
+        ("mutable metadata", "Metadaten änderbar (RugCheck)", "filters.reject_mutable_metadata"),
         ("still on its bonding curve", "noch auf der Bonding-Kurve (nur beobachtet)", "filters.allow_curve_buys"),
         ("rugcheck danger", "RugCheck: Gefahr", "filters.require_rugcheck"),
         ("onchain danger", "Eigenprüfung: Gefahr (Freeze/Mint/Token-2022/Halter)", "filters.require_rugcheck"),

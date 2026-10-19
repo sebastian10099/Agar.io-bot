@@ -190,11 +190,28 @@ def rug_table(cands: list[dict[str, Any]]) -> list[str]:
 
 # An idea found by looking at the data is only tested on data that came after it: the rule
 # and its start are written down here before that data exists, and never fitted to it.
+def _early_own(c: dict[str, Any]) -> bool:
+    s = c["snapshot"]
+    return s.get("dex") == "pumpswap" and not c["token"].endswith("pump") \
+        and (s.get("age_min") if s.get("age_min") is not None else 99) < 1.5
+
+
+def _no_rug_warning(c: dict[str, Any]) -> bool:
+    rug = c["snapshot"].get("rug") or {}
+    top1 = (rug.get("holders") or {}).get("top1")
+    return bool(rug) and top1 is not None and float(top1) <= 10 \
+        and not any("Mutable metadata" in str(w) for w in rug.get("warn") or [])
+
+
 PROBES = [
     ("Frühkauf in eigenen PumpSwap-Pools (Alter < 1,5 min, Coin nicht von pump.fun)",
      1792418400.0,      # 19 Oct 2026 14:00 UTC - the idea came from the two hours before
-     lambda c: c["snapshot"].get("dex") == "pumpswap" and not c["token"].endswith("pump")
-     and (c["snapshot"].get("age_min") if c["snapshot"].get("age_min") is not None else 99) < 1.5),
+     _early_own),
+    # from the 32 Frühkauf paper trades of 19 Oct (11 rugs): 4 of 5 with "Mutable metadata" and 2 of 3
+    # with one wallet over 10 % were rugs
+    ("Frühkauf ohne „Mutable metadata“, größte Wallet ≤ 10 % (RugCheck-Bericht nötig)",
+     1792437300.0,      # 19 Oct 2026 19:15 UTC
+     lambda c: _early_own(c) and _no_rug_warning(c)),
     # the --search's best rule on 153 tokens, the only one so far that held on the unseen half
     # (+25 to +38 % on 14-16 trades); with the exit it was found with
     ("Kaufdruck ≥ 3 (Liq ≥ 15k, ≥ 8 Käufe, Alter ≤ 30 min, Bewertung/Liq ≤ 3x, ohne RugCheck-Gefahr)",

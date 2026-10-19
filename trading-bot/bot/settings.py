@@ -85,6 +85,14 @@ SCHEMA: list[dict[str, Any]] = [
              "Ersteller kann die Liquidität jederzeit abziehen. Im Live-Test stiegen solche Pools, in ihrer ersten "
              "Minute gekauft, meist deutlich; Minuten später gekauft verloren sie. Mit Höchstalter 1,5 min nutzen "
              "(Profil „★ Frühkauf“)."},
+    {"path": "filters.max_top_holder_pct", "type": "float", "min": 1, "max": 100, "step": 1,
+     "label": "Max. Anteil der größten Wallet", "unit": "%", "group": "Filter",
+     "help": "Hält eine einzelne Wallet (ohne Pools und Sperrkonten) mehr, wird nicht gekauft. 100 = aus. "
+             "Im Frühkauf-Test wurden 2 von 3 Coins mit einer Wallet über 10 % geleert."},
+    {"path": "filters.reject_mutable_metadata", "type": "bool",
+     "label": "Änderbare Metadaten ablehnen", "group": "Filter",
+     "help": "RugCheck-Warnung „Mutable metadata“: der Ersteller kann Name und Bild noch ändern. Im "
+             "Frühkauf-Test wurden 4 von 5 solcher Coins geleert."},
     {"path": "filters.require_holder_check", "type": "bool",
      "label": "Nur mit geprüften Haltern kaufen", "group": "Filter",
      "help": "Solana-Tokens werden nur gekauft, wenn bekannt ist, wer die Menge hält: die Halterverteilung "

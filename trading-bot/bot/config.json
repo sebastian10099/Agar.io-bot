@@ -38,7 +38,9 @@
     "allow_rugcheck_unknown": false,
     "require_holder_check": true,
     "allow_curve_buys": false,
-    "early_own_pools": false
+    "early_own_pools": false,
+    "max_top_holder_pct": 100,
+    "reject_mutable_metadata": false
   },
   "exits": {
     "stop_loss_pct": -30,

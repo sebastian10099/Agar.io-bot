@@ -109,6 +109,23 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(evaluate(own, whale, cfg)["decision"], "skip")
         self.assertEqual(evaluate(own, lp, CFG)["decision"], "skip")              # off by default
 
+    def test_the_early_profile_refuses_a_whale_and_changeable_metadata(self):
+        from bot.engine import presets
+        cfg = copy.deepcopy(CFG)
+        for path, value in presets()["★ Frühkauf – hohes Risiko (Paper)"].items():
+            group, key = path.split(".")
+            cfg[group][key] = value
+        own = dict(fixture("RUN", age_min=0.8), dex="pumpswap")
+        ok = {"score": 52.0, "danger": ["Large Amount of LP Unlocked"], "warn": ["Low amount of LP Providers"],
+              "source": "rugcheck", "holders": {"top1": 4.0, "top10": 12.0}}
+        self.assertEqual(evaluate(own, ok, cfg)["decision"], "buy")
+        whale = dict(ok, holders={"top1": 13.2, "top10": 15.0})
+        self.assertIn("top holder 13 % > 10 %", evaluate(own, whale, cfg)["reasons"])
+        mutable = dict(ok, warn=ok["warn"] + ["Mutable metadata"])
+        self.assertTrue(any(r.startswith("mutable metadata") for r in evaluate(own, mutable, cfg)["reasons"]))
+        for r in (whale, mutable):                                                   # off by default
+            self.assertFalse(any(x.startswith(("top holder", "mutable")) for x in evaluate(fixture("RUN"), dict(r, danger=[]), CFG)["reasons"]))
+
     def test_rug_danger_is_skipped(self):
         p = fixture("HONEY")
         v = evaluate(p, RUG.summary(p["token"]), CFG)

@@ -15,7 +15,9 @@
     "filters.allow_curve_buys": false,
     "scoring.min_score": 50,
     "filters.min_price_change_m5_pct": 0,
-    "filters.early_own_pools": false
+    "filters.early_own_pools": false,
+    "filters.max_top_holder_pct": 100,
+    "filters.reject_mutable_metadata": false
   },
   "★ Standard": {
     "filters.min_age_minutes": 2,
@@ -33,7 +35,9 @@
     "filters.allow_curve_buys": false,
     "scoring.min_score": 60,
     "filters.min_price_change_m5_pct": 0,
-    "filters.early_own_pools": false
+    "filters.early_own_pools": false,
+    "filters.max_top_holder_pct": 100,
+    "filters.reject_mutable_metadata": false
   },
   "★ Streng – nur die besten": {
     "filters.min_age_minutes": 3,
@@ -51,7 +55,9 @@
     "filters.allow_curve_buys": false,
     "scoring.min_score": 70,
     "filters.min_price_change_m5_pct": 0,
-    "filters.early_own_pools": false
+    "filters.early_own_pools": false,
+    "filters.max_top_holder_pct": 100,
+    "filters.reject_mutable_metadata": false
   },
   "★ Frühkauf – hohes Risiko (Paper)": {
     "filters.min_age_minutes": 0,
@@ -69,6 +75,8 @@
     "filters.require_holder_check": true,
     "filters.allow_curve_buys": false,
     "filters.early_own_pools": true,
-    "scoring.min_score": 0
+    "scoring.min_score": 0,
+    "filters.max_top_holder_pct": 10,
+    "filters.reject_mutable_metadata": true
   }
 }
