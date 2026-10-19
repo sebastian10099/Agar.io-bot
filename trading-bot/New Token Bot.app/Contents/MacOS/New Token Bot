@@ -7,18 +7,23 @@
 # Log: ~/Library/Application Support/NewTokenBot/bot.log
 #
 # Der Projektordner steht in Contents/Resources/project.path (schreibt
-# install-app.sh); ohne die Datei gilt der Ordner, in dem das Bundle liegt.
+# install-app.sh); sonst der Ordner, in dem das Bundle liegt (ein Klon), sonst
+# ~/NewTokenBot/src. Gibt es keinen, ist das die heruntergeladene App: sie holt
+# das Programm beim ersten Start selbst dorthin.
 set -u
 BUNDLE="$(cd "$(dirname "$0")/../.." && pwd)"
-if [ -f "$BUNDLE/Contents/Resources/project.path" ]; then
-  PROJECT="$(head -n 1 "$BUNDLE/Contents/Resources/project.path")"
-else
-  PROJECT="$(cd "$BUNDLE/.." && pwd)"
-fi
 FIRST_PORT="${NEW_TOKEN_BOT_PORT:-8765}"
 DATA="$HOME/Library/Application Support/NewTokenBot"
 LOG="$DATA/bot.log"
+GET_URL="https://raw.githubusercontent.com/sebastian10099/Agar.io-bot/claude/agenen-funktionalitaet-hnw6g5/trading-bot/get.sh"
 mkdir -p "$DATA"
+if [ -f "$BUNDLE/Contents/Resources/project.path" ]; then
+  PROJECT="$(head -n 1 "$BUNDLE/Contents/Resources/project.path")"
+elif [ -f "$BUNDLE/../launch.sh" ]; then
+  PROJECT="$(cd "$BUNDLE/.." && pwd)"
+else
+  PROJECT="$HOME/NewTokenBot/src"
+fi
 
 say_error() {
   /usr/bin/osascript -e "display dialog \"$1\" with title \"New Token Bot\" buttons {\"OK\"} default button 1 with icon stop" >/dev/null 2>&1
@@ -46,10 +51,25 @@ if [ -z "$PORT" ]; then
 fi
 URL="http://127.0.0.1:$PORT/"
 
+# The downloaded app on its first start: nothing installed yet - fetch the program.
+if [ "$PROJECT" = "$HOME/NewTokenBot/src" ] && [ ! -f "$PROJECT/launch.sh" ]; then
+  /usr/bin/osascript -e 'display notification "Erster Start: der Bot wird geladen …" with title "New Token Bot"' >/dev/null 2>&1
+  { echo "=== Erste Einrichtung $(date) ==="
+    /usr/bin/curl -fsSL -m 60 -o "$DATA/get.sh" "$GET_URL" \
+      && NEW_TOKEN_BOT_SKIP_APP=1 /usr/bin/perl -e 'alarm 180; exec @ARGV' /bin/bash "$DATA/get.sh" < /dev/null
+  } >> "$DATA/update.log" 2>&1
+  if [ ! -f "$PROJECT/launch.sh" ]; then
+    say_error "Der Bot ließ sich nicht laden. Ist das Internet da? Dann die App einfach noch einmal öffnen.  (Protokoll: $DATA/update.log)"
+    exit 1
+  fi
+  JUST_INSTALLED=1
+fi
+
 # Installed with get.sh (~/NewTokenBot/src): fetch the newest version before every start,
 # so a double click always runs the current one. No internet (or GitHub slow): after at most
 # 90 s the version already there starts. NEW_TOKEN_BOT_NO_UPDATE=1 turns this off.
-if [ "$PROJECT" = "$HOME/NewTokenBot/src" ] && [ -f "$PROJECT/get.sh" ] && [ -z "${NEW_TOKEN_BOT_NO_UPDATE:-}" ]; then
+if [ "$PROJECT" = "$HOME/NewTokenBot/src" ] && [ -f "$PROJECT/get.sh" ] && [ -z "${NEW_TOKEN_BOT_NO_UPDATE:-}" ] \
+   && [ -z "${JUST_INSTALLED:-}" ]; then
   /usr/bin/osascript -e 'display notification "Neueste Version wird geladen …" with title "New Token Bot"' >/dev/null 2>&1
   GET="$DATA/get.sh"; cp "$PROJECT/get.sh" "$GET"              # get.sh replaces the folder it lies in
   { echo "=== Start-Update $(date) ==="

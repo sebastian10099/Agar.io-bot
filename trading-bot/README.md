@@ -13,6 +13,7 @@ eine Kante hat. Läuft als lokale Mac-App, ohne Abhängigkeiten außer Python 3.
 
 | Was | Wie |
 | --- | --- |
+| Als Download (App, richtet sich selbst ein) | `New Token Bot.zip` entpacken, die App auf den Schreibtisch ziehen, öffnen – beim ersten Mal lädt sie das Programm nach `~/NewTokenBot/src` (macOS fragt einmal nach: Systemeinstellungen → Datenschutz & Sicherheit → „Dennoch öffnen“) |
 | Ohne git, ein Befehl | `curl -fsSL https://raw.githubusercontent.com/sebastian10099/Agar.io-bot/claude/agenen-funktionalitaet-hnw6g5/trading-bot/get.sh \| bash` – lädt nach `~/NewTokenBot/src` und legt die App auf den Schreibtisch; zum Aktualisieren nochmal ausführen |
 | Als App aus einem Klon | einmal `bash install-app.sh` im Ordner `trading-bot`, danach Doppelklick auf **New Token Bot** |
 | Live-Markt, Spielgeld | Doppelklick auf **Start Trading Bot.command** |

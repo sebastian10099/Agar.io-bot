@@ -171,6 +171,29 @@ jobs:
           grep -q "zurück zur Steuerung" live.html
           grep -q "Paper-Live" live.html && echo "Paper-Live-Seite in der App: ok" || echo "Paper-Live-Seite: GitHub nicht erreichbar (Hinweis angezeigt)"
           curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8794/api/quit
+      - name: "Heruntergeladene App auf einem frischen Mac: richtet sich beim ersten Öffnen selbst ein"
+        working-directory: trading-bot
+        env:
+          HOME: ${{ runner.temp }}/home-dl
+          NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-dl
+          NEW_TOKEN_BOT_ARGS: --demo
+          NEW_TOKEN_BOT_PORT: '8796'
+        run: |
+          mkdir -p "$HOME/Desktop"
+          # what the zip holds: the bundle alone, no project.path, nothing installed
+          ditto -c -k --keepParent "New Token Bot.app" "$RUNNER_TEMP/New Token Bot.zip"
+          ditto -x -k "$RUNNER_TEMP/New Token Bot.zip" "$HOME/Desktop"
+          APP="$HOME/Desktop/New Token Bot.app"
+          test ! -e "$APP/Contents/Resources/project.path"
+          test -x "$APP/Contents/MacOS/New Token Bot"
+          LOG="$HOME/Library/Application Support/NewTokenBot/bot.log"
+          perl -e 'alarm 400; exec @ARGV' /bin/bash "$APP/Contents/MacOS/New Token Bot" || { cat "$HOME/Library/Application Support/NewTokenBot/update.log"; cat "$LOG" 2>/dev/null; exit 1; }
+          curl -s -m 5 http://127.0.0.1:8796/api/state | grep -q '"app": "new-token-bot"' || { cat "$LOG"; exit 1; }
+          cat "$HOME/Library/Application Support/NewTokenBot/update.log"
+          grep -q "Erste Einrichtung" "$HOME/Library/Application Support/NewTokenBot/update.log"
+          test -s "$HOME/NewTokenBot/src/.version"
+          echo "Heruntergeladene App: Bot eingerichtet und gestartet, Version $(cut -c1-7 "$HOME/NewTokenBot/src/.version")"
+          curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8796/api/quit
       - name: RugCheck erreichbar? (Diagnose)
         continue-on-error: true
         run: |
