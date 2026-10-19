@@ -162,7 +162,8 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
                     + (f" · größte Wallet {h['top1']:.1f} %, Top 10 {h['top10']:.1f} %, Programme {h['programs']:.1f} %" if h else "")
                     + " – springt ein, wenn RugCheck nicht antwortet")
             if h is None:
-                raise Degraded(line + " – die Halter-Abfrage (getTokenLargestAccounts) bekam keine Antwort")
+                raise Degraded(line + " – die Halter-Abfrage (getTokenLargestAccounts) bekam keine Antwort"
+                               + (f": {onchain.last_error}" if onchain.last_error else ""))
             return line
         out.append(_check("Eigenprüfung über Solana-RPC (Ersatz für RugCheck)", own_check))
 
