@@ -259,7 +259,9 @@ Minuten lag der Median bei +16 %. RugCheck nannte fast alle dieser Pool-Tokens
   Bonding-Kurve kaufen“, ab Werk aus) und alle fünf Minuten neu angesehen –
   zieht der Coin in einen Pool um, kann er dort gekauft werden.
 - **„LP Unlocked“ zählt bei PumpSwap- und Meteora-Pools als Warnung**
-  (Score-Abzug), bei anderen Börsen weiter als Gefahr; Gefahren bei den
+  (Score-Abzug; in der späteren Crash-Analyse kein Crash-Signal: 6 % der
+  so markierten Pools stürzten ab, sonst 18 %), bei anderen Börsen weiter als
+  Gefahr; Gefahren bei den
   Haltern schließen überall aus.
 - **Zeit-Stop 60 statt 45 Minuten** – die Gewinner liefen weiter.
 
