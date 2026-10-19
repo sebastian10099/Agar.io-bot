@@ -1207,6 +1207,10 @@ class DailyPnlTests(unittest.TestCase):
 class AuditTests(unittest.TestCase):
     """tools/audit.py holds a paper account against the bot's own rules."""
 
+    def cfg(self):
+        cfg = copy.deepcopy(CFG); cfg["exits"]["time_stop_minutes"] = 30      # positions close within the demo hour
+        return cfg
+
     def load(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location("audit", ROOT / "tools" / "audit.py")
@@ -1219,12 +1223,12 @@ class AuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             db = Path(d) / "bot.sqlite"
             store = Store(db); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
-            eng = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            eng = Engine(self.cfg(), store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
             for _ in range(360):                                  # one simulated hour, a poll every 10 s
                 eng.poll_once(); t[0] += 10
             state = eng.state()
             store.close()
-            checks = audit.audit(db, copy.deepcopy(CFG), state)
+            checks = audit.audit(db, self.cfg(), state)
             self.assertTrue(all(c["ok"] for c in checks), audit.render(checks))
             self.assertGreater(next(c for c in checks if c["name"].startswith("Ausstiege"))["n"], 0)
             self.assertGreater(next(c for c in checks if c["name"].startswith("automatische"))["n"], 0)
@@ -1233,9 +1237,9 @@ class AuditTests(unittest.TestCase):
             con.execute("UPDATE positions SET realized_usd = realized_usd + 5 WHERE id=?", (pid,))   # money from nowhere
             con.execute("UPDATE trades SET reason='stop_loss' WHERE side='sell' AND reason LIKE 'take_profit%'")
             con.commit(); con.close()
-            bad = {c["name"].split(" ")[0] for c in audit.audit(db, copy.deepcopy(CFG)) if not c["ok"]}
+            bad = {c["name"].split(" ")[0] for c in audit.audit(db, self.cfg()) if not c["ok"]}
             self.assertEqual(bad, {"Buchhaltung", "Ausstiege"})
-            strict = copy.deepcopy(CFG); strict["filters"]["min_liquidity_usd"] = 10_000_000       # other rules
+            strict = self.cfg(); strict["filters"]["min_liquidity_usd"] = 10_000_000       # other rules
             self.assertFalse(next(c for c in audit.audit(db, strict) if c["name"].startswith("automatische"))["ok"])
 
     def test_state_cross_check_ai_lift_and_claudes_words(self):
@@ -1244,18 +1248,18 @@ class AuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             db = Path(d) / "bot.sqlite"
             store = Store(db); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
-            eng = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            eng = Engine(self.cfg(), store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
             for _ in range(360):
                 eng.poll_once(); t[0] += 10
             state = json.loads(json.dumps(eng.state()))
             store.close()
             cash = lambda cs: next(c for c in cs if c["name"].startswith("Bargeld"))
             auto = lambda cs: next(c for c in cs if c["name"].startswith("automatische"))
-            self.assertTrue(cash(audit.audit(db, copy.deepcopy(CFG), state))["ok"])
+            self.assertTrue(cash(audit.audit(db, self.cfg(), state))["ok"])
             wrong = dict(state, bankroll=state["bankroll"] + 10)
-            self.assertFalse(cash(audit.audit(db, copy.deepcopy(CFG), wrong))["ok"])            # page and books disagree
+            self.assertFalse(cash(audit.audit(db, self.cfg(), wrong))["ok"])            # page and books disagree
             # Claude in "decide" mode lifted a score "watch" to a buy: allowed - but only in that mode
-            higher = copy.deepcopy(CFG); higher["scoring"]["min_score"] = 99
+            higher = self.cfg(); higher["scoring"]["min_score"] = 99
             self.assertFalse(auto(audit.audit(db, higher))["ok"])
             con = sqlite3.connect(db)
             for cid, snap, reasons in con.execute("SELECT id, snapshot, reasons FROM candidates WHERE decision='buy'").fetchall():
@@ -1988,6 +1992,7 @@ class ReentryPauseTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
         store = Store(Path(tmp.name) / "t.sqlite"); self.addCleanup(store.close)
         cfg = copy.deepcopy(CFG); cfg["reentry_pause_minutes"] = pause
+        cfg["filters"]["allow_curve_buys"] = True          # the pause is what is tested, on the demo's curve coin
         dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
         from bot.demo import FakeCurves
         eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, curves=FakeCurves())

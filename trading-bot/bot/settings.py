@@ -65,6 +65,11 @@ SCHEMA: list[dict[str, Any]] = [
     {"path": "filters.allow_rugcheck_unknown", "type": "bool",
      "label": "RugCheck-Ausfall tolerieren", "group": "Filter",
      "help": "Wenn an: Ist RugCheck nicht erreichbar, zählt das nicht als Ablehnung."},
+    {"path": "filters.allow_curve_buys", "type": "bool",
+     "label": "Tokens auf der Bonding-Kurve kaufen", "group": "Filter",
+     "help": "Aus (empfohlen): Coins, die noch auf ihrer pump.fun-Kurve handeln, werden nur beobachtet und "
+             "erst gekauft, wenn sie in einen echten Pool umgezogen sind. Im Live-Test verloren Kurven-Coins "
+             "nach Kosten im Schnitt 30 % in 15 Minuten, Pool-Coins gewannen."},
     {"path": "filters.require_holder_check", "type": "bool",
      "label": "Nur mit geprüften Haltern kaufen", "group": "Filter",
      "help": "Solana-Tokens werden nur gekauft, wenn bekannt ist, wer die Menge hält: die Halterverteilung "

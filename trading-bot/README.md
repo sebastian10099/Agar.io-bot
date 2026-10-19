@@ -245,6 +245,31 @@ DexScreener (listet DexScreener ihn zehn Minuten danach noch immer nicht, wird
 er vergessen). Ohne das sah der Bot neue Tokens nur zu früh und die beworbenen
 nur zu spät – und kaufte nie.
 
+**Was der Live-Test gezeigt hat (19.10.2026, 2,4 Stunden echter Markt, 4.000
+Tokens mit Kursverlauf):** Tokens, die noch auf ihrer pump.fun-Kurve handeln,
+verloren nach Kosten (Gebühr und Slippage, rund 6 %) im Schnitt **30 % in 15
+Minuten**, nur 12 % stiegen – auch die mit viel Liquidität und Käufen. Tokens
+in echten Pools (PumpSwap, Meteora) mit ≥ 15.000 $ Liquidität und regem Handel
+gewannen im Schnitt **+25 bis +32 %**, rund zwei Drittel stiegen; nach 60
+Minuten lag der Median bei +16 %. RugCheck nannte fast alle dieser Pool-Tokens
+„Large Amount of LP Unlocked“ – gerade sie waren die Gewinner (41 Tokens,
++39 %), Halter-Konzentration dagegen war ein echtes Warnzeichen. Daraus:
+
+- **Kurven-Coins werden nur beobachtet** (Einstellung „Tokens auf der
+  Bonding-Kurve kaufen“, ab Werk aus) und alle fünf Minuten neu angesehen –
+  zieht der Coin in einen Pool um, kann er dort gekauft werden.
+- **„LP Unlocked“ zählt bei PumpSwap- und Meteora-Pools als Warnung**
+  (Score-Abzug), bei anderen Börsen weiter als Gefahr; Gefahren bei den
+  Haltern schließen überall aus.
+- **Zeit-Stop 60 statt 45 Minuten** – die Gewinner liefen weiter.
+
+Die Profile auf diesen Daten nachgerechnet, mit den echten Regeln des Bots
+(15 Minuten nach dem Kauf, nach Kosten): Locker alt 72 Käufe, Ø +9,5 %,
+43 % im Plus – Locker neu 44 Käufe, Ø +30 %, 59 % im Plus – Standard neu 13
+Käufe, Ø +50 %, 69 % im Plus. Dieselben Daten, aus denen die Regeln stammen –
+die eigentliche Probe ist der Lauf danach (Edge-Report, Laufzeit-Prüfung).
+Kein Ergebnis aus der Vergangenheit verspricht künftige Gewinne.
+
 **Harte Filter** (ein Verstoß = `skip`, Grund wird gespeichert):
 
 - Alter 2–120 Minuten — nicht in der ersten Minute kaufen, nicht alten Tokens hinterherlaufen

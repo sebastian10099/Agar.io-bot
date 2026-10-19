@@ -21,6 +21,12 @@ def _scale(x: float, lo: float, hi: float, pts: float) -> float:
     return _clamp((x - lo) / (hi - lo), 0.0, 1.0) * pts
 
 
+# The launchpads' own graduation pools: RugCheck calls their liquidity "unlocked", and in the
+# live test of October 2026 exactly those tokens were the winners (41 of them: +39 % after
+# costs at 15 minutes, 61 % up). There it is a warning, not a verdict.
+LP_MANAGED_DEXES = {"pumpswap", "meteora"}
+
+
 def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, Any]) -> dict[str, Any]:
     f = cfg["filters"]
     reasons: list[str] = []
@@ -79,8 +85,12 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
             if rug["danger"]:
                 reasons.append("onchain danger: " + ", ".join(rug["danger"][:3]))
         else:
-            if rug["danger"]:
-                reasons.append("rugcheck danger: " + ", ".join(rug["danger"][:3]))
+            danger = list(rug["danger"])
+            if str(p.get("dex") or "").lower() in LP_MANAGED_DEXES:
+                soft = [d for d in danger if "LP Unlocked" in str(d)]
+                danger = [d for d in danger if d not in soft]
+            if danger:
+                reasons.append("rugcheck danger: " + ", ".join(danger[:3]))
             if rug["score"] > f["max_rugcheck_score"]:
                 reasons.append(f"rugcheck score {rug['score']:.0f} > {f['max_rugcheck_score']}")
     if f.get("require_holder_check", True) and p.get("chain") == "solana":
@@ -110,8 +120,9 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
         parts["rugcheck"] = max(0.0, 5.0 - 2.0 * len(rug["warn"]))
     elif rug is not None:
         parts["rugcheck"] = _scale(f["max_rugcheck_score"] - rug["score"], 0, f["max_rugcheck_score"], 10)
-        if rug["warn"]:
-            parts["rugcheck"] = max(0.0, parts["rugcheck"] - 2.0 * len(rug["warn"]))
+        warnings = len(rug["warn"]) + (len(rug["danger"]) if str(p.get("dex") or "").lower() in LP_MANAGED_DEXES else 0)
+        if warnings:
+            parts["rugcheck"] = max(0.0, parts["rugcheck"] - 2.0 * warnings)
     else:
         parts["rugcheck"] = 5.0
 
@@ -122,9 +133,16 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
         notes.append(f"pump.fun-Kurve: Liquidität ${liq:,.0f} aus den Reserven auf der Chain")
     if decision == "watch":
         notes.insert(0, f"score {score} < {cfg['scoring']['min_score']}")
+    on_curve = p.get("curve") or p.get("liquidity_kind") == "curve"
     if watch_only:
         decision = "watch"
         notes.insert(0, "rugcheck unavailable - watch only, no buy without the safety check")
+    elif on_curve and not f.get("allow_curve_buys", False):
+        # live test, October 2026: tokens still on a bonding curve lost 30 % on average after costs within
+        # 15 minutes (12 % up), strong ones too; watched, they are bought once they move into a pool
+        watch_only = True
+        decision = "watch"
+        notes.insert(0, "still on its bonding curve - watch only until it trades in a pool")
     elif holders_unknown:
         watch_only = True
         decision = "watch"

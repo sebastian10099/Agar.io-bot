@@ -34,7 +34,8 @@
     "require_rugcheck": true,
     "max_rugcheck_score": 2000,
     "allow_rugcheck_unknown": false,
-    "require_holder_check": true
+    "require_holder_check": true,
+    "allow_curve_buys": false
   },
   "exits": {
     "stop_loss_pct": -30,
@@ -49,7 +50,7 @@
       ]
     ],
     "trailing_stop_pct": 25,
-    "time_stop_minutes": 45
+    "time_stop_minutes": 60
   },
   "scoring": {
     "min_score": 60

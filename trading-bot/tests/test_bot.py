@@ -47,6 +47,28 @@ class StrategyTests(unittest.TestCase):
         v = evaluate(fixture("NEW", age_min=1.47), None, cfg)
         self.assertEqual(v["reasons"][0], "too new (1.4 min < 1.5)")     # never "1.5" against a 1.5 minimum
 
+    def test_a_coin_on_its_bonding_curve_is_watched_until_it_trades_in_a_pool(self):
+        p = dict(fixture("RUN"), dex="pumpfun", curve=True, liquidity_kind="curve")
+        v = evaluate(p, RUG.summary(p["token"]), CFG)
+        self.assertEqual(v["decision"], "watch"); self.assertTrue(v["watch_only"])
+        self.assertTrue(v["reasons"][0].startswith("still on its bonding curve"), v["reasons"])
+        graduated = dict(fixture("RUN"), dex="pumpswap")                       # the same coin after the move
+        self.assertEqual(evaluate(graduated, RUG.summary(p["token"]), CFG)["decision"], "buy")
+        cfg = copy.deepcopy(CFG); cfg["filters"]["allow_curve_buys"] = True
+        self.assertEqual(evaluate(p, RUG.summary(p["token"]), cfg)["decision"], "buy")
+
+    def test_unlocked_lp_is_a_warning_on_launchpad_pools_only(self):
+        lp = {"score": 52.0, "danger": ["Large Amount of LP Unlocked"], "warn": ["Low amount of LP Providers"], "source": "rugcheck"}
+        for dex in ("pumpswap", "meteora"):
+            v = evaluate(dict(fixture("RUN"), dex=dex), lp, CFG)
+            self.assertNotEqual(v["decision"], "skip", (dex, v["reasons"]))
+            self.assertIn("rugcheck", " ".join(v["reasons"]))
+        v = evaluate(dict(fixture("RUN"), dex="raydium"), lp, CFG)                 # anyone's pool: still a danger
+        self.assertEqual(v["decision"], "skip"); self.assertIn("LP Unlocked", v["reasons"][0])
+        holders = dict(lp, danger=["Large Amount of LP Unlocked", "Top 10 holders high ownership"])
+        v = evaluate(dict(fixture("RUN"), dex="pumpswap"), holders, CFG)           # who holds the supply always counts
+        self.assertEqual(v["decision"], "skip"); self.assertIn("Top 10 holders", v["reasons"][0])
+
     def test_rug_danger_is_skipped(self):
         p = fixture("HONEY")
         v = evaluate(p, RUG.summary(p["token"]), CFG)
@@ -129,7 +151,7 @@ class PaperTests(unittest.TestCase):
 
     def test_time_stop(self):
         pos, pid = self._open()
-        self.paper.update(pos, pos["entry_price"] * 1.05, self.t0 + 46 * 60)
+        self.paper.update(pos, pos["entry_price"] * 1.05, self.t0 + (CFG["exits"]["time_stop_minutes"] + 1) * 60)
         self.assertEqual(self.store.closed_positions()[0]["exit_reason"], "time_stop")
 
     def test_daily_loss_limit_blocks_entries(self):
