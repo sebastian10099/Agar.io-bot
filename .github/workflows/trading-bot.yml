@@ -1,0 +1,104 @@
+name: New Token Bot
+
+on:
+  push:
+    paths:
+      - 'trading-bot/**'
+      - '.github/workflows/trading-bot.yml'
+  pull_request:
+    paths:
+      - 'trading-bot/**'
+      - '.github/workflows/trading-bot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit-Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9', '3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Tests ohne Anthropic-SDK
+        working-directory: trading-bot
+        run: python -W error::ResourceWarning -m unittest -v tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
+      - name: Tests mit Anthropic-SDK
+        working-directory: trading-bot
+        run: |
+          python -m pip install --quiet anthropic certifi
+          python -W error::ResourceWarning -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
+
+  macos:
+    name: macOS – Startskripte (bash 3.2), Apple-Python, echte Märkte
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Werkzeuge
+        run: |
+          /bin/bash --version | head -1
+          /usr/bin/python3 --version || true
+          ls /Library/Frameworks/Python.framework/Versions 2>/dev/null || true
+      - name: Doppelklick-Starter ohne Argumente unter /bin/bash 3.2
+        working-directory: trading-bot
+        env:
+          NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-noargs
+        run: |
+          # exactly what Finder does: run the .command with no arguments (real mode, default port 8765)
+          /bin/bash "./Start Trading Bot.command" > run.log 2>&1 &
+          for i in $(seq 1 120); do
+            if curl -s -m 2 http://127.0.0.1:8765/api/state | grep -q '"app": "new-token-bot"'; then echo "läuft nach ${i}s"; break; fi
+            sleep 1
+          done
+          cat run.log
+          ! grep -q "unbound variable" run.log
+          curl -s -m 5 http://127.0.0.1:8765/api/state | grep -q '"app": "new-token-bot"'
+          curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8765/api/quit
+      - name: Demo-Durchlauf über launch.sh
+        working-directory: trading-bot
+        env:
+          NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-demo
+        run: /bin/bash ./launch.sh --demo --once
+      - name: Ein echter Poll gegen die Live-Märkte
+        working-directory: trading-bot
+        continue-on-error: true
+        env:
+          NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-live
+        run: /bin/bash ./launch.sh --once
+      - name: Selbsttest gegen die echten Quellen (DexScreener, GeckoTerminal, pump.fun, RugCheck)
+        working-directory: trading-bot
+        env:
+          NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-live
+        # informative: free APIs may rate-limit or block cloud IPs; the log shows each source's answer
+        continue-on-error: true
+        run: python3 -m bot.doctor
+      - name: App-Installer und Launcher
+        working-directory: trading-bot
+        env:
+          HOME: ${{ runner.temp }}/home
+          NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-app
+          NEW_TOKEN_BOT_ARGS: --demo
+          NEW_TOKEN_BOT_PORT: '8793'
+          # exercise the no-Homebrew path: the macOS release zip of the Anthropic CLI
+          NEW_TOKEN_BOT_ANT_ZIP: https://github.com/anthropics/anthropic-cli/releases/download/v1.42.0/ant_1.42.0_macos_arm64.zip
+        run: |
+          mkdir -p "$HOME/Desktop"
+          /bin/bash ./install-app.sh < /dev/null
+          APP="$HOME/Desktop/New Token Bot.app"
+          test -x "$APP/Contents/MacOS/New Token Bot"
+          plutil -lint "$APP/Contents/Info.plist"
+          "$HOME/NewTokenBot/bin/ant" --version
+          # the launcher starts the bot in the background and returns; never let a dialog hang the job
+          perl -e 'alarm 300; exec @ARGV' "$APP/Contents/MacOS/New Token Bot"
+          curl -s -m 5 http://127.0.0.1:8793/api/state | grep -q '"app": "new-token-bot"'
+          echo "App-Launcher hat den Bot gestartet"
+          curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8793/api/quit
