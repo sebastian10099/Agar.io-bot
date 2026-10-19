@@ -81,8 +81,53 @@ jobs:
             echo "--- User-Agent: $UA"
             curl -sS -m 20 -o rc.json -w 'HTTP %{http_code} in %{time_total}s\n' -H 'Accept: application/json' -H "User-Agent: $UA" \
               "https://api.rugcheck.xyz/v1/tokens/$MINT/report/summary" || true
-            head -c 400 rc.json; echo
+            head -c 400 rc.json 2>/dev/null || echo "(keine Antwort)"; echo
           done
+      - name: Bonding-Kurven-Rohdaten (Diagnose)
+        working-directory: trading-bot
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json, math, time
+          from bot.sources.http import get_json
+          from bot.sources import pumpfun
+          K = 30 * 1.073e9          # pump.fun virtual SOL x virtual tokens at launch, whole units
+          coins = get_json(pumpfun.URL, headers=pumpfun.HEADERS, retries=0)
+          coins = coins if isinstance(coins, list) else (coins.get("coins") or coins.get("data") or [])
+          print("pump.fun-Felder:", sorted(coins[0].keys()) if coins else "keine Coins")
+          for c in coins[:10]:
+              vs, vt, rs = c.get("virtual_sol_reserves"), c.get("virtual_token_reserves"), c.get("real_sol_reserves")
+              k = vs * vt / 1e24 if vs and vt else None
+              print(f"  {str(c.get('symbol'))[:10]:10s} vSOL={vs} vTok={vt} realSOL={rs} mcapSOL={c.get('market_cap')} mcapUSD={c.get('usd_market_cap')} complete={c.get('complete')} k/1e24={k}")
+          mints = [c.get("mint") for c in coins if c.get("mint")]
+          by_mint = {c.get("mint"): c for c in coins}
+          pairs = get_json("https://api.dexscreener.com/tokens/v1/solana/" + ",".join(mints[:30])) or []
+          print(f"DexScreener kennt {len({p['baseToken']['address'] for p in pairs})} von {min(30, len(mints))} frischen pump.fun-Coins")
+          for p in pairs[:10]:
+              native, usd = float(p.get("priceNative") or 0), float(p.get("priceUsd") or 0)
+              v = math.sqrt(K * native) if native > 0 else 0
+              sol_usd = usd / native if native > 0 else 0
+              real = by_mint.get(p["baseToken"]["address"], {})
+              print(f"  {p.get('dexId'):10s} {str(p['baseToken'].get('symbol'))[:10]:10s} liq={p.get('liquidity')} mcap={p.get('marketCap')} native={native:.3e} quote={p.get('quoteToken', {}).get('symbol')} labels={p.get('labels')} "
+                    f"vSOL(Formel)={v:.1f} vSOL(pump.fun)={(real.get('virtual_sol_reserves') or 0) / 1e9:.1f} SOL=${sol_usd:,.0f} m5={p.get('txns', {}).get('m5')}")
+          if pairs:
+              raw = dict(pairs[0]); raw.pop("info", None)
+              print("Ein DexScreener-Paar roh:", json.dumps(raw)[:900])
+          done = [c for c in coins if c.get("complete")]
+          if done:
+              ps = get_json("https://api.dexscreener.com/tokens/v1/solana/" + done[0]["mint"]) or []
+              print("Graduierter Coin", done[0].get("symbol"), "-> Paare:", [(p.get("dexId"), (p.get("liquidity") or {}).get("usd")) for p in ps])
+          g = get_json("https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1", headers={"Accept": "application/json;version=20230302"})
+          print("GeckoTerminal neue Pools:")
+          for pool in (g.get("data") or [])[:20]:
+              a = pool["attributes"]; dex = pool["relationships"]["dex"]["data"]["id"]
+              native = float(a.get("base_token_price_native_currency") or 0)
+              v = math.sqrt(K * native) if native > 0 else 0
+              print(f"  {dex:12s} {a.get('name', '')[:22]:22s} reserve={a.get('reserve_in_usd')} fdv={a.get('fdv_usd')} mcap={a.get('market_cap_usd')} native={native:.3e} quoteUSD={a.get('quote_token_price_usd')} "
+                    f"vSOL(Formel)={v:.1f} m5={a.get('transactions', {}).get('m5')} vol5m={a.get('volume_usd', {}).get('m5')}")
+          if g.get("data"):
+              a = dict(g["data"][0]["attributes"]); print("Ein Gecko-Pool roh:", json.dumps(a)[:900])
+          PY
       - name: Ein echter Poll gegen die Live-Märkte
         working-directory: trading-bot
         continue-on-error: true
