@@ -35,7 +35,9 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
         reasons.append(f"too old ({age:.0f} min)")
 
     liq = p["liquidity_usd"]
-    if p.get("liquidity_kind") == "unknown" and liq <= 0:
+    if p.get("liquidity_kind") == "graduated":
+        reasons.append("curve completed - trading moves to its new pool")
+    elif p.get("liquidity_kind") == "unknown" and liq <= 0:
         reasons.append("liquidity unknown (bonding curve without a figure)")
     elif liq < f["min_liquidity_usd"]:
         reasons.append(f"liquidity ${liq:,.0f} < ${f['min_liquidity_usd']:,.0f}")
@@ -110,7 +112,7 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
     decision = "buy" if score >= cfg["scoring"]["min_score"] else "watch"
     notes = [f"{k} {v:.0f}" for k, v in parts.items()]
     if p.get("liquidity_kind") == "curve":
-        notes.append(f"pump.fun-Kurve: Liquidität ≈ ${liq:,.0f}, aus dem Kurs berechnet")
+        notes.append(f"pump.fun-Kurve: Liquidität ${liq:,.0f} aus den Reserven auf der Chain")
     if decision == "watch":
         notes.insert(0, f"score {score} < {cfg['scoring']['min_score']}")
     if watch_only:

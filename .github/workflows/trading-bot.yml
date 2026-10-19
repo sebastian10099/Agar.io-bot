@@ -83,79 +83,22 @@ jobs:
               "https://api.rugcheck.xyz/v1/tokens/$MINT/report/summary" || true
             head -c 400 rc.json 2>/dev/null || echo "(keine Antwort)"; echo
           done
-      - name: Bonding-Kurven-Rohdaten (Diagnose)
+      - name: Graduierte pump.fun-Coins bei DexScreener (Diagnose)
         working-directory: trading-bot
         continue-on-error: true
         run: |
           python3 - <<'PY'
-          import json, math, time
           from bot.sources.http import get_json
-          from bot.sources import pumpfun
-          K = 30 * 1.073e9          # pump.fun virtual SOL x virtual tokens at launch, whole units
-          coins = get_json(pumpfun.URL, headers=pumpfun.HEADERS, retries=0)
-          coins = coins if isinstance(coins, list) else (coins.get("coins") or coins.get("data") or [])
-          print("pump.fun-Felder:", sorted(coins[0].keys()) if coins else "keine Coins")
-          for c in coins[:10]:
-              vs, vt, rs = c.get("virtual_sol_reserves"), c.get("virtual_token_reserves"), c.get("real_sol_reserves")
-              k = vs * vt / 1e24 if vs and vt else None
-              print(f"  {str(c.get('symbol'))[:10]:10s} vSOL={vs} vTok={vt} realSOL={rs} mcapSOL={c.get('market_cap')} mcapUSD={c.get('usd_market_cap')} complete={c.get('complete')} k/1e24={k}")
-          mints = [c.get("mint") for c in coins if c.get("mint")]
-          by_mint = {c.get("mint"): c for c in coins}
-          pairs = get_json("https://api.dexscreener.com/tokens/v1/solana/" + ",".join(mints[:30])) or []
-          print(f"DexScreener kennt {len({p['baseToken']['address'] for p in pairs})} von {min(30, len(mints))} frischen pump.fun-Coins")
-          for p in pairs[:10]:
-              native, usd = float(p.get("priceNative") or 0), float(p.get("priceUsd") or 0)
-              v = math.sqrt(K * native) if native > 0 else 0
-              sol_usd = usd / native if native > 0 else 0
-              real = by_mint.get(p["baseToken"]["address"], {})
-              print(f"  {p.get('dexId'):10s} {str(p['baseToken'].get('symbol'))[:10]:10s} liq={p.get('liquidity')} mcap={p.get('marketCap')} native={native:.3e} quote={p.get('quoteToken', {}).get('symbol')} labels={p.get('labels')} "
-                    f"vSOL(Formel)={v:.1f} vSOL(pump.fun)={(real.get('virtual_sol_reserves') or 0) / 1e9:.1f} SOL=${sol_usd:,.0f} m5={p.get('txns', {}).get('m5')}")
-          if pairs:
-              raw = dict(pairs[0]); raw.pop("info", None)
-              print("Ein DexScreener-Paar roh:", json.dumps(raw)[:900])
-          done = [c for c in coins if c.get("complete")]
-          if done:
-              ps = get_json("https://api.dexscreener.com/tokens/v1/solana/" + done[0]["mint"]) or []
-              print("Graduierter Coin", done[0].get("symbol"), "-> Paare:", [(p.get("dexId"), (p.get("liquidity") or {}).get("usd")) for p in ps])
-          g = get_json("https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page=1", headers={"Accept": "application/json;version=20230302"})
-          print("GeckoTerminal neue Pools:")
-          for pool in (g.get("data") or [])[:20]:
-              a = pool["attributes"]; dex = pool["relationships"]["dex"]["data"]["id"]
-              native = float(a.get("base_token_price_native_currency") or 0)
-              v = math.sqrt(K * native) if native > 0 else 0
-              print(f"  {dex:12s} {a.get('name', '')[:22]:22s} reserve={a.get('reserve_in_usd')} fdv={a.get('fdv_usd')} mcap={a.get('market_cap_usd')} native={native:.3e} quoteUSD={a.get('quote_token_price_usd')} "
-                    f"vSOL(Formel)={v:.1f} m5={a.get('transactions', {}).get('m5')} vol5m={a.get('volume_usd', {}).get('m5')}")
-          for c in coins[:50]:
-              if c.get("quote_mint") and c.get("virtual_sol_reserves") and c.get("virtual_token_reserves"):
-                  k = c["virtual_sol_reserves"] * c["virtual_token_reserves"] / 1e24
-                  print(f"  Kurve {str(c.get('symbol'))[:10]:10s} quote={str(c.get('quote_mint'))[:6]} program={str(c.get('program'))[:6]} protocol={c.get('protocol')} decimals={c.get('base_decimals')}/{c.get('quote_decimals')} k/1e24={k:.3f}")
-          # is DexScreener's pair the curve account, and what does the chain say about it?
-          import base64, struct
-          from bot.sources.http import post_json
-          known = {p["baseToken"]["address"]: p for p in pairs}
-          for c in [c for c in coins if c.get("mint") in known][:4]:
-              ds = known[c["mint"]]
-              acct = post_json("https://api.mainnet-beta.solana.com", {"jsonrpc": "2.0", "id": 1, "method": "getAccountInfo",
-                               "params": [ds["pairAddress"], {"encoding": "base64"}]}, timeout=20).get("result", {}).get("value") or {}
-              raw = base64.b64decode((acct.get("data") or [""])[0]) if acct else b""
-              nums = struct.unpack_from("<5Q", raw, 8) if len(raw) >= 48 else ()
-              print(f"  {str(c.get('symbol'))[:10]:10s} pump.fun bonding_curve={str(c.get('bonding_curve'))[:10]} DexScreener pair={ds['pairAddress'][:10]} gleich={c.get('bonding_curve') == ds['pairAddress']} "
-                    f"owner={str(acct.get('owner'))[:10]} len={len(raw)} u64={nums} complete={raw[48] if len(raw) > 48 else None} pump.fun vSOL={c.get('virtual_sol_reserves')} vTok={c.get('virtual_token_reserves')}")
-          # graduated coins: a new PumpSwap pool is a pump.fun curve that just completed
+          # a new PumpSwap pool is a pump.fun curve that just completed: which pairs does DexScreener list for it?
           grads = []
-          for pool in g.get("data") or []:
-              if pool["relationships"]["dex"]["data"]["id"] == "pumpswap":
-                  grads.append(pool["relationships"]["base_token"]["data"]["id"].split("_", 1)[1])
-          print("Graduierte Coins (neue PumpSwap-Pools):", grads[:3])
+          for page in (1, 2, 3):
+              g = get_json(f"https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page={page}", headers={"Accept": "application/json;version=20230302"})
+              grads += [p["relationships"]["base_token"]["data"]["id"].split("_", 1)[1] for p in g.get("data") or []
+                        if p["relationships"]["dex"]["data"]["id"] == "pumpswap"]
+          print("Graduierte Coins (neue PumpSwap-Pools):", len(grads))
           for mint in grads[:3]:
-              ps = get_json("https://api.dexscreener.com/tokens/v1/solana/" + mint) or []
-              for p in ps:
-                  print(f"  {mint[:8]} {p.get('dexId'):10s} pair={p.get('pairAddress', '')[:8]} liq={p.get('liquidity')} price={p.get('priceUsd')} m5={p.get('txns', {}).get('m5')} h1={p.get('txns', {}).get('h1')} labels={p.get('labels')} keys={sorted(set(p) - {'chainId', 'url', 'baseToken', 'quoteToken', 'info', 'txns', 'volume', 'priceChange'})}")
-              try:
-                  one = get_json(f"https://frontend-api-v3.pump.fun/coins/{mint}", headers=pumpfun.HEADERS, retries=0)
-                  print(f"  pump.fun: complete={one.get('complete')} pool={one.get('pool_address') or one.get('raydium_pool')} vSOL={one.get('virtual_sol_reserves')}")
-              except Exception as e:
-                  print("  pump.fun Einzelabfrage:", type(e).__name__, str(e)[:120])
+              for p in get_json("https://api.dexscreener.com/tokens/v1/solana/" + mint) or []:
+                  print(f"  {mint[:8]} {p.get('dexId'):10s} pair={p.get('pairAddress', '')[:8]} liq={(p.get('liquidity') or {}).get('usd')} price={p.get('priceUsd')} m5={p.get('txns', {}).get('m5')}")
           PY
       - name: Ein echter Poll gegen die Live-Märkte
         working-directory: trading-bot
@@ -190,6 +133,9 @@ jobs:
           for c in [c for c in by.get("pumpfun", [])][:5]:
               sn = c["snapshot"]
               print(f"    pump.fun-Beispiel {c['symbol']!s:10.10s} dex={sn.get('dex')} liq={sn.get('liquidity_usd')} vol5m={sn.get('volume_m5')} buys5m={sn.get('buys_m5')} alter={sn.get('age_min')}")
+          for c in [c for c in s.candidates(500) if c["snapshot"].get("liquidity_kind") in ("curve", "graduated")][:6]:
+              sn = c["snapshot"]
+              print(f"    Kurve {c['symbol']!s:10.10s} {sn.get('dex')} Liquidität ${sn.get('liquidity_usd'):,.0f} ({sn.get('liquidity_kind')}) Vol5m ${sn.get('volume_m5'):,.0f} Käufe5m {sn.get('buys_m5')} → {c['decision']}: {'; '.join(c['reasons'][:2])}")
           for c in s.candidates(200):
               if c["decision"] != "skip":
                   rug = (c["snapshot"].get("rug") or {})

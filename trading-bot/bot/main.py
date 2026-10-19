@@ -145,18 +145,20 @@ def bind_server(engine: Engine, host: str, port: int, tries: int = PORT_TRIES, f
 def build(cfg: dict[str, Any], home: Path, demo: bool) -> Engine:
     store = Store(home / ("demo.sqlite" if demo else "bot.sqlite"))
     if demo:
-        from .demo import FakeDex, FakeRug, demo_feeds, fast_clock
+        from .demo import FakeCurves, FakeDex, FakeRug, demo_feeds, fast_clock
         dex = FakeDex()
-        return Engine(cfg, store, dex, FakeRug(), clock=fast_clock(dex), feeds=demo_feeds(dex))
+        return Engine(cfg, store, dex, FakeRug(), clock=fast_clock(dex), feeds=demo_feeds(dex), curves=FakeCurves())
     from .discovery import DexScreenerFeed
     from .sources.dexscreener import DexScreener
     from .sources.geckoterminal import GeckoTerminal
     from .sources.pumpfun import PumpFun
     from .sources.rugcheck import RugCheck
+    from .sources.curve import CurveReader
     from .sources.solana_rpc import OnChainCheck, SafetyCheck
     dex = DexScreener()
     return Engine(cfg, store, dex, SafetyCheck(RugCheck(), OnChainCheck()),
-                  feeds={"dexscreener": DexScreenerFeed(dex), "geckoterminal": GeckoTerminal(), "pumpfun": PumpFun()})
+                  feeds={"dexscreener": DexScreenerFeed(dex), "geckoterminal": GeckoTerminal(), "pumpfun": PumpFun()},
+                  curves=CurveReader())
 
 
 def main(argv: list[str] = None) -> int:

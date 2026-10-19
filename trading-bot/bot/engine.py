@@ -55,11 +55,12 @@ REPORT_TTL = 10.0            # seconds: edge reports and breakdowns are recomput
 class Engine:
     def __init__(self, cfg: dict[str, Any], store: Store, dex: Any, rug: Any,
                  clock: Callable[[], float] = time.time, advisor: Any = None,
-                 feeds: Optional[dict[str, Any]] = None) -> None:
+                 feeds: Optional[dict[str, Any]] = None, curves: Any = None) -> None:
         self.cfg = cfg
         self.store = store
         self.dex = dex
         self.rug = rug
+        self.curves = curves                     # reads pump.fun curve reserves (liquidity) from the chain
         self.clock = clock
         self.discovery = Discovery(cfg, feeds if feeds is not None else {"dexscreener": DexScreenerFeed(dex)}, log=store.log)
         self.advisor = advisor or ClaudeAdvisor(cfg, log=store.log)
@@ -134,6 +135,14 @@ class Engine:
                 if p.get("age_min") is None and snap and snap.get("age_min") is not None:
                     p["age_min"] = snap["age_min"]
                     p["age_from_feed"] = True
+            if self.curves is not None:
+                # one RPC call for the liquidity of every pump.fun curve that is due for a verdict
+                due = [p for p in pairs if now - self._bad_tokens.get(p.get("token") or "", -1e18) >= RESEE_SECONDS
+                       and self._due(chain, p["token"], now)]
+                try:
+                    self.curves.enrich(due)
+                except Exception as error:  # noqa: BLE001 - without the figure the curves are skipped as "unknown"
+                    self.store.log("error", f"Kurven-Reserven: {type(error).__name__}: {error}")
             for p in pairs:
                 if now - self._bad_tokens.get(p.get("token") or "", -1e18) < RESEE_SECONDS:
                     continue                                   # broke last time: give its record half an hour
@@ -143,8 +152,7 @@ class Engine:
                 try:
                     p["source"] = (tokens.get(p["token"]) or {}).get("source")
                     counts["seen"] += 1
-                    last = self.store.last_verdict(chain, p["token"])
-                    if last is not None and now - last["seen_at"] < resee_after(last):
+                    if not self._due(chain, p["token"], now):
                         continue
                     counts["new"] += 1
                     # cheap filters first: RugCheck (a slow web call) only for tokens that pass the rest
@@ -206,6 +214,10 @@ class Engine:
                     self.store.log("error", f"Token {p.get('symbol') or p.get('token')} übersprungen (30 min): "
                                             f"{type(error).__name__}: {error}")
 
+
+    def _due(self, chain: str, token: str, now: float) -> bool:
+        last = self.store.last_verdict(chain, token)
+        return last is None or now - last["seen_at"] >= resee_after(last)
 
     def _poll(self, now: float) -> dict[str, int]:
         counts = {"seen": 0, "new": 0, "buy": 0, "watch": 0, "skip": 0, "exits": 0, "deferred": 0}
@@ -271,7 +283,7 @@ class Engine:
             batch = getattr(self.dex, "prices", None)
             if batch is not None:
                 try:
-                    got = batch(chain, list({p["pair"] for p in group})) or {}
+                    got = batch(chain, list({p["pair"] for p in group}), {p["pair"]: p["token"] for p in group}) or {}
                 except Exception as error:  # noqa: BLE001
                     self.store.log("error", f"Kurse ({chain}): {type(error).__name__}: {error}")
                     got = {}
@@ -508,7 +520,7 @@ class Engine:
     def doctor(self) -> dict[str, Any]:
         """Self-test against this engine's own sources (fakes in the demo)."""
         from . import doctor as _doctor
-        checks = _doctor.run_checks(self.cfg, self.dex, self.discovery.feeds, self.rug, self.home)
+        checks = _doctor.run_checks(self.cfg, self.dex, self.discovery.feeds, self.rug, self.home, self.curves)
         bad = [c["name"] for c in checks if not c["ok"]]
         self.store.log("warn" if bad else "info", "dashboard: Selbsttest " + ("ohne Befund" if not bad else "– Fehler: " + ", ".join(bad)))
         return {"ok": not bad, "checks": checks, "at": time.time()}

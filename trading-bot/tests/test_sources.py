@@ -1103,7 +1103,7 @@ class TrackerBatchTests(unittest.TestCase):
 
     def test_a_busy_poll_is_measured_on_time_in_few_requests(self):
         calls = []
-        def prices_of(chain, pairs):
+        def prices_of(chain, pairs, follow=None):
             calls.append(len(pairs)); return {p: 1.5 for p in pairs}
         tr = self.make(prices_of)
         for i in range(40):
@@ -1114,7 +1114,7 @@ class TrackerBatchTests(unittest.TestCase):
         self.assertEqual(self.store._one("SELECT COUNT(*) AS n FROM outcomes WHERE filled_at IS NULL")["n"], 0)
 
     def test_a_vanished_pair_counts_as_a_total_loss(self):
-        def prices_of(chain, pairs):
+        def prices_of(chain, pairs, follow=None):
             return {p: 2.0 for p in pairs if p != "P1"}                # P1 was pulled; the rest is priced
         tr = self.make(prices_of)
         self.add(tr, 0); c1 = self.add(tr, 1)
@@ -1196,7 +1196,7 @@ class SlowWorldTests(unittest.TestCase):
         pid = self.store.open_positions()[0]["id"]
         real = self.dex.price
         self.dex.price = lambda c, p: (real(c, p) or 0) * 0.4
-        self.dex.prices = lambda c, ps: {p: v * 0.4 for p, v in FakeDex.prices(self.dex, c, ps).items()}
+        self.dex.prices = lambda c, ps, follow=None: {p: v * 0.4 for p, v in FakeDex.prices(self.dex, c, ps).items()}
         many = [{"token": f"Slow{i}", "snapshot": None} for i in range(200)]
         feeds = demo_feeds(self.dex); feeds["slow"] = StubFeed({"solana": many})
         eng.discovery.feeds = feeds; eng.cfg["discovery"]["sources"] = ["slow", "dexscreener"]
@@ -1334,7 +1334,8 @@ class OnChainCheckTests(unittest.TestCase):
 
 class DoctorRugRowTests(unittest.TestCase):
     def test_rugcheck_row_tests_rugcheck_alone(self):
-        """With RugCheck down the RugCheck row must be red even though the fallback answers."""
+        """With RugCheck down the RugCheck row must say so even though the fallback answers:
+        a note (yellow) while the own check covers for it, an error (red) without one."""
         from bot.doctor import run_checks
         from bot.sources.rugcheck import RugCheck
         from bot.sources.solana_rpc import SafetyCheck, OnChainCheck
@@ -1342,71 +1343,136 @@ class DoctorRugRowTests(unittest.TestCase):
         rpc = OnChainCheck(post=lambda *a, **k: {"result": {"value": mint_value()}}, url="x")
         dex = FakeDex()
         rows = {c["name"]: c for c in run_checks(CFG, dex, demo_feeds(dex), SafetyCheck(down, rpc), None)}
-        self.assertFalse(rows["RugCheck"]["ok"]); self.assertIn("resolve host", rows["RugCheck"]["detail"])
-        self.assertIn("springt ein", rows["RugCheck"]["detail"])
+        self.assertTrue(rows["RugCheck"]["ok"]); self.assertTrue(rows["RugCheck"].get("warn"))
+        self.assertIn("resolve host", rows["RugCheck"]["detail"]); self.assertIn("springt ein", rows["RugCheck"]["detail"])
         self.assertTrue(rows["Eigenprüfung über Solana-RPC (Ersatz für RugCheck)"]["ok"])
+        self.assertFalse(rows["Eigenprüfung über Solana-RPC (Ersatz für RugCheck)"].get("warn"))
+        alone = {c["name"]: c for c in run_checks(CFG, dex, demo_feeds(dex), down, None)}
+        self.assertFalse(alone["RugCheck"]["ok"])
+
+    def test_curve_reserves_row(self):
+        from bot.demo import FakeCurves
+        from bot.doctor import run_checks
+        dex = FakeDex(); feeds = demo_feeds(dex)
+        rows = {c["name"]: c for c in run_checks(CFG, dex, feeds, FakeRug(), None, FakeCurves())}
+        self.assertIn("pump.fun-Kurven (Solana-RPC)", rows)
+        self.assertTrue(rows["pump.fun-Kurven (Solana-RPC)"]["ok"], rows["pump.fun-Kurven (Solana-RPC)"])
 
 
 class CurveTests(unittest.TestCase):
     """pump.fun bonding curves: DexScreener sends no liquidity, GeckoTerminal a
-    token-side reserve. Numbers below are live records from the macOS CI run."""
+    token-side reserve. The figure comes from the curve account on the chain.
+    Records below are live data from the macOS CI run."""
 
-    WRLD = {"chainId": "solana", "dexId": "pumpfun", "url": "https://dexscreener.com/solana/4xiw",
-            "pairAddress": "4xiW3NYhNYPTDGm5frrWKzYJZDptgpUamsLApfLtskX4",
-            "baseToken": {"address": "2FRZa1DzuEoaBwbAdajKpum9k65vNBE19QG4gf6ipump", "name": "juice WRLD", "symbol": "WRLD"},
+    WRLD = {"chainId": "solana", "dexId": "pumpfun", "url": "https://dexscreener.com/solana/7rhi",
+            "pairAddress": "7RhioiM25aCurve", "baseToken": {"address": "MintBhinu", "name": "bhinu", "symbol": "bhinu"},
             "quoteToken": {"address": "So11111111111111111111111111111111111111112", "name": "Wrapped SOL", "symbol": "SOL"},
-            "priceNative": "0.00000003699", "priceUsd": "0.000003918",
+            "priceNative": "0.00000002925", "priceUsd": "0.000003086",
             "txns": {"m5": {"buys": 5, "sells": 1}, "h1": {"buys": 5, "sells": 1}},
             "volume": {"m5": 41.18, "h1": 41.18}, "priceChange": {"m5": 30.21, "h1": 30.21},
-            "fdv": 3918.08, "marketCap": 3918.08, "pairCreatedAt": 1792395462000}
+            "fdv": 3086.59, "marketCap": 3086.59, "pairCreatedAt": 1792395462000}
+    # (virtual tokens, virtual quote, real tokens, real quote, supply) of live curve accounts
+    BHINU = (1048881697855587, 30689829050, 768981697855587, 689829050, 1000000000000000)       # SOL, standard curve
+    DOG_THINK = (947380763814062, 774488104, 667480763814062, 124825557, 1000000000000000)    # USDC-quoted curve
+    CHAROC = (1063000000000000, 300000000, 783100000000000, 100000000, 1000000000000000)      # SOL, tiny curve
 
-    def test_the_formula_reproduces_pump_funs_own_reserves(self):
-        import math
-        from bot.sources import curve
-        # (virtual SOL in lamports, virtual tokens in raw units with 6 decimals) from pump.fun's API
-        for v_sol, v_tok in ((30039506171, 1071588854249411), (38593576016, 834076635946507),
-                             (40481005344, 795187761226240), (30000000000, 1073000000000000)):
-            price_sol = (v_sol / 1e9) / (v_tok / 1e6)
-            self.assertAlmostEqual(math.sqrt(curve.PUMP_K * price_sol), v_sol / 1e9, places=3)
-            self.assertAlmostEqual(curve.pump_liquidity(price_sol, 100.0), 2 * v_sol / 1e9 * 100.0, places=0)
-        self.assertIsNone(curve.pump_liquidity(1e-6, 100.0))          # off the standard curve: not guessed
-        self.assertIsNone(curve.pump_liquidity(0.0, 100.0))
-        self.assertAlmostEqual(curve.progress(30 / 1.073e9), 0.0)
-        self.assertAlmostEqual(curve.progress(115 ** 2 / curve.PUMP_K), 1.0)
+    @staticmethod
+    def account(fields, complete=False):
+        import struct
+        return b"\x17\xb7\xf8\x37\x60\xd8\xac\x60" + struct.pack("<5Q", *fields) + bytes([1 if complete else 0]) + b"\x00" * 117
 
-    def test_dexscreener_pump_curve_gets_a_computed_liquidity(self):
+    def rpc(self, accounts, owner="6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"):
+        import base64
+        calls = []
+
+        def post(url, body, timeout=None):
+            calls.append(body)
+            values = []
+            for a in body["params"][0]:
+                data = accounts.get(a)
+                values.append(None if data is None else {"owner": owner, "lamports": 1, "executable": False,
+                                                           "data": [base64.b64encode(data).decode(), "base64"]})
+            return {"jsonrpc": "2.0", "id": 1, "result": {"context": {"slot": 1}, "value": values}}
+        return post, calls
+
+    def test_the_account_layout_matches_the_live_record(self):
+        from bot.sources.curve import parse_pump_curve, pool_liquidity
+        st = parse_pump_curve(self.account(self.BHINU))
+        self.assertAlmostEqual(st["virtual_tokens"], 1048881697.855587)
+        self.assertEqual(st["virtual_quote_raw"], 30689829050); self.assertFalse(st["complete"])
+        # a constant product holds as much quote as its virtual tokens are worth: 2 x 30.69 SOL x $105.5
+        sol_usd = 105.5
+        price = (30689829050 / 1e9) / (1048881697855587 / 1e6) * sol_usd
+        self.assertAlmostEqual(pool_liquidity(st["virtual_tokens"], price), 2 * 30.689829050 * sol_usd, places=6)
+        self.assertTrue(parse_pump_curve(self.account(self.BHINU, complete=True))["complete"])
+        self.assertIsNone(parse_pump_curve(b"\x00" * 20))
+
+    def test_pairs_get_their_liquidity_from_the_chain_in_one_call(self):
+        from bot.sources.curve import CurveReader
         from bot.sources.dexscreener import normalize_pair
-        n = normalize_pair(self.WRLD, now=1792395462 + 60)
-        self.assertEqual(n["liquidity_kind"], "curve"); self.assertTrue(n["curve"])
-        self.assertAlmostEqual(n["liquidity_usd"], 2 * 34.507 * (3.918e-6 / 3.699e-8), delta=5)   # ~ $7,310
+        post, calls = self.rpc({"7RhioiM25aCurve": self.account(self.BHINU), "DogCurve": self.account(self.DOG_THINK),
+                                "DoneCurve": self.account(self.BHINU, complete=True)})
+        bhinu = normalize_pair(self.WRLD)
+        self.assertEqual((bhinu["liquidity_kind"], bhinu["liquidity_usd"]), ("unknown", 0.0))
+        dog = normalize_pair(dict(self.WRLD, pairAddress="DogCurve", priceUsd="0.00000553",
+                                  quoteToken={"address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "symbol": "USDC"}))
+        done = normalize_pair(dict(self.WRLD, pairAddress="DoneCurve"))
+        dbc = normalize_pair(dict(self.WRLD, dexId="meteoradbc", pairAddress="DbcPool"))
+        pool = normalize_pair(dict(self.WRLD, dexId="raydium", pairAddress="RayPool", liquidity={"usd": 42000.0}))
+        reader = CurveReader(post=post)
+        self.assertEqual(reader.enrich([bhinu, dog, done, dbc, pool]), 3)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["method"], "getMultipleAccounts")
+        self.assertEqual(sorted(calls[0]["params"][0]), ["7RhioiM25aCurve", "DogCurve", "DoneCurve"])
+        self.assertEqual(bhinu["liquidity_kind"], "curve")
+        self.assertAlmostEqual(bhinu["liquidity_usd"], 2 * 1048881697.855587 * 3.086e-6, places=2)        # ~ $6,474
+        self.assertAlmostEqual(dog["liquidity_usd"], 2 * 947380763.814062 * 5.53e-6, places=2)            # USDC quote works too
+        self.assertEqual((done["liquidity_kind"], done["liquidity_usd"]), ("graduated", 0.0))
+        self.assertEqual((dbc["liquidity_kind"], dbc["liquidity_usd"]), ("unknown", 0.0))
+        self.assertEqual((pool["liquidity_kind"], pool["liquidity_usd"]), ("reported", 42000.0))
 
-    def test_other_curves_and_quotes_stay_unknown_instead_of_guessed(self):
+    def test_foreign_accounts_and_rpc_trouble_leave_the_figure_unknown(self):
+        from bot.sources.curve import CurveReader
         from bot.sources.dexscreener import normalize_pair
-        pump_quoted = dict(self.WRLD, quoteToken={"address": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn", "symbol": "PUMP"},
-                           priceNative="0.0000123")
-        meteora = dict(self.WRLD, dexId="meteoradbc")
-        for raw in (pump_quoted, meteora):
-            n = normalize_pair(raw)
-            self.assertEqual((n["liquidity_kind"], n["liquidity_usd"]), ("unknown", 0.0), raw["dexId"])
-        pool = dict(self.WRLD, dexId="raydium", liquidity={"usd": 42000.0})
-        self.assertEqual((normalize_pair(pool)["liquidity_kind"], normalize_pair(pool)["liquidity_usd"]), ("reported", 42000.0))
+        post, _ = self.rpc({"7RhioiM25aCurve": self.account(self.BHINU)}, owner="11111111111111111111111111111111")
+        p = normalize_pair(self.WRLD)
+        self.assertEqual(CurveReader(post=post).enrich([p]), 0)
+        self.assertEqual(p["liquidity_kind"], "unknown")
+        t = [0.0]
+        def broken(url, body, timeout=None):
+            raise OSError("RPC down")
+        reader = CurveReader(post=broken, clock=lambda: t[0])
+        for _ in range(3):
+            self.assertEqual(reader.enrich([normalize_pair(self.WRLD)]), 0)
+        self.assertIn("Pause", reader.last_error)
+        calls = reader.calls
+        reader.enrich([normalize_pair(self.WRLD)])
+        self.assertEqual(reader.calls, calls)                                   # paused: no further calls
+        self.assertFalse(reader.health()["ok"])
 
-    def test_gecko_curve_reserve_is_replaced(self):
-        def pool(dex, reserve, base_usd, quote="So11111111111111111111111111111111111111112"):
+    def test_the_price_alone_would_be_wrong_for_many_curves(self):
+        # CHAROC traded on a curve with 0.3 SOL virtual reserves: the standard-curve formula
+        # would have claimed ~20 SOL; the account says a few hundred dollars
+        from bot.sources.curve import CurveReader
+        from bot.sources.dexscreener import normalize_pair
+        from bot.strategy import evaluate
+        post, _ = self.rpc({"CharocCurve": self.account(self.CHAROC)})
+        p = normalize_pair(dict(self.WRLD, pairAddress="CharocCurve", priceNative="0.00000001247", priceUsd="0.000001316"))
+        CurveReader(post=post).enrich([p])
+        self.assertLess(p["liquidity_usd"], 3000)
+        self.assertTrue(any(r.startswith("liquidity $") for r in evaluate(p, None, copy.deepcopy(CFG))["reasons"]))
+
+    def test_gecko_curve_reserve_is_not_taken_for_liquidity(self):
+        def pool(dex, reserve):
             return {"attributes": {"address": "P" + dex, "name": "X / SOL", "reserve_in_usd": reserve,
-                                   "base_token_price_usd": base_usd, "quote_token_price_usd": "105.873245"},
-                    "relationships": {"base_token": {"data": {"id": "solana_MintX"}}, "quote_token": {"data": {"id": "solana_" + quote}},
+                                   "base_token_price_usd": "0.000004", "quote_token_price_usd": "105.873245"},
+                    "relationships": {"base_token": {"data": {"id": "solana_MintX"}},
                                       "dex": {"data": {"id": dex}}}}
-        thrust = normalize_pool(pool("pump-fun", "3147.5328", str(3.868e-8 * 105.873245)), "solana", {})
-        self.assertEqual(thrust["liquidity_kind"], "curve")
-        self.assertAlmostEqual(thrust["liquidity_usd"], 2 * 35.29 * 105.873, delta=10)          # not the $3,147 token side
-        for dex, reserve in (("meteora-dbc", "0.0"), ("raydium-launchlab", "3544.9146")):
-            n = normalize_pool(pool(dex, reserve, "0.000004"), "solana", {})
-            self.assertEqual((n["liquidity_kind"], n["liquidity_usd"]), ("unknown", 0.0), dex)
-        fresh = normalize_pool(pool("pump-fun", None, None), "solana", {})                    # not priced yet
-        self.assertEqual(fresh["liquidity_kind"], "unknown")
-        amm = normalize_pool(pool("raydium", "42000.5", "0.0025"), "solana", {})
-        self.assertEqual((amm["liquidity_kind"], amm["liquidity_usd"]), ("reported", 42000.5))
+        for dex, reserve in (("pump-fun", "3147.5328"), ("meteora-dbc", "0.0"), ("raydium-launchlab", "3544.9146")):
+            n = normalize_pool(pool(dex, reserve), "solana", {})
+            self.assertEqual((n["liquidity_kind"], n["liquidity_usd"], n["curve"]), ("unknown", 0.0, True), dex)
+        amm = normalize_pool(pool("raydium", "42000.5"), "solana", {})
+        self.assertEqual((amm["liquidity_kind"], amm["liquidity_usd"], amm["curve"]), ("reported", 42000.5, False))
 
     def test_the_filter_names_the_real_reason(self):
         from bot.sources.dexscreener import normalize_pair
@@ -1414,16 +1480,35 @@ class CurveTests(unittest.TestCase):
         cfg = copy.deepcopy(CFG)
         unknown = normalize_pair(dict(self.WRLD, dexId="meteoradbc"))
         self.assertTrue(any(r.startswith("liquidity unknown") for r in evaluate(unknown, None, cfg)["reasons"]))
-        # a busy pump.fun curve near completion clears the $15,000 floor on its computed liquidity
-        busy = normalize_pair(dict(self.WRLD, priceNative="0.00000030", priceUsd="0.0000318",
-                                   txns={"m5": {"buys": 60, "sells": 20}}, volume={"m5": 9000.0},
-                                   priceChange={"m5": 12.0}, fdv=31800.0), now=1792395462 + 600)
-        self.assertGreater(busy["liquidity_usd"], 15000)
+        done = dict(normalize_pair(self.WRLD), liquidity_kind="graduated")
+        self.assertTrue(any(r.startswith("curve completed") for r in evaluate(done, None, cfg)["reasons"]))
+        busy = dict(normalize_pair(dict(self.WRLD, txns={"m5": {"buys": 60, "sells": 20}}, volume={"m5": 9000.0},
+                                        priceChange={"m5": 12.0}), now=1792395462 + 600),
+                    liquidity_usd=26000.0, liquidity_kind="curve")
         verdict = evaluate(busy, {"score": 0.0, "danger": [], "warn": [], "source": "onchain"}, cfg)
-        self.assertFalse(any("liquidity" in r and "$" in r and "<" in r for r in verdict["reasons"]), verdict)
+        self.assertNotEqual(verdict["decision"], "skip", verdict)
         self.assertTrue(any(r.startswith("pump.fun-Kurve") for r in verdict["reasons"]), verdict)
-        self.assertIn("Liquidität unbekannt (Bonding-Kurve ohne Angabe)",
-                      [label for _, label, _ in Store.REASON_RULES])
+        labels = [label for _, label, _ in Store.REASON_RULES]
+        self.assertIn("Liquidität unbekannt (Bonding-Kurve ohne Angabe)", labels)
+        self.assertIn("Kurve abgeschlossen (Handel wechselt in den Pool)", labels)
+
+    def test_the_engine_reads_only_curves_that_are_due(self):
+        from bot.demo import FakeCurves
+        seen = []
+        class Spy(FakeCurves):
+            def enrich(self, pairs):
+                seen.append(sorted(p["symbol"] for p in pairs if p.get("dex") == "pumpfun"))
+                return super().enrich(pairs)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started + 7 * 60]; dex.now = lambda: t[0]
+            eng = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=dex.now, curves=Spy())
+            eng.poll_once()
+            curve = next(c for c in store.candidates() if c["symbol"] == "CURVE")
+            self.assertEqual(curve["snapshot"]["liquidity_kind"], "curve")
+            t[0] += 10
+            eng.poll_once()                                 # judged 10 s ago: not due, not read again
+            self.assertEqual(seen, [["CURVE"], []])
+            store.close()
 
 
 class ReentryPauseTests(unittest.TestCase):
@@ -1439,7 +1524,8 @@ class ReentryPauseTests(unittest.TestCase):
         store = Store(Path(tmp.name) / "t.sqlite"); self.addCleanup(store.close)
         cfg = copy.deepcopy(CFG); cfg["reentry_pause_minutes"] = pause
         dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
-        eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now)
+        from bot.demo import FakeCurves
+        eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, curves=FakeCurves())
         for minutes in range(0, 60, 2):
             t[0] = dex.started + minutes * 60
             eng.poll_once()
@@ -1466,3 +1552,94 @@ class ReentryPauseTests(unittest.TestCase):
         self.assertEqual(settings.validate({"reentry_pause_minutes": -5})[1].keys(), {"reentry_pause_minutes"})
         self.assertEqual(settings.validate({"reentry_pause_minutes": 0})[0], {"reentry_pause_minutes": 0.0})
 
+
+
+class GraduationTests(unittest.TestCase):
+    """A pump.fun curve completes and the token moves to a PumpSwap pool. The
+    curve pair then either freezes or disappears; a holding and the outcome
+    tracker must follow the token to its new pool instead."""
+
+    SOL = {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"}
+
+    def raw(self, pair, token, dex, price, liquidity=None, native=None):
+        r = {"chainId": "solana", "dexId": dex, "pairAddress": pair, "url": f"https://dexscreener.com/solana/{pair}",
+             "baseToken": {"address": token, "symbol": "GRAD", "name": "Graduate"}, "quoteToken": self.SOL,
+             "priceUsd": str(price), "priceNative": str(native if native is not None else price / 150.0),
+             "txns": {"m5": {"buys": 0, "sells": 0}}, "volume": {"m5": 0}, "priceChange": {"m5": 0},
+             "pairCreatedAt": 1_799_990_000_000}
+        if liquidity is not None:
+            r["liquidity"] = {"usd": liquidity}
+        return r
+
+    def fake_http(self, pairs):
+        calls = []
+
+        def fetch(url, **_kw):
+            calls.append(url)
+            if "/latest/dex/pairs/" in url:
+                wanted = url.rsplit("/", 1)[1].split(",")
+                return {"pairs": [p for p in pairs if p["pairAddress"] in wanted]}
+            if "/tokens/v1/" in url:
+                wanted = url.rsplit("/", 1)[1].split(",")
+                return [p for p in pairs if p["baseToken"]["address"] in wanted]
+            return []
+        return fetch, calls
+
+    def test_a_completed_curve_is_priced_from_its_new_pool(self):
+        from bot.sources.dexscreener import DexScreener
+        # the curve froze at completion (~115 virtual SOL); the PumpSwap pool trades on, 40 % lower
+        frozen_native = 115.0 ** 2 / 32.19e9
+        curve = self.raw("Curve1", "Mint1", "pumpfun", frozen_native * 150, native=frozen_native)
+        pool = self.raw("Swap1", "Mint1", "pumpswap", frozen_native * 150 * 0.6, liquidity=17000)
+        fetch, calls = self.fake_http([curve, pool])
+        dex = DexScreener(fetch=fetch)
+        got = dex.prices("solana", ["Curve1"], {"Curve1": "Mint1"})
+        self.assertAlmostEqual(got["Curve1"], frozen_native * 150 * 0.6)
+        # discovery also picks the pool, not the frozen curve
+        best = dex.pairs_for_tokens("solana", ["Mint1"])[0]
+        self.assertEqual(best["pair"], "Swap1")
+
+    def test_a_running_curve_and_a_plain_pool_keep_their_own_price(self):
+        from bot.sources.dexscreener import DexScreener
+        running = self.raw("Curve2", "Mint2", "pumpfun", 60.0 ** 2 / 32.19e9 * 150, native=60.0 ** 2 / 32.19e9)
+        junk = self.raw("Junk2", "Mint2", "raydium", 1.0, liquidity=40)        # a dust pool someone opened
+        plain = self.raw("Pool3", "Mint3", "raydium", 0.002, liquidity=50000)
+        fetch, calls = self.fake_http([running, junk, plain])
+        got = DexScreener(fetch=fetch).prices("solana", ["Curve2", "Pool3"], {"Curve2": "Mint2", "Pool3": "Mint3"})
+        self.assertAlmostEqual(got["Curve2"], 60.0 ** 2 / 32.19e9 * 150)
+        self.assertEqual(got["Pool3"], 0.002)
+        self.assertEqual(sum("/tokens/v1/" in u for u in calls), 1)              # only the curve was looked up
+        self.assertNotIn("Mint3", next(u for u in calls if "/tokens/v1/" in u))
+
+    def test_a_vanished_pair_follows_the_token_and_a_true_rug_stays_missing(self):
+        from bot.sources.dexscreener import DexScreener
+        pool = self.raw("Swap4", "Mint4", "pumpswap", 0.0001, liquidity=20000)
+        fetch, _ = self.fake_http([pool])
+        got = DexScreener(fetch=fetch).prices("solana", ["Curve4", "Gone5"], {"Curve4": "Mint4", "Gone5": "Mint5"})
+        self.assertEqual(got, {"Curve4": 0.0001})
+
+    def test_holding_and_tracker_follow_the_graduation(self):
+        from bot.sources.dexscreener import DexScreener
+        from bot.tracker import VANISHED_GRACE_S
+        frozen_native = 115.0 ** 2 / 32.19e9
+        entry = frozen_native * 150 * 0.9
+        pairs = [self.raw("Curve6", "Mint6", "pumpfun", entry, native=entry / 150)]
+        fetch, _ = self.fake_http(pairs)
+        dex = DexScreener(fetch=fetch)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite")
+            t = [1_800_000_000.0]
+            eng = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=lambda: t[0])
+            pid = eng.paper.open({"chain": "solana", "token": "Mint6", "pair": "Curve6", "symbol": "GRAD", "price_usd": entry}, t[0])
+            eng.tracker.record({"seen_at": t[0], "chain": "solana", "token": "Mint6", "pair": "Curve6", "symbol": "GRAD",
+                                "price_usd": entry, "score": 70, "decision": "buy", "reasons": [], "snapshot": {}})
+            # the curve completes: DexScreener drops it, the token trades in PumpSwap at half the entry
+            pairs[:] = [self.raw("Swap6", "Mint6", "pumpswap", entry * 0.5, liquidity=18000)]
+            t[0] += 5 * 60 + VANISHED_GRACE_S + 1
+            eng.poll_once()
+            pos = store.position(pid)
+            self.assertEqual((pos["status"], pos["exit_reason"]), ("closed", "stop_loss"))   # sold on the real market, not written off
+            self.assertFalse(any("abgeschrieben" in e["message"] for e in store.events(50)))
+            five = next(o for o in store.outcomes_for(store.candidates()[0]["id"]) if o["horizon_min"] == 5)
+            self.assertAlmostEqual(five["change_pct"], -50.0, places=1)                       # not -100 % "rug"
+            store.close()

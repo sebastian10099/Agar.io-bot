@@ -303,7 +303,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   // --- Bonding-Kurven: berechnete und unbekannte Liquidität ---
   await p.waitForFunction(() => /CURVE/.test(document.querySelector('#cands').textContent) && /DBC/.test(document.querySelector('#cands').textContent), null, { timeout: 30000 });
   const curveRow = await p.locator('#cands tbody tr', { hasText: /CURVE/ }).first().textContent();
-  ok(/≈\$/.test(curveRow), 'pump.fun-Kurve: Liquidität mit ≈ (aus dem Kurs berechnet)');
+  ok(/\$[\d.]+,\d\d\s*Kurve/.test(curveRow), 'pump.fun-Kurve: Liquidität aus den Reserven, als „Kurve“ markiert');
   const dbcRow = await p.locator('#cands tbody tr', { hasText: /DBC/ }).first().textContent();
   ok(/unbekannt/.test(dbcRow) && !/\$0,00/.test(dbcRow), 'andere Bonding-Kurve: Liquidität „unbekannt“ statt $0');
   ok((await p.locator('input[data-path="reentry_pause_minutes"]').count()) === 1, 'Einstellung „Wiedereinstieg-Sperre“ im Formular');

@@ -113,7 +113,7 @@ class FakeDex:
         p = self.pair(chain, pair_address)
         return p["price_usd"] if p else None
 
-    def prices(self, chain: str, pair_addresses: list[str]) -> dict[str, float]:
+    def prices(self, chain: str, pair_addresses: list[str], follow: Optional[dict[str, str]] = None) -> dict[str, float]:
         out = {}
         for pair in pair_addresses:
             price = self.price(chain, pair)
@@ -139,6 +139,34 @@ class FakeRug:
         return {"score": float(d.get("score_normalised", 0)),
                 "danger": [r["name"] for r in risks if r.get("level") == "danger"],
                 "warn": [r["name"] for r in risks if r.get("level") == "warn"]}
+
+
+class FakeCurves:
+    """Demo stand-in for the on-chain curve reader: the demo's pump.fun curve
+    sits on the standard curve (30 SOL x 1,073,000,000 tokens virtual)."""
+
+    label = "pump.fun-Kurven (Demo)"
+    K = 30 * 1.073e9
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def health(self) -> dict[str, Any]:
+        return {"calls": self.calls, "fails": 0, "last_error": "", "ok": True if self.calls else None}
+
+    def read(self, accounts: list[str]) -> dict[str, dict[str, Any]]:
+        self.calls += 1
+        return {a: {"virtual_tokens": 800_000_000.0, "real_tokens": 520_000_000.0, "complete": False} for a in accounts}
+
+    def enrich(self, pairs: list[dict[str, Any]]) -> int:
+        from .sources.curve import PUMP_DEXES, pool_liquidity
+        todo = [p for p in pairs if p.get("dex") in PUMP_DEXES and p.get("liquidity_kind") != "reported"]
+        if todo:
+            self.calls += 1
+        for p in todo:
+            native = p["price_usd"] / 150.0                   # the demo's SOL price
+            p.update(liquidity_usd=pool_liquidity(math.sqrt(self.K / native), p["price_usd"]), liquidity_kind="curve")
+        return len(todo)
 
 
 def _newest(dex: FakeDex, now: float, chain: str, limit: int) -> list[dict[str, Any]]:

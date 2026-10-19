@@ -17,11 +17,17 @@ from typing import Any, Callable, Optional
 REQUIRED = ("token", "pair", "symbol", "price_usd", "liquidity_usd", "volume_m5", "buys_m5", "sells_m5", "change_m5", "age_min")
 
 
+class Degraded(Exception):
+    """Not working, but something else covers for it: a note, not a failure."""
+
+
 def _check(name: str, fn: Callable[[], str]) -> dict[str, Any]:
     started = time.time()
     try:
         detail = fn()
         return {"name": name, "ok": True, "ms": round((time.time() - started) * 1000), "detail": detail}
+    except Degraded as note:
+        return {"name": name, "ok": True, "warn": True, "ms": round((time.time() - started) * 1000), "detail": str(note)[:300]}
     except Exception as error:  # noqa: BLE001 - every failure is a finding, not a crash
         return {"name": name, "ok": False, "ms": round((time.time() - started) * 1000),
                 "detail": f"{type(error).__name__}: {str(error)[:200]}"}
@@ -40,7 +46,7 @@ def _parsed(pairs: list[dict[str, Any]]) -> str:
 
 
 def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
-               home: Optional[Path] = None) -> list[dict[str, Any]]:
+               home: Optional[Path] = None, curves: Any = None) -> list[dict[str, Any]]:
     chains = list(cfg.get("chains") or ["solana"])
     chain = chains[0]
     out: list[dict[str, Any]] = []
@@ -128,7 +134,8 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
         if r is None:
             why = getattr(rc, "last_error", "") or "Rate-Limit, blockiert oder Token unbekannt"
             if getattr(rug, "onchain", None) is not None:
-                why += " – die Eigenprüfung über Solana-RPC springt ein (nächste Zeile)"
+                # covered by the own check: a note, unless that one fails too (next row)
+                raise Degraded(f"keine Antwort – {why} – die Eigenprüfung über Solana-RPC springt ein (nächste Zeile)")
             raise RuntimeError(f"keine Antwort – {why}")
         return f"{mint[:8]}… Score {r['score']:.0f} · {len(r['danger'])} danger · {len(r['warn'])} warn"
     out.append(_check("RugCheck", rugcheck))
@@ -146,6 +153,27 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
             return (f"{mint[:8]}… · {len(r['danger'])} Gefahr · {len(r['warn'])} Warnung · {r.get('program')} "
                     f"– springt ein, wenn RugCheck nicht antwortet")
         out.append(_check("Eigenprüfung über Solana-RPC (Ersatz für RugCheck)", own_check))
+
+    if curves is not None and hasattr(curves, "read"):
+        def curve_reserves() -> str:
+            if "solana" not in chains:
+                return "übersprungen – Solana nicht aktiv"
+            accounts: list[str] = []
+            pump_feed = feeds.get("pumpfun")
+            if pump_feed is not None and getattr(pump_feed, "_last", None):
+                accounts = [c["pair"] for c in pump_feed._last[1] if c.get("pair") and c["pair"] != c.get("token")][:5]
+            if not accounts:
+                pairs = dex.pairs_for_tokens("solana", (found.get("solana") or [])[:30]) if found.get("solana") else []
+                accounts = [p["pair"] for p in pairs if p.get("dex") in ("pumpfun", "pump-fun")][:5]
+            if not accounts:
+                return "übersprungen – gerade keine pump.fun-Kurve in den Quellen"
+            states = curves.read(accounts)
+            if not states:
+                raise RuntimeError(f"keine Kurve gelesen – {getattr(curves, 'last_error', '') or 'Konten nicht gefunden'}")
+            st = next(iter(states.values()))
+            return (f"{len(states)} von {len(accounts)} Kurven gelesen · z. B. {st['virtual_tokens'] / 1e6:,.0f} Mio. "
+                    f"virtuelle Tokens{' · abgeschlossen' if st['complete'] else ''} – liefert die Liquidität der Kurven-Coins")
+        out.append(_check("pump.fun-Kurven (Solana-RPC)", curve_reserves))
 
     def sdk() -> str:
         from .preflight import sdk_version
@@ -186,14 +214,18 @@ def main() -> int:
     demo = "--demo" in sys.argv
     engine = build(cfg, home, demo)
     try:
-        checks = run_checks(cfg, engine.dex, engine.discovery.feeds, engine.rug, home)
+        checks = run_checks(cfg, engine.dex, engine.discovery.feeds, engine.rug, home, engine.curves)
     finally:
         engine.store.close()
     width = max(len(c["name"]) for c in checks)
     for c in checks:
-        print(f"{'OK ' if c['ok'] else 'FEHLER'}  {c['name']:<{width}}  {c['ms']:>5} ms  {c['detail']}")
+        mark = "FEHLER" if not c["ok"] else "HINWEIS" if c.get("warn") else "OK "
+        print(f"{mark}  {c['name']:<{width}}  {c['ms']:>5} ms  {c['detail']}")
     bad = [c for c in checks if not c["ok"]]
-    print(f"\n{len(checks) - len(bad)} von {len(checks)} Prüfungen bestanden." + ("" if not bad else " Fehler oben lesen; die Quellen-Karte auf der Steuerseite zeigt dasselbe."))
+    notes = [c for c in checks if c.get("warn")]
+    print(f"\n{len(checks) - len(bad)} von {len(checks)} Prüfungen bestanden"
+          + (f", {len(notes)} mit Hinweis" if notes else "") + "."
+          + ("" if not bad else " Fehler oben lesen; die Quellen-Karte auf der Steuerseite zeigt dasselbe."))
     return 1 if bad else 0
 
 

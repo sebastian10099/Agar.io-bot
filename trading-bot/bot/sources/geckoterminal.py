@@ -56,14 +56,9 @@ def normalize_pool(pool: dict[str, Any], chain: str, tokens: dict[str, dict[str,
     dex = ((rel.get("dex") or {}).get("data") or {}).get("id")
     liquidity, kind = _f(a.get("reserve_in_usd")), "reported" if a.get("reserve_in_usd") is not None else "unknown"
     if curve.is_curve(dex):
-        # a curve's "reserve" is the unsold token side (close to the FDV), not pool liquidity
+        # a curve's "reserve" is the unsold token side (close to the FDV), not pool liquidity;
+        # pump.fun's real figure is read from the chain later
         liquidity, kind = 0.0, "unknown"
-        quote_id = ((rel.get("quote_token") or {}).get("data") or {}).get("id") or ""
-        price, sol_usd = _f(a.get("base_token_price_usd")), _f(a.get("quote_token_price_usd"))
-        if dex in curve.PUMP_DEXES and quote_id.endswith(curve.SOL_MINT) and price > 0 and sol_usd > 0:
-            est = curve.pump_liquidity(price / sol_usd, sol_usd)
-            if est is not None:
-                liquidity, kind = est, "curve"
     return {
         "chain": chain,
         "dex": dex,

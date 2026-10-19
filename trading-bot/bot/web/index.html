@@ -405,10 +405,12 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
 const usd = (v) => v == null ? '–' : (v < 0 ? '−' : '') + '$' + Math.abs(v).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-// bonding curves: DexScreener gives no liquidity; pump.fun's curve is computed from the price, others stay unknown
-const liq = (sn) => sn.liquidity_kind === 'unknown' && !sn.liquidity_usd
+// bonding curves: DexScreener gives no liquidity; pump.fun's is read from the curve account, others stay unknown
+const liq = (sn) => sn.liquidity_kind === 'graduated'
+  ? '<span class="reasons" title="Die Bonding-Kurve ist voll, der Handel wechselt in den neuen Pool">Kurve fertig</span>'
+  : sn.liquidity_kind === 'unknown' && !sn.liquidity_usd
   ? '<span class="reasons" title="Bonding-Kurve: die Quelle nennt keine Liquidität">unbekannt</span>'
-  : sn.liquidity_kind === 'curve' ? `<span title="pump.fun-Bonding-Kurve: Liquidität aus dem Kurs berechnet">≈${usd(sn.liquidity_usd)}</span>` : usd(sn.liquidity_usd);
+  : sn.liquidity_kind === 'curve' ? `<span title="pump.fun-Bonding-Kurve: Liquidität aus den Reserven auf der Chain">${usd(sn.liquidity_usd)} <span class="reasons">Kurve</span></span>` : usd(sn.liquidity_usd);
 const pct = (v) => v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(1) + '%';
 const cls = (v) => v == null ? '' : v > 0 ? 'pos' : v < 0 ? 'neg' : '';
 const px = (v) => v == null ? '–' : v >= 1 ? v.toFixed(4) : v.toPrecision(4);
@@ -985,8 +987,8 @@ $('b-help').onclick = () => $('help').showModal();
 $('b-doctor').onclick = () => busy($('b-doctor'), async () => {
   $('doctor').hidden = false; $('doctor').innerHTML = '<li><span class="dot warn"></span><span class="reasons">Prüfe Quellen, Parser, RugCheck, Zugang …</span></li>';
   const r = await api('/api/doctor', {}); lastDoctor = r;
-  $('doctor').innerHTML = r.checks.map((c) => `<li><span class="dot ${c.ok ? 'ok' : 'bad'}" role="img" aria-label="${c.ok ? 'bestanden' : 'Fehler'}"></span><b>${esc(c.name)}</b> <span class="reasons">${c.ms} ms · ${esc(c.detail)}</span></li>`).join('')
-    + `<li><span class="reasons">Selbsttest ${hhmm(r.at)}: ${r.checks.filter((c) => c.ok).length} von ${r.checks.length} bestanden. Dasselbe im Terminal: <code>python3 -m bot.doctor</code></span></li>`;
+  $('doctor').innerHTML = r.checks.map((c) => `<li><span class="dot ${!c.ok ? 'bad' : c.warn ? 'warn' : 'ok'}" role="img" aria-label="${!c.ok ? 'Fehler' : c.warn ? 'Hinweis' : 'bestanden'}"></span><b>${esc(c.name)}</b> <span class="reasons">${c.ms} ms · ${esc(c.detail)}</span></li>`).join('')
+    + `<li><span class="reasons">Selbsttest ${hhmm(r.at)}: ${r.checks.filter((c) => c.ok).length} von ${r.checks.length} bestanden${r.checks.some((c) => c.warn) ? `, ${r.checks.filter((c) => c.warn).length} mit Hinweis` : ''}. Dasselbe im Terminal: <code>python3 -m bot.doctor</code></span></li>`;
   toast(r.ok ? 'Selbsttest ohne Befund' : 'Selbsttest: Fehler gefunden – siehe Liste', !r.ok);
   refresh();
 });

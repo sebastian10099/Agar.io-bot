@@ -27,7 +27,7 @@ MAX_SINGLE = 20                # single lookups per poll when no batch source ex
 class Tracker:
     def __init__(self, store: Store, cfg: dict[str, Any],
                  price_of: Callable[[str, str], Optional[float]],
-                 prices_of: Optional[Callable[[str, list[str]], dict[str, float]]] = None) -> None:
+                 prices_of: Optional[Callable[[str, list[str], dict[str, str]], dict[str, float]]] = None) -> None:
         self.store = store
         self.horizons = [int(h) for h in cfg["tracker"]["horizons_minutes"]]
         self.price_of = price_of
@@ -43,15 +43,19 @@ class Tracker:
         prices: dict[tuple[str, str], float] = {}
         answered: set[str] = set()
         by_chain: dict[str, list[str]] = {}
+        tokens: dict[str, str] = {}
         for r in rows:
             pairs = by_chain.setdefault(r["chain"], [])
             if r["pair"] not in pairs:
                 pairs.append(r["pair"])
+            tokens[r["pair"]] = r["token"]
         for chain, pairs in by_chain.items():
             if self.prices_of is not None:
                 for i in range(0, len(pairs), BATCH):
+                    chunk = pairs[i:i + BATCH]
                     try:
-                        got = self.prices_of(chain, pairs[i:i + BATCH]) or {}
+                        # a graduated curve is priced from its new pool, not counted as a rug
+                        got = self.prices_of(chain, chunk, {p: tokens[p] for p in chunk}) or {}
                     except Exception:  # noqa: BLE001 - an outage is handled like "no answer"
                         got = {}
                     for pair, price in got.items():

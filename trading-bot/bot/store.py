@@ -192,6 +192,7 @@ class Store:
         ("age unknown", "Alter unbekannt (Quelle liefert kein Listing-Datum)", None),
         ("liquidity $", "Liquidität zu klein", "filters.min_liquidity_usd"),
         ("liquidity unknown", "Liquidität unbekannt (Bonding-Kurve ohne Angabe)", None),
+        ("curve completed", "Kurve abgeschlossen (Handel wechselt in den Pool)", None),
         ("too large for a new token", "Liquidität zu groß", "filters.max_liquidity_usd"),
         ("5m volume", "5-Minuten-Volumen zu klein", "filters.min_volume_m5_usd"),
         ("5m buys", "zu wenige Käufe in 5 min", "filters.min_buys_m5"),
