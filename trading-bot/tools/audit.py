@@ -28,6 +28,7 @@ from bot.strategy import evaluate  # noqa: E402
 EPS_USD = 0.02          # rounding of money
 EPS_PCT = 0.05          # rounding of thresholds, in percentage points
 AUTO_MATCH_S = 2.0      # an automatic buy is recorded as a "buy" verdict in the same poll
+JUMP_MAX = 10.0         # the engine's PRICE_JUMP_MAX: no real market rises this much from one poll to the next
 
 
 def _rows(db: sqlite3.Connection, sql: str, args: tuple = ()) -> list[dict[str, Any]]:
@@ -185,6 +186,25 @@ def _audit(db: sqlite3.Connection, cfg: dict[str, Any], state: Optional[dict[str
         if hit:
             bad.append(f"Kandidat #{r['id']} {r['symbol']}: {hit[0][:80]}")
     check("kein Kauf-Urteil mit Sperrgrund", bad, len(rows))
+
+    # 7. no fill or tick at a price no market makes: a jump of more than JUMP_MAX in one step
+    #    is a bad quote (a pool opened at a made-up price) - booked, it is a fantasy profit
+    bad = []
+    n = 0
+    for p in positions:
+        tag = f"#{p['id']} {p['symbol']}"
+        steps = [(r["at"], r["price"], "Kurs") for r in db.execute(
+            "SELECT at, price FROM ticks WHERE position_id=? ORDER BY at", (p["id"],))]
+        steps += [(t["at"], t["price"] / (1 - slip), f"Verkauf {t['reason']}")
+                  for t in by_pos.get(p["id"], []) if t["side"] == "sell"]
+        last = p["entry_price"] / (1 + slip)
+        for at, price, what in sorted(steps, key=lambda x: x[0]):
+            n += 1
+            if last > 0 and price > last * JUMP_MAX:
+                bad.append(f"{tag}: {what} {price:.6g} = {price / last:,.0f}-fach des vorigen {last:.6g}")
+            if what == "Kurs" and price > 0:
+                last = price
+    check("Kurse plausibel (kein Sprung über das 10-Fache in einem Schritt)", bad, n)
     return checks
 
 

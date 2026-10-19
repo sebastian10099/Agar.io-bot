@@ -21,6 +21,8 @@ VANISHED_GRACE_S = 10 * 60     # no price this long past due, while others are p
 GIVE_UP_S = 60 * 60            # no answer at all this long past due -> unknown (never a loss)
 LATE_OK_S = 120                # a price this late (or half the horizon) still measures the horizon; later
                                # (an outage, a restart) it would be another horizon's outcome -> unknown
+OUTCOME_MAX = 1000.0           # a price this many times the one seen is a bad quote (a pool at a made-up
+                               # price), not an outcome: it would swamp every average -> unknown
 BATCH = 30                     # pairs per request (DexScreener's limit)
 MAX_DUE = 600                  # outcomes handled per poll
 MAX_SINGLE = 20                # single lookups per poll when no batch source exists
@@ -89,7 +91,9 @@ class Tracker:
             price = prices.get((row["chain"], row["pair"]))
             base = row["price_usd"] or 0
             late = now - row["due_at"]
-            if price and late <= max(LATE_OK_S, row["horizon_min"] * 30):
+            if price and base > 0 and price > base * OUTCOME_MAX:
+                self.store.fill_outcome(row["candidate_id"], row["horizon_min"], None, None)
+            elif price and late <= max(LATE_OK_S, row["horizon_min"] * 30):
                 change = (price / base - 1) * 100 if base > 0 else None
                 self.store.fill_outcome(row["candidate_id"], row["horizon_min"], price, change)
             elif price:

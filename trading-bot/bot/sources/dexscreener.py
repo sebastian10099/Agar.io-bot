@@ -51,7 +51,12 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
     vol = p.get("volume") or {}
     chg = p.get("priceChange") or {}
     # bonding curves come without a liquidity figure (pump.fun's is read from the chain later)
-    reported = (p.get("liquidity") or {}).get("usd")
+    liq = p.get("liquidity") or {}
+    reported = liq.get("usd")
+    price_usd, price_native = _f(p.get("priceUsd")), _f(p.get("priceNative"))
+    # each side's value: the base at its price, the quote at its own (priceUsd / priceNative)
+    base_usd = _f(liq.get("base")) * price_usd if liq.get("base") is not None else None
+    quote_usd = _f(liq.get("quote")) * price_usd / price_native if liq.get("quote") is not None and price_native > 0 else None
     created_ms = p.get("pairCreatedAt")
     age_min = (now - created_ms / 1000.0) / 60.0 if created_ms else None
     return {
@@ -63,9 +68,12 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
         "symbol": base.get("symbol"),
         "name": base.get("name"),
         "url": safe_url(p.get("url")),
-        "price_usd": _f(p.get("priceUsd")),
-        "price_native": _f(p.get("priceNative")),        # the base token in units of the quote token
-        "liquidity_usd": _f(reported),
+        "price_usd": price_usd,
+        "price_native": price_native,                    # the base token in units of the quote token
+        "liquidity_usd": _real_liquidity(_f(reported), quote_usd),
+        "liquidity_reported_usd": _f(reported),
+        "liquidity_base_usd": base_usd,
+        "liquidity_quote_usd": quote_usd,
         "liquidity_kind": "reported" if reported is not None else "unknown",
         "curve": curve.is_curve(p.get("dexId")),
         "fdv": _f(p.get("fdv")),
@@ -85,6 +93,26 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
     }
 
 
+def _real_liquidity(reported: float, paired_usd: Optional[float]) -> float:
+    """DexScreener counts the token side at the pool's own price: a pool opened at a
+    made-up price ($1 for a coin worth $0.00002) with one-sided tokens in it reads
+    as a deep market that never traded. Only the paired side is money one could
+    sell into, so a pool counts at most twice that."""
+    return reported if paired_usd is None else min(reported, 2 * paired_usd)
+
+
+def market_depth(n: dict[str, Any], token: Optional[str] = None) -> float:
+    """Liquidity of this pool as a market for `token`. A pool listing it as the
+    quote side has the base as its paired side - priced only through this pool,
+    so both sides must hold value."""
+    token = canon(token)
+    if token and canon(n.get("token")) != token and canon(n.get("quote_token")) == token:
+        sides = [v for v in (n.get("liquidity_base_usd"), n.get("liquidity_quote_usd")) if v is not None]
+        reported = n.get("liquidity_reported_usd", n["liquidity_usd"])
+        return reported if not sides else min(reported, 2 * min(sides))
+    return n["liquidity_usd"]
+
+
 def token_price(n: dict[str, Any], token: Optional[str]) -> Optional[float]:
     """USD price of `token` in this pair. DexScreener's priceUsd is the BASE token's;
     a pool can list our token as the quote side (and DexScreener may flip a pool's
@@ -98,12 +126,13 @@ def token_price(n: dict[str, Any], token: Optional[str]) -> Optional[float]:
     return None
 
 
-def _rank(n: dict[str, Any]) -> tuple[int, float]:
+def _rank(n: dict[str, Any], token: Optional[str] = None) -> tuple[int, float]:
     """Which pair speaks for a token: a real pool with reported liquidity first
     (after a pump.fun curve completes, its PumpSwap pool), then the curve, then
     whatever dust pool someone opened next to a running curve."""
-    real = not n.get("curve") and n.get("liquidity_kind", "reported") == "reported" and n["liquidity_usd"] >= SUCCESSOR_MIN_LIQ
-    return (2 if real else 1 if n.get("curve") else 0, n["liquidity_usd"])
+    depth = market_depth(n, token)
+    real = not n.get("curve") and n.get("liquidity_kind", "reported") == "reported" and depth >= SUCCESSOR_MIN_LIQ
+    return (2 if real else 1 if n.get("curve") else 0, depth)
 
 
 class DexScreener:
@@ -207,12 +236,12 @@ class DexScreener:
                 for pair in pairs:
                     others = [(n, pr) for n, pr in markets.get(token, []) if n["pair"] != pair]
                     if pair not in out:                  # gone: the token's best remaining market - never a dust pool
-                        pick = [(n, pr) for n, pr in others if _rank(n)[0] >= 1]
+                        pick = [(n, pr) for n, pr in others if _rank(n, token)[0] >= 1]
                     else:                                # a listed curve: only the pool it graduates into
-                        pick = [(n, pr) for n, pr in others if _rank(n)[0] == 2
+                        pick = [(n, pr) for n, pr in others if _rank(n, token)[0] == 2
                                 and str(n.get("dex") or "").lower() in CURVE_SUCCESSORS.get(curves[pair], ())]
                     if pick:
-                        out[pair] = max(pick, key=lambda x: _rank(x[0]))[1]
+                        out[pair] = max(pick, key=lambda x: _rank(x[0], token))[1]
         return out
 
     def price(self, chain: str, pair_address: str, token: Optional[str] = None) -> Optional[float]:

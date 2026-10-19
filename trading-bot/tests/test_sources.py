@@ -1242,6 +1242,28 @@ class AuditTests(unittest.TestCase):
             strict = self.cfg(); strict["filters"]["min_liquidity_usd"] = 10_000_000       # other rules
             self.assertFalse(next(c for c in audit.audit(db, strict) if c["name"].startswith("automatische"))["ok"])
 
+    def test_a_fantasy_price_fails_the_audit(self):
+        import sqlite3
+        audit = self.load()
+        with tempfile.TemporaryDirectory() as d:
+            db = Path(d) / "bot.sqlite"
+            store = Store(db)
+            from bot.paper import Paper
+            paper = Paper(store, self.cfg())
+            pid = paper.open({"chain": "solana", "token": "Merc", "pair": "MercPool", "symbol": "MRCY", "price_usd": 3e-5}, 0.0)
+            pos = store.position(pid)
+            store.tick(pid, 0.0, 3e-5); store.tick(pid, 10.0, 3.6e-5)
+            store.tick(pid, 20.0, 1.017); paper.update(pos, 1.017, 20.0)              # what the live run booked
+            store.close()
+            jumps = lambda cs: next(c for c in cs if c["name"].startswith("Kurse plausibel"))
+            checks = audit.audit(db, self.cfg())
+            self.assertFalse(jumps(checks)["ok"])
+            self.assertIn("#1 MRCY", jumps(checks)["problems"][0])
+            con = sqlite3.connect(db)
+            con.execute("DELETE FROM trades WHERE side='sell'"); con.execute("DELETE FROM ticks WHERE price > 1")
+            con.commit(); con.close()
+            self.assertTrue(jumps(audit.audit(db, self.cfg()))["ok"])                  # +20 % a poll is a market
+
     def test_state_cross_check_ai_lift_and_claudes_words(self):
         import sqlite3
         audit = self.load()
@@ -1329,6 +1351,33 @@ class EngineSafetyTests(unittest.TestCase):
             self.assertLess(pos["realized_usd"], -pos["size_usd"] * 0.99)          # a total loss, not a gain
             store.close()
 
+    def test_a_made_up_price_is_never_booked(self):
+        """Live run: a holding at $0.00003 was quoted at $1.017 (a pool opened at a made-up
+        price) and sold there - a million-dollar profit that never existed."""
+        with tempfile.TemporaryDirectory() as d:
+            dex = FakeDex(accel=1.0); t = [dex.started]
+            eng, store = self.engine(dex, t, d=d)
+            pid = eng.paper.open({"chain": "solana", "token": "Merc", "pair": "MercPool", "symbol": "MRCY", "price_usd": 3e-5}, t[0])
+            quote = [3.3e-5]
+            orig = dex.prices
+            dex.prices = lambda chain, ps, follow=None: dict(orig(chain, ps, follow), MercPool=quote[0])
+            t[0] += 10; eng.poll_once()
+            quote[0] = 1.017
+            for _ in range(5):
+                t[0] += 10; eng.poll_once()
+            pos = store.position(pid)
+            self.assertEqual(pos["remaining_frac"], 1.0)                            # no take-profit at the fantasy price
+            self.assertLess(pos["realized_usd"], 0)                                 # only the entry fee
+            self.assertEqual(eng.last_prices["MercPool"], 3.3e-5)
+            self.assertEqual(sum("MRCY verworfen" in e["message"] for e in store.events()), 1)   # said once
+            eng.sell_position(pid, 0.5)                                             # a manual sell neither
+            sold = [t for t in store._rows("SELECT * FROM trades WHERE position_id=?", (pid,)) if t["side"] == "sell"]
+            self.assertAlmostEqual(sold[0]["price"], 3.3e-5 * (1 - eng.paper.slippage_pct / 100))
+            quote[0] = 3.3e-6                                                       # a real fall is believed: the stop fires
+            t[0] += 10; eng.poll_once()
+            self.assertEqual(store.position(pid)["exit_reason"], "stop_loss")
+            store.close()
+
     def test_editing_the_ladder_never_sells_a_rung_twice(self):
         from bot.paper import Paper
         with tempfile.TemporaryDirectory() as d:
@@ -1381,6 +1430,22 @@ class SourceHygieneTests(unittest.TestCase):
         for _ in range(30):
             disc.recent(["solana"]); t[0] += 2
         self.assertEqual(len(lines), 1, lines)
+
+    def test_a_blocked_feed_is_logged_once(self):
+        """Live log: pump.fun's Cloudflare block alternated between "HttpError: ..." and
+        "RuntimeError: HttpError: ..." - a new line every ten seconds."""
+        from bot.sources.geckoterminal import GeckoTerminal
+        from bot.sources.http import HttpError
+        from bot.sources.pumpfun import PumpFun
+        def blocked(url, **kw): raise HttpError(403, "von Cloudflare blockiert")
+        t = [0.0]; lines = []
+        feeds = {"pumpfun": PumpFun(fetch=blocked, clock=lambda: t[0]),
+                 "geckoterminal": GeckoTerminal(fetch=blocked, clock=lambda: t[0])}
+        disc = Discovery({"discovery": {"sources": list(feeds)}}, feeds, log=lambda lvl, msg: lines.append(msg))
+        for _ in range(30):
+            disc.recent(["solana"]); t[0] += 3
+        self.assertEqual(len(lines), 2, lines)
+        self.assertEqual(lines[0], "Quelle pumpfun: HttpError: HTTP 403: von Cloudflare blockiert")
 
     def test_rugcheck_looks_again_and_one_unknown_token_pauses_nothing(self):
         from bot.sources.http import HttpError
@@ -1525,6 +1590,15 @@ class TrackerBatchTests(unittest.TestCase):
         self.assertEqual(filled, 120)                                  # 40 candidates x 3 horizons, no backlog
         self.assertLessEqual(len(calls), 6); self.assertTrue(all(n <= 30 for n in calls))   # 2 requests per horizon
         self.assertEqual(self.store._one("SELECT COUNT(*) AS n FROM outcomes WHERE filled_at IS NULL")["n"], 0)
+
+    def test_a_made_up_price_is_no_outcome(self):
+        tr = self.make(lambda chain, pairs, follow=None: {p: (34_000.0 if p == "P1" else 3.0) for p in pairs})
+        c0 = self.add(tr, 0); c1 = self.add(tr, 1)
+        tr.fill_due(now=1000.0 + 5 * 60 + 5)
+        one = lambda c: self.store._one("SELECT * FROM outcomes WHERE candidate_id=? AND horizon_min=5", (c,))
+        self.assertEqual(one(c0)["change_pct"], 200.0)                    # a tripling is a market
+        self.assertIsNotNone(one(c1)["filled_at"])
+        self.assertIsNone(one(c1)["change_pct"])                          # +3,400,000 % is a bad quote: unknown
 
     def test_a_vanished_pair_counts_as_a_total_loss(self):
         def prices_of(chain, pairs, follow=None):
@@ -2101,6 +2175,30 @@ class GraduationTests(unittest.TestCase):
         rogue = self.raw("Pool8", "Mint8", "meteora", 0.0001, liquidity=30000)       # an ordinary Meteora pool beside it
         fetch, _ = self.fake_http([dbc, rogue])
         self.assertAlmostEqual(DexScreener(fetch=fetch).prices("solana", ["Dbc8"], {"Dbc8": "Mint8"})["Dbc8"], 0.001)
+
+    def test_a_pool_at_a_made_up_price_never_prices_a_holding(self):
+        """Live run: a coin worth $0.00003 had a second pool opened at $1 with only its own
+        tokens in it - DexScreener reads that as $1M of liquidity. The holding's pool
+        dropped out of one answer and the bot sold at $1.017."""
+        from bot.sources.dexscreener import DexScreener, normalize_pair
+        usdc = {"address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "symbol": "USDC"}
+        fake = self.raw("Fake10", "Mint10", "meteora", 1.017, native=1.017)
+        fake.update(quoteToken=usdc, liquidity={"usd": 1_000_000, "base": 983_000, "quote": 3})
+        side = self.raw("Side10", "Mint10", "raydium", 3.1e-5)
+        side["liquidity"] = {"usd": 20_000, "base": 3.2e8, "quote": 66.7}            # 66.7 SOL = $10,000 paired
+        self.assertEqual(normalize_pair(fake)["liquidity_usd"], 6.0)                 # 3 USDC is all one could sell into
+        self.assertAlmostEqual(normalize_pair(side)["liquidity_usd"], 20_000, delta=50)
+        fetch, _ = self.fake_http([fake, side])
+        dex = DexScreener(fetch=fetch)
+        self.assertAlmostEqual(dex.prices("solana", ["Main10"], {"Main10": "Mint10"})["Main10"], 3.1e-5)
+        self.assertEqual(dex.pairs_for_tokens("solana", ["Mint10"])[0]["pair"], "Side10")
+        fetch, _ = self.fake_http([fake])                                            # nothing but the fake pool
+        self.assertEqual(DexScreener(fetch=fetch).prices("solana", ["Main10"], {"Main10": "Mint10"}), {})
+        flipped = self.raw("Flip10", "JunkMint", "meteora", 5.0, native=5.0 / 3.1e-5)  # our token on the quote side,
+        flipped.update(quoteToken={"address": "Mint10", "symbol": "MRCY"},          # the pool holding only junk
+                       liquidity={"usd": 500_000, "base": 100_000, "quote": 0})
+        fetch, _ = self.fake_http([flipped])
+        self.assertEqual(DexScreener(fetch=fetch).prices("solana", ["Main10"], {"Main10": "Mint10"}), {})
 
     def test_a_price_always_belongs_to_the_token_held(self):
         """Live data showed outcomes of +9,000,000 % in 15 minutes: a pool listing the token

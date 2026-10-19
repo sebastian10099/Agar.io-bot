@@ -74,6 +74,9 @@ def normalize_pool(pool: dict[str, Any], chain: str, tokens: dict[str, dict[str,
         "price_usd": _f(a.get("base_token_price_usd")),
         "price_native": _f(a.get("base_token_price_quote_token")),
         "liquidity_usd": liquidity,
+        "liquidity_reported_usd": liquidity,
+        "liquidity_base_usd": None,                    # GeckoTerminal gives no split of the reserve
+        "liquidity_quote_usd": None,
         "liquidity_kind": kind,
         "curve": curve.is_curve(dex),
         "fdv": _f(a.get("fdv_usd")),
@@ -106,7 +109,7 @@ class GeckoTerminal:
         self.min_interval = min_interval
         self.clock = clock
         self._last: dict[str, tuple[float, list[dict[str, Any]]]] = {}
-        self._failed: dict[str, tuple[float, str]] = {}   # chain -> when and why the last call failed
+        self._failed: dict[str, tuple[float, Exception]] = {}   # chain -> when and why the last call failed
         self._paused_until = 0.0
         self.calls = 0
 
@@ -123,7 +126,8 @@ class GeckoTerminal:
             raise RuntimeError(f"Rate-Limit (HTTP 429) – Pause {RATE_LIMIT_PAUSE_S:.0f} s")
         failed = self._failed.get(chain)
         if failed and now - failed[0] < self.min_interval:
-            raise RuntimeError(failed[1])               # a failing source is not asked more often than a working one
+            # a failing source is not asked more often than a working one; the same error, so the log stays quiet
+            raise failed[1].with_traceback(None)
         self.calls += 1
         try:
             data = self.fetch(f"{BASE}/networks/{net}/new_pools?include=base_token&page=1", headers=HEADERS, retries=0)
@@ -131,10 +135,10 @@ class GeckoTerminal:
             if error.status == 429:
                 self._paused_until = now + RATE_LIMIT_PAUSE_S
                 raise RuntimeError(f"Rate-Limit (HTTP 429) – Pause {RATE_LIMIT_PAUSE_S:.0f} s") from None
-            self._failed[chain] = (now, f"{type(error).__name__}: {str(error)[:160]}")
+            self._failed[chain] = (now, error)
             raise
         except Exception as error:
-            self._failed[chain] = (now, f"{type(error).__name__}: {str(error)[:160]}")
+            self._failed[chain] = (now, error)
             raise
         self._failed.pop(chain, None)
         tokens = {t.get("id"): (t.get("attributes") or {})

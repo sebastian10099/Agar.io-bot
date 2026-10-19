@@ -19,6 +19,9 @@ RESEE_WATCH = 5 * 60         # a watch passed every filter; its numbers move fas
 FOLLOW_GRACE_S = 10 * 60     # a token followed past its feed: this long after it is due for DexScreener to list it
 FOLLOW_MAX = 2000
 FOLLOW_RESTORE_S = 30 * 60   # after a restart, follow-ups are picked up from this far back
+# a holding quoted at this many times its last price from one poll to the next is a bad quote (a pool
+# opened at a made-up price, another token's number), not a market: no real pool moves 10x in seconds
+PRICE_JUMP_MAX = 10.0
 
 
 _PRESETS: Optional[dict[str, dict[str, Any]]] = None
@@ -90,6 +93,8 @@ class Engine:
         # position id -> engine time of its last price; after a restart the clock starts anew for all,
         # or one missing price would write off a position the bot simply was not watching
         self._last_priced: dict[int, float] = {p["id"]: clock() for p in store.open_positions()}
+        self._good_price: dict[int, float] = {}       # position id -> its last believable price
+        self._refused: dict[int, float] = {}          # position id -> the bad quote last logged for it
         self._dex_answered = False                # did DexScreener itself answer during the last discovery?
         self._dex_answered_now = False
         self._deferred_last = 0
@@ -294,13 +299,20 @@ class Engine:
                 pos = self.store.position(listed["id"])
                 if pos is None or pos["status"] != "open":
                     continue
-                self.last_prices[pos["pair"]] = price
-                self.paper.update(pos, price, now)
-                if pos["opened_at"] < now:             # the entry already wrote this poll's tick
-                    self.store.tick(pos["id"], now, price)
+                good = self._believable(pos, price)
+                if good is None:
+                    # stops and the time stop keep working on the last believable price
+                    self.paper.update(pos, self._reference_price(pos), now)
+                else:
+                    self.last_prices[pos["pair"]] = good
+                    self.paper.update(pos, good, now)
+                    if pos["opened_at"] < now:         # the entry already wrote this poll's tick
+                        self.store.tick(pos["id"], now, good)
                 if pos["status"] != "open":
                     counts["exits"] += 1
                     self._last_priced.pop(pos["id"], None)
+                    self._good_price.pop(pos["id"], None)
+                    self._refused.pop(pos["id"], None)
 
         try:
             self._discover(now, counts)
@@ -357,6 +369,37 @@ class Engine:
                 if price:
                     priced[pos["id"]] = price
         return priced
+
+    def _manual_price(self, pos: dict[str, Any]) -> Optional[float]:
+        """Price for a manual sell: the current one if believable, else the last believable one."""
+        now = self._price_now(pos["chain"], pos["pair"], pos["token"])
+        if now:
+            good = self._believable(pos, now)
+            return good if good is not None else self._reference_price(pos)
+        return self.last_prices.get(pos["pair"])
+
+    def _reference_price(self, pos: dict[str, Any]) -> float:
+        """The position's last believable price: from this run, else its last tick, else the entry."""
+        if pos["id"] in self._good_price:
+            return self._good_price[pos["id"]]
+        last = self.store.ticks_for(pos["id"], limit=1)
+        return float(last[-1]["price"]) if last else float(pos["entry_price"])
+
+    def _believable(self, pos: dict[str, Any], price: float) -> Optional[float]:
+        """`price`, unless it jumps more than PRICE_JUMP_MAX-fold above the last believable
+        one - then None, logged once per bad quote. A fall is always believed: a rug
+        drops a price 100-fold in a moment, and a stop loss must see it."""
+        ref = self._reference_price(pos)
+        if ref > 0 and price > ref * PRICE_JUMP_MAX:
+            if self._refused.get(pos["id"]) != price:
+                self._refused[pos["id"]] = price
+                self.store.log("warn", f"Kurs für {pos.get('symbol')} verworfen: {price:.6g} ist das "
+                                       f"{price / ref:,.0f}-Fache des letzten ({ref:.6g}) – so springt kein echter Markt; "
+                                       f"Stops und Zeitstopp rechnen mit dem letzten glaubwürdigen Kurs")
+            return None
+        self._good_price[pos["id"]] = price
+        self._refused.pop(pos["id"], None)
+        return price
 
     def _price_now(self, chain: str, pair: str, token: str) -> Optional[float]:
         """Current price for a manual action, following the token to its new
@@ -449,7 +492,7 @@ class Engine:
             pos = self.store.position(pid)
             if pos is None or pos["status"] != "open":
                 return {"ok": False, "error": "Position ist nicht offen"}
-            price = self._price_now(pos["chain"], pos["pair"], pos["token"]) or self.last_prices.get(pos["pair"])
+            price = self._manual_price(pos)
             if not price:
                 return {"ok": False, "error": "Kein Kurs verfügbar"}
             self.paper.close_manually(pos, price, self.clock())
@@ -472,7 +515,7 @@ class Engine:
                 return {"ok": False, "error": "Position ist nicht offen"}
             if frac > pos["remaining_frac"] + 1e-9:
                 return {"ok": False, "error": f"Nur noch {pos['remaining_frac'] * 100:.0f}% der Position offen"}
-            price = self._price_now(pos["chain"], pos["pair"], pos["token"]) or self.last_prices.get(pos["pair"])
+            price = self._manual_price(pos)
             if not price:
                 return {"ok": False, "error": "Kein Kurs verfügbar"}
             if abs(frac - pos["remaining_frac"]) < 1e-9:

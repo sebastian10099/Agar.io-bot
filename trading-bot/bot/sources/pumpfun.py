@@ -61,7 +61,7 @@ class PumpFun:
         self.min_interval = min_interval
         self.clock = clock
         self._last: Optional[tuple[float, list[dict[str, Any]]]] = None
-        self._failed: Optional[tuple[float, str]] = None   # when and why the last call failed
+        self._failed: Optional[tuple[float, Exception]] = None   # when and why the last call failed
         self.calls = 0
 
     def latest(self) -> list[dict[str, Any]]:
@@ -69,12 +69,13 @@ class PumpFun:
         if self._last and now - self._last[0] < self.min_interval:
             return self._last[1]
         if self._failed and now - self._failed[0] < self.min_interval:
-            raise RuntimeError(self._failed[1])        # a blocked feed is not asked more often than a working one
+            # a blocked feed is not asked more often than a working one; the same error, so the log stays quiet
+            raise self._failed[1].with_traceback(None)
         self.calls += 1
         try:
             return self._fetch_latest(now)
         except Exception as error:
-            self._failed = (now, f"{type(error).__name__}: {str(error)[:160]}")
+            self._failed = (now, error)
             raise
 
     def _fetch_latest(self, now: float) -> list[dict[str, Any]]:

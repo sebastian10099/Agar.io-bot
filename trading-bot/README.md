@@ -270,6 +270,25 @@ Käufe, Ø +50 %, 69 % im Plus. Dieselben Daten, aus denen die Regeln stammen �
 die eigentliche Probe ist der Lauf danach (Edge-Report, Laufzeit-Prüfung).
 Kein Ergebnis aus der Vergangenheit verspricht künftige Gewinne.
 
+**Fantasie-Kurse** – im ersten Lauf mit diesen Regeln stand das Konto nach
+zehn Minuten bei 1,05 Mio. $: ein Coin für 0,00003 $ wurde zu 1,017 $
+verkauft. Jemand hatte einen zweiten Pool zu einem erfundenen Preis (1 $)
+eröffnet, nur mit Tokens des Coins darin; DexScreener rechnet die mit dem
+eigenen Preis des Pools und meldet 1 Mio. $ Liquidität. Als der echte Pool
+einmal in einer Antwort fehlte, hielt der Bot diesen für den tiefsten Markt.
+Seitdem:
+
+- **Liquidität zählt nur, was man verkaufen kann**: höchstens das Doppelte
+  der Gegenseite (SOL, USDC) – ein Pool ohne Gegenseite ist kein Markt, auch
+  nicht für die Filter.
+- **Kein Kurs über das 10-Fache in einem Schritt**: so springt kein echter
+  Markt zwischen zwei Polls. Ein solcher Kurs wird verworfen und einmal
+  gemeldet; Stops und Zeit-Stop rechnen mit dem letzten glaubwürdigen Kurs.
+  Ein Absturz wird immer geglaubt – ein Rug fällt in Sekunden um 99 %.
+- **Der Tracker** verbucht nichts über dem 1000-Fachen des gesehenen Kurses
+  (unbekannt statt +3.400.000 %), und die Laufzeit-Prüfung schlägt bei jedem
+  solchen Sprung an.
+
 **Harte Filter** (ein Verstoß = `skip`, Grund wird gespeichert):
 
 - Alter 2–120 Minuten — nicht in der ersten Minute kaufen, nicht alten Tokens hinterherlaufen
@@ -544,7 +563,8 @@ Sie hält die Datenbank gegen die eigenen Regeln: Buchhaltung jeder Position
 Regel erfüllt (Stop-Loss, Gewinnstufen, Trailing, Zeit-Stop), jeder
 automatische Kauf gegen die Filter, die Halter-Regel und die
 Wiedereinstiegs-Sperre, nie zwei offene Positionen im selben Token, Bargeld
-nie im Minus und Bankroll = Start + realisiert. Sie läuft in jedem
+nie im Minus und Bankroll = Start + realisiert, und kein Kurs, der in einem
+Schritt über das 10-Fache springt. Sie läuft in jedem
 Mac-CI-Lauf nach dem echten Poll und in jedem Paper-Live-Schnappschuss
 (Abschnitt „Laufzeit-Prüfung dieses Laufs“ in `REPORT.md`). Am 19.10.2026 auf
 dem Paper-Konto nach 1,5 Stunden echtem Handel: 17 Positionen, 25 Ausstiege,
