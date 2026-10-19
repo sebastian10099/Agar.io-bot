@@ -369,10 +369,13 @@ Kurvenkonto nennt ihn, daraus folgt die Adresse seines Token-Kontos, und beides
 lässt sich mit gewöhnlichen, nicht gedrosselten Abfragen lesen. Hält der
 Ersteller noch ≥ 15 % der Menge, ist das Gefahr (≥ 5 % Warnung) – er kann
 jederzeit auf alle Käufer abverkaufen. Die übrige Verteilung bleibt dann
-„unbekannt“ (Warnung). Das geht nur, wenn im Kurvenkonto eine Wallet als
-Ersteller steht; viele Starts (in einer Stichprobe vom Oktober 2026 6 von 8)
-tragen dort eine Programm-Adresse ein (Gebührenteilung, Start über ein anderes
-Programm), dann bleibt es bei „unbekannt“. Wer einen
+„unbekannt“ (Warnung). Viele Starts teilen ihre Ersteller-Gebühren; dann
+steht im Kurvenkonto statt der Wallet das Gebührenkonto von pump.fun, und das
+nennt Verwalter und Teilhaber – ihr Anteil zusammen zählt wie der des
+Erstellers. Der Bot nimmt dieses Konto nur, wenn es genau diesen Coin nennt
+und die Anteile zusammen exakt 100 % ergeben; sonst bleibt es bei
+„unbekannt“, nie bei einer falschen Zahl. Live-Stichprobe (Oktober 2026):
+Ergebnis für 7 von 8 Coins. Wer einen
 kostenlosen Schlüssel hat (z. B. Helius), trägt den Knoten in
 `SOLANA_HOLDER_RPCS` ein (mehrere mit Komma); der Bot probiert sie der Reihe
 nach und bleibt beim ersten, der antwortet.
