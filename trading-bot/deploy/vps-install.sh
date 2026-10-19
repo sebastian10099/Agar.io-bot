@@ -17,8 +17,16 @@
 # bleiben erhalten.
 #
 # Optional: NTB_BRANCH (Branch), NTB_PORT (Port der Steuerseite, Standard 8765),
-# NTB_SOURCE (einen vorhandenen Checkout installieren statt herunterzuladen).
+# NTB_SOURCE (einen vorhandenen Checkout installieren statt herunterzuladen),
+# z. B.  curl … | sudo NTB_PORT=8780 bash
+#
+# Alles steckt in main(), das erst am Ende aufgerufen wird: bei "curl | bash"
+# liest bash so das ganze Skript, bevor ein Befehl (apt, pip) etwas von stdin
+# nehmen und damit den Rest des Skripts verschlucken könnte.
 set -euo pipefail
+umask 022                                # venv and program readable for the bot user, whatever sudo's umask
+
+main() {
 
 REPO="sebastian10099/Agar.io-bot"
 BRANCH="${NTB_BRANCH:-claude/agenen-funktionalitaet-hnw6g5}"
@@ -137,10 +145,14 @@ for _ in $(seq 1 60); do
 done
 if [ -z "${up:-}" ]; then
   journalctl -u "$SERVICE" -n 40 --no-pager || true
+  other="$( (journalctl -u "$SERVICE" -n 200 --no-pager 2>/dev/null || true) | grep -o 'Dashboard: http://127.0.0.1:[0-9]*' | tail -1 | grep -o '[0-9]*$' || true)"
+  if [ -n "$other" ] && [ "$other" != "$PORT" ]; then
+    die "Port $PORT ist auf diesem Server belegt, der Bot lief auf $other. Mit festem freien Port installieren: curl … | sudo NTB_PORT=$other bash"
+  fi
   die "der Bot antwortet nicht auf Port $PORT (Protokoll oben)"
 fi
 
-host="$(hostname -I 2>/dev/null | awk '{print $1}')"
+host="$( (hostname -I 2>/dev/null || true) | awk '{print $1}')"
 cat <<EOF
 
 Fertig: der Bot läuft auf diesem Server (Paper-Modus) und startet beim Booten von selbst.
@@ -157,3 +169,6 @@ Nützlich auf dem Server:
     sudo nano $ENVFILE                    Claude- oder Solana-Schlüssel eintragen
     (dieselbe Befehlszeile wie zur Installation)   aktualisieren
 EOF
+}
+
+main "$@"

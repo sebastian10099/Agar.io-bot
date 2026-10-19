@@ -19,10 +19,13 @@ fi
 printf '%s\n' "$TARGET" > "$CONF"
 
 echo "Verbinde mit $TARGET …"
-ssh -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -N -L "$LOCAL_PORT:127.0.0.1:$REMOTE_PORT" "$TARGET" &
+# accept-new: the first connection takes the server's key without the yes/no question,
+# a changed key is still refused
+ssh -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=accept-new \
+    -N -L "$LOCAL_PORT:127.0.0.1:$REMOTE_PORT" "$TARGET" &
 PID=$!
 trap 'kill "$PID" 2>/dev/null' EXIT INT TERM
-for _ in $(seq 1 60); do
+for _ in $(seq 1 180); do                # time to type a password
   if curl -s -m 2 "http://127.0.0.1:$LOCAL_PORT/api/state" | grep -q '"app": "new-token-bot"'; then
     open "http://127.0.0.1:$LOCAL_PORT/"
     echo "Steuerseite offen: http://127.0.0.1:$LOCAL_PORT/  – dieses Fenster offen lassen (schließen trennt die Verbindung)."
@@ -31,7 +34,7 @@ for _ in $(seq 1 60); do
   fi
   if ! kill -0 "$PID" 2>/dev/null; then
     echo "SSH-Verbindung fehlgeschlagen. Stimmt die Adresse ($TARGET)? Klappt 'ssh $TARGET' im Terminal?"
-    rm -f "$CONF"
+    echo "Ist Port $LOCAL_PORT auf dem Mac belegt (läuft das Fenster schon)? Anderer Server: ./\"VPS verbinden.command\" benutzer@adresse"
     exit 1
   fi
   sleep 1
