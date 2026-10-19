@@ -269,10 +269,25 @@ Minuten lag der Median bei +16 %. RugCheck nannte fast alle dieser Pool-Tokens
   Gefahr: Wer selbst einen Pool auf PumpSwap oder Meteora eröffnet, hält die
   LP-Anteile und kann alles mit einer Transaktion herausziehen. RugCheck
   markiert 77 von 80 solcher PumpSwap-Pools, aber nur 1 von 10 Pools von
-  pump.fun. Als der Bot sie trotzdem kaufte, fielen 3 von 9 solcher
+  pump.fun. Als der Bot sie trotzdem kaufte, fielen 3 von 10 solcher
   PumpSwap-Pools und 3 von 5 auf Meteora in einem Schritt auf null – kein
   Stop-Loss kann da noch verkaufen. Gefahren bei den Haltern schließen
   überall aus.
+
+  Genauer hingesehen: Auf Meteora stürzten 80 % dieser Pools binnen einer
+  Stunde um 90 % ab. Bei selbst eröffneten PumpSwap-Pools waren es 16 % –
+  nicht mehr als bei pump.fun's eigenen (22 %). Dort lag der Verlust am
+  späten Einstieg: In ihrer ersten Minute gekauft, stiegen dieselben Pools
+  meist deutlich (20 Fälle, Median +45 % nach Kosten), nach 3–8 Minuten
+  gekauft verloren sie. Gefunden durch Suchen in denselben Daten – darum
+  prüft der Backtest diese Idee als **vorab festgelegte Probe** nur auf den
+  Daten ab 19.10.2026, 14:00 UTC, und erst wenn sie dort hält, wird daraus
+  eine Einstellung.
+- **Ohne RugCheck kein Pool außerhalb von pump.fun:** Antwortet RugCheck
+  nicht, prüft der Bot selbst auf der Chain (Freeze, Mint, Token-2022,
+  Halter) – wer die Liquidität eines Pools hält, sieht er dabei nicht. Solche
+  Pools werden dann nur beobachtet („LP-Halter unbekannt“); pump.fun's
+  eigene Pools bleiben kaufbar.
 - **Zeit-Stop 60 statt 45 Minuten** – die Gewinner liefen weiter.
 
 Die Profile auf diesen Daten nachgerechnet, mit den echten Regeln des Bots

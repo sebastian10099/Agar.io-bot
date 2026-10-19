@@ -25,8 +25,10 @@ def _scale(x: float, lo: float, hi: float, pts: float) -> float:
 # liquidity, and an "LP unlocked" there is a warning, not a verdict. pump.fun's coins end in
 # "pump". Any other pool on PumpSwap (or Meteora) was opened by someone for a coin of their own
 # and holds their LP - RugCheck flags 77 of 80 of those, 1 of 10 of pump.fun's own (live,
-# 19 Oct 2026). Flagged and bought anyway, 3 of 9 such PumpSwap pools and 3 of 5 on Meteora
-# went to zero in one step: the liquidity was pulled, faster than any stop.
+# 19 Oct 2026). Flagged and bought anyway, 3 of 10 such PumpSwap pools and 3 of 5 on Meteora
+# went to zero in one step: the liquidity was pulled, faster than any stop. On PumpSwap the
+# loss came from buying late: bought within their first minute, the same pools mostly rose
+# (tools/backtest.py tests that idea, fixed in advance, on the data that came after).
 LP_MANAGED_DEXES = {"pumpswap"}
 PUMPFUN_SUFFIX = "pump"
 
@@ -88,6 +90,7 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
 
     watch_only = False
     holders_unknown = False
+    lp_unknown = False
     if f["require_rugcheck"] and p.get("chain") == "solana":
         if rug is None:
             if not f["allow_rugcheck_unknown"]:
@@ -98,6 +101,9 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
             # own on-chain check (RugCheck had no answer): authorities and Token-2022 traps
             if rug["danger"]:
                 reasons.append("onchain danger: " + ", ".join(rug["danger"][:3]))
+            # it cannot see who holds a pool's liquidity - outside pump.fun's own pools that is the
+            # question (live: 80 % of Meteora pools fell 90 % within the hour)
+            lp_unknown = not lp_managed(p) and not on_curve_now
         else:
             danger = list(rug["danger"])
             if lp_managed(p):
@@ -161,4 +167,8 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
         watch_only = True
         decision = "watch"
         notes.insert(0, "holder check missing - watch only: neither the holder distribution nor the creator's share is known")
+    elif lp_unknown:
+        watch_only = True
+        decision = "watch"
+        notes.insert(0, "LP unknown - watch only: without RugCheck nobody sees who holds this pool's liquidity")
     return {"decision": decision, "score": score, "reasons": notes, "watch_only": watch_only}

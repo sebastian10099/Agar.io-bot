@@ -1844,11 +1844,16 @@ class OnChainCheckTests(unittest.TestCase):
         from bot.strategy import evaluate
         from bot.sources.solana_rpc import assess_mint
         pairs = FakeDex(accel=1.0).pairs_for_tokens("solana", FakeDex(accel=1.0).recent_token_addresses(["solana"])["solana"])
-        run = next(p for p in pairs if p["symbol"] == "RUN")
+        raydium = next(p for p in pairs if p["symbol"] == "RUN")
+        run = dict(raydium, dex="pumpswap", token="RunMint11111111111111111111111111111pump")   # in pump.fun's own pool
         clean = dict(assess_mint(mint_value()), holders={"top1": 2.0, "top10": 12.0, "wallets": 10, "programs": 70.0})
         v = evaluate(run, clean, CFG)
         self.assertNotEqual(v["decision"], "skip"); self.assertFalse(v.get("watch_only"))
         self.assertIn("rugcheck 5", " ".join(v["reasons"]))                 # half of RugCheck's points
+        for pool in (raydium, dict(run, dex="meteora"), dict(run, token="RunMint1111")):   # whose liquidity? only RugCheck sees it
+            v = evaluate(pool, clean, CFG)
+            self.assertEqual(v["decision"], "watch"); self.assertTrue(v["watch_only"])
+            self.assertTrue(v["reasons"][0].startswith("LP unknown"), v["reasons"])
         creator_only = dict(assess_mint(mint_value()), creator={"creator": "W", "wallets": 1, "share": 1.0})
         self.assertFalse(evaluate(run, creator_only, CFG).get("watch_only"))  # the creator's share is enough
         blind = assess_mint(mint_value())                                    # neither holders nor creator known
@@ -1881,10 +1886,14 @@ class OnChainCheckTests(unittest.TestCase):
             return post
         with tempfile.TemporaryDirectory() as d:
             store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0)
+            raw = next(p for p in dex.pairs if p["baseToken"]["symbol"] == "RUN")       # RUN in pump.fun's own pool:
+            raw["dexId"], raw["baseToken"]["address"] = "pumpswap", "RunMint11111111111111111111111111111pump"
             rpc = OnChainCheck(post=node({"result": {"value": [{"address": "Acct1", "amount": "10000000000000"}]}}), url="x")
-            eng = Engine(copy.deepcopy(CFG), store, dex, SafetyCheck(DownRug(), rpc), clock=dex.now, feeds=demo_feeds(dex))
+            cfg = copy.deepcopy(CFG); cfg["scoring"]["min_score"] = 50          # RUN scores ~60: not the point here
+            eng = Engine(cfg, store, dex, SafetyCheck(DownRug(), rpc), clock=dex.now, feeds=demo_feeds(dex))
             counts = eng.poll_once()
             self.assertEqual(counts["buy"], 1, counts)                          # RUN bought on the own check
+            self.assertTrue(all(c["decision"] != "buy" for c in store.candidates() if c["snapshot"].get("dex") == "raydium"))
             run = next(c for c in store.candidates() if c["symbol"] == "RUN")
             self.assertEqual(run["snapshot"]["rug"]["source"], "onchain")
             self.assertEqual(run["snapshot"]["rug"]["holders"]["top1"], 1.0)

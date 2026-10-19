@@ -241,6 +241,7 @@ class Store:
         ("no price", "kein Kurs", None),
         ("rugcheck unavailable", "RugCheck nicht erreichbar (nur beobachtet)", "filters.allow_rugcheck_unknown"),
         ("holder check missing", "Halter unbekannt (nur beobachtet)", "filters.require_holder_check"),
+        ("LP unknown", "LP-Halter unbekannt – nur Eigenprüfung (nur beobachtet)", "filters.require_rugcheck"),
         ("still on its bonding curve", "noch auf der Bonding-Kurve (nur beobachtet)", "filters.allow_curve_buys"),
         ("rugcheck danger", "RugCheck: Gefahr", "filters.require_rugcheck"),
         ("onchain danger", "Eigenprüfung: Gefahr (Freeze/Mint/Token-2022/Halter)", "filters.require_rugcheck"),
