@@ -1315,7 +1315,8 @@ class OnChainCheckTests(unittest.TestCase):
             return {"jsonrpc": "2.0", "id": 1, "result": {"context": {"slot": 1}, "value": mint_value()}}
         oc = OnChainCheck(post=post, url="https://rpc.example")
         self.assertEqual(oc.summary("MintA")["danger"], [])
-        oc.summary("MintA"); self.assertEqual(len(seen), 1)               # cached
+        n = len(seen)
+        oc.summary("MintA"); self.assertEqual(len(seen), n)               # cached
         self.assertEqual(seen[0]["method"], "getAccountInfo"); self.assertEqual(seen[0]["params"][1]["encoding"], "jsonParsed")
         t = [0.0]; calls = []
         def broken(url, body, timeout=None, headers=None):
@@ -1383,13 +1384,16 @@ class DoctorRugRowTests(unittest.TestCase):
         from bot.sources.rugcheck import RugCheck
         from bot.sources.solana_rpc import SafetyCheck, OnChainCheck
         down = RugCheck(fetch=lambda url, **kw: (_ for _ in ()).throw(OSError("Could not resolve host: api.rugcheck.xyz")))
-        rpc = OnChainCheck(post=lambda *a, **k: {"result": {"value": mint_value()}}, url="x")
+        answers = {"getAccountInfo": mint_value(), "getTokenLargestAccounts": [{"address": "Acct1", "amount": "50000000000000"}],
+                   "getMultipleAccounts": [{"data": {"parsed": {"info": {"owner": HolderTests.WALLETS[0]}}}}]}
+        rpc = OnChainCheck(post=lambda url, body, **k: {"result": {"value": answers[body["method"]]}}, url="x")
         dex = FakeDex()
         rows = {c["name"]: c for c in run_checks(CFG, dex, demo_feeds(dex), SafetyCheck(down, rpc), None)}
         self.assertTrue(rows["RugCheck"]["ok"]); self.assertTrue(rows["RugCheck"].get("warn"))
         self.assertIn("resolve host", rows["RugCheck"]["detail"]); self.assertIn("springt ein", rows["RugCheck"]["detail"])
         self.assertTrue(rows["Eigenprüfung über Solana-RPC (Ersatz für RugCheck)"]["ok"])
         self.assertFalse(rows["Eigenprüfung über Solana-RPC (Ersatz für RugCheck)"].get("warn"))
+        self.assertIn("größte Wallet 5.0 %", rows["Eigenprüfung über Solana-RPC (Ersatz für RugCheck)"]["detail"])
         alone = {c["name"]: c for c in run_checks(CFG, dex, demo_feeds(dex), down, None)}
         self.assertFalse(alone["RugCheck"]["ok"])
 
@@ -1762,3 +1766,92 @@ class PaperLiveSnapshotTests(unittest.TestCase):
             pl.write({"candidates": [], "open_positions": [], "closed": [], "stats": {}}, out)        # a bot that has not polled yet
             self.assertIn("noch kein Poll", (out / "REPORT.md").read_text())
             store.close()
+
+
+class HolderTests(unittest.TestCase):
+    """Who holds the supply? Wallets (ed25519 keys) count, program-owned accounts
+    (the pump.fun curve, pools, lockers: off-curve addresses) do not."""
+
+    # deterministic real ed25519 public keys (RFC 8032 derivation of sha256("wallet<i>"))
+    WALLETS = ['7QmZqUQCrHWsEanUyUPpHw1vFymTyiQ9vjrpjspiT5nv', '9hbzj3oVQx7b8keUiqMk4XNqCSBvuqkpZG3TAjnAHBi8',
+               '2rjcX6cLDS8uw8tjCcLzUcCnM5q6hJVahbycXn6VAVmt', 'HufzXQeKo93k6X9kCxBWosFiBsLruTNRBhc7CK6px1vN',
+               'FwBKLMDuj58Utja1aB5AuNJ8AeeBrQmAvypuYd2Xk8kS', '4CdrXNeEBpE7wqNkdvSqxdeyLwpyBShGKSZfSi922euy',
+               'BKQ8MXCuhfe17w58UdvrPKHej7nfDuxo4UZZoS721XmL', 'DHUWntrwfKXXwTqc7JNFcaYf6AyfYcHe6KZbBBGdB6N7',
+               'Ag3F7t84EzWreF961jNgFG7eGQ9KUtimkFbfXDDMECtj', '4Mj2SH7Vay6omJhBgobehSxJDPkgVBh1j5FG2KDaiNtc',
+               '8n614VToDPSZcvXAX6KjQm8FDscMa57kjZ957nAL4ZC4', 'J5hQDshHP8L6VVyMBsVZiVnmedwTJP2QnmboHQeAC55r']
+    CURVE = "7ycZsifNrbZmVdKPEjV9NguxsyHD4n2fTw8piQNsJBai"        # a live pump.fun bonding curve (a PDA)
+
+    def test_on_curve_tells_wallets_from_program_addresses(self):
+        from bot.sources.solana_rpc import on_curve
+        self.assertTrue(all(on_curve(w) is True for w in self.WALLETS))
+        for pda in (self.CURVE, "4xiW3NYhNYPTDGm5frrWKzYJZDptgpUamsLApfLtskX4", "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1"):
+            self.assertIs(on_curve(pda), False, pda)
+        self.assertIsNone(on_curve("not-an-address")); self.assertIsNone(on_curve("1111"))
+
+    def rpc(self, holdings, supply=1_000_000_000_000_000):
+        """holdings: [(owner, share %)] -> a fake RPC answering the three calls."""
+        accounts = [{"address": f"TokenAcct{i}", "amount": str(int(supply * share / 100)), "decimals": 6}
+                    for i, (_, share) in enumerate(holdings)]
+        owners = {f"TokenAcct{i}": owner for i, (owner, _) in enumerate(holdings)}
+        calls = []
+
+        def post(url, body, timeout=None):
+            calls.append(body["method"])
+            if body["method"] == "getAccountInfo":
+                return {"result": {"value": mint_value()}}
+            if body["method"] == "getTokenLargestAccounts":
+                return {"result": {"value": accounts}}
+            if body["method"] == "getMultipleAccounts":
+                return {"result": {"value": [{"data": {"parsed": {"type": "account", "info": {"owner": owners[a]}}}}
+                                             for a in body["params"][0]]}}
+            raise AssertionError(body["method"])
+        return post, calls
+
+    def test_a_fresh_pump_coin_with_the_curve_on_top_is_fine(self):
+        from bot.sources.solana_rpc import OnChainCheck
+        post, calls = self.rpc([(self.CURVE, 78.0)] + [(w, 2.0) for w in self.WALLETS[:8]])
+        r = OnChainCheck(post=post, url="x").summary("MintCurve")
+        self.assertEqual(calls, ["getAccountInfo", "getTokenLargestAccounts", "getMultipleAccounts"])
+        self.assertEqual((r["danger"], r["warn"]), ([], []))
+        self.assertEqual(r["holders"], {"top1": 2.0, "top10": 16.0, "wallets": 8, "programs": 78.0})
+
+    def test_a_whale_or_a_cluster_is_danger_and_skipped(self):
+        from bot.sources.solana_rpc import OnChainCheck
+        from bot.strategy import evaluate
+        post, _ = self.rpc([(self.WALLETS[0], 30.0), (self.CURVE, 50.0)] + [(w, 1.0) for w in self.WALLETS[1:6]])
+        whale = OnChainCheck(post=post, url="x").summary("MintWhale")
+        self.assertTrue(any("eine Wallet hält 30 %" in d for d in whale["danger"]), whale)
+        post, _ = self.rpc([(w, 6.5) for w in self.WALLETS[:10]])
+        cluster = OnChainCheck(post=post, url="x").summary("MintCluster")
+        self.assertTrue(any("10 größten Wallets halten 65 %" in d for d in cluster["danger"]), cluster)
+        post, _ = self.rpc([(self.WALLETS[0], 12.0)] + [(w, 3.0) for w in self.WALLETS[1:9]])
+        mild = OnChainCheck(post=post, url="x").summary("MintMild")
+        self.assertEqual(mild["danger"], []); self.assertEqual(len(mild["warn"]), 2, mild)       # 12 % and 36 %
+        cfg = copy.deepcopy(CFG)
+        pair = {"chain": "solana", "token": "MintWhale", "pair": "P", "price_usd": 1.0, "liquidity_usd": 40000.0,
+                "volume_m5": 9000.0, "buys_m5": 40, "sells_m5": 10, "change_m5": 10.0, "fdv": 1e6, "age_min": 10.0}
+        self.assertIn("Wallet hält 30 %", evaluate(pair, whale, cfg)["reasons"][0])
+
+    def test_holder_rpc_trouble_is_a_warning_not_a_failure(self):
+        from bot.sources.solana_rpc import OnChainCheck
+        def post(url, body, timeout=None):
+            if body["method"] == "getAccountInfo":
+                return {"result": {"value": mint_value()}}
+            return {"error": {"code": 429, "message": "Too many requests"}}
+        oc = OnChainCheck(post=post, url="x")
+        r = oc.summary("MintX")
+        self.assertIsNotNone(r); self.assertEqual(r["danger"], [])
+        self.assertIn("Halterverteilung unbekannt (RPC ohne Antwort)", r["warn"])
+        self.assertEqual(oc.fails, 0)                                  # the check itself answered
+
+    def test_results_expire_so_holders_are_looked_at_again(self):
+        from bot.sources.solana_rpc import CACHE_TTL_S, OnChainCheck
+        post, calls = self.rpc([(self.WALLETS[0], 5.0)])
+        t = [0.0]
+        oc = OnChainCheck(post=post, url="x", clock=lambda: t[0])
+        oc.summary("M"); oc.summary("M")
+        self.assertEqual(calls.count("getTokenLargestAccounts"), 1)
+        t[0] += CACHE_TTL_S + 1
+        oc.summary("M")
+        self.assertEqual(calls.count("getTokenLargestAccounts"), 2)
+

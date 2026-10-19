@@ -310,9 +310,14 @@ RugCheck nicht (ausgefallen, gedrosselt, Domain nicht erreichbar – Stand
 selbst über die Solana-Blockchain (`getAccountInfo` auf den Mint, öffentlicher
 RPC oder `SOLANA_RPC_URL`): aktive Freeze-Authority, aktive Mint-Authority und
 Token-2022-Fallen (Permanent Delegate, Transfer-Hook, pausierbar, eingefrorene
-Konten, Transfergebühr). Diese Eigenprüfung sieht keine Halter- oder LP-Analyse
-und bekommt deshalb nur die Hälfte der Score-Punkte. Erst wenn beide nichts
-liefern, wird nur beobachtet.
+Konten, Transfergebühr) und die **Halter-Konzentration**: Hält eine Wallet
+≥ 25 % oder halten die zehn größten Wallets ≥ 60 % der Menge, gilt das als
+Gefahr (ab 10 % bzw. 35 % als Warnung). Konten, die Programmen gehören – die
+pump.fun-Kurve, Pools, Locker –, zählen nicht mit; man erkennt sie wie auf der
+Chain selbst daran, dass ihre Adresse nicht auf der Ed25519-Kurve liegt. Diese
+Eigenprüfung sieht keine LP-Locks und keine Insider-Verbindungen und bekommt
+deshalb nur die Hälfte der Score-Punkte. Erst wenn beide nichts liefern, wird
+nur beobachtet.
 
 **Verschwundene Paare:** Liefert DexScreener für eine offene Position keinen Kurs
 mehr, während andere Kurse kommen, ist das Paar meist entfernt worden (Rug). Ist

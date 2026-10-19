@@ -157,8 +157,13 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
             r = onchain.summary(mint)
             if r is None:
                 raise RuntimeError(f"keine Antwort – {onchain.last_error or 'RPC nicht erreichbar'}")
-            return (f"{mint[:8]}… · {len(r['danger'])} Gefahr · {len(r['warn'])} Warnung · {r.get('program')} "
-                    f"– springt ein, wenn RugCheck nicht antwortet")
+            h = r.get("holders")
+            line = (f"{mint[:8]}… · {len(r['danger'])} Gefahr · {len(r['warn'])} Warnung · {r.get('program')}"
+                    + (f" · größte Wallet {h['top1']:.1f} %, Top 10 {h['top10']:.1f} %, Programme {h['programs']:.1f} %" if h else "")
+                    + " – springt ein, wenn RugCheck nicht antwortet")
+            if h is None:
+                raise Degraded(line + " – die Halter-Abfrage (getTokenLargestAccounts) bekam keine Antwort")
+            return line
         out.append(_check("Eigenprüfung über Solana-RPC (Ersatz für RugCheck)", own_check))
 
     if curves is not None and hasattr(curves, "read"):
