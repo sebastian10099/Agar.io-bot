@@ -9,6 +9,11 @@ from . import curve
 from .http import get_json
 
 BASE = "https://api.dexscreener.com"
+# where a bonding curve's token trades once the curve completes; any other pool next to a
+# running curve (someone's own pool, often at a very different price) never prices it
+CURVE_SUCCESSORS = {"pumpfun": {"pumpswap"}, "pump-fun": {"pumpswap"},
+                    "meteoradbc": {"meteora", "meteoradammv2"}, "meteora-dbc": {"meteora", "meteoradammv2"},
+                    "launchlab": {"raydium"}, "raydium-launchlab": {"raydium"}}
 SUCCESSOR_MIN_LIQ = 1000.0    # a real pool this deep outranks a bonding curve: the curve has completed and moved there
 
 
@@ -99,9 +104,9 @@ class DexScreener:
                     out[chain].append(addr)
         return out
 
-    def pairs_for_tokens(self, chain: str, addresses: list[str]) -> list[dict[str, Any]]:
-        """Best pair per token (see _rank). Max 30 addresses per call."""
-        best: dict[str, dict[str, Any]] = {}
+    def _token_pairs(self, chain: str, addresses: list[str]) -> list[dict[str, Any]]:
+        """Every pair of these tokens, 30 tokens per request."""
+        out: list[dict[str, Any]] = []
         for i in range(0, len(addresses), 30):
             chunk = addresses[i:i + 30]
             try:
@@ -110,11 +115,17 @@ class DexScreener:
                 continue
             for p in pairs if isinstance(pairs, list) else []:
                 n = normalize_pair(p)
-                if not n["token"] or not n["pair"]:
-                    continue
-                cur = best.get(n["token"])
-                if cur is None or _rank(n) > _rank(cur):
-                    best[n["token"]] = n
+                if n["token"] and n["pair"]:
+                    out.append(n)
+        return out
+
+    def pairs_for_tokens(self, chain: str, addresses: list[str]) -> list[dict[str, Any]]:
+        """Best pair per token (see _rank). Max 30 addresses per call."""
+        best: dict[str, dict[str, Any]] = {}
+        for n in self._token_pairs(chain, addresses):
+            cur = best.get(n["token"])
+            if cur is None or _rank(n) > _rank(cur):
+                best[n["token"]] = n
         return list(best.values())
 
     def pair(self, chain: str, pair_address: str) -> Optional[dict[str, Any]]:
@@ -136,7 +147,7 @@ class DexScreener:
         pool (pump.fun -> PumpSwap after the curve completes; the curve's own
         price freezes there) is priced from that pool."""
         out: dict[str, float] = {}
-        curves: set[str] = set()
+        curves: dict[str, str] = {}              # curve pair -> its dex
         for i in range(0, len(pair_addresses), 30):
             chunk = pair_addresses[i:i + 30]
             data = self.fetch(f"{BASE}/latest/dex/pairs/{chain}/{','.join(chunk)}")
@@ -145,19 +156,27 @@ class DexScreener:
                 if n["pair"] and n["price_usd"] > 0:
                     out[n["pair"]] = n["price_usd"]
                 if n["pair"] and n["curve"]:
-                    curves.add(n["pair"])
+                    curves[n["pair"]] = str(n.get("dex") or "").lower()
         ask: dict[str, list[str]] = {}
         for pair in pair_addresses:
             token = (follow or {}).get(pair)
             if token and (pair not in out or pair in curves):
                 ask.setdefault(token, []).append(pair)
         if ask:
-            for best in self.pairs_for_tokens(chain, list(ask)):
-                for pair in ask.get(best["token"], []):
-                    if best["pair"] == pair or best["price_usd"] <= 0:
-                        continue
-                    if pair not in out or _rank(best)[0] == 2:   # gone: any pool; a curve: only a real one
-                        out[pair] = best["price_usd"]
+            by_token: dict[str, list[dict[str, Any]]] = {}
+            for n in self._token_pairs(chain, list(ask)):
+                if n["price_usd"] > 0:
+                    by_token.setdefault(n["token"], []).append(n)
+            for token, pairs in ask.items():
+                for pair in pairs:
+                    others = [n for n in by_token.get(token, []) if n["pair"] != pair]
+                    if pair not in out:                  # gone: the token's best remaining pool
+                        pick = others
+                    else:                                # a listed curve: only the pool it graduates into
+                        pick = [n for n in others if _rank(n)[0] == 2
+                                and str(n.get("dex") or "").lower() in CURVE_SUCCESSORS.get(curves[pair], ())]
+                    if pick:
+                        out[pair] = max(pick, key=_rank)["price_usd"]
         return out
 
     def price(self, chain: str, pair_address: str) -> Optional[float]:

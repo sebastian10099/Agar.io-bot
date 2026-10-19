@@ -1834,6 +1834,23 @@ class GraduationTests(unittest.TestCase):
         self.assertEqual(sum("/tokens/v1/" in u for u in calls), 1)              # only the curve was looked up
         self.assertNotIn("Mint3", next(u for u in calls if "/tokens/v1/" in u))
 
+    def test_a_foreign_pool_next_to_a_running_curve_never_prices_it(self):
+        """Someone opens their own pool beside a running pump.fun curve, at a very different
+        price: a holding on the curve must not be stopped out at that price."""
+        from bot.sources.dexscreener import DexScreener
+        price = 60.0 ** 2 / 32.19e9 * 150
+        running = self.raw("Curve7", "Mint7", "pumpfun", price, native=price / 150)
+        foreign = self.raw("Meteora7", "Mint7", "meteora", price * 0.1, liquidity=25000)
+        fetch, _ = self.fake_http([running, foreign])
+        got = DexScreener(fetch=fetch).prices("solana", ["Curve7"], {"Curve7": "Mint7"})
+        self.assertAlmostEqual(got["Curve7"], price)                              # not the pool's -90 %
+        heir = self.raw("Swap7", "Mint7", "pumpswap", price * 0.8, liquidity=15000)  # it graduates after all
+        fetch, _ = self.fake_http([running, foreign, heir])
+        got = DexScreener(fetch=fetch).prices("solana", ["Curve7"], {"Curve7": "Mint7"})
+        self.assertAlmostEqual(got["Curve7"], price * 0.8)                        # the PumpSwap pool, though smaller
+        fetch, _ = self.fake_http([foreign])                                       # the curve is gone: any pool
+        self.assertAlmostEqual(DexScreener(fetch=fetch).prices("solana", ["Curve7"], {"Curve7": "Mint7"})["Curve7"], price * 0.1)
+
     def test_a_vanished_pair_follows_the_token_and_a_true_rug_stays_missing(self):
         from bot.sources.dexscreener import DexScreener
         pool = self.raw("Swap4", "Mint4", "pumpswap", 0.0001, liquidity=20000)

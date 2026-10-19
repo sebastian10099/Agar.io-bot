@@ -272,9 +272,12 @@ abgeschlossene Kurve heißt „Kurve fertig“.
 **Wechsel an die Börse:** Ist eine pump.fun-Kurve voll, zieht der Handel in einen
 PumpSwap-Pool um, und die Kurve friert ein oder verschwindet. Offene Positionen
 und der Tracker folgen dem Token: Fehlt das Paar, zählt der beste verbliebene
-Pool des Tokens; bei einer Kurve zählt ein echter Pool, sobald es einen gibt
-(ab 1.000 $ Liquidität). So wird ein „graduierter“ Coin weder mit einem
-eingefrorenen Kurs gehalten noch als Totalverlust abgeschrieben.
+Pool des Tokens; bei einer noch gelisteten Kurve zählt nur der Pool, in den
+sie umzieht (pump.fun → PumpSwap, ab 1.000 $ Liquidität) – nie ein fremder
+Pool, den jemand neben der laufenden Kurve eröffnet hat, oft zu einem ganz
+anderen Kurs. So wird ein „graduierter“ Coin weder mit einem eingefrorenen
+Kurs gehalten noch als Totalverlust abgeschrieben, und kein Stop-Loss löst
+auf einem fremden Kurs aus.
 
 **Wiedereinstieg-Sperre** (Risiko, Standard 120 min, 0 = aus): Nach einem
 Verkauf kauft der Bot denselben Token so lange nicht automatisch zurück – ein
