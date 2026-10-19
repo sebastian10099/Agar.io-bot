@@ -307,6 +307,13 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   const dbcRow = await p.locator('#cands tbody tr', { hasText: /DBC/ }).first().textContent();
   ok(/unbekannt/.test(dbcRow) && !/\$0,00/.test(dbcRow), 'andere Bonding-Kurve: Liquidität „unbekannt“ statt $0');
   ok((await p.locator('input[data-path="reentry_pause_minutes"]').count()) === 1, 'Einstellung „Wiedereinstieg-Sperre“ im Formular');
+  const links = await p.evaluate(() => [
+    tokenUrl({ dex: 'pumpfun', token: 'CUBnCAXqG65QmfcaUAoBz2k5QhUVq21tQMXenCaBpump', url: 'https://dexscreener.com/solana/curvepair' }, 'solana'),
+    tokenUrl({ dex: 'raydium', token: 'So11111111111111111111111111111111111111112', url: 'https://dexscreener.com/solana/pool' }, 'solana'),
+    tokenUrl({ dex: 'pumpfun', token: '"><script>', url: 'javascript:alert(1)' }, 'solana'),
+  ]);
+  ok(links[0] === 'https://pump.fun/coin/CUBnCAXqG65QmfcaUAoBz2k5QhUVq21tQMXenCaBpump', 'pump.fun-Kurve: Kursseite bei pump.fun (überlebt den Wechsel in den Pool)');
+  ok(links[1] === 'https://dexscreener.com/solana/pool' && links[2] === '', 'sonst die Seite der Quelle; fremde Adressen und javascript:-Links nie');
   // sorting: click Score twice -> descending then ascending
   await p.click('#cands th[data-sort="score"] button');
   const scoresDesc = await p.$$eval('#cands tbody tr td:nth-child(4)', (tds) => tds.map((t) => parseFloat(t.textContent) || 0));
