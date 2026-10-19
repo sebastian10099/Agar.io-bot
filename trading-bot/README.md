@@ -24,6 +24,12 @@ aufgerufen): prüft HTTPS mit dem gewählten Python und installiert bei
 es fehlt – beides per `pip install --user`, ohne dass du ein Terminal brauchst.
 Klappt HTTPS mit keinem Python, steht die Abhilfe im Log und im Dialog.
 
+**Schutz vor fremden Webseiten:** Die Steuer-API antwortet nur auf Anfragen
+an `127.0.0.1`, `localhost` oder `::1`; ändernde Anfragen müssen JSON sein und
+dürfen nur von der Steuerseite selbst kommen. Eine andere Webseite im selben
+Browser kann den Bot damit weder pausieren noch Einstellungen ändern oder das
+Konto zurücksetzen; abgewiesene Versuche stehen im Protokoll.
+
 **Port-Konflikte:** Der Bot nimmt Port 8765; ist der belegt (Local Studio
 nutzt denselben), weicht er automatisch auf den nächsten freien aus und
 nennt die Adresse im Log. Die App erkennt den eigenen Bot an einer

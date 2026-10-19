@@ -14,6 +14,20 @@ from . import settings
 from .ai import start_login, store_key
 
 WEB = Path(__file__).parent / "web"
+LOCAL_NAMES = {"127.0.0.1", "localhost", "[::1]"}
+MAX_BODY = 1_000_000
+
+
+def _host_name(host: str) -> str:
+    """'localhost:8765' -> 'localhost', '[::1]:8765' -> '[::1]'."""
+    host = host.strip().lower()
+    if host.startswith("["):
+        return host.split("]", 1)[0] + "]"
+    return host.rsplit(":", 1)[0] if ":" in host else host
+
+
+class BadRequest(Exception):
+    pass
 
 
 def _csv(rows: list, columns: list) -> bytes:
@@ -43,7 +57,68 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
         def _json(self, payload: Any, status: int = 200) -> None:
             self._send(status, json.dumps(payload).encode("utf-8"), "application/json")
 
+        # --- guards: only the control page itself may talk to this server --------
+        def _refuse(self, status: int, why: str) -> None:
+            engine.store.log("warn", f"Anfrage abgewiesen ({status}): {why} – {self.command} {self.path[:80]}")
+            self._json({"ok": False, "error": why}, status)
+
+        def _host_ok(self) -> bool:
+            # a foreign host name reaching 127.0.0.1 is a DNS-rebinding attempt
+            host = self.headers.get("Host")
+            return host is None or _host_name(host) in LOCAL_NAMES
+
+        def _origin_ok(self) -> bool:
+            origin = self.headers.get("Origin")
+            if origin is None:
+                return True                      # same-origin requests may omit it
+            port = self.server.server_address[1]
+            return origin.strip().lower() in {f"http://{n}:{port}" for n in LOCAL_NAMES}
+
+        def _guarded(self, handler) -> None:
+            try:
+                handler()
+            except BadRequest as error:
+                self._json({"ok": False, "error": str(error)}, 400)
+            except (ValueError, TypeError, KeyError, AttributeError) as error:
+                self._json({"ok": False, "error": f"ungültige Eingabe: {error}"}, 400)
+            except Exception as error:  # noqa: BLE001 - answer instead of dropping the connection
+                engine.store.log("error", f"API {self.command} {self.path[:80]}: {type(error).__name__}: {error}")
+                self._json({"ok": False, "error": f"interner Fehler: {type(error).__name__}"}, 500)
+
         def do_GET(self) -> None:  # noqa: N802 - http.server API
+            if not self._host_ok():
+                self._refuse(403, "fremder Host-Name")
+                return
+            self._guarded(self._get)
+
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(min(length, MAX_BODY)) if length > 0 else b""
+            if not self._host_ok():
+                self._refuse(403, "fremder Host-Name")
+                return
+            if not self._origin_ok():
+                self._refuse(403, "fremde Herkunft – nur die Steuerseite darf den Bot steuern")
+                return
+            ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            if ctype != "application/json":
+                # a form on another web page can send text/plain without asking; JSON it cannot
+                self._refuse(415, "nur application/json")
+                return
+            if length > MAX_BODY:
+                self._json({"ok": False, "error": "Anfrage zu groß"}, 413)
+                return
+            try:
+                body = json.loads(raw or b"{}")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self._json({"error": "bad json"}, 400)
+                return
+            if not isinstance(body, dict):
+                self._json({"ok": False, "error": "JSON-Objekt erwartet"}, 400)
+                return
+            self._guarded(lambda: self._post(body))
+
+        def _get(self) -> None:
             if self.path in ("/", "/index.html"):
                 self._send(200, (WEB / "index.html").read_bytes(), "text/html; charset=utf-8")
             elif self.path == "/api/state":
@@ -87,13 +162,7 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             else:
                 self._json({"error": "not found"}, 404)
 
-        def do_POST(self) -> None:  # noqa: N802
-            length = int(self.headers.get("Content-Length") or 0)
-            try:
-                body = json.loads(self.rfile.read(length) or b"{}")
-            except json.JSONDecodeError:
-                self._json({"error": "bad json"}, 400)
-                return
+        def _post(self, body: dict) -> None:
             if self.path == "/api/control":
                 action = body.get("action")
                 if action in ("pause", "resume"):

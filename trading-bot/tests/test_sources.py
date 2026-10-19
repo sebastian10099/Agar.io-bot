@@ -792,3 +792,70 @@ class ConcurrencyTests(unittest.TestCase):
         self.eng.poll_once()
         held = [p for p in self.store.open_positions() if p["token"] == dump["token"]]
         self.assertLessEqual(len(held), 1, held)
+
+
+class CrossSiteTests(unittest.TestCase):
+    """Any web page open in the same browser can send requests to 127.0.0.1.
+    Only the control page itself may change anything."""
+
+    def setUp(self):
+        from bot.server import make_server
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.sqlite"); dex = FakeDex()
+        self.eng = Engine(copy.deepcopy(CFG), self.store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+        self.server = make_server(self.eng, "127.0.0.1", 0)
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def tearDown(self):
+        self.server.shutdown(); self.server.server_close(); self.store.close(); self.tmp.cleanup()
+
+    def req(self, method, path, body=None, headers=None):
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            c.request(method, path, body=body, headers=headers or {})
+            r = c.getresponse(); data = r.read()
+            return r.status, data
+        finally:
+            c.close()
+
+    def test_a_form_post_from_another_site_changes_nothing(self):
+        # an invisible <form enctype="text/plain"> on any web page sends exactly this
+        status, _ = self.req("POST", "/api/control", body='{"action": "pause"}',
+                             headers={"Content-Type": "text/plain", "Origin": "https://evil.example"})
+        self.assertIn(status, (403, 415)); self.assertFalse(self.eng.paused)
+        status, _ = self.req("POST", "/api/reset", body='{"what": "all"}', headers={"Content-Type": "text/plain"})
+        self.assertEqual(status, 415)
+
+    def test_json_from_a_foreign_origin_is_refused(self):
+        status, _ = self.req("POST", "/api/control", body='{"action": "pause"}',
+                             headers={"Content-Type": "application/json", "Origin": "https://evil.example"})
+        self.assertEqual(status, 403); self.assertFalse(self.eng.paused)
+
+    def test_dns_rebinding_host_is_refused(self):
+        status, _ = self.req("GET", "/api/state", headers={"Host": f"evil.example:{self.port}"})
+        self.assertEqual(status, 403)
+        status, _ = self.req("POST", "/api/control", body='{"action": "pause"}',
+                             headers={"Host": f"evil.example:{self.port}", "Content-Type": "application/json"})
+        self.assertEqual(status, 403); self.assertFalse(self.eng.paused)
+
+    def test_the_control_page_itself_still_works(self):
+        for host in (f"127.0.0.1:{self.port}", f"localhost:{self.port}"):
+            status, _ = self.req("GET", "/api/state", headers={"Host": host})
+            self.assertEqual(status, 200, host)
+            status, data = self.req("POST", "/api/control", body='{"action": "pause"}',
+                                    headers={"Host": host, "Content-Type": "application/json", "Origin": f"http://{host}"})
+            self.assertEqual(status, 200, data); self.assertTrue(self.eng.paused)
+            self.eng.set_paused(False)
+        # same-origin fetch without an Origin header (some browsers omit it) is fine too
+        status, _ = self.req("POST", "/api/control", body='{"action": "pause"}', headers={"Content-Type": "application/json; charset=utf-8"})
+        self.assertEqual(status, 200)
+
+    def test_bad_numbers_get_an_answer_not_a_dropped_connection(self):
+        status, data = self.req("POST", "/api/positions/close", body='{"id": "abc"}', headers={"Content-Type": "application/json"})
+        self.assertEqual(status, 400, data)
+        status, data = self.req("POST", "/api/positions/sell", body='{"id": {"x": 1}, "frac": 0.5}', headers={"Content-Type": "application/json"})
+        self.assertEqual(status, 400, data)
+        status, data = self.req("POST", "/api/control", body='[1, 2]', headers={"Content-Type": "application/json"})
+        self.assertEqual(status, 400, data)
