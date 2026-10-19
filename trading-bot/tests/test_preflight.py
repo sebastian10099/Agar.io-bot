@@ -74,6 +74,11 @@ class LauncherScriptTests(unittest.TestCase):
         from pathlib import Path
         root = Path(__file__).parent.parent
         env = dict(os.environ, NEW_TOKEN_BOT_HOME=home)
+        # a dead proxy makes the HTTPS check fail the same way online and offline, so the
+        # no-argument run stops after the argument handling instead of starting the real bot
+        for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy"):
+            env.pop(k, None)
+        env["HTTPS_PROXY"] = env["https_proxy"] = "http://127.0.0.1:9"
         return subprocess.run(["bash", str(root / "launch.sh"), *args], capture_output=True, text=True, timeout=180, env=env, stdin=subprocess.DEVNULL)
 
     def test_with_and_without_arguments(self):
