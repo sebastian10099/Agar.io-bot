@@ -209,6 +209,7 @@ jobs:
           PY
       - name: Kurse direkt von der Chain (PumpSwap-Pools) gegen DexScreener
         working-directory: trading-bot
+        continue-on-error: true
         run: |
           # the pool layout (vaults at bytes 139-203) and the decimals, checked on live pools: the chain's
           # price this second must agree with DexScreener's (up to half a minute old) within reason
@@ -222,14 +223,29 @@ jobs:
           reader = CurveReader()
           got = reader.pool_prices({n["pair"]: n["token"] for n in pools}, dex.quote_usd)
           print(f"SOL laut DexScreener: {dex.quote_usd.get('So11111111111111111111111111111111111111112')} $ · {len(pools)} PumpSwap-Pools · RPC-Aufrufe {reader.calls}, Fehler {reader.fails} {reader.last_error}")
+          from bot.sources.curve import token_amount
           devs = []
+          sol = dex.quote_usd.get('So11111111111111111111111111111111111111112') or 0
           for n in pools:
               chain = got.get(n["pair"])
               dev = (chain / n["price_usd"] - 1) * 100 if chain and n["price_usd"] else None
               if dev is not None:
                   devs.append(dev)
-              print(f"  {n['symbol']!s:>12} DexScreener {n['price_usd']:.6g} · Chain {chain if chain is None else f'{chain:.6g}'}"
+              print(f"  {n['symbol']!s:>12} {n['pair'][:8]} DexScreener {n['price_usd']:.6g} · Chain {chain if chain is None else f'{chain:.6g}'}"
                     + ("" if dev is None else f" · {dev:+.1f} %"))
+              # where does a gap come from: DexScreener's own reserves, the vaults, the pool's activity
+              pool = reader._pools.get(n["pair"])
+              raw = n.get("liquidity_base_usd"), n.get("liquidity_quote_usd")
+              line = (f"      Alter {n['age_min'] or 0:.0f} min · m5 {n['buys_m5']}/{n['sells_m5']} Trades, Vol {n['volume_m5']:.0f} $ · "
+                      f"DS-Liq {n['liquidity_reported_usd']:.0f} $ (Basis {raw[0] or 0:.0f} $, Gegenseite {raw[1] or 0:.0f} $)")
+              if pool:
+                  acc = reader._accounts([pool["base_vault"], pool["quote_vault"]])
+                  b = token_amount(acc[pool["base_vault"]][1]) / 10 ** pool["base_decimals"] if acc.get(pool["base_vault"]) else None
+                  q = token_amount(acc[pool["quote_vault"]][1]) / 10 ** pool["quote_decimals"] if acc.get(pool["quote_vault"]) else None
+                  line += f" · Tresore {b} Token / {q} SOL (Dez. {pool['base_decimals']}/{pool['quote_decimals']})"
+                  if raw[0] and n["price_usd"] and sol:
+                      line += f" · DS-Reserven {raw[0] / n['price_usd']:.0f} Token / {(raw[1] or 0) / sol:.2f} SOL"
+              print(line)
           if len(pools) >= 3 and not got and reader.fails == 0:
               sys.exit("kein einziger Pool von der Chain gelesen – Layout oder Dezimalstellen stimmen nicht")
           if devs and statistics.median(abs(d) for d in devs) > 25:
