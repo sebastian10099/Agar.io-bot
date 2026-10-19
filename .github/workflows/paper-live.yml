@@ -1,0 +1,95 @@
+name: Paper-Live (echter Markt, Spielgeld)
+
+# The real bot in paper mode against the live markets for a few hours. Every
+# two minutes a read-only snapshot (index.html, REPORT.md, state.json) goes to
+# the branch paper-live, together with the paper account (bot.sqlite.gz), so
+# the next run continues the same account. Start: change .github/paper-live.json
+# on the bot's branch, or "Run workflow" once the file is on the default branch.
+
+on:
+  push:
+    branches: [claude/agenen-funktionalitaet-hnw6g5]
+    paths: ['.github/paper-live.json']
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: 'Laufzeit in Stunden (höchstens 5.5)'
+        default: '5'
+
+permissions:
+  contents: write          # only to publish the snapshot branch paper-live
+
+concurrency:
+  group: paper-live
+  cancel-in-progress: true # a new start replaces the running one; the account is saved on the way out
+
+jobs:
+  paper:
+    name: Paper-Live – Spielgeld gegen echte Kurse
+    runs-on: macos-14
+    timeout-minutes: 350
+    env:
+      NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/paper
+      SITE: ${{ runner.temp }}/site
+      PAGES_URL: https://sebastian10099.github.io/Agar.io-bot/
+    steps:
+      - uses: actions/checkout@v5
+      - name: Paper-Konto vom letzten Lauf holen
+        run: |
+          mkdir -p "$NEW_TOKEN_BOT_HOME" "$SITE"
+          if git fetch -q --depth 1 origin paper-live 2>/dev/null && git show origin/paper-live:bot.sqlite.gz > "$RUNNER_TEMP/bot.sqlite.gz" 2>/dev/null; then
+            gunzip -c "$RUNNER_TEMP/bot.sqlite.gz" > "$NEW_TOKEN_BOT_HOME/bot.sqlite"
+            echo "Paper-Konto vom letzten Lauf fortgesetzt"
+          else
+            echo "Erster Lauf: neues Paper-Konto mit 1.000 $ Spielgeld"
+          fi
+      - name: Bot laufen lassen, alle 2 Minuten veröffentlichen
+        working-directory: trading-bot
+        env:
+          HOURS: ${{ inputs.hours }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          HOURS="${HOURS:-$(python3 -c "import json; print(json.load(open('../.github/paper-live.json')).get('hours', 5))")}"
+          END=$(python3 -c "import time; print(int(time.time() + min(5.5, float('$HOURS')) * 3600))")
+          /bin/bash ./launch.sh --no-open --port 8765 > "$RUNNER_TEMP/bot.out" 2>&1 &
+          for i in $(seq 1 120); do curl -s -m 2 http://127.0.0.1:8765/api/state | grep -q '"app": "new-token-bot"' && break; sleep 1; done
+          head -20 "$RUNNER_TEMP/bot.out"
+
+          save_account() {   # consistent copy of the running database, compressed
+            python3 - "$NEW_TOKEN_BOT_HOME/bot.sqlite" "$SITE/bot.sqlite.gz" <<'PY' || echo "Konto sichern fehlgeschlagen"
+          import gzip, os, shutil, sqlite3, sys
+          tmp = sys.argv[2] + ".tmp"
+          src = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)   # never create an empty one
+          dst = sqlite3.connect(tmp)
+          src.backup(dst); dst.close(); src.close()
+          with open(tmp, "rb") as f, gzip.open(sys.argv[2], "wb") as g:
+              shutil.copyfileobj(f, g)
+          os.remove(tmp)
+          PY
+          }
+          publish() {        # one commit, force-pushed: the branch holds only the latest snapshot
+            python3 tools/paper_live.py http://127.0.0.1:8765 "$SITE" "$PAGES_URL" || echo "Schnappschuss fehlgeschlagen"
+            touch "$SITE/.nojekyll"
+            (cd "$SITE" && rm -rf .git && git init -q -b paper-live && git add -A \
+              && git -c user.name="paper-live" -c user.email="paper-live@users.noreply.github.com" commit -q -m "Paper-Live $(date -u +%FT%TZ)" \
+              && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" paper-live) || echo "Veröffentlichen fehlgeschlagen"
+          }
+          finish() {
+            echo "Ende: Konto sichern und letzten Schnappschuss veröffentlichen"
+            save_account; publish
+            curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8765/api/quit > /dev/null || true
+            exit 0
+          }
+          trap finish INT TERM
+
+          n=0
+          while [ "$(date +%s)" -lt "$END" ]; do
+            [ $((n % 5)) -eq 0 ] && save_account          # account every 10 minutes
+            publish
+            if [ $((n % 5)) -eq 0 ]; then                  # a status line in the job log every 10 minutes
+              python3 -c "import json,sys; s=json.load(open('$SITE/state.json')); print(f\"{s['polls']} Polls · Bankroll \${s['bankroll']:.2f} · offen {len(s['open_positions'])} · Trades {s['stats']['closed']} · Kandidaten {s['stats']['candidates']}\")" || true
+            fi
+            n=$((n + 1))
+            sleep 120 & wait $!                            # wait in the background, so a cancel reaches the trap at once
+          done
+          finish

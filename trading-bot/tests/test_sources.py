@@ -1734,3 +1734,31 @@ class HttpRetryTests(unittest.TestCase):
                 http.get_json("https://api.example/x", retries=2)
             self.assertEqual(slept, [1.0, 2.0])              # between attempts only
 
+
+
+class PaperLiveSnapshotTests(unittest.TestCase):
+    """tools/paper_live.py renders what the published window shows."""
+
+    def test_snapshot_renders_and_escapes_strangers_text(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("paper_live", ROOT / "tools" / "paper_live.py")
+        pl = importlib.util.module_from_spec(spec); spec.loader.exec_module(pl)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started + 7 * 60]; dex.now = lambda: t[0]
+            from bot.demo import FakeCurves
+            eng = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex), curves=FakeCurves())
+            eng.poll_once()
+            state = json.loads(json.dumps(eng.state()))
+            state["candidates"][0]["symbol"] = '<script>alert(1)</script>|x'
+            out = Path(d) / "site"
+            pl.write(state, out, "https://example.invalid/")
+            page = (out / "index.html").read_text()
+            report = (out / "REPORT.md").read_text()
+            self.assertNotIn("<script>alert(1)", page); self.assertIn("&lt;script&gt;", page)
+            self.assertIn("Offene Positionen", page); self.assertIn("https://pump.fun/coin/", page)   # the demo curve token
+            self.assertIn("Kurve", page)
+            self.assertIn("| Bankroll |", report); self.assertNotIn("</script>|x", report)
+            self.assertEqual(json.loads((out / "state.json").read_text())["app"], "new-token-bot")
+            pl.write({"candidates": [], "open_positions": [], "closed": [], "stats": {}}, out)        # a bot that has not polled yet
+            self.assertIn("noch kein Poll", (out / "REPORT.md").read_text())
+            store.close()

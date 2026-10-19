@@ -320,6 +320,29 @@ ihr Zeit-Stop abgelaufen und fehlt der Kurs seit 30 Minuten, wird der Rest als
 Verlust abgeschrieben (Grund `no_price`) – sonst bliebe sie für immer offen.
 Bei einem allgemeinen Ausfall passiert das nicht.
 
+## Paper-Live auf GitHub — zuschauen, ohne den Mac
+
+Der Workflow **Paper-Live** lässt denselben Bot im Paper-Modus gegen die echten
+Märkte laufen (bis zu 5,5 Stunden pro Lauf, macOS-Runner) und veröffentlicht
+alle zwei Minuten einen Schnappschuss im Branch `paper-live`:
+
+- `REPORT.md` – Bankroll, offene Positionen, geschlossene Trades, Edge-Report,
+  Filtergründe, Protokoll; GitHub zeigt die Datei direkt an:
+  https://github.com/sebastian10099/Agar.io-bot/blob/paper-live/REPORT.md
+- `index.html` – dieselben Zahlen als Seite, die sich jede Minute neu lädt.
+  Als Fenster im Browser: einmal unter *Settings → Pages* „Deploy from a
+  branch“, Branch `paper-live`, Ordner `/ (root)` wählen; danach steht sie unter
+  https://sebastian10099.github.io/Agar.io-bot/
+- `state.json` – die Rohdaten, `bot.sqlite.gz` – das Paper-Konto. Der nächste
+  Lauf setzt es fort, Bankroll und Edge-Report wachsen also über mehrere Läufe.
+
+Gestartet wird ein Lauf durch eine Änderung an `.github/paper-live.json`
+(`{"hours": 5}`) auf dem Branch des Bots, oder – sobald der Workflow auf dem
+Hauptbranch liegt – über *Actions → Paper-Live → Run workflow*. Ein neuer
+Start ersetzt einen laufenden; das Konto wird vorher gesichert. Steuern lässt
+sich der Bot dort nicht: Die Seite ist eine reine Ansicht. Auf dem Mac läuft
+derselbe Paper-Modus dauerhaft, mit der vollen Steuerseite.
+
 ## Der Edge-Report — der wichtigste Teil
 
 **Ehrliche Messung:** Kurse für fällige Ergebnisse werden gesammelt abgefragt
