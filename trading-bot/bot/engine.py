@@ -493,7 +493,8 @@ class Engine:
                 return {"ok": False, "error": "Nicht eröffnet: " + blocked}
             price = self._price_now(c["chain"], c["pair"], c["token"])
             if not price:
-                return {"ok": False, "error": "Kein aktueller Kurs für diesen Token"}
+                return {"ok": False, "error": "Kein aktueller Kurs bei DexScreener (ganz neu und noch nicht gelistet, "
+                                              "oder das Paar ist weg) – ohne laufenden Kurs gäbe es keinen Stop-Loss"}
             p = {"chain": c["chain"], "token": c["token"], "pair": c["pair"], "symbol": c["symbol"], "price_usd": price}
             pid = self.paper.open(p, self.clock())
             self.last_prices[c["pair"]] = price
