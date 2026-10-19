@@ -25,6 +25,12 @@ PRICE_JUMP_MAX = 10.0
 # a pool's price read on the chain is this second's, DexScreener's up to half a minute old: the chain's
 # wins - unless it is this many times above DexScreener's, which no half minute explains (a misread)
 CHAIN_MAX_ABOVE = 3.0
+# a pool's quote reserve (its SOL) down by this much from its high while the price has not fallen
+# like a sale would make it: the liquidity is being pulled - out before the tokens are dumped into it.
+# In a constant-product pool a sale that takes 25 % of the SOL drops the price by 44 %; a withdrawal
+# takes both sides and leaves the price where it was.
+LIQ_PULL = 0.25
+LIQ_PULL_PRICE = 0.30        # ... and the price is down less than this from where the reserve peaked
 EXIT_WATCH_S = 2.0           # between polls, holdings priced on the chain are checked this often
 
 
@@ -104,6 +110,7 @@ class Engine:
         self._good_price: dict[int, float] = {}       # position id -> its last believable price
         self._refused: dict[int, float] = {}          # position id -> the bad quote last logged for it
         self._watch_error = ""
+        self._liq_peak: dict[int, tuple[float, float]] = {}   # position id -> (highest quote reserve, price then)
         self._dex_answered = False                # did DexScreener itself answer during the last discovery?
         self._dex_answered_now = False
         self._deferred_last = 0
@@ -360,6 +367,11 @@ class Engine:
             if good is None:
                 # stops and the time stop keep working on the last believable price
                 self.paper.update(pos, self._reference_price(pos), now)
+            elif self._liquidity_pulled(pos, good):
+                self.last_prices[pos["pair"]] = good
+                self.paper.exit_all(pos, good, "liquidity_pull", now)
+                self.store.tick(pos["id"], now, good)
+                self.store.log("warn", f"{pos.get('symbol')}: Liquidität wird abgezogen – sofort verkauft")
             else:
                 self.last_prices[pos["pair"]] = good
                 before = pos["remaining_frac"]
@@ -372,6 +384,19 @@ class Engine:
                 self._last_priced.pop(pos["id"], None)
                 self._good_price.pop(pos["id"], None)
                 self._refused.pop(pos["id"], None)
+                self._liq_peak.pop(pos["id"], None)
+
+    def _liquidity_pulled(self, pos: dict[str, Any], price: float) -> bool:
+        """Read on the chain this poll: has the pool lost a quarter of its SOL since its
+        high while the price held? (See LIQ_PULL.) Pools the chain cannot read: never."""
+        reserve = (getattr(self.curves, "reserves", None) or {}).get(pos["pair"])
+        if not reserve:
+            return False
+        peak = self._liq_peak.get(pos["id"])
+        if peak is None or reserve > peak[0]:
+            self._liq_peak[pos["id"]] = (reserve, price)
+            return False
+        return reserve <= peak[0] * (1 - LIQ_PULL) and price >= peak[1] * (1 - LIQ_PULL_PRICE)
 
     def _watch_exits(self, now: float) -> int:
         """Between polls: each holding's price on the chain every few seconds, so a

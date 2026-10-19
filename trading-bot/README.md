@@ -328,7 +328,16 @@ weiter DexScreener (dessen Reserven – dieselbe Definition, nur bis zu 30 s
 alt). Zwischen den Polls schaut eine **Exit-Wache** alle 2 Sekunden auf die
 Chain-Kurse der offenen Positionen: ein Stop-Loss feuert Sekunden nach dem
 Fall, nicht erst beim nächsten Poll. Jeder Mac-CI-Lauf vergleicht Chain und
-Reserven an echten Pools (ruhige Pools müssen auf 5 % stimmen). Der öffentliche
+Reserven an echten Pools (ruhige Pools müssen auf 5 % stimmen).
+
+**Rug-Schutz: Liquiditätsabzug** – mit Kursen allein sah der Bot einen Rug
+erst, wenn der Kurs schon bei −100 % war. Die Chain zeigt mehr: zieht jemand
+die Liquidität ab, verliert der Pool einen großen Teil seines SOL, der Kurs
+bleibt aber stehen (ein Abzug nimmt beide Seiten); ein Verkauf derselben
+Größe hätte ihn fast halbiert (Konstantprodukt: −25 % SOL = −44 % Kurs). Fällt
+die SOL-Reserve eines gehaltenen Pools um 25 % unter ihr Hoch, während der
+Kurs weniger als 30 % nachgibt, verkauft der Bot sofort („liquidity_pull“) –
+bevor die Tokens in den leeren Pool gekippt werden. Der öffentliche
 Solana-Knoten drosselt geteilte Adressen (HTTP 429) – auf dem eigenen VPS mit
 eigenem Knoten (`SOLANA_RPC_URL`, z. B. ein kostenloser Helius-Schlüssel)
 klappt das zuverlässig.

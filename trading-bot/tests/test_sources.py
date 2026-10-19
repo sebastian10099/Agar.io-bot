@@ -2738,6 +2738,38 @@ class ChainPriceTests(unittest.TestCase):
             self.assertAlmostEqual(eng._position_prices([store.position(pid)])[pid], listed)
             store.close()
 
+    def test_a_liquidity_pull_is_sold_before_the_dump(self):
+        """The pool's SOL falls a quarter while the price holds: someone takes the liquidity
+        out (a sale of that size would have cut the price by 44 %). Sell before the dump."""
+        with tempfile.TemporaryDirectory() as d:
+            chain_price = [None]
+            eng, store, run, t = self.engine(d, chain_price)
+            reserve = {}
+            eng.curves.reserves = reserve
+            orig = eng.curves.pool_prices
+            def pool_prices(pairs, quote_usd):
+                got = orig(pairs, quote_usd)
+                if run["pair"] in got:
+                    reserve[run["pair"]] = state[0]
+                return got
+            eng.curves.pool_prices = pool_prices
+            pid = eng.paper.open(run, t[0]); store.tick(pid, t[0], run["price_usd"])
+            p0 = run["price_usd"]
+            for q, px in ((100.0, p0), (120.0, p0 * 1.2), (115.0, p0 * 1.18)):
+                state = [q]; chain_price[0] = px; t[0] += 2
+                self.assertEqual(eng._watch_exits(t[0]), 0)                       # trading as usual
+            state = [86.0]; chain_price[0] = p0 * 1.15; t[0] += 2                   # -28 % SOL, price -4 %
+            self.assertEqual(eng._watch_exits(t[0]), 1)
+            pos = store.position(pid)
+            self.assertEqual(pos["exit_reason"], "liquidity_pull")
+            self.assertGreater(pos["realized_usd"], 0)                             # out with the gain, not after the dump
+            pid2 = eng.paper.open(dict(run, token="Other"), t[0]); store.tick(pid2, t[0], p0)
+            for q, px in ((100.0, p0), (78.0, p0 * 0.6)):                          # a big sale: SOL and price fall together
+                state = [q]; chain_price[0] = px; t[0] += 2
+                eng._watch_exits(t[0])
+            self.assertNotEqual(store.position(pid2)["exit_reason"], "liquidity_pull")
+            store.close()
+
     def test_the_exit_watch_sells_between_polls(self):
         with tempfile.TemporaryDirectory() as d:
             chain_price = [None]
