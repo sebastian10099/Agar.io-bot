@@ -15,6 +15,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable, Optional
 
+from .sources.dexscreener import payout_price
 from .store import OUTCOME_CAP_PCT, Store
 
 VANISHED_GRACE_S = 10 * 60     # no price this long past due, while others are priced -> -100 %
@@ -26,6 +27,7 @@ OUTCOME_MAX = 1 + OUTCOME_CAP_PCT / 100   # 1000x the price seen is a bad quote 
 PATH_MINUTES = 60              # a pool candidate's price is followed this long after its verdict ...
 PATH_MIN_LIQ = 5000.0          # ... if its pool holds at least this much (smaller ones nobody could trade)
 PATH_MAX = 240                 # at most this many at once (8 requests a poll, a second or two)
+PATH_STAKE_USD = 33.0          # paths and outcomes are what a stake this size gets out of the pool
 BATCH = 30                     # pairs per request (DexScreener's limit)
 MAX_DUE = 600                  # outcomes handled per poll
 MAX_SINGLE = 20                # single lookups per poll when no batch source exists
@@ -101,6 +103,7 @@ class Tracker:
             if r["pair"] not in pairs:
                 pairs.append(r["pair"])
             tokens[r["pair"]] = r["token"]
+        depth_of = getattr(getattr(self.prices_of, "__self__", None), "depth", None)
         for chain, pairs in by_chain.items():
             if self.prices_of is not None:
                 for i in range(0, len(pairs), BATCH):
@@ -112,7 +115,8 @@ class Tracker:
                         continue
                     hits = {pair: float(price) for pair, price in got.items() if price and price > 0}
                     for pair, price in hits.items():
-                        prices[(chain, pair)] = price
+                        # what a typical stake would get out: an emptied pool's dust "price" is not a gain
+                        prices[(chain, pair)] = payout_price(price, (depth_of or {}).get(pair), PATH_STAKE_USD)
                     if hits:                               # the request was answered: its silent pairs are gone
                         answered.update((chain, pair) for pair in chunk)
             else:

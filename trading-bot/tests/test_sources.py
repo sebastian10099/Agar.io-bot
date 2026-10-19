@@ -2814,6 +2814,45 @@ class ChainPriceTests(unittest.TestCase):
             self.assertNotEqual(store.position(pid2)["exit_reason"], "liquidity_pull")
             store.close()
 
+    def test_an_emptied_pool_is_a_total_loss_not_a_gain(self):
+        """Live, 19 Oct 2026 (Rove, Antscrl): the creator took the liquidity out; the dust left
+        priced the coin 9-14x higher, frozen there, and the paper account booked sales into an
+        empty pool. A sale gets what the pool's paying side can give - here nothing."""
+        from bot.sources.dexscreener import payout_price
+        self.assertAlmostEqual(payout_price(1.0, 10_000.0, 33.0), 10_000 / 10_033)       # a normal pool: -0.3 %
+        self.assertLess(payout_price(14.0, 1e-7, 33.0), 1e-6)                             # emptied: next to nothing
+        self.assertEqual(payout_price(2.0, None, 33.0), 2.0)                              # unknown: unchanged
+        with tempfile.TemporaryDirectory() as d:
+            chain_price = [None]
+            eng, store, run, t = self.engine(d, chain_price)
+            pid = eng.paper.open(run, t[0]); store.tick(pid, t[0], run["price_usd"])
+            p0 = store.position(pid)["entry_price"]
+            depth = {}
+            eng.curves.depth = depth
+            depth[run["pair"]] = 9_000.0; chain_price[0] = p0 * 1.4; t[0] += 2           # a normal rise: kept
+            self.assertEqual(eng._watch_exits(t[0]), 0)
+            depth[run["pair"]] = 2e-7; chain_price[0] = p0 * 9.9; t[0] += 2              # emptied, dust reads 9.9x
+            self.assertEqual(eng._watch_exits(t[0]), 1)
+            pos = store.position(pid)
+            self.assertEqual(pos["exit_reason"], "stop_loss")
+            self.assertLess(pos["realized_usd"], -0.95 * pos["size_usd"])                 # the stake is gone
+            store.close()
+
+    def test_paths_and_outcomes_count_what_the_pool_pays(self):
+        from bot.tracker import PATH_STAKE_USD, Tracker
+        class Dex:
+            depth = {"P1": 10_000.0, "P2": 1e-7}
+            def prices(self, chain, pairs, follow=None): return {"P1": 2.0, "P2": 14.0}
+            def price(self, chain, pair): return None
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite")
+            dex = Dex()
+            tr = Tracker(store, CFG, dex.price, dex.prices)
+            got, _ = tr._lookup([{"chain": "solana", "pair": "P1", "token": "A"}, {"chain": "solana", "pair": "P2", "token": "B"}])
+            self.assertAlmostEqual(got[("solana", "P1")], 2.0 * 10_000 / (10_000 + PATH_STAKE_USD))
+            self.assertLess(got[("solana", "P2")], 1e-6)
+            store.close()
+
     def test_the_exit_watch_sells_between_polls(self):
         with tempfile.TemporaryDirectory() as d:
             chain_price = [None]

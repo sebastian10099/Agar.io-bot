@@ -9,6 +9,7 @@ from . import settings
 from .ai import ClaudeAdvisor
 from .discovery import DexScreenerFeed, Discovery
 from .paper import Paper
+from .sources.dexscreener import payout_price
 from .store import Store
 from .strategy import evaluate
 from .tracker import Tracker
@@ -363,6 +364,7 @@ class Engine:
             pos = self.store.position(pid)
             if pos is None or pos["status"] != "open":
                 return
+            price = self._payout(pos, price)
             good = self._believable(pos, price)
             if good is None:
                 # stops and the time stop keep working on the last believable price
@@ -385,6 +387,24 @@ class Engine:
                 self._good_price.pop(pos["id"], None)
                 self._refused.pop(pos["id"], None)
                 self._liq_peak.pop(pos["id"], None)
+
+    def _depth(self, pair: str) -> Optional[float]:
+        """USD on the paying side of this pool, read this second on the chain, else at the
+        last DexScreener answer; None when neither knows it."""
+        for source in (self.curves, self.dex):
+            depth = (getattr(source, "depth", None) or {}).get(pair)
+            if depth is not None:
+                return float(depth)
+        return None
+
+    def _payout(self, pos: dict[str, Any], price: float) -> float:
+        """What selling the rest of this holding at `price` really gets from its pool (see
+        dexscreener.payout_price): an emptied pool's dust price is no gain, it is a total loss."""
+        depth = self._depth(pos["pair"])
+        if depth is None or not pos.get("entry_price"):
+            return price
+        value = pos["remaining_frac"] * pos["size_usd"] / pos["entry_price"] * price
+        return payout_price(price, depth, value)
 
     def _liquidity_pulled(self, pos: dict[str, Any], price: float) -> bool:
         """Read on the chain this poll: has the pool lost a quarter of its SOL since its
@@ -446,7 +466,7 @@ class Engine:
         """Price for a manual sell: the current one if believable, else the last believable one."""
         now = self._price_now(pos["chain"], pos["pair"], pos["token"])
         if now:
-            good = self._believable(pos, now)
+            good = self._believable(pos, self._payout(pos, now))
             return good if good is not None else self._reference_price(pos)
         return self.last_prices.get(pos["pair"])
 

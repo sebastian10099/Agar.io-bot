@@ -100,6 +100,7 @@ class CurveReader:
         self._paused_until = 0.0
         self._pools: dict[str, Optional[dict[str, Any]]] = {}   # pair -> PumpSwap layout, None: not one
         self.reserves: dict[str, float] = {}     # pair -> its quote reserve at the last pool_prices call
+        self.depth: dict[str, float] = {}        # pair -> that reserve in USD
 
     def health(self) -> dict[str, Any]:
         return {"calls": self.calls, "fails": self.fails, "last_error": self.last_error,
@@ -156,6 +157,7 @@ class CurveReader:
         layout is read once; after that one call reads every pool's vaults."""
         for pair in pairs:
             self.reserves.pop(pair, None)                # only what this call reads counts
+            self.depth.pop(pair, None)
         new = [p for p in pairs if p not in self._pools]
         if new:
             found = self._accounts(new)
@@ -189,6 +191,7 @@ class CurveReader:
             if b and q and usd and usd > 0:
                 out[pair] = (q / 10 ** pool["quote_decimals"]) / (b / 10 ** pool["base_decimals"]) * usd
                 self.reserves[pair] = q / 10 ** pool["quote_decimals"]      # the pool's SOL (or dollars) right now
+                self.depth[pair] = self.reserves[pair] * usd
         return out
 
     def _remember(self, pair: str, pool: Optional[dict[str, Any]]) -> None:

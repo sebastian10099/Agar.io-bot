@@ -112,6 +112,28 @@ def _real_liquidity(reported: float, paired_usd: Optional[float]) -> float:
     return reported if paired_usd is None else min(reported, 2 * paired_usd)
 
 
+def money_side_usd(n: dict[str, Any], token: Optional[str] = None) -> Optional[float]:
+    """USD on the side of the pool that pays for `token` (the other side): what a sale can
+    take out at most. None when it is not known - or for a bonding curve, whose reserves
+    are virtual."""
+    if n.get("curve"):
+        return None
+    token = canon(token)
+    flipped = bool(token) and canon(n.get("token")) != token and canon(n.get("quote_token")) == token
+    return n.get("liquidity_base_usd") if flipped else n.get("liquidity_quote_usd")
+
+
+def payout_price(price: float, depth: Optional[float], value_usd: float) -> float:
+    """The price a sale of `value_usd` (at `price`) really gets from a constant-product pool
+    holding `depth` dollars on its paying side: price * depth / (depth + value). A normal pool
+    barely moves ($33 into $10,000: -0.3 %); an emptied one pays next to nothing - its "price",
+    the ratio of the dust left in it, can read 10x while nobody can sell there."""
+    if depth is None or price <= 0:
+        return price
+    depth = max(0.0, float(depth))
+    return price * depth / (depth + max(0.0, value_usd)) if depth + value_usd > 0 else 0.0
+
+
 def market_depth(n: dict[str, Any], token: Optional[str] = None) -> float:
     """Liquidity of this pool as a market for `token`. A pool listing it as the
     quote side has the base as its paired side - priced only through this pool,
@@ -151,6 +173,7 @@ class DexScreener:
     def __init__(self, fetch=get_json) -> None:
         self.fetch = fetch
         self._quotes: dict[str, list[float]] = {}     # quote token -> its last USD prices, from the pairs seen
+        self.depth: dict[str, float] = {}             # pair -> USD on its money side at the last prices() call
 
     @property
     def quote_usd(self) -> dict[str, float]:
@@ -235,6 +258,8 @@ class DexScreener:
         price freezes there) is priced from that pool."""
         out: dict[str, float] = {}
         curves: dict[str, str] = {}              # curve pair -> its dex
+        for pair in pair_addresses:
+            self.depth.pop(pair, None)           # only what this call reads counts
         for i in range(0, len(pair_addresses), 30):
             chunk = pair_addresses[i:i + 30]
             data = self.fetch(f"{BASE}/latest/dex/pairs/{chain}/{','.join(chunk)}")
@@ -243,9 +268,13 @@ class DexScreener:
                 if not n["pair"]:
                     continue
                 self._learn(n)
-                price = token_price(n, (follow or {}).get(n["pair"]))
+                token = (follow or {}).get(n["pair"])
+                price = token_price(n, token)
                 if price:
                     out[n["pair"]] = price
+                    money = money_side_usd(n, token)
+                    if money is not None:
+                        self.depth[n["pair"]] = money
                 if n["curve"]:
                     curves[n["pair"]] = str(n.get("dex") or "").lower()
         ask: dict[str, list[str]] = {}

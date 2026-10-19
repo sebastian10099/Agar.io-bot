@@ -320,6 +320,18 @@ Käufe, Ø +50 %, 69 % im Plus. Dieselben Daten, aus denen die Regeln stammen �
 die eigentliche Probe ist der Lauf danach (Edge-Report, Laufzeit-Prüfung).
 Kein Ergebnis aus der Vergangenheit verspricht künftige Gewinne.
 
+**Verkauft wird nur, was der Pool zahlt** – im Frühkauf-Test stand das Konto
+nach 2,5 Stunden bei 1.940 $: zwei Coins (Rove, Antscrl) „stiegen“ in einem
+Schritt auf das 9- bis 14-Fache und blieben dort stehen. Ihre Pools waren
+geleert – 0,1 Token und ein Milliardstel SOL lagen noch darin; der „Kurs“
+war das Verhältnis dieser Reste, und das Konto buchte Verkäufe hinein, die
+niemand bezahlt hätte. Jetzt gilt bei jedem Verkauf, was die Zahlseite des
+Pools (SOL oder Dollar) hergibt: Kurs × Reserve ÷ (Reserve + Verkaufswert)
+– bei 10.000 $ im Pool kostet ein 33-$-Verkauf 0,3 %, ein geleerter Pool
+zahlt nichts, und der Stop-Loss bucht den Totalverlust. Dasselbe gilt für die
+Kursverläufe des Backtests und die Edge-Messungen (mit 33 $ Einsatz). Die
+Frühkauf-Probe fiel damit von +93 % auf +17 % je Trade (38 Trades, 16 Rugs).
+
 **Fantasie-Kurse** – im ersten Lauf mit diesen Regeln stand das Konto nach
 zehn Minuten bei 1,05 Mio. $: ein Coin für 0,00003 $ wurde zu 1,017 $
 verkauft. Jemand hatte einen zweiten Pool zu einem erfundenen Preis (1 $)
