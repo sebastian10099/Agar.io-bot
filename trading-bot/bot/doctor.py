@@ -117,10 +117,15 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
 
     def sdk() -> str:
         from .preflight import sdk_version
+        ai = cfg.get("ai") or {}
+        needed = ai.get("mode", "off") != "off" and ai.get("provider", "anthropic") == "anthropic"
         v = sdk_version()
-        if not v:
-            raise RuntimeError("Anthropic-SDK fehlt – der nächste Start über die App oder launch.sh installiert es (pip install --user anthropic)")
-        return f"anthropic {v}"
+        if v:
+            return f"anthropic {v}"
+        if needed:
+            raise RuntimeError("Anthropic-SDK fehlt, der KI-Modus mit Claude braucht es – der nächste Start über die App oder launch.sh installiert es (pip install --user anthropic)")
+        # without the Claude mode nothing uses the SDK: not a fault, just a note
+        return "nicht installiert – nur für den KI-Modus mit Claude nötig, wird beim nächsten Start nachinstalliert"
     out.append(_check("Anthropic-SDK", sdk))
 
     def ai_key() -> str:

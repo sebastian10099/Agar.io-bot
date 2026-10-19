@@ -91,8 +91,11 @@ class AdvisorTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
     def test_sdk_errors_are_described(self):
-        import anthropic
-        import httpx2 as httpx
+        try:
+            import anthropic
+            import httpx2 as httpx
+        except ImportError:
+            self.skipTest("Anthropic-SDK nicht installiert – nur die SDK-Fehlerzuordnung wird übersprungen")
         logs = []
         resp = httpx.Response(401, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
         client = StubClient(raise_all=anthropic.AuthenticationError("bad key", response=resp, body=None))

@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import threading
 import tempfile
 import time
 import unittest
@@ -687,3 +688,107 @@ class PumpFunTests(unittest.TestCase):
             counts = eng.poll_once()
             self.assertEqual(counts["seen"], 0)
             store.close()
+
+
+class SdkRowTests(unittest.TestCase):
+    def test_missing_sdk_is_only_an_error_when_claude_mode_is_on(self):
+        from unittest import mock
+        from bot import doctor, preflight
+        with mock.patch.object(preflight, "sdk_version", return_value=None):
+            for mode, provider, ok in (("off", "anthropic", True), ("advise", "openrouter", True), ("advise", "anthropic", False), ("decide", "anthropic", False)):
+                cfg = copy.deepcopy(CFG); cfg["ai"]["mode"] = mode; cfg["ai"]["provider"] = provider
+                dex = FakeDex()
+                row = next(c for c in doctor.run_checks(cfg, dex, demo_feeds(dex), FakeRug(), None) if c["name"] == "Anthropic-SDK")
+                self.assertEqual(row["ok"], ok, (mode, provider, row))
+        with mock.patch.object(preflight, "sdk_version", return_value="9.9"):
+            dex = FakeDex()
+            row = next(c for c in doctor.run_checks(CFG, dex, demo_feeds(dex), FakeRug(), None) if c["name"] == "Anthropic-SDK")
+            self.assertTrue(row["ok"]); self.assertIn("9.9", row["detail"])
+
+
+class ConcurrencyTests(unittest.TestCase):
+    """The dashboard thread (Schließen, ½, Kaufen) runs while the engine polls.
+    Each test injects the user's click at the moment the poll is waiting for
+    the network, which is where the real race window is."""
+
+    def setUp(self):
+        import bot.demo as demo
+        self.cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.sqlite")
+        self.dex = FakeDex(accel=1.0); self.t = [self.dex.started]; self.dex.now = lambda: self.t[0]
+        self.cfg = copy.deepcopy(CFG)
+        self.eng = Engine(self.cfg, self.store, self.dex, FakeRug(), clock=self.dex.now, feeds=demo_feeds(self.dex))
+
+    def tearDown(self):
+        import bot.demo as demo
+        demo.CYCLE_MIN = self.cycle
+        self.store.close(); self.tmp.cleanup()
+
+    def sells(self, pid):
+        return [t for t in self.store.trades_for(pid) if t["side"] == "sell"]
+
+    def test_manual_close_during_the_exit_check_is_not_sold_twice(self):
+        self.eng.poll_once()
+        pid = self.store.open_positions()[0]["id"]
+        real_price = self.dex.price
+        clicked = []
+        def price(chain, pair):
+            p = real_price(chain, pair)
+            if not clicked:                       # the user clicks "Schließen" while the poll waits for this price
+                clicked.append(1)
+                self.dex.price = real_price
+                self.assertTrue(self.eng.close_position(pid)["ok"])
+                self.dex.price = price
+            return p * 0.5                         # and the price the poll then sees would hit the stop loss
+        self.dex.price = price
+        self.t[0] += 120
+        self.eng.poll_once()
+        self.dex.price = real_price
+        pos = self.store.position(pid)
+        self.assertEqual(len(self.sells(pid)), 1, self.sells(pid))
+        self.assertEqual(pos["exit_reason"], "manual")
+        self.assertEqual(pos["remaining_frac"], 0.0)
+        self.assertAlmostEqual(pos["realized_usd"], sum(t["usd"] for t in self.sells(pid)) - pos["size_usd"]
+                               - pos["size_usd"] * self.cfg["paper"]["fee_pct"] / 100, places=6)
+
+    def test_partial_sell_during_the_exit_check_is_not_overwritten(self):
+        self.eng.poll_once()
+        pid = self.store.open_positions()[0]["id"]
+        real_price = self.dex.price
+        clicked = []
+        def price(chain, pair):
+            p = real_price(chain, pair)
+            if not clicked:
+                clicked.append(1)
+                self.dex.price = real_price
+                self.assertTrue(self.eng.sell_position(pid, 0.5)["ok"])
+                self.dex.price = price
+            return p * 0.5                         # stop loss: the poll must sell only what is still left
+        self.dex.price = price
+        self.t[0] += 120
+        self.eng.poll_once()
+        self.dex.price = real_price
+        fracs = [t["frac"] for t in self.sells(pid)]
+        self.assertAlmostEqual(sum(fracs), 1.0, places=9, msg=fracs)    # never more than the whole position
+        self.assertEqual(self.store.position(pid)["status"], "closed")
+
+    def test_manual_buy_during_a_poll_does_not_open_the_same_token_twice(self):
+        self.eng.poll_once()                      # RUN bought, DUMP watched
+        dump = next(c for c in self.store.candidates() if c["symbol"] == "DUMP")
+        self.store.reset("positions")
+        orig_can_open = self.eng.paper.can_open
+        clicked = []
+        def can_open(chain, token):
+            blocked = orig_can_open(chain, token)
+            if not clicked and token == dump["token"] and blocked is None:
+                clicked.append(1)                 # the user buys DUMP by hand right after the bot checked it
+                threading.Thread(target=lambda: self.eng.open_from_candidate(dump["id"])).start()
+                import time as _t; _t.sleep(0.2)
+            return blocked
+        self.eng.paper.can_open = can_open
+        self.cfg["scoring"]["min_score"] = 0      # make the bot want DUMP too
+        self.t[0] += 600
+        self.eng.poll_once()
+        held = [p for p in self.store.open_positions() if p["token"] == dump["token"]]
+        self.assertLessEqual(len(held), 1, held)

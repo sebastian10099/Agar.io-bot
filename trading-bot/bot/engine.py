@@ -146,14 +146,20 @@ class Engine:
                         if want == "buy" and verdict.get("watch_only"):
                             want = "watch"                      # no RugCheck answer: the model may not override the safety rule
                         decision = want
-                if decision == "buy" and not self.paused:
-                    blocked = self.paper.can_open(chain, p["token"])
+                opened: Optional[int] = None
+                if decision == "buy" and self.paused:
+                    decision = "watch"
+                    verdict["reasons"].insert(0, "not opened: paused")
+                elif decision == "buy":
+                    # check and open in one step under the dashboard's lock, or a manual
+                    # "Kaufen" in between could open the same token a second time
+                    with self._lock:
+                        blocked = self.paper.can_open(chain, p["token"])
+                        if not blocked:
+                            opened = self.paper.open(p, now)
                     if blocked:
                         decision = "watch"
                         verdict["reasons"].insert(0, f"not opened: {blocked}")
-                elif decision == "buy" and self.paused:
-                    decision = "watch"
-                    verdict["reasons"].insert(0, "not opened: paused")
                 counts[decision] += 1
                 self.tracker.record({
                     "seen_at": now, "chain": chain, "token": p["token"], "pair": p["pair"],
@@ -161,22 +167,25 @@ class Engine:
                     "score": verdict["score"], "decision": decision,
                     "reasons": verdict["reasons"], "snapshot": p,
                 })
-                if decision == "buy":
-                    pid = self.paper.open(p, now)
+                if opened is not None:
                     self.last_prices[p["pair"]] = p["price_usd"]
-                    self.store.tick(pid, now, p["price_usd"])
+                    self.store.tick(opened, now, p["price_usd"])
 
-        for pos in self.store.open_positions():
-            price = self.dex.price(pos["chain"], pos["pair"])
+        for listed in self.store.open_positions():
+            price = self.dex.price(listed["chain"], listed["pair"])   # network: outside the lock
             if not price:
                 continue
-            self.last_prices[pos["pair"]] = price
-            before = pos["status"]
-            self.paper.update(pos, price, now)
-            if pos["opened_at"] < now:                 # the entry already wrote this poll's tick
-                self.store.tick(pos["id"], now, price)
-            if pos["status"] != before:
-                counts["exits"] += 1
+            with self._lock:
+                # re-read: a manual close or partial sell may have happened while we waited
+                pos = self.store.position(listed["id"])
+                if pos is None or pos["status"] != "open":
+                    continue
+                self.last_prices[pos["pair"]] = price
+                self.paper.update(pos, price, now)
+                if pos["opened_at"] < now:             # the entry already wrote this poll's tick
+                    self.store.tick(pos["id"], now, price)
+                if pos["status"] != "open":
+                    counts["exits"] += 1
 
         self.tracker.fill_due(now)
         self.last_poll = now
