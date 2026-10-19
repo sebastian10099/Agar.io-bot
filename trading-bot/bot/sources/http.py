@@ -56,10 +56,12 @@ def get_json(url: str, timeout: float = 15, retries: int = 2, headers: Optional[
             body = e.read().decode("utf-8", "replace")
             last = HttpError(e.code, body)
             if e.code == 429 or e.code >= 500:
-                time.sleep(1.5 * (attempt + 1))
+                if attempt < retries:                 # wait only when another attempt follows
+                    time.sleep(1.5 * (attempt + 1))
                 continue
             raise last
         except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as e:
             last = e
-            time.sleep(1.0 * (attempt + 1))
+            if attempt < retries:
+                time.sleep(1.0 * (attempt + 1))
     raise last

@@ -163,7 +163,7 @@ class Engine:
                         verdict = evaluate(p, rug, self.cfg)
                     decision = verdict["decision"]
                     p["rule_decision"] = decision
-                    if p.get("via_feed"):
+                    if p.get("via_feed") and decision != "skip":
                         # exits are priced by DexScreener: a position it cannot price would never be
                         # stopped out, so a feed-only token is watched until DexScreener lists it
                         verdict["watch_only"] = True

@@ -1014,6 +1014,20 @@ class FeedOnlyBuyTests(unittest.TestCase):
             self.assertEqual(store.open_positions(), [])
             store.close()
 
+    def test_a_skipped_feed_token_gets_its_real_reason_first(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            run = next(p for p in dex.pairs_for_tokens("solana", dex.recent_token_addresses(["solana"])["solana"]) if p["symbol"] == "RUN")
+            young = dict(run, token="GeckoYoung", pair="GeckoYoungPool", symbol="YOUNG", age_min=0.5)
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["gecko"]
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds={"gecko": StubFeed({"solana": [{"token": "GeckoYoung", "snapshot": young}]})})
+            eng.poll_once()
+            c = next(c for c in store.candidates() if c["symbol"] == "YOUNG")
+            self.assertEqual(c["decision"], "skip")
+            self.assertTrue(c["reasons"][0].startswith("too new"), c["reasons"])
+            self.assertFalse(any("nur beobachten" in r for r in c["reasons"]), c["reasons"])
+            store.close()
+
 
 class CashTests(unittest.TestCase):
     def test_cash_never_goes_negative_when_the_book_fills_up(self):
@@ -1703,3 +1717,20 @@ class GraduationTests(unittest.TestCase):
             self.assertTrue(r["ok"], r)
             self.assertAlmostEqual(r["position"]["entry_price"], frozen * 0.6 * (1 + eng.paper.slippage_pct / 100), places=12)
             store.close()
+
+
+class HttpRetryTests(unittest.TestCase):
+    def test_no_sleep_after_the_last_attempt(self):
+        import urllib.error
+        from unittest import mock
+        from bot.sources import http
+        slept = []
+        with mock.patch.object(http.urllib.request, "urlopen", side_effect=urllib.error.URLError("nodename nor servname provided")), \
+                mock.patch.object(http.time, "sleep", side_effect=slept.append):
+            with self.assertRaises(urllib.error.URLError):
+                http.get_json("https://api.rugcheck.xyz/x", retries=0)
+            self.assertEqual(slept, [])                      # RugCheck (retries=0) fails at once
+            with self.assertRaises(urllib.error.URLError):
+                http.get_json("https://api.example/x", retries=2)
+            self.assertEqual(slept, [1.0, 2.0])              # between attempts only
+
