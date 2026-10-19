@@ -1350,6 +1350,15 @@ class DoctorRugRowTests(unittest.TestCase):
         alone = {c["name"]: c for c in run_checks(CFG, dex, demo_feeds(dex), down, None)}
         self.assertFalse(alone["RugCheck"]["ok"])
 
+    def test_a_rate_limit_is_a_note(self):
+        from bot.doctor import _check
+        from bot.sources.http import HttpError
+        def limited():
+            raise RuntimeError("solana: " + str(HttpError(429, '{"status":{"error_code":429}}')))
+        row = _check("GeckoTerminal – neue Pools & Parser", limited)
+        self.assertTrue(row["ok"]); self.assertTrue(row["warn"]); self.assertIn("Rate-Limit", row["detail"])
+        self.assertFalse(_check("x", lambda: (_ for _ in ()).throw(RuntimeError("HTTP 500: down")))["ok"])
+
     def test_curve_reserves_row(self):
         from bot.demo import FakeCurves
         from bot.doctor import run_checks

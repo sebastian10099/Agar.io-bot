@@ -97,8 +97,10 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
   gesehen hat – so siehst du, welche Quelle wirklich etwas bringt. Der
   **Selbsttest** daneben prüft in einem Rutsch: Python und TLS-Zertifikate,
   Datenverzeichnis, DexScreener (Discovery und Parser), GeckoTerminal (neue
-  Pools und Parser), RugCheck und den Claude-Zugang – mit Laufzeit und
-  Befund je Prüfung. Im Terminal: `python3 -m bot.doctor`.
+  Pools und Parser), pump.fun, RugCheck mit der Eigenprüfung als Ersatz, die
+  pump.fun-Kurven-Reserven und den Claude-Zugang – mit Laufzeit und Befund je
+  Prüfung. Gelb heißt Hinweis (z. B. RugCheck aus, die Eigenprüfung springt
+  ein), rot Fehler. Im Terminal: `python3 -m bot.doctor`.
 - **Kandidaten** – alle bewerteten Tokens mit Score, Kennzahlen, den
   Gründen für die Entscheidung und der Spalte **Danach**: die tatsächliche
   Kursänderung 5, 15 und 60 Minuten nach der Bewertung, sobald sie vorliegt.
@@ -202,7 +204,7 @@ und 30, nur weil er den Token in Minute 1 schon gesehen hat.
 **Harte Filter** (ein Verstoß = `skip`, Grund wird gespeichert):
 
 - Alter 2–120 Minuten — nicht in der ersten Minute kaufen, nicht alten Tokens hinterherlaufen
-- Liquidität 15 k–2 M $, 5-Minuten-Volumen ≥ 3 k $, ≥ 15 Käufe in 5 Minuten
+- Liquidität 15 k–2 M $, 5-Minuten-Volumen ≥ 3 k $, ≥ 15 Käufe in 5 Minuten (Bonding-Kurven: siehe unten)
 - Käufe/Verkäufe ≥ 1.2 — es muss mehr rein- als rausgehen
 - 5-Minuten-Kursänderung zwischen 0 % und +150 % — nichts Fallendes, nichts Parabolisches
 - FDV ≤ 20 M $
@@ -210,6 +212,30 @@ und 30, nur weil er den Token in Minute 1 schon gesehen hat.
 
 **Score** aus Liquidität, Aktivität (Volumen/Liquidität), Kaufdruck, Momentum,
 Alter (5–30 min ideal), Socials und RugCheck. Ab 60 Punkten `buy`, darunter `watch`.
+
+**Bonding-Kurven:** Die meisten neuen Solana-Coins handeln anfangs gegen die
+Preiskurve ihrer Startplattform (pump.fun, Meteora DBC, LaunchLab), nicht in
+einem Pool. DexScreener nennt dafür keine Liquidität, GeckoTerminal nur die
+unverkaufte Token-Seite – ohne Korrektur fiele jeder dieser Coins mit „$0“
+durch. Für pump.fun liest der Bot die Reserven direkt aus dem Kurven-Konto auf
+der Chain (eine `getMultipleAccounts`-Abfrage pro Poll für alle Kurven, die
+bewertet werden): Liquidität = 2 × virtuelle Tokens × Kurs, also die eines
+Pools mit gleicher Kurswirkung – gleich ob die Kurve gegen SOL, USDC oder einen
+anderen Token läuft. Auf der Steuerseite steht dann „$… Kurve“. Andere
+Plattformen bleiben „unbekannt“ und werden mit diesem Grund übersprungen; eine
+abgeschlossene Kurve heißt „Kurve fertig“.
+
+**Wechsel an die Börse:** Ist eine pump.fun-Kurve voll, zieht der Handel in einen
+PumpSwap-Pool um, und die Kurve friert ein oder verschwindet. Offene Positionen
+und der Tracker folgen dem Token: Fehlt das Paar, zählt der beste verbliebene
+Pool des Tokens; bei einer Kurve zählt ein echter Pool, sobald es einen gibt
+(ab 1.000 $ Liquidität). So wird ein „graduierter“ Coin weder mit einem
+eingefrorenen Kurs gehalten noch als Totalverlust abgeschrieben.
+
+**Wiedereinstieg-Sperre** (Risiko, Standard 120 min, 0 = aus): Nach einem
+Verkauf kauft der Bot denselben Token so lange nicht automatisch zurück – ein
+Trailing- oder Stop-Loss-Ausstieg hat gerade gesagt, dass der Lauf vorbei ist.
+Der Knopf „Kaufen“ von Hand geht immer.
 
 ## Wie gehandelt wird (Paper)
 
@@ -351,7 +377,7 @@ bot/
   discovery.py   Discovery-Quellen zusammenführen, Status je Quelle
   doctor.py      Selbsttest: Erreichbarkeit und Parser aller Quellen
   preflight.py   Startcheck: HTTPS/CA-Zertifikate und Anthropic-SDK, repariert per pip
-  sources/       DexScreener, GeckoTerminal, pump.fun, RugCheck
+  sources/       DexScreener, GeckoTerminal, pump.fun, RugCheck, Solana-RPC (Eigenprüfung, Kurven-Reserven)
 tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
 ```
 

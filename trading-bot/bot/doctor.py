@@ -29,6 +29,11 @@ def _check(name: str, fn: Callable[[], str]) -> dict[str, Any]:
     except Degraded as note:
         return {"name": name, "ok": True, "warn": True, "ms": round((time.time() - started) * 1000), "detail": str(note)[:300]}
     except Exception as error:  # noqa: BLE001 - every failure is a finding, not a crash
+        if "HTTP 429" in str(error):
+            # the source is up and only wants to be asked less often (in operation the bot does)
+            return {"name": name, "ok": True, "warn": True, "ms": round((time.time() - started) * 1000),
+                    "detail": "Rate-Limit (HTTP 429): die Quelle antwortet, will aber seltener gefragt werden – "
+                              "im Betrieb fragt der Bot sie gedrosselt; Selbsttest in einer Minute wiederholen"}
         return {"name": name, "ok": False, "ms": round((time.time() - started) * 1000),
                 "detail": f"{type(error).__name__}: {str(error)[:200]}"}
 
@@ -41,8 +46,11 @@ def _parsed(pairs: list[dict[str, Any]]) -> str:
         raise RuntimeError("Parser: Felder fehlen: " + ", ".join(missing))
     priced = sum(1 for p in pairs if p.get("price_usd", 0) > 0)
     aged = sum(1 for p in pairs if p.get("age_min") is not None)
-    return f"{len(pairs)} Paare, {priced} mit Kurs, {aged} mit Alter · z. B. {pairs[0].get('symbol')} " \
-           f"Liq ${pairs[0].get('liquidity_usd', 0):,.0f}"
+    first = pairs[0]
+    liq = (f"Liq ${first.get('liquidity_usd', 0):,.0f}" if first.get("liquidity_kind", "reported") == "reported"
+           else f"Bonding-Kurve ({first.get('dex')}), Liquidität "
+                + ("aus dem Kurven-Konto auf der Chain" if first.get("dex") in ("pumpfun", "pump-fun") else "unbekannt"))
+    return f"{len(pairs)} Paare, {priced} mit Kurs, {aged} mit Alter · z. B. {first.get('symbol')} {liq}"
 
 
 def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,

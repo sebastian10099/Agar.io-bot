@@ -83,23 +83,6 @@ jobs:
               "https://api.rugcheck.xyz/v1/tokens/$MINT/report/summary" || true
             head -c 400 rc.json 2>/dev/null || echo "(keine Antwort)"; echo
           done
-      - name: Graduierte pump.fun-Coins bei DexScreener (Diagnose)
-        working-directory: trading-bot
-        continue-on-error: true
-        run: |
-          python3 - <<'PY'
-          from bot.sources.http import get_json
-          # a new PumpSwap pool is a pump.fun curve that just completed: which pairs does DexScreener list for it?
-          grads = []
-          for page in (1, 2, 3):
-              g = get_json(f"https://api.geckoterminal.com/api/v2/networks/solana/new_pools?page={page}", headers={"Accept": "application/json;version=20230302"})
-              grads += [p["relationships"]["base_token"]["data"]["id"].split("_", 1)[1] for p in g.get("data") or []
-                        if p["relationships"]["dex"]["data"]["id"] == "pumpswap"]
-          print("Graduierte Coins (neue PumpSwap-Pools):", len(grads))
-          for mint in grads[:3]:
-              for p in get_json("https://api.dexscreener.com/tokens/v1/solana/" + mint) or []:
-                  print(f"  {mint[:8]} {p.get('dexId'):10s} pair={p.get('pairAddress', '')[:8]} liq={(p.get('liquidity') or {}).get('usd')} price={p.get('priceUsd')} m5={p.get('txns', {}).get('m5')}")
-          PY
       - name: Ein echter Poll gegen die Live-Märkte
         working-directory: trading-bot
         continue-on-error: true
