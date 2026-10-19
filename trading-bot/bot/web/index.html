@@ -968,10 +968,11 @@ function diagnosisText(s) {
   L.push('', 'Quellen:');
   for (const r of s.sources || []) L.push(`  ${r.enabled ? (r.ok ? 'OK ' : r.ok === false ? 'ERR' : '...') : 'aus'}  ${r.label}  gemeldet ${r.found} · eigene ${r.unique} · Abfragen ${r.calls}${r.error ? ' · ' + r.error : ''}`);
   const a = s.ai || {}; L.push('', `KI: Modus ${a.mode} · ${a.available ? 'bereit' : 'nicht verfügbar'} · Modell ${a.model} · Schlüssel ${a.key_source} · ${a.calls_total} Aufrufe · $${(a.cost_total_usd || 0).toFixed(3)}${a.reason ? ' · ' + a.reason : ''}`);
-  if (lastDoctor) { L.push('', `Selbsttest ${hhmm(lastDoctor.at)}:`); for (const c of lastDoctor.checks) L.push(`  ${c.ok ? 'OK ' : 'ERR'}  ${c.name}  ${c.ms} ms  ${c.detail}`); }
+  if (lastDoctor) { L.push('', `Selbsttest ${hhmm(lastDoctor.at)}:`); for (const c of lastDoctor.checks) L.push(`  ${!c.ok ? 'ERR' : c.warn ? 'HINWEIS' : 'OK '}  ${c.name}  ${c.ms} ms  ${c.detail}`); }
   const w = s.skip_reasons || {}; L.push('', `Warum fällt was durch (${w.n || 0} Kandidaten, ${JSON.stringify(w.decisions || {})}):`);
   for (const r of w.reasons || []) L.push(`  ${String(r.n).padStart(4)}  ${Math.round(r.share * 100)}%  ${r.label}`);
   const rc = s.rugcheck || {}; L.push(`RugCheck: ${rc.calls || 0} Abfragen, ${rc.fails || 0} ohne Antwort${rc.last_error ? ', zuletzt: ' + rc.last_error : ''}`);
+  if (s.curves) L.push(`pump.fun-Kurven (RPC): ${s.curves.calls || 0} Abfragen, ${s.curves.fails || 0} ohne Antwort${s.curves.last_error ? ', zuletzt: ' + s.curves.last_error : ''}`);
   L.push('', 'Edge (Bot):'); for (const r of s.edge || []) L.push(`  ${r.horizon_min} min ${r.decision}: n=${r.n} Ø ${pct(r.avg_change_pct)} Treffer ${Math.round(r.win_rate * 100)}%`);
   L.push('', 'Konfiguration:', JSON.stringify(s.config));
   L.push('', 'Protokoll (zuletzt):'); for (const e of (s.events || []).slice(0, 30)) L.push(`  ${hhmm(e.at)} ${e.level} ${e.message}`);
@@ -1016,7 +1017,13 @@ function renderSources(s) {
       const fd = fb.calls ? `${fb.calls} Abfragen · ${fb.fails} ohne Antwort${fb.last_error ? ' · zuletzt: ' + esc(fb.last_error) : ''}` : '';
       return `<li><span class="dot ${fs[0]}" role="img" aria-label="${fs[1]}"></span><b>Eigenprüfung über Solana-RPC</b> <span class="reasons">${fs[1]}${fd ? ' · ' + fd : ''} · Freeze-/Mint-Authority, Token-2022-Fallen</span></li>`;
     })();
-    return `<li><span class="dot ${st[0]}" role="img" aria-label="${st[1]}"></span><b>RugCheck – Sicherheitsprüfung</b> <span class="reasons">${st[1]}${detail ? ' · ' + detail : ''}</span></li>` + fbRow;
+    const cv = s.curves;
+    const cvRow = !cv || !solana ? '' : (() => {
+      const cs = cv.ok === false ? ['bad', 'gestört'] : cv.ok ? ['ok', 'liest'] : ['warn', 'noch keine Kurve'];
+      const cd = cv.calls ? `${cv.calls} Abfragen · ${cv.fails} ohne Antwort${cv.last_error ? ' · zuletzt: ' + esc(cv.last_error) : ''}` : '';
+      return `<li><span class="dot ${cs[0]}" role="img" aria-label="${cs[1]}"></span><b>pump.fun-Kurven über Solana-RPC</b> <span class="reasons">${cs[1]}${cd ? ' · ' + cd : ''} · Liquidität der Kurven-Coins</span></li>`;
+    })();
+    return `<li><span class="dot ${st[0]}" role="img" aria-label="${st[1]}"></span><b>RugCheck – Sicherheitsprüfung</b> <span class="reasons">${st[1]}${detail ? ' · ' + detail : ''}</span></li>` + fbRow + cvRow;
   })();
 }
 function renderAi(s) {

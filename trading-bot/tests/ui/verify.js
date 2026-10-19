@@ -142,7 +142,9 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
 
   // --- Quellen: Status-Liste, Multi-Chips, Quelle am Kandidaten ---
   const srcRows = await p.$$eval('#sources li', (l) => l.map((x) => ({ text: x.textContent, dot: x.querySelector('.dot').className })));
-  ok(srcRows.length === 4 && srcRows.every((r) => r.dot.includes('ok')), 'Quellen-Liste: drei Feeds liefern, RugCheck antwortet (' + srcRows.map((r) => r.text.slice(0, 14)).join(', ') + ')');
+  // the curve row turns green with the demo's first curve token (sim. minute 4); until then it waits
+  ok(srcRows.length === 5 && srcRows.slice(0, 4).every((r) => r.dot.includes('ok')) && /ok|warn/.test(srcRows[4].dot),
+     'Quellen-Liste: drei Feeds liefern, RugCheck antwortet, Kurven-Abfrage da (' + srcRows.map((r) => r.text.slice(0, 14)).join(', ') + ')');
   ok(srcRows.some((r) => /\d+ gemeldet · \d+ eigene · \d+ Abfragen/.test(r.text)), 'Quellen zeigen Zähler');
   ok((await p.textContent('#src-pill')) === '3 aktiv', 'Quellen-Pill: 3 aktiv');
   const fbText = await p.evaluate(() => {
@@ -307,6 +309,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   const dbcRow = await p.locator('#cands tbody tr', { hasText: /DBC/ }).first().textContent();
   ok(/unbekannt/.test(dbcRow) && !/\$0,00/.test(dbcRow), 'andere Bonding-Kurve: Liquidität „unbekannt“ statt $0');
   ok((await p.locator('input[data-path="reentry_pause_minutes"]').count()) === 1, 'Einstellung „Wiedereinstieg-Sperre“ im Formular');
+  ok(/pump\.fun-Kurven über Solana-RPC/.test(await p.textContent('#sources')), 'Quellen-Karte zeigt die Kurven-Abfrage');
   const links = await p.evaluate(() => [
     tokenUrl({ dex: 'pumpfun', token: 'CUBnCAXqG65QmfcaUAoBz2k5QhUVq21tQMXenCaBpump', url: 'https://dexscreener.com/solana/curvepair' }, 'solana'),
     tokenUrl({ dex: 'raydium', token: 'So11111111111111111111111111111111111111112', url: 'https://dexscreener.com/solana/pool' }, 'solana'),

@@ -589,6 +589,7 @@ class Engine:
             "exits_by_reason": self._report("exits", self.store.exit_breakdown),
             "skip_reasons": self._report("why", self.store.skip_reasons),
             "rugcheck": self.rug.health() if hasattr(self.rug, "health") else {"calls": 0, "fails": 0, "last_error": "", "ok": None},
+            "curves": self.curves.health() if hasattr(self.curves, "health") else None,
             "equity": self.store.equity_curve(),
             "config": settings.flat(self.cfg),
         }
