@@ -86,6 +86,11 @@ jobs:
           }
           publish() {        # one commit, force-pushed: the branch holds only the latest snapshot
             python3 tools/paper_live.py http://127.0.0.1:8765 "$SITE" "$PAGES_URL" || echo "Schnappschuss fehlgeschlagen"
+            # runtime audit of this run against its own rules, shown in the report
+            if ! python3 tools/audit.py "$NEW_TOKEN_BOT_HOME" "$SITE/state.json" --since-start > "$SITE/audit.txt" 2>&1; then
+              echo "Laufzeit-Prüfung: Befund"; cat "$SITE/audit.txt"
+            fi
+            { echo; echo "## Laufzeit-Prüfung dieses Laufs"; echo; echo '```'; cat "$SITE/audit.txt"; echo '```'; } >> "$SITE/REPORT.md"
             touch "$SITE/.nojekyll"
             (cd "$SITE" && rm -rf .git && git init -q -b paper-live && git add -A \
               && git -c user.name="paper-live" -c user.email="paper-live@users.noreply.github.com" commit -q -m "Paper-Live $(date -u +%FT%TZ)" \
@@ -105,6 +110,7 @@ jobs:
             publish
             if [ $((n % 5)) -eq 0 ]; then                  # a status line in the job log every 10 minutes
               python3 -c "import json,sys; s=json.load(open('$SITE/state.json')); print(f\"{s['polls']} Polls · Bankroll \${s['bankroll']:.2f} · offen {len(s['open_positions'])} · Trades {s['stats']['closed']} · Kandidaten {s['stats']['candidates']}\")" || true
+              tail -1 "$SITE/audit.txt" || true
             fi
             n=$((n + 1))
             sleep 120 & wait $!                            # wait in the background, so a cancel reaches the trap at once

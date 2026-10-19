@@ -1168,6 +1168,41 @@ class DailyPnlTests(unittest.TestCase):
             store.close()
 
 
+class AuditTests(unittest.TestCase):
+    """tools/audit.py holds a paper account against the bot's own rules."""
+
+    def load(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("audit", ROOT / "tools" / "audit.py")
+        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+        return mod
+
+    def test_an_hour_of_demo_trading_passes_and_a_tampered_account_does_not(self):
+        import sqlite3
+        audit = self.load()
+        with tempfile.TemporaryDirectory() as d:
+            db = Path(d) / "bot.sqlite"
+            store = Store(db); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            eng = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            for _ in range(360):                                  # one simulated hour, a poll every 10 s
+                eng.poll_once(); t[0] += 10
+            state = eng.state()
+            store.close()
+            checks = audit.audit(db, copy.deepcopy(CFG), state)
+            self.assertTrue(all(c["ok"] for c in checks), audit.render(checks))
+            self.assertGreater(next(c for c in checks if c["name"].startswith("Ausstiege"))["n"], 0)
+            self.assertGreater(next(c for c in checks if c["name"].startswith("automatische"))["n"], 0)
+            con = sqlite3.connect(db)
+            pid = con.execute("SELECT id FROM positions WHERE status='closed' LIMIT 1").fetchone()[0]
+            con.execute("UPDATE positions SET realized_usd = realized_usd + 5 WHERE id=?", (pid,))   # money from nowhere
+            con.execute("UPDATE trades SET reason='stop_loss' WHERE side='sell' AND reason LIKE 'take_profit%'")
+            con.commit(); con.close()
+            bad = {c["name"].split(" ")[0] for c in audit.audit(db, copy.deepcopy(CFG)) if not c["ok"]}
+            self.assertEqual(bad, {"Buchhaltung", "Ausstiege"})
+            strict = copy.deepcopy(CFG); strict["filters"]["min_liquidity_usd"] = 10_000_000       # other rules
+            self.assertFalse(next(c for c in audit.audit(db, strict) if c["name"].startswith("automatische"))["ok"])
+
+
 class CashTests(unittest.TestCase):
     def test_cash_never_goes_negative_when_the_book_fills_up(self):
         from bot.paper import Paper

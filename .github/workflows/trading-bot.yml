@@ -269,6 +269,11 @@ jobs:
                   rug = (c["snapshot"].get("rug") or {})
                   print(f"  {c['decision']:5s} {c['symbol']!s:12.12s} score {c['score']}  Sicherheit: {rug.get('source', 'keine')}  {'; '.join(c['reasons'][:3])}")
           PY
+      - name: Laufzeit-Prüfung des Kontos (Buchhaltung, Ausstiege, Käufe gegen die Regeln)
+        working-directory: trading-bot
+        env:
+          NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-live
+        run: python3 tools/audit.py "$NEW_TOKEN_BOT_HOME"
       - name: Selbsttest gegen die echten Quellen (DexScreener, GeckoTerminal, pump.fun, RugCheck)
         working-directory: trading-bot
         env:

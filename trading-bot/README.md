@@ -489,6 +489,9 @@ bot/
   sources/       DexScreener, GeckoTerminal, pump.fun, RugCheck, Solana-RPC (Eigenprüfung, Kurven-Reserven)
 deploy/
   vps-install.sh Linux-Server: Installation/Aktualisierung als systemd-Dienst
+tools/
+  audit.py       Laufzeit-Prüfung eines Kontos gegen die eigenen Regeln
+  paper_live.py  Schnappschuss (REPORT.md, index.html) für Paper-Live
 tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
 ```
 
@@ -501,6 +504,24 @@ python3 -m unittest -v tests.test_bot tests.test_control tests.test_ai tests.tes
 Strategie-Entscheidungen, alle Exit-Regeln, der Tracker, ein kompletter
 Zyklus gegen den Demo-Markt, die Parameter-Validierung, Live-Änderungen,
 manuelles Schließen, Resets und jede API-Route sind abgedeckt.
+
+**Laufzeit-Prüfung eines echten Kontos** – die Tests prüfen den Code, diese
+Prüfung prüft, was der Bot im Betrieb tatsächlich getan hat:
+
+```bash
+python3 tools/audit.py <Datenordner>            # z. B. /var/lib/new-token-bot auf dem VPS
+```
+
+Sie hält die Datenbank gegen die eigenen Regeln: Buchhaltung jeder Position
+(Kauf, Verkäufe, Gebühren, Rest, Status), jeder Ausstieg beim Kurs, der seine
+Regel erfüllt (Stop-Loss, Gewinnstufen, Trailing, Zeit-Stop), jeder
+automatische Kauf gegen die Filter, die Halter-Regel und die
+Wiedereinstiegs-Sperre, nie zwei offene Positionen im selben Token, Bargeld
+nie im Minus und Bankroll = Start + realisiert. Sie läuft in jedem
+Mac-CI-Lauf nach dem echten Poll und in jedem Paper-Live-Schnappschuss
+(Abschnitt „Laufzeit-Prüfung dieses Laufs“ in `REPORT.md`). Am 19.10.2026 auf
+dem Paper-Konto nach 1,5 Stunden echtem Handel: 17 Positionen, 25 Ausstiege,
+42 Buchungen – alles regelkonform.
 
 **Browser-Prüfung der Steuerseite** – klickt gegen einen laufenden Demo-Server
 jede Funktion durch (Formular, Validierung, Persistenz, Schließen, Pause,
