@@ -869,3 +869,74 @@ class UrlSafetyTests(unittest.TestCase):
         self.assertEqual(safe_url(" https://dexscreener.com/solana/abc "), "https://dexscreener.com/solana/abc")
         self.assertIsNone(normalize_pair({"baseToken": {}, "url": "javascript:alert(document.cookie)"}, NOW)["url"])
         self.assertEqual(normalize_pair({"baseToken": {}, "url": "https://dexscreener.com/x"}, NOW)["url"], "https://dexscreener.com/x")
+
+
+class ResilienceTests(unittest.TestCase):
+    """One broken record from a feed must not stop the stop-loss checks of the open positions."""
+
+    def test_a_broken_token_does_not_suspend_exits(self):
+        import bot.demo as demo
+        cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            feeds = demo_feeds(dex)
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["dexscreener", "broken"]
+            broken = StubFeed({"solana": [{"token": "BadMint", "snapshot": {"pair": "BadPair", "token": "BadMint", "price_usd": 1.0, "symbol": "BAD"}}]})
+            feeds["broken"] = broken
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds=feeds)
+            eng.poll_once()
+            pid = store.open_positions()[0]["id"]
+            real = dex.price
+            dex.price = lambda chain, pair: (real(chain, pair) or 0) * 0.4      # crash: stop loss must fire
+            t[0] += 120
+            eng.poll_once()                                                     # must not raise
+            self.assertEqual(store.position(pid)["exit_reason"], "stop_loss")
+            self.assertTrue(any("BAD" in e["message"] or "BadMint" in e["message"] for e in store.events(20)),
+                            [e["message"] for e in store.events(10)])
+            store.close()
+
+    def test_a_failing_feed_object_does_not_suspend_exits(self):
+        import bot.demo as demo
+        cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            eng = Engine(CFG, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            eng.poll_once()
+            pid = store.open_positions()[0]["id"]
+            real_pairs, real_price = dex.pairs_for_tokens, dex.price
+            def boom(chain, addrs): raise RuntimeError("DexScreener 502")
+            dex.pairs_for_tokens = boom                                         # the numbers source is down
+            dex.price = lambda chain, pair: (real_price(chain, pair) or 0) * 0.4
+            t[0] += 120
+            eng.poll_once()
+            self.assertEqual(store.position(pid)["exit_reason"], "stop_loss")
+            store.close()
+
+
+class QuietErrorTests(unittest.TestCase):
+    def test_outages_and_bad_tokens_are_logged_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            feeds = demo_feeds(dex)
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["broken"]
+            feeds["broken"] = StubFeed({"solana": [{"token": "BadMint", "snapshot": {"pair": "BadPair", "token": "BadMint", "price_usd": 1.0, "symbol": "BAD"}}]})
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds=feeds)
+            for _ in range(5):
+                t[0] += 20; eng.poll_once()
+            bad = [e for e in store.events(50) if "BAD" in e["message"]]
+            self.assertEqual(len(bad), 1, [e["message"] for e in bad])           # once, then parked
+            t[0] += 31 * 60; eng.poll_once()
+            self.assertEqual(len([e for e in store.events(80) if "BAD" in e["message"]]), 2)   # retried after 30 min
+            def boom(chain, addrs): raise RuntimeError("DexScreener 502")
+            cfg["discovery"]["sources"] = ["dexscreener"]
+            dex.pairs_for_tokens = boom
+            for _ in range(5):
+                t[0] += 20; eng.poll_once()
+            down = [e for e in store.events(80) if "abgebrochen" in e["message"]]
+            self.assertEqual(len(down), 1, [e["message"] for e in down])
+            del dex.pairs_for_tokens                                              # back to the class method
+            t[0] += 20; eng.poll_once()
+            self.assertIn("läuft wieder", store.events(5)[0]["message"] + " ".join(e["message"] for e in store.events(5)))
+            store.close()

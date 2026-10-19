@@ -79,6 +79,8 @@ class Engine:
         self._wake = threading.Event()
         self._lock = threading.Lock()
         self._reports: dict[str, tuple[float, Any, int]] = {}
+        self._bad_tokens: dict[str, float] = {}    # token -> when its record last broke the evaluation
+        self._last_discovery_error = ""
 
     def _report(self, key: str, fn: Callable[[], Any]) -> Any:
         """The page polls every 2 s; the aggregate reports only need to move with the polls."""
@@ -103,9 +105,8 @@ class Engine:
             self.poll_ms_last = round(ms)
             self.poll_ms_avg = round(ms if self.poll_ms_avg is None else 0.8 * self.poll_ms_avg + 0.2 * ms)
 
-    def _poll(self, now: float) -> dict[str, int]:
-        counts = {"seen": 0, "new": 0, "buy": 0, "watch": 0, "skip": 0, "exits": 0}
-
+    def _discover(self, now: float, counts: dict[str, int]) -> None:
+        """Find, judge and (paper-)buy new tokens."""
         found = self.discovery.recent(list(self.cfg["chains"]))
         for chain, tokens in found.items():
             if not tokens:
@@ -122,57 +123,85 @@ class Engine:
                     p["age_min"] = snap["age_min"]
                     p["age_from_feed"] = True
             for p in pairs:
-                p["source"] = (tokens.get(p["token"]) or {}).get("source")
-                counts["seen"] += 1
-                last = self.store.last_verdict(chain, p["token"])
-                if last is not None and now - last["seen_at"] < resee_after(last):
-                    continue
-                counts["new"] += 1
-                rug = self.rug.summary(p["token"]) if chain == "solana" else None
-                verdict = evaluate(p, rug, self.cfg)
-                decision = verdict["decision"]
-                p["rule_decision"] = decision
-                p["rug"] = rug
-                ai = self.advisor.judge(p, rug, verdict) if decision in ("buy", "watch") else None
-                if ai:
-                    p["ai_decision"], p["ai_confidence"] = ai["decision"], round(ai["confidence"], 2)
-                    p["ai_reasons"], p["ai_flags"], p["ai_model"] = ai["reasons"], ai["risk_flags"], ai["model"]
-                    verdict["reasons"].append("KI " + ai["decision"] + f" ({ai['confidence']:.0%}): " + "; ".join(ai["reasons"][:2]))
-                    if self.cfg["ai"].get("mode") == "decide":
-                        want = ai["decision"]
-                        if want == "buy" and ai["confidence"] < float(self.cfg["ai"].get("min_confidence", 0.6)):
-                            want = "watch"
-                            verdict["reasons"].append("KI-Vertrauen unter Schwelle")
-                        if want == "buy" and verdict.get("watch_only"):
-                            want = "watch"                      # no RugCheck answer: the model may not override the safety rule
-                        decision = want
-                opened: Optional[int] = None
-                if decision == "buy" and self.paused:
-                    decision = "watch"
-                    verdict["reasons"].insert(0, "not opened: paused")
-                elif decision == "buy":
-                    # check and open in one step under the dashboard's lock, or a manual
-                    # "Kaufen" in between could open the same token a second time
-                    with self._lock:
-                        blocked = self.paper.can_open(chain, p["token"])
-                        if not blocked:
-                            opened = self.paper.open(p, now)
-                    if blocked:
+                if now - self._bad_tokens.get(p.get("token") or "", -1e18) < RESEE_SECONDS:
+                    continue                                   # broke last time: give its record half an hour
+                try:
+                    p["source"] = (tokens.get(p["token"]) or {}).get("source")
+                    counts["seen"] += 1
+                    last = self.store.last_verdict(chain, p["token"])
+                    if last is not None and now - last["seen_at"] < resee_after(last):
+                        continue
+                    counts["new"] += 1
+                    rug = self.rug.summary(p["token"]) if chain == "solana" else None
+                    verdict = evaluate(p, rug, self.cfg)
+                    decision = verdict["decision"]
+                    p["rule_decision"] = decision
+                    p["rug"] = rug
+                    ai = self.advisor.judge(p, rug, verdict) if decision in ("buy", "watch") else None
+                    if ai:
+                        p["ai_decision"], p["ai_confidence"] = ai["decision"], round(ai["confidence"], 2)
+                        p["ai_reasons"], p["ai_flags"], p["ai_model"] = ai["reasons"], ai["risk_flags"], ai["model"]
+                        verdict["reasons"].append("KI " + ai["decision"] + f" ({ai['confidence']:.0%}): " + "; ".join(ai["reasons"][:2]))
+                        if self.cfg["ai"].get("mode") == "decide":
+                            want = ai["decision"]
+                            if want == "buy" and ai["confidence"] < float(self.cfg["ai"].get("min_confidence", 0.6)):
+                                want = "watch"
+                                verdict["reasons"].append("KI-Vertrauen unter Schwelle")
+                            if want == "buy" and verdict.get("watch_only"):
+                                want = "watch"                      # no RugCheck answer: the model may not override the safety rule
+                            decision = want
+                    opened: Optional[int] = None
+                    if decision == "buy" and self.paused:
                         decision = "watch"
-                        verdict["reasons"].insert(0, f"not opened: {blocked}")
-                counts[decision] += 1
-                self.tracker.record({
-                    "seen_at": now, "chain": chain, "token": p["token"], "pair": p["pair"],
-                    "symbol": p.get("symbol"), "price_usd": p["price_usd"],
-                    "score": verdict["score"], "decision": decision,
-                    "reasons": verdict["reasons"], "snapshot": p,
-                })
-                if opened is not None:
-                    self.last_prices[p["pair"]] = p["price_usd"]
-                    self.store.tick(opened, now, p["price_usd"])
+                        verdict["reasons"].insert(0, "not opened: paused")
+                    elif decision == "buy":
+                        # check and open in one step under the dashboard's lock, or a manual
+                        # "Kaufen" in between could open the same token a second time
+                        with self._lock:
+                            blocked = self.paper.can_open(chain, p["token"])
+                            if not blocked:
+                                opened = self.paper.open(p, now)
+                        if blocked:
+                            decision = "watch"
+                            verdict["reasons"].insert(0, f"not opened: {blocked}")
+                    counts[decision] += 1
+                    self.tracker.record({
+                        "seen_at": now, "chain": chain, "token": p["token"], "pair": p["pair"],
+                        "symbol": p.get("symbol"), "price_usd": p["price_usd"],
+                        "score": verdict["score"], "decision": decision,
+                        "reasons": verdict["reasons"], "snapshot": p,
+                    })
+                    if opened is not None:
+                        self.last_prices[p["pair"]] = p["price_usd"]
+                        self.store.tick(opened, now, p["price_usd"])
+                except Exception as error:  # noqa: BLE001 - one broken record must not stop the others
+                    self.errors += 1
+                    self._bad_tokens[p.get("token") or ""] = now
+                    self.store.log("error", f"Token {p.get('symbol') or p.get('token')} übersprungen (30 min): "
+                                            f"{type(error).__name__}: {error}")
+
+
+    def _poll(self, now: float) -> dict[str, int]:
+        counts = {"seen": 0, "new": 0, "buy": 0, "watch": 0, "skip": 0, "exits": 0}
+
+        try:
+            self._discover(now, counts)
+            if self._last_discovery_error:
+                self.store.log("info", "Suche nach neuen Tokens läuft wieder")
+                self._last_discovery_error = ""
+        except Exception as error:  # noqa: BLE001 - discovery trouble must never suspend the exits below
+            self.errors += 1
+            msg = f"{type(error).__name__}: {error}"
+            if msg != self._last_discovery_error:          # log a lasting outage once, not every poll
+                self.store.log("error", f"Suche nach neuen Tokens abgebrochen (Exits laufen weiter): {msg}")
+                self._last_discovery_error = msg
 
         for listed in self.store.open_positions():
-            price = self.dex.price(listed["chain"], listed["pair"])   # network: outside the lock
+            try:
+                price = self.dex.price(listed["chain"], listed["pair"])   # network: outside the lock
+            except Exception as error:  # noqa: BLE001 - one position without a price must not stop the others
+                self.store.log("error", f"Kein Kurs für {listed.get('symbol')}: {type(error).__name__}: {error}")
+                continue
             if not price:
                 continue
             with self._lock:
@@ -187,7 +216,10 @@ class Engine:
                 if pos["status"] != "open":
                     counts["exits"] += 1
 
-        self.tracker.fill_due(now)
+        try:
+            self.tracker.fill_due(now)
+        except Exception as error:  # noqa: BLE001
+            self.store.log("error", f"Tracker: {type(error).__name__}: {error}")
         self.last_poll = now
         self.last_poll_wall = time.time()
         self.poll_count += 1
