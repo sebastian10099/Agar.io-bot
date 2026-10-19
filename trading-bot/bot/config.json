@@ -36,7 +36,8 @@
     "max_rugcheck_score": 2000,
     "allow_rugcheck_unknown": false,
     "require_holder_check": true,
-    "allow_curve_buys": false
+    "allow_curve_buys": false,
+    "early_own_pools": false
   },
   "exits": {
     "stop_loss_pct": -30,

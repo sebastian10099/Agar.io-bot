@@ -88,6 +88,27 @@ class StrategyTests(unittest.TestCase):
         v = evaluate(migrated, holders, CFG)                                       # who holds the supply always counts
         self.assertEqual(v["decision"], "skip"); self.assertIn("Top 10 holders", v["reasons"][0])
 
+    def test_early_mode_buys_only_pools_their_creator_opened_on_pumpswap(self):
+        from bot.engine import presets
+        cfg = copy.deepcopy(CFG)
+        for path, value in presets()["★ Frühkauf – hohes Risiko (Paper)"].items():
+            group, key = path.split(".")
+            cfg[group][key] = value
+        lp = {"score": 52.0, "danger": ["Large Amount of LP Unlocked"], "warn": [], "source": "rugcheck",
+              "holders": {"top1": 3.0, "top10": 20.0}}
+        own = dict(fixture("RUN", age_min=0.8), dex="pumpswap")                      # address does not end in "pump"
+        self.assertEqual(evaluate(own, lp, cfg)["decision"], "buy", evaluate(own, lp, cfg)["reasons"])
+        onchain = {"score": 0.0, "danger": [], "warn": [], "source": "onchain", "holders": {"top1": 3.0, "top10": 20.0}}
+        self.assertEqual(evaluate(own, onchain, cfg)["decision"], "buy")           # RugCheck not there yet: own check
+        self.assertIn("too old", evaluate(dict(own, age_min=3.0), lp, cfg)["reasons"][0])   # minutes later: no
+        for other in (dict(own, dex="meteora"), dict(own, token="RunMint11111111111111111111111111111pump")):
+            self.assertTrue(evaluate(other, lp, cfg)["reasons"][0].startswith("early mode"))
+        frozen = dict(onchain, danger=["Freeze Authority still enabled"])          # a coin that cannot be sold: never
+        self.assertEqual(evaluate(own, frozen, cfg)["decision"], "skip")
+        whale = dict(lp, danger=["Large Amount of LP Unlocked", "Single holder ownership"])
+        self.assertEqual(evaluate(own, whale, cfg)["decision"], "skip")
+        self.assertEqual(evaluate(own, lp, CFG)["decision"], "skip")              # off by default
+
     def test_rug_danger_is_skipped(self):
         p = fixture("HONEY")
         v = evaluate(p, RUG.summary(p["token"]), CFG)

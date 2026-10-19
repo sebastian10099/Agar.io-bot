@@ -37,6 +37,11 @@ def lp_managed(p: dict[str, Any]) -> bool:
     return str(p.get("dex") or "").lower() in LP_MANAGED_DEXES and str(p.get("token") or "").endswith(PUMPFUN_SUFFIX)
 
 
+def own_pumpswap_pool(p: dict[str, Any]) -> bool:
+    """A pool someone opened on PumpSwap for a coin of their own (not one of pump.fun's)."""
+    return str(p.get("dex") or "").lower() == "pumpswap" and not str(p.get("token") or "").endswith(PUMPFUN_SUFFIX)
+
+
 def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, Any]) -> dict[str, Any]:
     f = cfg["filters"]
     reasons: list[str] = []
@@ -82,6 +87,13 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
     # crashed by 80 % within the hour, 13 % of the rest). Curves keep their own liquidity measure.
     cap = float(f.get("max_fdv_liquidity_ratio") or 0)
     on_curve_now = p.get("curve") or p.get("liquidity_kind") == "curve"
+    # "Frühkauf" (filters.early_own_pools, a paper test): only pools their creator opened on PumpSwap,
+    # bought in their first minutes - bought then, they mostly rose; bought minutes later, they lost
+    # (19 Oct 2026). Their creator holds the LP, so its "unlocked" is accepted there - a known risk.
+    early = bool(f.get("early_own_pools", False))
+    if early and not own_pumpswap_pool(p):
+        reasons.append("early mode: only pools their creator opened on PumpSwap")
+    lp_soft = lp_managed(p) or (early and own_pumpswap_pool(p))
     if cap > 0 and not on_curve_now and liq > 0 and p["fdv"] and p["fdv"] / liq > cap:
         reasons.append(f"thin pool: valuation {p['fdv'] / liq:.1f}x its liquidity > {cap:g}x")
 
@@ -103,10 +115,10 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
                 reasons.append("onchain danger: " + ", ".join(rug["danger"][:3]))
             # it cannot see who holds a pool's liquidity - outside pump.fun's own pools that is the
             # question (live: 80 % of Meteora pools fell 90 % within the hour)
-            lp_unknown = not lp_managed(p) and not on_curve_now
+            lp_unknown = not lp_soft and not on_curve_now
         else:
             danger = list(rug["danger"])
-            if lp_managed(p):
+            if lp_soft:
                 soft = [d for d in danger if "LP Unlocked" in str(d)]
                 danger = [d for d in danger if d not in soft]
             if danger:
@@ -140,7 +152,7 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
         parts["rugcheck"] = max(0.0, 5.0 - 2.0 * len(rug["warn"]))
     elif rug is not None:
         parts["rugcheck"] = _scale(f["max_rugcheck_score"] - rug["score"], 0, f["max_rugcheck_score"], 10)
-        warnings = len(rug["warn"]) + (len(rug["danger"]) if lp_managed(p) else 0)
+        warnings = len(rug["warn"]) + (len(rug["danger"]) if lp_soft else 0)
         if warnings:
             parts["rugcheck"] = max(0.0, parts["rugcheck"] - 2.0 * warnings)
     else:

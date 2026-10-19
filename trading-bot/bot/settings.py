@@ -74,6 +74,13 @@ SCHEMA: list[dict[str, Any]] = [
      "help": "Aus (empfohlen): Coins, die noch auf ihrer pump.fun-Kurve handeln, werden nur beobachtet und "
              "erst gekauft, wenn sie in einen echten Pool umgezogen sind. Im Live-Test verloren Kurven-Coins "
              "nach Kosten im Schnitt 30 % in 15 Minuten, Pool-Coins gewannen."},
+    {"path": "filters.early_own_pools", "type": "bool",
+     "label": "Frühkauf: selbst eröffnete PumpSwap-Pools", "group": "Filter",
+     "help": "Hohes Risiko – nur zum Testen mit Spielgeld. Wenn an: gekauft werden nur Pools, die jemand selbst "
+             "auf PumpSwap für einen eigenen Coin eröffnet hat, und „LP unlocked“ wird dort hingenommen – der "
+             "Ersteller kann die Liquidität jederzeit abziehen. Im Live-Test stiegen solche Pools, in ihrer ersten "
+             "Minute gekauft, meist deutlich; Minuten später gekauft verloren sie. Mit Höchstalter 1,5 min nutzen "
+             "(Profil „★ Frühkauf“)."},
     {"path": "filters.require_holder_check", "type": "bool",
      "label": "Nur mit geprüften Haltern kaufen", "group": "Filter",
      "help": "Solana-Tokens werden nur gekauft, wenn bekannt ist, wer die Menge hält: die Halterverteilung "
