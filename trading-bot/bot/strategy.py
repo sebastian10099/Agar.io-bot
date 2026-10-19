@@ -67,6 +67,7 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
         reasons.append("no price")
 
     watch_only = False
+    holders_unknown = False
     if f["require_rugcheck"] and p.get("chain") == "solana":
         if rug is None:
             if not f["allow_rugcheck_unknown"]:
@@ -77,6 +78,8 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
             # own on-chain check (RugCheck had no answer): authorities and Token-2022 traps
             if rug["danger"]:
                 reasons.append("onchain danger: " + ", ".join(rug["danger"][:3]))
+            if f.get("require_holder_check", True) and not rug.get("holders") and not rug.get("creator"):
+                holders_unknown = True     # nobody knows who could dump on the buyers: never bought, still tracked
         else:
             if rug["danger"]:
                 reasons.append("rugcheck danger: " + ", ".join(rug["danger"][:3]))
@@ -119,4 +122,8 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
     if watch_only:
         decision = "watch"
         notes.insert(0, "rugcheck unavailable - watch only, no buy without the safety check")
+    elif holders_unknown:
+        watch_only = True
+        decision = "watch"
+        notes.insert(0, "holder check missing - watch only: neither the holder distribution nor the creator's share is known")
     return {"decision": decision, "score": score, "reasons": notes, "watch_only": watch_only}

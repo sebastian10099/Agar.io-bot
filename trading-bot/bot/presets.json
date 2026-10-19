@@ -10,6 +10,7 @@
     "filters.max_fdv_usd": 50000000,
     "filters.max_rugcheck_score": 4000,
     "filters.allow_rugcheck_unknown": true,
+    "filters.require_holder_check": true,
     "scoring.min_score": 50
   },
   "★ Standard": {
@@ -23,6 +24,7 @@
     "filters.max_fdv_usd": 20000000,
     "filters.max_rugcheck_score": 2000,
     "filters.allow_rugcheck_unknown": false,
+    "filters.require_holder_check": true,
     "scoring.min_score": 60
   },
   "★ Streng – nur die besten": {
@@ -36,6 +38,7 @@
     "filters.max_fdv_usd": 10000000,
     "filters.max_rugcheck_score": 1000,
     "filters.allow_rugcheck_unknown": false,
+    "filters.require_holder_check": true,
     "scoring.min_score": 70
   }
 }

@@ -214,6 +214,7 @@ class Store:
         ("FDV", "FDV zu hoch", "filters.max_fdv_usd"),
         ("no price", "kein Kurs", None),
         ("rugcheck unavailable", "RugCheck nicht erreichbar (nur beobachtet)", "filters.allow_rugcheck_unknown"),
+        ("holder check missing", "Halter unbekannt (nur beobachtet)", "filters.require_holder_check"),
         ("rugcheck danger", "RugCheck: Gefahr", "filters.require_rugcheck"),
         ("onchain danger", "Eigenprüfung: Gefahr (Freeze/Mint/Token-2022/Halter)", "filters.require_rugcheck"),
         ("rugcheck score", "RugCheck-Score zu hoch", "filters.max_rugcheck_score"),

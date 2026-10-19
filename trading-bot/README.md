@@ -381,7 +381,14 @@ nennt Verwalter und Teilhaber – ihr Anteil zusammen zählt wie der des
 Erstellers. Der Bot nimmt dieses Konto nur, wenn es genau diesen Coin nennt
 und die Anteile zusammen exakt 100 % ergeben; sonst bleibt es bei
 „unbekannt“, nie bei einer falschen Zahl. Live-Stichprobe (Oktober 2026):
-Ergebnis für 7 von 8 Coins. Wer einen
+Ergebnis für 7 von 8 Coins.
+
+**Nur mit geprüften Haltern kaufen** (Einstellung, ab Werk an): Weiß der Bot
+weder die Halterverteilung noch den Anteil des Erstellers, kauft er nicht,
+sondern beobachtet nur (Grund „Halter unbekannt“) und schaut nach fünf
+Minuten wieder hin. Die meisten schnellen Abstürze direkt nach dem Kauf
+kommen von großen Haltern, die abverkaufen – blind in so einen Coin zu gehen,
+war der teuerste Fehler im Paper-Lauf (−90 % und −56 % binnen Sekunden). Wer einen
 kostenlosen Schlüssel hat (z. B. Helius), trägt den Knoten in
 `SOLANA_HOLDER_RPCS` ein (mehrere mit Komma); der Bot probiert sie der Reihe
 nach und bleibt beim ersten, der antwortet.

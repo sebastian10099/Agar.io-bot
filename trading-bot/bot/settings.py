@@ -64,6 +64,11 @@ SCHEMA: list[dict[str, Any]] = [
     {"path": "filters.allow_rugcheck_unknown", "type": "bool",
      "label": "RugCheck-Ausfall tolerieren", "group": "Filter",
      "help": "Wenn an: Ist RugCheck nicht erreichbar, zählt das nicht als Ablehnung."},
+    {"path": "filters.require_holder_check", "type": "bool",
+     "label": "Nur mit geprüften Haltern kaufen", "group": "Filter",
+     "help": "Solana-Tokens werden nur gekauft, wenn bekannt ist, wer die Menge hält: die Halterverteilung "
+             "oder bei pump.fun-Coins wenigstens der Ersteller-Anteil. Sonst wird nur beobachtet – "
+             "die meisten schnellen Abstürze kommen von großen Haltern, die abverkaufen."},
     {"path": "filters.max_rugcheck_score", "type": "float", "min": 0, "max": 100000, "step": 100,
      "label": "Max. RugCheck-Score", "group": "Filter"},
 

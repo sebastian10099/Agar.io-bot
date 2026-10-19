@@ -1484,10 +1484,18 @@ class OnChainCheckTests(unittest.TestCase):
         from bot.sources.solana_rpc import assess_mint
         pairs = FakeDex(accel=1.0).pairs_for_tokens("solana", FakeDex(accel=1.0).recent_token_addresses(["solana"])["solana"])
         run = next(p for p in pairs if p["symbol"] == "RUN")
-        clean = assess_mint(mint_value())
+        clean = dict(assess_mint(mint_value()), holders={"top1": 2.0, "top10": 12.0, "wallets": 10, "programs": 70.0})
         v = evaluate(run, clean, CFG)
         self.assertNotEqual(v["decision"], "skip"); self.assertFalse(v.get("watch_only"))
         self.assertIn("rugcheck 5", " ".join(v["reasons"]))                 # half of RugCheck's points
+        creator_only = dict(assess_mint(mint_value()), creator={"creator": "W", "wallets": 1, "share": 1.0})
+        self.assertFalse(evaluate(run, creator_only, CFG).get("watch_only"))  # the creator's share is enough
+        blind = assess_mint(mint_value())                                    # neither holders nor creator known
+        v = evaluate(run, blind, CFG)
+        self.assertEqual(v["decision"], "watch"); self.assertTrue(v["watch_only"])
+        self.assertTrue(v["reasons"][0].startswith("holder check missing"), v["reasons"])
+        cfg = copy.deepcopy(CFG); cfg["filters"]["require_holder_check"] = False
+        self.assertFalse(evaluate(run, blind, cfg).get("watch_only"))       # the rule can be switched off
         v = evaluate(run, assess_mint(mint_value(freeze="Creator")), CFG)
         self.assertEqual(v["decision"], "skip"); self.assertIn("onchain danger", v["reasons"][0])
         v = evaluate(run, assess_mint(mint_value(mint_auth="Creator")), CFG)
@@ -1502,16 +1510,36 @@ class OnChainCheckTests(unittest.TestCase):
         import bot.demo as demo
         cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
         self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
+        def node(holders_answer):
+            def post(url, body, timeout=None):
+                if body["method"] == "getTokenLargestAccounts":
+                    return holders_answer
+                if body["method"] == "getMultipleAccounts":
+                    return {"result": {"value": [{"data": {"parsed": {"info": {"owner": HolderTests.WALLETS[0]}}}}]}}
+                return {"result": {"value": mint_value()}}
+            return post
         with tempfile.TemporaryDirectory() as d:
             store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0)
-            rpc = OnChainCheck(post=lambda *a, **k: {"result": {"value": mint_value()}}, url="x")
+            rpc = OnChainCheck(post=node({"result": {"value": [{"address": "Acct1", "amount": "10000000000000"}]}}), url="x")
             eng = Engine(copy.deepcopy(CFG), store, dex, SafetyCheck(DownRug(), rpc), clock=dex.now, feeds=demo_feeds(dex))
             counts = eng.poll_once()
             self.assertEqual(counts["buy"], 1, counts)                          # RUN bought on the own check
             run = next(c for c in store.candidates() if c["symbol"] == "RUN")
             self.assertEqual(run["snapshot"]["rug"]["source"], "onchain")
+            self.assertEqual(run["snapshot"]["rug"]["holders"]["top1"], 1.0)
             h = eng.state()["rugcheck"]
             self.assertFalse(h["ok"]); self.assertTrue(h["fallback"]["ok"])
+            store.close()
+        with tempfile.TemporaryDirectory() as d:                                  # the node throttles the holder query
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0)
+            rpc = OnChainCheck(post=node({"error": {"code": 429, "message": "Too many requests"}}), url="x")
+            eng = Engine(copy.deepcopy(CFG), store, dex, SafetyCheck(DownRug(), rpc), clock=dex.now, feeds=demo_feeds(dex))
+            counts = eng.poll_once()
+            self.assertEqual(counts["buy"], 0, counts); self.assertEqual(store.open_positions(), [])
+            run = next(c for c in store.candidates() if c["symbol"] == "RUN")
+            self.assertEqual(run["decision"], "watch")
+            self.assertTrue(run["reasons"][0].startswith("holder check missing"), run["reasons"])
+            self.assertIn("Halter unbekannt (nur beobachtet)", [r["label"] for r in store.skip_reasons()["reasons"]])
             store.close()
 
 

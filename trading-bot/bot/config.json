@@ -33,7 +33,8 @@
     "max_fdv_usd": 20000000,
     "require_rugcheck": true,
     "max_rugcheck_score": 2000,
-    "allow_rugcheck_unknown": false
+    "allow_rugcheck_unknown": false,
+    "require_holder_check": true
   },
   "exits": {
     "stop_loss_pct": -30,
