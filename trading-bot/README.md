@@ -221,8 +221,13 @@ auch über die Steuerseite). Eingebaut sind zwei kostenlose Feeds ohne Schlüsse
   letzte Antwort wiederverwendet.
 - **pump.fun** – die neuesten Coins der Launch-Plattform, Sekunden nach der
   Erstellung; nur Solana. Liefert Mint und Alter, die Kennzahlen holt
-  DexScreener (indexiert pump.fun als Dex „pumpfun“). Inoffizielle API: fällt
-  sie aus oder ändert ihr Format, wird die Quelle rot und der Rest läuft weiter.
+  DexScreener (indexiert pump.fun als Dex „pumpfun“). Zwei Wege nebeneinander:
+  pump.funs eigene (inoffizielle) API – Cloudflare sperrt sie für
+  Rechenzentrums-Adressen wie GitHub und viele VPS, am Mac zu Hause geht sie –
+  und der kostenlose **PumpPortal-Datenstrom** (Websocket, ohne Schlüssel),
+  der jeden neuen Coin und jeden **Umzug in einen PumpSwap-Pool** meldet –
+  genau die Pool-Tokens, die der Bot kauft. Einer der beiden Wege reicht; rot
+  wird die Quelle erst, wenn beide ausfallen.
 
 Die erste Quelle in der Reihenfolge, die einen Token nennt, gilt als seine
 Quelle (steht am Kandidaten). Die Kennzahlen holt immer DexScreener; ist ein

@@ -417,7 +417,7 @@ class DoctorTests(unittest.TestCase):
         def broken(url, **kw): raise HttpError(500, '{"error":"db down"}')
         for fetch, ok, warn, text in ((blocked, True, True, "Cloudflare"), (broken, False, None, "db down")):
             checks = run_checks(self.cfg, self.dex, {"pumpfun": PumpFun(fetch=fetch)}, FakeRug(), None)
-            row = next(c for c in checks if c["name"] == "pump.fun – neue Coins")
+            row = next(c for c in checks if c["name"] == "pump.fun – neue Coins & Umzüge")
             self.assertEqual((row["ok"], row.get("warn")), (ok, warn), row); self.assertIn(text, row["detail"])
 
     def test_parser_check_catches_missing_fields(self):
@@ -2908,3 +2908,73 @@ class RpcTests(unittest.TestCase):
             self.assertTrue(eng.state()["solana_rpc"]["own"])
             self.assertIn("https-Adresse", eng.set_rpc("ftp://x")["error"])
             store.close()
+
+
+class PumpPortalTests(unittest.TestCase):
+    """pump.fun's API refuses data-center addresses (Cloudflare); PumpPortal's stream does not."""
+
+    def ws(self, incoming: bytes):
+        from bot.sources.pumpportal import WebSocket
+        sent = []
+        class Sock:
+            def __init__(self): self.data = incoming
+            def recv(self, n):
+                out, self.data = self.data[:n], self.data[n:]
+                return out
+            def sendall(self, b): sent.append(b)
+            def close(self): pass
+        w = WebSocket.__new__(WebSocket); w.sock = Sock(); w._buf = b""
+        return w, sent
+
+    def test_frames_pings_and_close(self):
+        import struct
+        from bot.sources.pumpportal import WebSocketError
+        text = b'{"mint":"M1","txType":"create"}'
+        big = b"x" * 300
+        frames = (bytes([0x89, 2]) + b"hi"                                         # a ping first
+                  + bytes([0x01, 3]) + b"abc" + bytes([0x80, 2]) + b"de"            # a message in two fragments
+                  + bytes([0x81, len(text)]) + text
+                  + bytes([0x81, 126]) + struct.pack(">H", len(big)) + big
+                  + bytes([0x88, 0]))
+        w, sent = self.ws(frames)
+        self.assertEqual(w.recv(), "abcde")
+        self.assertEqual(sent[0][0], 0x8A)                                          # pong ...
+        self.assertTrue(sent[0][1] & 0x80)                                          # ... masked, as a client must
+        mask = sent[0][2:6]; self.assertEqual(bytes(b ^ mask[i % 4] for i, b in enumerate(sent[0][6:])), b"hi")
+        self.assertEqual(w.recv(), text.decode())
+        self.assertEqual(w.recv(), "x" * 300)
+        with self.assertRaises(WebSocketError):
+            w.recv()
+
+    def test_the_stream_hands_out_new_coins_and_migrations_once(self):
+        from bot.sources.pumpportal import PumpPortal
+        t = [1000.0]
+        pp = PumpPortal(clock=lambda: t[0], start=False)
+        pp.take('{"message": "Successfully subscribed to token creation events."}')   # no coin
+        pp.take(json.dumps({"mint": "NewMint", "txType": "create", "symbol": "NEW", "name": "New", "bondingCurveKey": "Curve1"}))
+        pp.take(json.dumps({"mint": "GradMint", "txType": "migrate", "pool": "pump-amm"}))
+        pp.take("not json")
+        t[0] += 30
+        got = {i["token"]: i for i in pp.discover(["solana"])["solana"]}
+        self.assertEqual(set(got), {"NewMint", "GradMint"})
+        self.assertEqual(got["NewMint"]["snapshot"]["pair"], "Curve1")
+        self.assertAlmostEqual(got["NewMint"]["snapshot"]["age_min"], 0.5)
+        self.assertIsNone(got["GradMint"]["snapshot"])                             # DexScreener supplies the pool's numbers
+        self.assertEqual(pp.discover(["solana"])["solana"], [])                     # handed out once
+        self.assertEqual(pp.discover(["base"]), {})
+
+    def test_either_way_is_enough(self):
+        from bot.sources.http import HttpError
+        from bot.sources.pumpportal import PumpFeed
+        class Api:
+            def discover(self, chains): raise HttpError(403, "von Cloudflare blockiert")
+        class Stream:
+            def __init__(self, items): self.items = items
+            def discover(self, chains):
+                if self.items is None: raise RuntimeError("PumpPortal nicht erreichbar")
+                return {"solana": self.items}
+        feed = PumpFeed(Api(), Stream([{"token": "M", "snapshot": None}]))
+        self.assertEqual(feed.discover(["solana"])["solana"], [{"token": "M", "snapshot": None}])
+        self.assertIn("HttpError", feed.note)
+        with self.assertRaises(HttpError):
+            PumpFeed(Api(), Stream(None)).discover(["solana"])                     # both down: the source is down

@@ -152,12 +152,14 @@ def build(cfg: dict[str, Any], home: Path, demo: bool) -> Engine:
     from .sources.dexscreener import DexScreener
     from .sources.geckoterminal import GeckoTerminal
     from .sources.pumpfun import PumpFun
+    from .sources.pumpportal import PumpFeed, PumpPortal
     from .sources.rugcheck import RugCheck
     from .sources.curve import CurveReader
     from .sources.solana_rpc import OnChainCheck, SafetyCheck
     dex = DexScreener()
     return Engine(cfg, store, dex, SafetyCheck(RugCheck(), OnChainCheck()),
-                  feeds={"dexscreener": DexScreenerFeed(dex), "geckoterminal": GeckoTerminal(), "pumpfun": PumpFun()},
+                  feeds={"dexscreener": DexScreenerFeed(dex), "geckoterminal": GeckoTerminal(),
+                         "pumpfun": PumpFeed(PumpFun(), PumpPortal())},
                   curves=CurveReader())
 
 

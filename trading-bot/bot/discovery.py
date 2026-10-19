@@ -16,7 +16,7 @@ from .sources.dexscreener import canon
 LABELS = {
     "dexscreener": "DexScreener – Profile & Boosts",
     "geckoterminal": "GeckoTerminal – neue Pools",
-    "pumpfun": "pump.fun – neue Coins",
+    "pumpfun": "pump.fun – neue Coins & Umzüge",
 }
 DEFAULT_SOURCES = ["dexscreener"]
 

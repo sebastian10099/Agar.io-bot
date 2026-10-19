@@ -119,19 +119,34 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
     pump = feeds.get("pumpfun")
     if pump is not None:
         def pump_coins() -> str:
-            if hasattr(pump, "_last"):
-                pump._last = None
+            stream = getattr(pump, "stream", None)
+            api = getattr(pump, "api", pump)
+            live = ""
+            if stream is not None:                       # watched, not drained: its events belong to the next poll
+                stream._ensure_running()
+                for _ in range(40):
+                    if stream.received or stream.last_error:
+                        break
+                    time.sleep(0.2)
+                live = (f"Datenstrom verbunden, {stream.received} Ereignisse" if stream.connected_at is not None
+                        else f"Datenstrom getrennt ({stream.last_error or 'baut auf'})")
+            if hasattr(api, "_last"):
+                api._last = None
             try:
-                items = pump.discover(["solana"]).get("solana") or []
-            except Exception as error:  # noqa: BLE001 - a blocked extra feed is a note, the others still find tokens
+                items = api.discover(["solana"]).get("solana") or []
+            except Exception as error:  # noqa: BLE001 - a blocked API is a note when the stream delivers
+                if stream is not None and stream.connected_at is not None:
+                    return f"{live} · API: {str(error)[:90]} – der Datenstrom ersetzt sie"
                 if "Cloudflare" not in str(error):
                     raise
-                raise Degraded(f"{error} – DexScreener und GeckoTerminal finden neue Tokens trotzdem") from None
-            if not items:
+                raise Degraded(f"{error} – DexScreener und GeckoTerminal finden neue Tokens trotzdem"
+                               + (f" · {live}" if live else "")) from None
+            if not items and not (stream is not None and stream.received):
                 raise RuntimeError("pump.fun meldet keine Coins (Feed leer oder blockiert)")
             aged = sum(1 for i in items if (i.get("snapshot") or {}).get("age_min") is not None)
-            return f"{len(items)} Coins, {aged} mit Alter · z. B. {(items[0].get('snapshot') or {}).get('symbol')}"
-        out.append(_check("pump.fun – neue Coins", pump_coins))
+            return (f"{live} · " if live else "") + (f"API: {len(items)} Coins, {aged} mit Alter · z. B. "
+                                                     f"{(items[0].get('snapshot') or {}).get('symbol')}" if items else "API: leer")
+        out.append(_check("pump.fun – neue Coins & Umzüge", pump_coins))
 
     def rugcheck() -> str:
         if "solana" not in chains:

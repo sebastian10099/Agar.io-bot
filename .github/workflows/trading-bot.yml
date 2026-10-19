@@ -270,6 +270,27 @@ jobs:
           print(f"{len(devs)} von {len(pools)} Pools von der Chain bepreist" + (f", Abweichung im Median {statistics.median(abs(d) for d in devs):.1f} %" if devs else "")
                 + (f", ruhige Pools {statistics.median(quiet):.2f} %" if quiet else ""))
           PY
+      - name: pump.fun über den PumpPortal-Datenstrom (von einer Rechenzentrums-Adresse)
+        working-directory: trading-bot
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json, time
+          from bot.sources.pumpportal import HOST, PATH, SUBSCRIBE, WebSocket
+          ws = WebSocket(HOST, PATH)
+          for m in SUBSCRIBE:
+              ws.send(json.dumps(m))
+          kinds, end, first = {}, time.time() + 40, None
+          while time.time() < end and sum(kinds.values()) < 30:
+              msg = json.loads(ws.recv())
+              k = msg.get("txType") or ("Bestätigung" if "message" in msg else "?")
+              kinds[k] = kinds.get(k, 0) + 1
+              if first is None and msg.get("mint"):
+                  first = {key: msg.get(key) for key in ("txType", "mint", "symbol", "pool")}
+          ws.close()
+          print(f"Ereignisse in {40 - max(0, end - time.time()):.0f} s: {kinds} · z. B. {first}")
+          assert sum(v for k, v in kinds.items() if k != "Bestätigung") > 0, "keine Coins im Datenstrom"
+          PY
       - name: Ein echter Poll gegen die Live-Märkte
         working-directory: trading-bot
         continue-on-error: true
