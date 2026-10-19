@@ -123,8 +123,24 @@ jobs:
           NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-live
         run: |
           time /bin/bash ./launch.sh --once
+          # paper test buys (the Kaufen button's path): one bonding-curve token, one pool token
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from bot.main import build, load_config
+          home = Path(os.environ["NEW_TOKEN_BOT_HOME"])
+          eng = build(load_config(home), home, False)
+          cands = eng.store.candidates(500)
+          for kind in ("curve", "reported"):
+              for c in [c for c in cands if c["snapshot"].get("liquidity_kind") == kind][:3]:
+                  r = eng.open_from_candidate(c["id"])
+                  print(f"Testkauf {c['symbol']} ({c['snapshot'].get('dex')}, {kind}): {'ok' if r['ok'] else r['error']}")
+                  if r["ok"]:
+                      break
+          eng.store.close()
+          PY
           sleep 15
-          /bin/bash ./launch.sh --once       # the second poll prices what the first one bought
+          /bin/bash ./launch.sh --once       # the second poll prices what was bought
           echo "--- Warum fällt was durch (echte Marktdaten):"
           python3 - <<'PY'
           import json, os
