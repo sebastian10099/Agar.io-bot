@@ -198,7 +198,7 @@ class DemoRelistingTests(unittest.TestCase):
     def test_tokens_are_relisted_every_cycle(self):
         from bot.demo import CYCLE_MIN
         dex = FakeDex(accel=1.0)
-        t = [dex.started]
+        t = [dex.started + 5 * 60]                                # every fixture listed by now
         dex.now = lambda: t[0]
         first = dex.recent_token_addresses(["solana"])["solana"]
         t[0] = dex.started + (CYCLE_MIN + 15) * 60

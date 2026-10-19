@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from . import curve
 from .http import get_json
 
 BASE = "https://api.geckoterminal.com/api/v2"
@@ -52,16 +53,29 @@ def normalize_pool(pool: dict[str, Any], chain: str, tokens: dict[str, dict[str,
     chg = a.get("price_change_percentage") or {}
     created = _iso(a.get("pool_created_at"))
     net = NETWORKS.get(chain, chain)
+    dex = ((rel.get("dex") or {}).get("data") or {}).get("id")
+    liquidity, kind = _f(a.get("reserve_in_usd")), "reported" if a.get("reserve_in_usd") is not None else "unknown"
+    if curve.is_curve(dex):
+        # a curve's "reserve" is the unsold token side (close to the FDV), not pool liquidity
+        liquidity, kind = 0.0, "unknown"
+        quote_id = ((rel.get("quote_token") or {}).get("data") or {}).get("id") or ""
+        price, sol_usd = _f(a.get("base_token_price_usd")), _f(a.get("quote_token_price_usd"))
+        if dex in curve.PUMP_DEXES and quote_id.endswith(curve.SOL_MINT) and price > 0 and sol_usd > 0:
+            est = curve.pump_liquidity(price / sol_usd, sol_usd)
+            if est is not None:
+                liquidity, kind = est, "curve"
     return {
         "chain": chain,
-        "dex": ((rel.get("dex") or {}).get("data") or {}).get("id"),
+        "dex": dex,
         "pair": pair,
         "token": token,
         "symbol": symbol,
         "name": info.get("name") or name,
         "url": f"https://www.geckoterminal.com/{net}/pools/{pair}",
         "price_usd": _f(a.get("base_token_price_usd")),
-        "liquidity_usd": _f(a.get("reserve_in_usd")),
+        "liquidity_usd": liquidity,
+        "liquidity_kind": kind,
+        "curve": curve.is_curve(dex),
         "fdv": _f(a.get("fdv_usd")),
         "market_cap": _f(a.get("market_cap_usd")),
         "volume_m5": _f(vol.get("m5")),

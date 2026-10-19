@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any, Iterable, Optional
 
+from . import curve
 from .http import get_json
 
 BASE = "https://api.dexscreener.com"
@@ -35,7 +36,16 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
     h1 = txns.get("h1") or {}
     vol = p.get("volume") or {}
     chg = p.get("priceChange") or {}
-    liq = p.get("liquidity") or {}
+    reported = (p.get("liquidity") or {}).get("usd")
+    liquidity, kind = _f(reported), "reported"
+    if reported is None:
+        # bonding curves come without a liquidity figure; pump.fun's own curve can be computed
+        kind = "unknown"
+        native, usd = _f(p.get("priceNative")), _f(p.get("priceUsd"))
+        if p.get("dexId") in curve.PUMP_DEXES and (p.get("quoteToken") or {}).get("address") == curve.SOL_MINT and native > 0:
+            est = curve.pump_liquidity(native, usd / native)
+            if est is not None:
+                liquidity, kind = est, "curve"
     created_ms = p.get("pairCreatedAt")
     age_min = (now - created_ms / 1000.0) / 60.0 if created_ms else None
     return {
@@ -47,7 +57,9 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
         "name": base.get("name"),
         "url": safe_url(p.get("url")),
         "price_usd": _f(p.get("priceUsd")),
-        "liquidity_usd": _f(liq.get("usd")),
+        "liquidity_usd": liquidity,
+        "liquidity_kind": kind,
+        "curve": curve.is_curve(p.get("dexId")),
         "fdv": _f(p.get("fdv")),
         "market_cap": _f(p.get("marketCap")),
         "volume_m5": _f(vol.get("m5")),

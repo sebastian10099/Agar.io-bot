@@ -75,6 +75,8 @@ class FakeDex:
         price = p["_listed_price"] * _path(p["_scenario"], max(0.0, minutes)) * noise
         q = dict(p)
         q["priceUsd"] = str(max(1e-9, price))
+        if p.get("priceNative"):                       # a curve's position follows its price
+            q["priceNative"] = str(float(p["priceNative"]) * price / p["_listed_price"])
         return normalize_pair(q, now)
 
     def recent_token_addresses(self, chains: Any) -> dict[str, list[str]]:

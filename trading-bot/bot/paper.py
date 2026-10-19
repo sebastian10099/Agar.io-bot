@@ -62,6 +62,14 @@ class Paper:
         return max(0.0, min(size, affordable))
 
     # --- entries --------------------------------------------------------
+    def reentry_paused(self, chain: str, token: str, now: float) -> Optional[str]:
+        """Automatic buys only: a token sold a moment ago is not bought straight back."""
+        pause = float(self.cfg.get("reentry_pause_minutes", 0) or 0)
+        closed = self.store.last_closed_at(chain, token) if pause > 0 else None
+        if closed is not None and now - closed < pause * 60:
+            return f"sold {(now - closed) / 60:.0f} min ago (re-entry pause {pause:.0f} min)"
+        return None
+
     def can_open(self, chain: str, token: str) -> Optional[str]:
         if self.store.has_open_for(chain, token):
             return "already holding"

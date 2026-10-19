@@ -405,6 +405,10 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
 const usd = (v) => v == null ? '–' : (v < 0 ? '−' : '') + '$' + Math.abs(v).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+// bonding curves: DexScreener gives no liquidity; pump.fun's curve is computed from the price, others stay unknown
+const liq = (sn) => sn.liquidity_kind === 'unknown' && !sn.liquidity_usd
+  ? '<span class="reasons" title="Bonding-Kurve: die Quelle nennt keine Liquidität">unbekannt</span>'
+  : sn.liquidity_kind === 'curve' ? `<span title="pump.fun-Bonding-Kurve: Liquidität aus dem Kurs berechnet">≈${usd(sn.liquidity_usd)}</span>` : usd(sn.liquidity_usd);
 const pct = (v) => v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(1) + '%';
 const cls = (v) => v == null ? '' : v > 0 ? 'pos' : v < 0 ? 'neg' : '';
 const px = (v) => v == null ? '–' : v >= 1 ? v.toFixed(4) : v.toPrecision(4);
@@ -557,7 +561,7 @@ async function showCandidate(id) {
   const dueTxt = (o) => o.filled_at ? pct(o.change_pct) : `fällig ${hhmm(o.due_at)}`;
   const body = `
     <p class="dlg-h">Kennzahlen bei der Bewertung</p>
-    <div class="kv">${kv('Kurs', px(c.price_usd))}${kv('Liquidität', usd(s.liquidity_usd))}${kv('FDV', usd(s.fdv))}${kv('Marktkap.', s.market_cap ? usd(s.market_cap) : '–')}
+    <div class="kv">${kv('Kurs', px(c.price_usd))}${kv('Liquidität' + (s.liquidity_kind === 'curve' ? ' (Kurve)' : ''), liq(s))}${kv('FDV', usd(s.fdv))}${kv('Marktkap.', s.market_cap ? usd(s.market_cap) : '–')}
       ${kv('Volumen 5 min', usd(s.volume_m5))}${kv('Volumen 1 h', usd(s.volume_h1))}${kv('Käufe/Verkäufe 5 min', `${s.buys_m5 ?? '–'} / ${s.sells_m5 ?? '–'}`)}${kv('Käufe/Verkäufe 1 h', `${s.buys_h1 ?? '–'} / ${s.sells_h1 ?? '–'}`)}
       ${kv('Δ 5 min', pct(s.change_m5))}${kv('Δ 1 h', pct(s.change_h1))}${kv('Alter', s.age_min == null ? '–' : Math.round(s.age_min) + ' min')}${kv('Socials · Boosts', `${s.has_socials ? 'ja' : 'nein'} · ${s.boosts || 0}`)}</div>
     <p class="dlg-h">Danach</p>
@@ -589,7 +593,7 @@ function renderCandidates(s) {
     {h: 'Token', sort: 'symbol', f: (r) => `<button type="button" class="linkish" data-cdetail="${r.id}" aria-label="${esc(r.symbol)} Details"><b>${esc(r.symbol)}</b></button> ${s.demo ? '' : safeUrl(r.snapshot.url) ? `<a href="${esc(safeUrl(r.snapshot.url))}" target="_blank" rel="noopener noreferrer" aria-label="${esc(r.symbol)} im Browser öffnen" title="Kursseite öffnen">↗</a>` : ''}${r.snapshot.source ? `<div class="reasons">${esc(srcShort[r.snapshot.source] || r.snapshot.source)}${r.snapshot.via_feed ? ' · via Feed' : ''}</div>` : ''}`},
     {h: 'Entscheidung', sort: 'decision', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
     {h: 'Score', sort: 'score', f: (r) => r.score || '–', num: true},
-    {h: 'Liq.', sort: 'liq', f: (r) => usd(r.snapshot.liquidity_usd), num: true},
+    {h: 'Liq.', sort: 'liq', f: (r) => liq(r.snapshot), num: true},
     {h: 'Vol 5m', sort: 'vol', f: (r) => usd(r.snapshot.volume_m5), num: true, lo: true},
     {h: 'K/V 5m', f: (r) => `${r.snapshot.buys_m5 ?? '–'}/${r.snapshot.sells_m5 ?? '–'}`, num: true, lo: true},
     {h: 'Δ 5m', sort: 'change', f: (r) => pct(r.snapshot.change_m5), num: true, cls: (r) => cls(r.snapshot.change_m5)},

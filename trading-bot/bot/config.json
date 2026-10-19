@@ -15,6 +15,7 @@
   "risk_per_trade_pct": 1.0,
   "max_open_positions": 5,
   "daily_loss_limit_pct": 5.0,
+  "reentry_pause_minutes": 120,
   "paper": {
     "fee_pct": 1.0,
     "slippage_pct": 2.0

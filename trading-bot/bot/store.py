@@ -191,6 +191,7 @@ class Store:
         ("too old", "zu alt (Höchstalter)", "filters.max_age_minutes"),
         ("age unknown", "Alter unbekannt (Quelle liefert kein Listing-Datum)", None),
         ("liquidity $", "Liquidität zu klein", "filters.min_liquidity_usd"),
+        ("liquidity unknown", "Liquidität unbekannt (Bonding-Kurve ohne Angabe)", None),
         ("too large for a new token", "Liquidität zu groß", "filters.max_liquidity_usd"),
         ("5m volume", "5-Minuten-Volumen zu klein", "filters.min_volume_m5_usd"),
         ("5m buys", "zu wenige Käufe in 5 min", "filters.min_buys_m5"),
@@ -360,6 +361,11 @@ class Store:
             r["avg_minutes"] = round(r["avg_minutes"] or 0, 1)
             r["win_rate"] = round(r["wins"] / r["n"], 3) if r["n"] else 0
         return rows
+
+    def last_closed_at(self, chain: str, token: str) -> Optional[float]:
+        row = self._one("SELECT MAX(closed_at) AS at FROM positions WHERE status='closed' AND chain=? AND token=?",
+                        (chain, token))
+        return row["at"] if row else None
 
     def has_open_for(self, chain: str, token: str) -> bool:
         return self._one("SELECT 1 FROM positions WHERE status='open' AND chain=? AND token=?",

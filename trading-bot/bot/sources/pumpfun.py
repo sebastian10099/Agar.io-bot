@@ -41,7 +41,7 @@ def normalize_coin(coin: dict[str, Any], now: Optional[float] = None) -> Optiona
         "chain": "solana", "dex": "pumpfun", "pair": coin.get("raydium_pool") or coin.get("bonding_curve") or mint,
         "token": mint, "symbol": coin.get("symbol"), "name": coin.get("name"),
         "url": f"https://pump.fun/coin/{mint}",
-        "price_usd": 0.0, "liquidity_usd": 0.0, "fdv": mcap, "market_cap": mcap,
+        "price_usd": 0.0, "liquidity_usd": 0.0, "liquidity_kind": "unknown", "fdv": mcap, "market_cap": mcap,
         "volume_m5": 0.0, "volume_h1": 0.0, "buys_m5": 0, "sells_m5": 0, "buys_h1": 0, "sells_h1": 0,
         "change_m5": 0.0, "change_h1": 0.0, "age_min": age_min, "boosts": 0,
         "has_socials": bool(coin.get("twitter") or coin.get("telegram") or coin.get("website")),

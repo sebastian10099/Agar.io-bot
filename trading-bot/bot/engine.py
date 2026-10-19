@@ -184,7 +184,7 @@ class Engine:
                         # check and open in one step under the dashboard's lock, or a manual
                         # "Kaufen" in between could open the same token a second time
                         with self._lock:
-                            blocked = self.paper.can_open(chain, p["token"])
+                            blocked = self.paper.can_open(chain, p["token"]) or self.paper.reentry_paused(chain, p["token"], now)
                             if not blocked:
                                 opened = self.paper.open(p, now)
                         if blocked:

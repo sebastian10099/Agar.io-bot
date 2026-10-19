@@ -300,6 +300,13 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok((await p.$$('#cands tbody tr')).length >= 1 && (await p.textContent('#cands')).includes('RUN'), 'Suche findet RUN');
   await p.fill('#q', '');
   await p.click('.filterbar .chip[data-f="skip"]');
+  // --- Bonding-Kurven: berechnete und unbekannte Liquidität ---
+  await p.waitForFunction(() => /CURVE/.test(document.querySelector('#cands').textContent) && /DBC/.test(document.querySelector('#cands').textContent), null, { timeout: 30000 });
+  const curveRow = await p.locator('#cands tbody tr', { hasText: /CURVE/ }).first().textContent();
+  ok(/≈\$/.test(curveRow), 'pump.fun-Kurve: Liquidität mit ≈ (aus dem Kurs berechnet)');
+  const dbcRow = await p.locator('#cands tbody tr', { hasText: /DBC/ }).first().textContent();
+  ok(/unbekannt/.test(dbcRow) && !/\$0,00/.test(dbcRow), 'andere Bonding-Kurve: Liquidität „unbekannt“ statt $0');
+  ok((await p.locator('input[data-path="reentry_pause_minutes"]').count()) === 1, 'Einstellung „Wiedereinstieg-Sperre“ im Formular');
   // sorting: click Score twice -> descending then ascending
   await p.click('#cands th[data-sort="score"] button');
   const scoresDesc = await p.$$eval('#cands tbody tr td:nth-child(4)', (tds) => tds.map((t) => parseFloat(t.textContent) || 0));

@@ -129,6 +129,18 @@ jobs:
               if c.get("quote_mint") and c.get("virtual_sol_reserves") and c.get("virtual_token_reserves"):
                   k = c["virtual_sol_reserves"] * c["virtual_token_reserves"] / 1e24
                   print(f"  Kurve {str(c.get('symbol'))[:10]:10s} quote={str(c.get('quote_mint'))[:6]} program={str(c.get('program'))[:6]} protocol={c.get('protocol')} decimals={c.get('base_decimals')}/{c.get('quote_decimals')} k/1e24={k:.3f}")
+          # is DexScreener's pair the curve account, and what does the chain say about it?
+          import base64, struct
+          from bot.sources.http import post_json
+          known = {p["baseToken"]["address"]: p for p in pairs}
+          for c in [c for c in coins if c.get("mint") in known][:4]:
+              ds = known[c["mint"]]
+              acct = post_json("https://api.mainnet-beta.solana.com", {"jsonrpc": "2.0", "id": 1, "method": "getAccountInfo",
+                               "params": [ds["pairAddress"], {"encoding": "base64"}]}, timeout=20).get("result", {}).get("value") or {}
+              raw = base64.b64decode((acct.get("data") or [""])[0]) if acct else b""
+              nums = struct.unpack_from("<5Q", raw, 8) if len(raw) >= 48 else ()
+              print(f"  {str(c.get('symbol'))[:10]:10s} pump.fun bonding_curve={str(c.get('bonding_curve'))[:10]} DexScreener pair={ds['pairAddress'][:10]} gleich={c.get('bonding_curve') == ds['pairAddress']} "
+                    f"owner={str(acct.get('owner'))[:10]} len={len(raw)} u64={nums} complete={raw[48] if len(raw) > 48 else None} pump.fun vSOL={c.get('virtual_sol_reserves')} vTok={c.get('virtual_token_reserves')}")
           # graduated coins: a new PumpSwap pool is a pump.fun curve that just completed
           grads = []
           for pool in g.get("data") or []:
@@ -169,9 +181,12 @@ jobs:
           print("--- nach Quelle (Median):")
           for src, cs in sorted(by.items()):
               med = lambda k: statistics.median([float(c["snapshot"].get(k) or 0) for c in cs])
-              liq_fail = sum(1 for c in cs if any("liquidity $" in r for r in c["reasons"]))
+              liq_fail = sum(1 for c in cs if any("liquidity $" in r or "liquidity unknown" in r for r in c["reasons"]))
+              kinds = {}
+              for c in cs:
+                  kinds[c["snapshot"].get("liquidity_kind")] = kinds.get(c["snapshot"].get("liquidity_kind"), 0) + 1
               dexes = sorted({str(c["snapshot"].get("dex")) for c in cs})
-              print(f"  {src:14s} n={len(cs):3d}  Liq ${med('liquidity_usd'):,.0f}  Vol5m ${med('volume_m5'):,.0f}  Käufe5m {med('buys_m5'):.0f}  Alter {med('age_min'):.0f} min  an Liquidität gescheitert {liq_fail}  Dex: {', '.join(dexes)[:80]}")
+              print(f"  {src:14s} n={len(cs):3d}  Liq ${med('liquidity_usd'):,.0f}  Vol5m ${med('volume_m5'):,.0f}  Käufe5m {med('buys_m5'):.0f}  Alter {med('age_min'):.0f} min  an Liquidität gescheitert {liq_fail}  Liquidität: {kinds}  Dex: {', '.join(dexes)[:80]}")
           for c in [c for c in by.get("pumpfun", [])][:5]:
               sn = c["snapshot"]
               print(f"    pump.fun-Beispiel {c['symbol']!s:10.10s} dex={sn.get('dex')} liq={sn.get('liquidity_usd')} vol5m={sn.get('volume_m5')} buys5m={sn.get('buys_m5')} alter={sn.get('age_min')}")

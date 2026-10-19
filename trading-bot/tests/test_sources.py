@@ -1345,3 +1345,124 @@ class DoctorRugRowTests(unittest.TestCase):
         self.assertFalse(rows["RugCheck"]["ok"]); self.assertIn("resolve host", rows["RugCheck"]["detail"])
         self.assertIn("springt ein", rows["RugCheck"]["detail"])
         self.assertTrue(rows["Eigenprüfung über Solana-RPC (Ersatz für RugCheck)"]["ok"])
+
+
+class CurveTests(unittest.TestCase):
+    """pump.fun bonding curves: DexScreener sends no liquidity, GeckoTerminal a
+    token-side reserve. Numbers below are live records from the macOS CI run."""
+
+    WRLD = {"chainId": "solana", "dexId": "pumpfun", "url": "https://dexscreener.com/solana/4xiw",
+            "pairAddress": "4xiW3NYhNYPTDGm5frrWKzYJZDptgpUamsLApfLtskX4",
+            "baseToken": {"address": "2FRZa1DzuEoaBwbAdajKpum9k65vNBE19QG4gf6ipump", "name": "juice WRLD", "symbol": "WRLD"},
+            "quoteToken": {"address": "So11111111111111111111111111111111111111112", "name": "Wrapped SOL", "symbol": "SOL"},
+            "priceNative": "0.00000003699", "priceUsd": "0.000003918",
+            "txns": {"m5": {"buys": 5, "sells": 1}, "h1": {"buys": 5, "sells": 1}},
+            "volume": {"m5": 41.18, "h1": 41.18}, "priceChange": {"m5": 30.21, "h1": 30.21},
+            "fdv": 3918.08, "marketCap": 3918.08, "pairCreatedAt": 1792395462000}
+
+    def test_the_formula_reproduces_pump_funs_own_reserves(self):
+        import math
+        from bot.sources import curve
+        # (virtual SOL in lamports, virtual tokens in raw units with 6 decimals) from pump.fun's API
+        for v_sol, v_tok in ((30039506171, 1071588854249411), (38593576016, 834076635946507),
+                             (40481005344, 795187761226240), (30000000000, 1073000000000000)):
+            price_sol = (v_sol / 1e9) / (v_tok / 1e6)
+            self.assertAlmostEqual(math.sqrt(curve.PUMP_K * price_sol), v_sol / 1e9, places=3)
+            self.assertAlmostEqual(curve.pump_liquidity(price_sol, 100.0), 2 * v_sol / 1e9 * 100.0, places=0)
+        self.assertIsNone(curve.pump_liquidity(1e-6, 100.0))          # off the standard curve: not guessed
+        self.assertIsNone(curve.pump_liquidity(0.0, 100.0))
+        self.assertAlmostEqual(curve.progress(30 / 1.073e9), 0.0)
+        self.assertAlmostEqual(curve.progress(115 ** 2 / curve.PUMP_K), 1.0)
+
+    def test_dexscreener_pump_curve_gets_a_computed_liquidity(self):
+        from bot.sources.dexscreener import normalize_pair
+        n = normalize_pair(self.WRLD, now=1792395462 + 60)
+        self.assertEqual(n["liquidity_kind"], "curve"); self.assertTrue(n["curve"])
+        self.assertAlmostEqual(n["liquidity_usd"], 2 * 34.507 * (3.918e-6 / 3.699e-8), delta=5)   # ~ $7,310
+
+    def test_other_curves_and_quotes_stay_unknown_instead_of_guessed(self):
+        from bot.sources.dexscreener import normalize_pair
+        pump_quoted = dict(self.WRLD, quoteToken={"address": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn", "symbol": "PUMP"},
+                           priceNative="0.0000123")
+        meteora = dict(self.WRLD, dexId="meteoradbc")
+        for raw in (pump_quoted, meteora):
+            n = normalize_pair(raw)
+            self.assertEqual((n["liquidity_kind"], n["liquidity_usd"]), ("unknown", 0.0), raw["dexId"])
+        pool = dict(self.WRLD, dexId="raydium", liquidity={"usd": 42000.0})
+        self.assertEqual((normalize_pair(pool)["liquidity_kind"], normalize_pair(pool)["liquidity_usd"]), ("reported", 42000.0))
+
+    def test_gecko_curve_reserve_is_replaced(self):
+        def pool(dex, reserve, base_usd, quote="So11111111111111111111111111111111111111112"):
+            return {"attributes": {"address": "P" + dex, "name": "X / SOL", "reserve_in_usd": reserve,
+                                   "base_token_price_usd": base_usd, "quote_token_price_usd": "105.873245"},
+                    "relationships": {"base_token": {"data": {"id": "solana_MintX"}}, "quote_token": {"data": {"id": "solana_" + quote}},
+                                      "dex": {"data": {"id": dex}}}}
+        thrust = normalize_pool(pool("pump-fun", "3147.5328", str(3.868e-8 * 105.873245)), "solana", {})
+        self.assertEqual(thrust["liquidity_kind"], "curve")
+        self.assertAlmostEqual(thrust["liquidity_usd"], 2 * 35.29 * 105.873, delta=10)          # not the $3,147 token side
+        for dex, reserve in (("meteora-dbc", "0.0"), ("raydium-launchlab", "3544.9146")):
+            n = normalize_pool(pool(dex, reserve, "0.000004"), "solana", {})
+            self.assertEqual((n["liquidity_kind"], n["liquidity_usd"]), ("unknown", 0.0), dex)
+        fresh = normalize_pool(pool("pump-fun", None, None), "solana", {})                    # not priced yet
+        self.assertEqual(fresh["liquidity_kind"], "unknown")
+        amm = normalize_pool(pool("raydium", "42000.5", "0.0025"), "solana", {})
+        self.assertEqual((amm["liquidity_kind"], amm["liquidity_usd"]), ("reported", 42000.5))
+
+    def test_the_filter_names_the_real_reason(self):
+        from bot.sources.dexscreener import normalize_pair
+        from bot.strategy import evaluate
+        cfg = copy.deepcopy(CFG)
+        unknown = normalize_pair(dict(self.WRLD, dexId="meteoradbc"))
+        self.assertTrue(any(r.startswith("liquidity unknown") for r in evaluate(unknown, None, cfg)["reasons"]))
+        # a busy pump.fun curve near completion clears the $15,000 floor on its computed liquidity
+        busy = normalize_pair(dict(self.WRLD, priceNative="0.00000030", priceUsd="0.0000318",
+                                   txns={"m5": {"buys": 60, "sells": 20}}, volume={"m5": 9000.0},
+                                   priceChange={"m5": 12.0}, fdv=31800.0), now=1792395462 + 600)
+        self.assertGreater(busy["liquidity_usd"], 15000)
+        verdict = evaluate(busy, {"score": 0.0, "danger": [], "warn": [], "source": "onchain"}, cfg)
+        self.assertFalse(any("liquidity" in r and "$" in r and "<" in r for r in verdict["reasons"]), verdict)
+        self.assertTrue(any(r.startswith("pump.fun-Kurve") for r in verdict["reasons"]), verdict)
+        self.assertIn("Liquidität unbekannt (Bonding-Kurve ohne Angabe)",
+                      [label for _, label, _ in Store.REASON_RULES])
+
+
+class ReentryPauseTests(unittest.TestCase):
+    """The demo runner CURVE exits on its trailing stop at minute 29 and still
+    looks like a buy afterwards: it must not be bought straight back."""
+
+    def run_demo(self, pause):
+        import bot.demo as demo
+        cycle = demo.CYCLE_MIN
+        demo.CYCLE_MIN = 1e9
+        self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        store = Store(Path(tmp.name) / "t.sqlite"); self.addCleanup(store.close)
+        cfg = copy.deepcopy(CFG); cfg["reentry_pause_minutes"] = pause
+        dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+        eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now)
+        for minutes in range(0, 60, 2):
+            t[0] = dex.started + minutes * 60
+            eng.poll_once()
+        buys = [c for c in store.candidates(500) if c["symbol"] == "CURVE" and c["decision"] == "buy"]
+        return store, eng, buys
+
+    def test_a_sold_token_is_not_bought_straight_back(self):
+        store, eng, buys = self.run_demo(120)
+        self.assertEqual(len(buys), 1)
+        later = [c for c in store.candidates(500) if c["symbol"] == "CURVE" and c["seen_at"] > buys[0]["seen_at"]]
+        self.assertTrue(any(any("re-entry pause" in r for r in c["reasons"]) for c in later), later)
+        self.assertIn("Kauf blockiert (Limit, Pause, Bestand)", [r["label"] for r in store.skip_reasons()["reasons"]])
+        # the button is the user's own decision: it still buys
+        cid = later[-1]["id"]
+        self.assertTrue(eng.open_from_candidate(cid)["ok"])
+
+    def test_pause_zero_allows_the_re_entry(self):
+        _store, _eng, buys = self.run_demo(0)
+        self.assertGreaterEqual(len(buys), 2)
+
+    def test_the_setting_is_in_the_form(self):
+        entry = next(e for e in settings.SCHEMA if e["path"] == "reentry_pause_minutes")
+        self.assertEqual(entry["group"], "Risiko")
+        self.assertEqual(settings.validate({"reentry_pause_minutes": -5})[1].keys(), {"reentry_pause_minutes"})
+        self.assertEqual(settings.validate({"reentry_pause_minutes": 0})[0], {"reentry_pause_minutes": 0.0})
+

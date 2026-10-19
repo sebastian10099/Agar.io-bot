@@ -69,5 +69,26 @@
     "priceUsd": "0.0007", "txns": {"m5": {"buys": 16, "sells": 13}, "h1": {"buys": 60, "sells": 50}},
     "volume": {"m5": 3200, "h1": 15000}, "priceChange": {"m5": 1, "h1": 5},
     "liquidity": {"usd": 16000}, "fdv": 150000, "marketCap": 150000
+  },
+  {
+    "_demo": {"scenario": "runner", "listed_offset_min": 4},
+    "chainId": "solana", "dexId": "pumpfun", "url": "https://dexscreener.com/solana/pairCurve",
+    "pairAddress": "pairCurve111111111111111111111111111111111",
+    "baseToken": {"address": "mintCurve11111111111111111111111111111pump", "name": "Curve Cat", "symbol": "CURVE"},
+    "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
+    "priceNative": "0.00000012", "priceUsd": "0.000018", "txns": {"m5": {"buys": 64, "sells": 21}, "h1": {"buys": 240, "sells": 95}},
+    "volume": {"m5": 14000, "h1": 61000}, "priceChange": {"m5": 18, "h1": 95},
+    "fdv": 18000, "marketCap": 18000,
+    "info": {"socials": [{"type": "twitter", "url": "https://x.com/curvecat"}]}
+  },
+  {
+    "_demo": {"scenario": "flat", "listed_offset_min": 3},
+    "chainId": "solana", "dexId": "meteoradbc", "url": "https://dexscreener.com/solana/pairDbc",
+    "pairAddress": "pairDbc11111111111111111111111111111111111",
+    "baseToken": {"address": "mintDbc111111111111111111111111111111111", "name": "Dynamic Bond", "symbol": "DBC"},
+    "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
+    "priceNative": "0.00000002", "priceUsd": "0.000003", "txns": {"m5": {"buys": 30, "sells": 12}, "h1": {"buys": 90, "sells": 40}},
+    "volume": {"m5": 5200, "h1": 20000}, "priceChange": {"m5": 9, "h1": 40},
+    "fdv": 3000, "marketCap": 3000
   }
 ]
