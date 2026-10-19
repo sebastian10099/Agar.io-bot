@@ -220,6 +220,14 @@ jobs:
           tokens = dex.recent_token_addresses(["solana"])["solana"][:90]
           pools = [n for n in dex._token_pairs("solana", tokens) if n["dex"] == "pumpswap"][:12]
           import time
+          from bot.sources.http import post_json
+          from bot.sources.solana_rpc import rpc_urls
+          for url in rpc_urls():                  # every endpoint the readers rotate through answers ordinary calls
+              try:
+                  slot = post_json(url, {"jsonrpc": "2.0", "id": 1, "method": "getSlot"}, timeout=10).get("result")
+                  print(f"Knoten {url}: Slot {slot}")
+              except Exception as e:
+                  print(f"Knoten {url}: {type(e).__name__} {str(e)[:80]}")
           reader = CurveReader()
           got = {}
           for attempt in range(4):                # the public node limits shared runner addresses: try again

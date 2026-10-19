@@ -313,6 +313,16 @@
       <p class="note"><b>Anmelden</b> braucht einmalig die Anthropic-CLI (<code>brew install anthropics/tap/ant</code>); danach nutzt der Bot dein Claude-Konto ohne Schlüssel. Schlüsselbund nur auf macOS; sonst <code>ANTHROPIC_API_KEY</code> in der Umgebung setzen. Die KI sieht nur Kandidaten, die die harten Filter bestanden haben. Im Edge-Report (Übersicht) vergleichst du <b>Regeln</b> gegen <b>KI</b> auf denselben Tokens – erst wenn die KI dort über Wochen vorn liegt, lohnt „Entscheiden“.</p>
     </section>
     <section>
+      <h2>Solana-Knoten <span class="spacer"></span><span id="rpc-pill" class="pill"></span></h2>
+      <p class="note" id="rpc-status" style="margin:0 0 10px"></p>
+      <div class="formbar" style="margin-top:0">
+        <label for="rpc-url" class="status">Eigener Knoten (URL mit Schlüssel)</label>
+        <input type="password" id="rpc-url" autocomplete="off" placeholder="https://mainnet.helius-rpc.com/?api-key=…" style="width:320px;background:var(--muted);border:1px solid var(--line-strong);border-radius:7px;padding:6px 8px">
+        <button class="btn" id="b-rpc">Im Schlüsselbund speichern</button>
+      </div>
+      <p class="note">Der öffentliche Knoten drosselt (HTTP 429): dann fehlen sekundengenaue Kurse und die Halter-Prüfung. Ein kostenloser Schlüssel (z. B. Helius) behebt das; der Bot weicht sonst auf einen zweiten öffentlichen Knoten aus. Gespeichert wird nur im Schlüsselbund (macOS), angezeigt nur der Hostname.</p>
+    </section>
+    <section>
       <h2>Quellen <span class="spacer"></span><span id="src-pill" class="pill"></span> <button class="btn sm" id="b-doctor" title="Erreichbarkeit und Parser aller Quellen prüfen">Selbsttest</button></h2>
       <ul id="sources" class="sources" aria-label="Discovery-Quellen und ihr Status"></ul>
       <ul id="doctor" class="sources" aria-label="Ergebnis des Selbsttests" aria-live="polite" hidden></ul>
@@ -825,7 +835,7 @@ function renderHeader(s) {
   $('conn').setAttribute('aria-label', 'Verbindung: ' + ({ok: 'verbunden', warn: 'noch kein Poll', bad: 'keine Daten seit ' + dur(since)})[connState] + (s.errors ? `, ${s.errors} Fehler` : ''));
   $('conn').title = $('conn').getAttribute('aria-label');
   $('k-initial').textContent = usd(s.initial); $('k-uptime').textContent = dur(s.now - s.started_at);
-  renderAi(s); renderSources(s);
+  renderAi(s); renderRpc(s); renderSources(s);
   if (document.activeElement !== $('bankroll') && !$('bankroll').value) $('bankroll').value = s.initial;
   $('k-polls').textContent = s.polls; $('k-errors').textContent = s.errors;
   $('k-pollms').textContent = s.poll_ms_avg == null ? '–' : (s.poll_ms_avg >= 1000 ? (s.poll_ms_avg / 1000).toFixed(1) + ' s' : s.poll_ms_avg + ' ms') + (s.poll_ms_last != null ? ` (zuletzt ${s.poll_ms_last} ms)` : '');
@@ -958,6 +968,11 @@ $('b-ai-login').onclick = () => busy($('b-ai-login'), async () => {
   }
   $('ai-login-status').textContent = 'Noch kein Profil gefunden. Browser-Anmeldung abgeschlossen? Dann Seite neu laden.';
 });
+$('b-rpc').onclick = () => busy($('b-rpc'), async () => {
+  const url = $('rpc-url').value.trim(); if (!url) { toast('Adresse fehlt', true); return; }
+  const r = await api('/api/solana/rpc', {url}); if (!r.ok) throw new Error(r.error);
+  $('rpc-url').value = ''; toast('Knoten gespeichert'); refresh();
+});
 $('b-ai-key').onclick = () => busy($('b-ai-key'), async () => {
   const key = $('ai-key').value.trim(); if (!key) { toast('Schlüssel fehlt', true); return; }
   const r = await api('/api/ai/key', {key, provider: (state && state.config['ai.provider']) || 'anthropic'}); if (!r.ok) throw new Error(r.error);
@@ -1031,6 +1046,12 @@ function renderSources(s) {
     })();
     return `<li><span class="dot ${st[0]}" role="img" aria-label="${st[1]}"></span><b>RugCheck – Sicherheitsprüfung</b> <span class="reasons">${st[1]}${detail ? ' · ' + detail : ''}</span></li>` + fbRow + cvRow;
   })();
+}
+function renderRpc(s) {
+  const r = s.solana_rpc; if (!r) { $('rpc-pill').textContent = '–'; $('rpc-status').textContent = 'Im Demo-Modus kein Knoten.'; return; }
+  const c = s.curves || {};
+  $('rpc-pill').textContent = r.own ? 'eigener' : 'öffentlich'; $('rpc-pill').className = 'pill ' + (r.own ? 'paper' : '');
+  $('rpc-status').textContent = `In Gebrauch: ${r.host || '–'}` + (c.last_error ? ` · zuletzt: ${c.last_error}` : (c.calls ? ' · antwortet' : ''));
 }
 function renderAi(s) {
   const a = s.ai || {}; const modeLabel = {off: 'aus', advise: 'beraten', decide: 'entscheiden'}[a.mode] || a.mode;

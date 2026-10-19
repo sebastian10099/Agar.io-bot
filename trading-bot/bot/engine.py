@@ -448,6 +448,32 @@ class Engine:
         self._refused.pop(pos["id"], None)
         return price
 
+    def _rpc_status(self) -> dict[str, Any]:
+        """Which Solana node the chain readers use - its host only, never the key in its URL."""
+        from urllib.parse import urlparse
+        urls = getattr(self.curves, "urls", None) or []
+        from .sources.solana_rpc import DEFAULT_RPC
+        return {"host": urlparse(urls[0]).hostname if urls else None,
+                "own": bool(urls) and urls[0] != DEFAULT_RPC and urlparse(urls[0]).hostname != "solana-rpc.publicnode.com"}
+
+    def set_rpc(self, url: str) -> dict[str, Any]:
+        """Your own Solana node: stored in the Keychain (it carries an API key) and used at once."""
+        from urllib.parse import urlparse
+        from . import keychain
+        from .sources.solana_rpc import RPC_KEYCHAIN, rpc_urls
+        url = (url or "").strip()
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or not parsed.hostname:
+            return {"ok": False, "error": "Bitte die vollständige https-Adresse des Knotens, z. B. https://mainnet.helius-rpc.com/?api-key=…"}
+        error = keychain.put(RPC_KEYCHAIN, url)
+        if error:
+            return {"ok": False, "error": error + " Sonst SOLANA_RPC_URL in der Umgebung setzen."}
+        for reader in (self.curves, getattr(self.rug, "onchain", None)):
+            if reader is not None and hasattr(reader, "urls"):
+                reader.urls[:] = rpc_urls()
+        self.store.log("info", f"dashboard: eigener Solana-Knoten gespeichert ({parsed.hostname})")
+        return {"ok": True, "solana_rpc": self._rpc_status()}
+
     def _chain_prices(self, chain: str, pairs: dict[str, str]) -> dict[str, float]:
         """{pair: price this second} for the pools the chain reader can read (PumpSwap)."""
         read = getattr(self.curves, "pool_prices", None)
@@ -771,6 +797,7 @@ class Engine:
             "skip_reasons": self._report("why", self.store.skip_reasons),
             "rugcheck": self.rug.health() if hasattr(self.rug, "health") else {"calls": 0, "fails": 0, "last_error": "", "ok": None},
             "curves": self.curves.health() if hasattr(self.curves, "health") else None,
+            "solana_rpc": self._rpc_status(),
             "equity": self.store.equity_curve(),
             "config": settings.flat(self.cfg),
         }

@@ -2863,3 +2863,48 @@ class BacktestTests(unittest.TestCase):
             store.close()
             text = bt.report(Path(d) / "bot.sqlite", copy.deepcopy(CFG))
             self.assertIn("2 Kandidaten mit Kursverlauf", text)
+
+
+class RpcTests(unittest.TestCase):
+    """The public Solana node throttles: the readers move on, your own node goes to the Keychain."""
+
+    def test_a_throttled_node_hands_over_to_the_next(self):
+        from bot.sources.curve import CurveReader
+        calls = []
+        def post(url, body, timeout=None):
+            calls.append(url)
+            if "first" in url:
+                return {"jsonrpc": "2.0", "error": {"code": 429, "message": "Too many requests"}}
+            return {"result": {"value": [None for _ in body["params"][0]]}}
+        reader = CurveReader(post=post, url="https://first.example")
+        reader.urls = ["https://first.example", "https://second.example"]
+        reader.read(["A"]); reader.read(["B"])
+        self.assertEqual(calls, ["https://first.example", "https://second.example", "https://second.example"])
+        self.assertEqual(reader.fails, 0)                                      # the answer came, nothing failed
+
+    def test_a_secret_never_goes_on_the_command_line(self):
+        from bot import keychain
+        seen = []
+        def run(argv, **kw):
+            seen.append((argv, kw.get("input")))
+            return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        with mock.patch.object(keychain, "available", return_value=True):
+            self.assertIsNone(keychain.put("Svc", "https://node.example/?api-key=SECRET123", run=run))
+            self.assertEqual(seen[0][0], [keychain.SECURITY, "-i"])
+            self.assertNotIn("SECRET123", " ".join(seen[0][0]))                  # not in argv ...
+            self.assertIn("SECRET123", seen[0][1])                               # ... only on stdin
+            self.assertIsNotNone(keychain.put("Svc", 'x" ; delete-keychain', run=run))   # no command injection
+        with mock.patch.object(keychain, "available", return_value=False):
+            self.assertIn("macOS", keychain.put("Svc", "abc", run=run))
+
+    def test_the_page_names_the_node_but_never_its_key(self):
+        from bot.sources.curve import CurveReader
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0)
+            reader = CurveReader(post=lambda *a, **k: {}, url="https://mainnet.helius-rpc.com/?api-key=SECRET")
+            eng = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex), curves=reader)
+            text = json.dumps(eng.state())
+            self.assertIn("mainnet.helius-rpc.com", text); self.assertNotIn("SECRET", text)
+            self.assertTrue(eng.state()["solana_rpc"]["own"])
+            self.assertIn("https-Adresse", eng.set_rpc("ftp://x")["error"])
+            store.close()

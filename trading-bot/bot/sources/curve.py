@@ -28,7 +28,7 @@ import time
 from typing import Any, Callable, Optional
 
 from .http import post_json
-from .solana_rpc import PAUSE_S, PUMP_PROGRAM, TIMEOUT_S, TRIP_AFTER, b58encode, rpc_url
+from .solana_rpc import PAUSE_S, PUMP_PROGRAM, TIMEOUT_S, TRIP_AFTER, b58encode, post_rotating, rpc_url, rpc_urls
 
 PUMPSWAP_PROGRAM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
 WSOL = "So11111111111111111111111111111111111111112"
@@ -91,6 +91,7 @@ class CurveReader:
                  clock: Callable[[], float] = time.time) -> None:
         self.post = post
         self.url = url or rpc_url()
+        self.urls = rpc_urls() if url is None else [url]        # tried in turn when one throttles
         self.clock = clock
         self.calls = 0
         self.fails = 0
@@ -116,11 +117,7 @@ class CurveReader:
             body = {"jsonrpc": "2.0", "id": 1, "method": "getMultipleAccounts",
                     "params": [chunk, {"encoding": "base64", "commitment": "confirmed"}]}
             try:
-                answer = self.post(self.url, body, timeout=TIMEOUT_S)
-                if not isinstance(answer, dict):
-                    raise RuntimeError("unerwartete Antwort")
-                if answer.get("error"):
-                    raise RuntimeError(str((answer["error"] or {}).get("message", answer["error"]))[:120])
+                answer = post_rotating(self.post, self.urls, body, TIMEOUT_S)
                 values = (answer.get("result") or {}).get("value")
                 if not isinstance(values, list) or len(values) != len(chunk):
                     raise RuntimeError("Antwort passt nicht zur Anfrage")

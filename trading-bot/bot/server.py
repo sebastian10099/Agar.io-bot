@@ -208,6 +208,9 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                     engine.advisor._client_error = None
                     engine.store.log("info", "dashboard: Anthropic-Schlüssel im Schlüsselbund gespeichert")
                 self._json(result, 200 if result["ok"] else 400)
+            elif self.path == "/api/solana/rpc":
+                result = engine.set_rpc(str(body.get("url") or ""))
+                self._json(result, 200 if result["ok"] else 400)
             elif self.path == "/api/ai/login":
                 result = start_login()
                 if result["ok"]:

@@ -124,8 +124,25 @@ DANGER_EXTENSIONS = {
 }
 
 
+RPC_KEYCHAIN = "NewTokenBot Solana RPC"
+# a second free endpoint for the ordinary calls (accounts, balances) when the first throttles
+FALLBACK_RPCS = ["https://solana-rpc.publicnode.com"]
+
+
 def rpc_url() -> str:
-    return os.environ.get("SOLANA_RPC_URL") or DEFAULT_RPC
+    """Your own node first (SOLANA_RPC_URL, or on a Mac the URL saved from the control
+    page in the Keychain - it carries an API key), else the public mainnet endpoint."""
+    from .. import keychain
+    return os.environ.get("SOLANA_RPC_URL") or keychain.get(RPC_KEYCHAIN) or DEFAULT_RPC
+
+
+def rpc_urls() -> list[str]:
+    """The endpoints to try in turn: yours (or the public one), then the fallbacks."""
+    return list(dict.fromkeys([rpc_url(), DEFAULT_RPC] + FALLBACK_RPCS))
+
+
+def own_rpc() -> bool:
+    return rpc_url() != DEFAULT_RPC
 
 
 def holder_urls() -> list[str]:
@@ -136,6 +153,27 @@ def holder_urls() -> list[str]:
     e.g. a free Helius key URL - that are tried in turn."""
     extra = [u.strip() for u in os.environ.get("SOLANA_HOLDER_RPCS", "").split(",") if u.strip()]
     return list(dict.fromkeys([rpc_url()] + extra))
+
+
+def post_rotating(post: Any, urls: list[str], body: dict[str, Any], timeout: float) -> Any:
+    """`body` to the first endpoint that answers without an error; the one that did
+    moves to the front of `urls` (in place), so the next call starts there."""
+    last: Optional[Exception] = None
+    for url in list(urls):
+        try:
+            answer = post(url, body, timeout=timeout)
+            if not isinstance(answer, dict):
+                raise RuntimeError("unerwartete Antwort")
+            if answer.get("error"):
+                raise RuntimeError(str((answer["error"] or {}).get("message", answer["error"]))[:120])
+        except Exception as error:  # noqa: BLE001 - throttled, refused, down: the next endpoint
+            last = error
+            continue
+        if url != urls[0]:
+            urls.remove(url)
+            urls.insert(0, url)
+        return answer
+    raise last or RuntimeError("kein RPC-Endpunkt")
 
 
 def assess_mint(value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
@@ -237,6 +275,7 @@ class OnChainCheck:
                  clock: Callable[[], float] = time.time) -> None:
         self.post = post
         self.url = url or rpc_url()
+        self.urls = rpc_urls() if url is None else [url]
         self.holder_urls = [self.url] + [u for u in holder_urls() if u != self.url] if url is None else [self.url]
         self.clock = clock
         self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -252,11 +291,8 @@ class OnChainCheck:
                 "ok": None if not self.calls else (self.last_error == "")}
 
     def _rpc(self, method: str, params: list[Any], url: Optional[str] = None) -> Any:
-        answer = self.post(url or self.url, {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=TIMEOUT_S)
-        if not isinstance(answer, dict):
-            raise RuntimeError("unerwartete Antwort")
-        if answer.get("error"):
-            raise RuntimeError(str((answer["error"] or {}).get("message", answer["error"]))[:120])
+        body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+        answer = post_rotating(self.post, [url] if url else self.urls, body, TIMEOUT_S)
         return (answer.get("result") or {}).get("value")
 
     def holders(self, mint: str, supply_raw: int) -> Optional[dict[str, Any]]:
