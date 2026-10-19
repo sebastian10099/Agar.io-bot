@@ -2021,11 +2021,15 @@ class HolderTests(unittest.TestCase):
     MINT = "7nnvdguRdh7W1A7tTMAxGB3VJ4A2Jz9afVaMr5Lepump"      # live pump.fun coin and its curve (DexScreener's pair)
     MINT_CURVE = "4axbdpx2RGX7YUvdzq7gsQ2D3gTgRUbTojKtw4UQepMU"
 
-    def creator_rpc(self, creator_amount, program="spl-token", curve_owner=None):
-        """Holder query throttled; curve account names WALLETS[0] as creator."""
+    def creator_rpc(self, amounts, program="spl-token", curve_owner=None, creator=None, fee_config=None):
+        """Holder query throttled; the curve's creator field names `creator` (default WALLETS[0]);
+        `amounts` maps a wallet to the raw amount in its token account (absent: no account)."""
         import base64, struct
-        from bot.sources.solana_rpc import PUMP_PROGRAM, b58decode
-        data = b"\x17" * 8 + struct.pack("<5Q", 10**15, 3 * 10**10, 8 * 10**14, 10**9, 10**15) + b"\x00" + b58decode(self.WALLETS[0])
+        from bot.sources.solana_rpc import PUMP_FEES_PROGRAM, PUMP_PROGRAM, TOKEN_PROGRAMS, ATA_PROGRAM, b58decode, find_program_address
+        creator = creator or self.WALLETS[0]
+        data = b"\x17" * 8 + struct.pack("<5Q", 10**15, 3 * 10**10, 8 * 10**14, 10**9, 10**15) + b"\x00" + b58decode(creator)
+        ata_of = {find_program_address([b58decode(w), b58decode(TOKEN_PROGRAMS[program]), b58decode(self.MINT)], ATA_PROGRAM): w
+                  for w in self.WALLETS}
         asked = []
         def post(url, body, timeout=None):
             method, params = body["method"], body["params"]
@@ -2034,38 +2038,67 @@ class HolderTests(unittest.TestCase):
                 return {"error": {"code": 429, "message": "Too many requests for a specific RPC call"}}
             if method == "getAccountInfo" and params[0] == self.MINT:
                 return {"result": {"value": mint_value(program=program)}}
-            if method == "getAccountInfo" and params[1]["encoding"] == "base64":
-                return {"result": {"value": {"owner": curve_owner or PUMP_PROGRAM, "data": [base64.b64encode(data + b"\x00" * 69).decode(), "base64"]}}}
-            if method == "getAccountInfo":                                   # the creator's token account
-                if creator_amount is None:
-                    return {"result": {"value": None}}
-                return {"result": {"value": {"data": {"parsed": {"type": "account", "info": {
-                    "mint": self.MINT, "owner": self.WALLETS[0], "tokenAmount": {"amount": str(creator_amount)}}}}}}}
+            if method == "getAccountInfo" and params[0] == creator:              # the fee-sharing account
+                return {"result": {"value": None if fee_config is None else
+                                   {"owner": PUMP_FEES_PROGRAM, "data": [base64.b64encode(fee_config).decode(), "base64"]}}}
+            if method == "getAccountInfo":                                       # the curve
+                return {"result": {"value": {"owner": curve_owner or PUMP_PROGRAM, "data": [base64.b64encode(data + b"\x00" * 85).decode(), "base64"]}}}
+            if method == "getMultipleAccounts":                                  # the creator side's token accounts
+                out = []
+                for a in params[0]:
+                    w = ata_of[a]
+                    out.append(None if w not in amounts else {"data": {"parsed": {"type": "account", "info": {
+                        "mint": self.MINT, "owner": w, "tokenAmount": {"amount": str(amounts[w])}}}}})
+                return {"result": {"value": out}}
             raise AssertionError(method)
         return post, asked
+
+    def fee_config(self, admin, holders, mint=None):
+        import struct
+        from bot.sources.solana_rpc import b58decode
+        blob = bytes.fromhex("d84a0900388c5d4b") + bytes([251, 2, 1]) + b58decode(mint or self.MINT) + b58decode(admin) + b"\x00"
+        blob += struct.pack("<I", len(holders)) + b"".join(b58decode(a) + struct.pack("<H", bps) for a, bps in holders)
+        return blob + b"\x00" * (1024 - len(blob))
 
     def test_without_the_holder_query_the_creator_of_a_pump_coin_is_checked(self):
         from bot.sources.solana_rpc import OnChainCheck, find_program_address, b58encode, b58decode
         self.assertEqual(b58encode(b58decode(self.MINT)), self.MINT)
         self.assertEqual(find_program_address([b"bonding-curve", b58decode(self.MINT)], "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"), self.MINT_CURVE)
-        post, asked = self.creator_rpc(200_000_000_000_000)                  # 20 % of 10^15
+        post, asked = self.creator_rpc({self.WALLETS[0]: 200_000_000_000_000})          # 20 % of 10^15
         r = OnChainCheck(post=post, url="x").summary(self.MINT)
         self.assertEqual(asked[2], ("getAccountInfo", self.MINT_CURVE))
-        ata = asked[3][1]
-        self.assertNotIn(ata, (self.MINT, self.MINT_CURVE, self.WALLETS[0]))
-        self.assertEqual(r["creator"], {"creator": self.WALLETS[0], "share": 20.0})
+        self.assertEqual(r["creator"], {"creator": self.WALLETS[0], "wallets": 1, "share": 20.0})
         self.assertTrue(any("Ersteller hält 20 %" in d for d in r["danger"]), r)
         self.assertTrue(any("nur der Ersteller geprüft (20.0 %)" in w for w in r["warn"]), r)
-        post, _ = self.creator_rpc(None)                                     # sold out: no token account left
+        post, _ = self.creator_rpc({})                                                    # sold out: no token account left
         r = OnChainCheck(post=post, url="x").summary(self.MINT)
         self.assertEqual((r["danger"], r["creator"]["share"]), ([], 0.0))
-        post, asked22 = self.creator_rpc(60_000_000_000_000, program="spl-token-2022")
+        post, asked22 = self.creator_rpc({self.WALLETS[0]: 60_000_000_000_000}, program="spl-token-2022")
         r = OnChainCheck(post=post, url="x").summary(self.MINT)
         self.assertEqual(r["warn"][0], "der Ersteller hält 6 %")
-        self.assertNotEqual(asked22[3][1], ata)                               # Token-2022 accounts live elsewhere
-        post, asked = self.creator_rpc(0, curve_owner="SomeOtherProgram1111111111111111111111111")
+        self.assertNotEqual(asked22[3][1], asked[3][1])                                  # Token-2022 accounts live elsewhere
+        post, asked = self.creator_rpc({}, curve_owner="SomeOtherProgram1111111111111111111111111")
         r = OnChainCheck(post=post, url="x").summary(self.MINT)
         self.assertNotIn("creator", r); self.assertIn("Halterverteilung unbekannt (RPC ohne Antwort)", r["warn"])
+
+    def test_a_coin_sharing_its_fees_is_checked_through_its_fee_account(self):
+        from bot.sources.solana_rpc import OnChainCheck
+        pda = self.CURVE                                                                 # an off-curve address
+        admin, a, b = self.WALLETS[1], self.WALLETS[2], self.WALLETS[3]
+        good = self.fee_config(admin, [(a, 7000), (b, 3000)])
+        post, asked = self.creator_rpc({admin: 50_000_000_000_000, b: 70_000_000_000_000}, creator=pda, fee_config=good)
+        r = OnChainCheck(post=post, url="x").summary(self.MINT)
+        self.assertEqual(r["creator"], {"creator": admin, "wallets": 3, "share": 12.0})
+        self.assertIn("Ersteller und Gebühren-Teilhaber (3 Wallets) halten 12 %", r["warn"])
+        self.assertEqual(len(next(p for m, p in asked if m == "getMultipleAccounts")), 3)
+        for bad in (self.fee_config(admin, [(a, 7000), (b, 2000)]),                     # shares do not add up
+                    self.fee_config(admin, [(a, 10000)], mint=self.WALLETS[5]),          # another coin's account
+                    b"\x00" * 40):                                                       # too short
+            post, _ = self.creator_rpc({admin: 50_000_000_000_000}, creator=pda, fee_config=bad)
+            r = OnChainCheck(post=post, url="x").summary(self.MINT)
+            self.assertNotIn("creator", r); self.assertIn("Halterverteilung unbekannt (RPC ohne Antwort)", r["warn"])
+        post, _ = self.creator_rpc({}, creator=pda, fee_config=None)                     # named, but no such account
+        self.assertNotIn("creator", OnChainCheck(post=post, url="x").summary(self.MINT))
 
     def test_results_expire_so_holders_are_looked_at_again(self):
         from bot.sources.solana_rpc import CACHE_TTL_S, OnChainCheck

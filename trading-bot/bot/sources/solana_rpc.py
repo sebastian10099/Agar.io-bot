@@ -17,7 +17,10 @@ signals that make a token a trap no matter what its chart looks like:
                                    address lies off the ed25519 curve.
 - when the holder query gets no answer (the public endpoint throttles it hard):
   for a pump.fun coin the creator's share - its curve account names the
-  creator, whose token account address follows from it; two plain reads.
+  creator, whose token account address follows from it; plain reads. Where
+  the coin shares its creator fees, the curve names pump.fun's fee-sharing
+  account instead, and that one lists the admin and the fee shareholders:
+  their combined share counts.
 
 It sees less than RugCheck did (no LP-lock or insider analysis), so the
 strategy gives it only half of RugCheck's score points. RPC: SOLANA_RPC_URL,
@@ -28,6 +31,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
+import struct
 import time
 from typing import Any, Callable, Optional
 
@@ -39,6 +43,7 @@ TRIP_AFTER = 3
 PAUSE_S = 60.0
 
 PUMP_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+PUMP_FEES_PROGRAM = "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ"
 ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 TOKEN_PROGRAMS = {"spl-token": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                   "spl-token-2022": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"}
@@ -171,20 +176,41 @@ def assess_mint(value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
             "program": data.get("program") if isinstance(data, dict) else None, "supply_raw": supply}
 
 
-def creator_of_curve(data: bytes) -> Optional[str]:
-    """pump.fun BondingCurve: 8-byte discriminator, five u64 reserves, the 'complete'
-    flag, then the creator's public key (bytes 49-81)."""
-    if len(data) < 81:
+def creator_field(data: bytes) -> Optional[str]:
+    """pump.fun BondingCurve: 8-byte discriminator, five u64 reserves, the 'complete' flag,
+    then the creator (bytes 49-81): a wallet, or pump.fun's fee-sharing account."""
+    return b58encode(data[49:81]) if len(data) >= 81 else None
+
+
+def parse_fee_sharing(data: bytes, mint: str) -> Optional[list[str]]:
+    """pump.fun fee-sharing account (program pfee...): discriminator, bump, version,
+    status, the coin's mint (bytes 11-43), the admin, an admin-revoked flag, then
+    the shareholders (address, share in basis points). Wallets on the creator's
+    side, admin first; None unless the record checks out (right mint, shares adding
+    up to exactly 100 %), so a changed layout never yields a wrong answer."""
+    if len(data) < 80 or b58encode(data[11:43]) != mint:
         return None
-    creator = b58encode(data[49:81])
-    return creator if on_curve(creator) else None
+    n = struct.unpack_from("<I", data, 76)[0]
+    if not 0 < n <= 32 or len(data) < 80 + 34 * n:
+        return None
+    holders, total = [], 0
+    for i in range(n):
+        off = 80 + 34 * i
+        holders.append(b58encode(data[off:off + 32]))
+        total += struct.unpack_from("<H", data, off + 32)[0]
+    if total != 10_000:
+        return None
+    wallets = [a for a in [b58encode(data[43:75])] + holders if on_curve(a)]
+    return list(dict.fromkeys(wallets)) or None
 
 
-def judge_creator(share: float) -> tuple[list[str], list[str]]:
+def judge_creator(share: float, wallets: int = 1) -> tuple[list[str], list[str]]:
+    who = "der Ersteller hält" if wallets <= 1 else f"Ersteller und Gebühren-Teilhaber ({wallets} Wallets) halten"
     if share >= CREATOR_DANGER:
-        return [f"der Ersteller hält {share:.0f} % (kann jederzeit abverkaufen)"], []
+        return [f"{who} {share:.0f} % (können jederzeit abverkaufen)" if wallets > 1
+                else f"{who} {share:.0f} % (kann jederzeit abverkaufen)"], []
     if share >= CREATOR_WARN:
-        return [], [f"der Ersteller hält {share:.0f} %"]
+        return [], [f"{who} {share:.0f} %"]
     return [], []
 
 
@@ -278,14 +304,28 @@ class OnChainCheck:
                                              {"encoding": "base64", "commitment": "confirmed"}])
         if not isinstance(curve, dict) or curve.get("owner") != PUMP_PROGRAM:
             return None                                    # not a pump.fun coin
-        creator = creator_of_curve(base64.b64decode((curve.get("data") or [""])[0]))
-        if creator is None:
+        who = creator_field(base64.b64decode((curve.get("data") or [""])[0]))
+        if who is None:
             return None
-        ata = find_program_address([b58decode(creator), b58decode(TOKEN_PROGRAMS[program]), b58decode(mint)], ATA_PROGRAM)
-        acc = self._rpc("getAccountInfo", [ata, {"encoding": "jsonParsed", "commitment": "confirmed"}])
-        info = ((((acc or {}).get("data") or {}).get("parsed") or {}).get("info") or {}) if isinstance(acc, dict) else {}
-        amount = int((info.get("tokenAmount") or {}).get("amount") or 0)   # no account: sold out or never bought
-        return {"creator": creator, "share": round(amount / supply_raw * 100, 2)}
+        if on_curve(who):
+            wallets = [who]
+        else:                                              # fee sharing: the curve names its account
+            cfg = self._rpc("getAccountInfo", [who, {"encoding": "base64", "commitment": "confirmed"}])
+            if not isinstance(cfg, dict) or cfg.get("owner") != PUMP_FEES_PROGRAM:
+                return None
+            wallets = parse_fee_sharing(base64.b64decode((cfg.get("data") or [""])[0]), mint) or []
+            if not wallets:
+                return None
+        atas = [find_program_address([b58decode(w), b58decode(TOKEN_PROGRAMS[program]), b58decode(mint)], ATA_PROGRAM)
+                for w in wallets]
+        values = self._rpc("getMultipleAccounts", [atas, {"encoding": "jsonParsed", "commitment": "confirmed"}])
+        if not isinstance(values, list) or len(values) != len(atas):
+            return None
+        amount = 0
+        for acc in values:                                 # no account: sold out or never bought
+            info = ((((acc or {}).get("data") or {}).get("parsed") or {}).get("info") or {}) if isinstance(acc, dict) else {}
+            amount += int((info.get("tokenAmount") or {}).get("amount") or 0)
+        return {"creator": wallets[0], "wallets": len(wallets), "share": round(amount / supply_raw * 100, 2)}
 
     def summary(self, mint: str) -> Optional[dict[str, Any]]:
         hit = self._cache.get(mint)
@@ -326,7 +366,7 @@ class OnChainCheck:
             if c is None:
                 result["warn"].append("Halterverteilung unbekannt (RPC ohne Antwort)")
             else:
-                danger, warn = judge_creator(c["share"])
+                danger, warn = judge_creator(c["share"], c.get("wallets", 1))
                 result["danger"] += danger
                 result["warn"] += warn
                 result["warn"].append(f"Halterverteilung unbekannt – nur der Ersteller geprüft ({c['share']:.1f} %)")

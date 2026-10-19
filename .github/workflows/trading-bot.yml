@@ -168,10 +168,12 @@ jobs:
               raw = oc._rpc("getAccountInfo", [curve, {"encoding": "base64"}])
               data = base64.b64decode(raw["data"][0]) if raw else b""
               who = b58encode(data[49:81]) if len(data) >= 81 else None
-              if who and on_curve(who) is False:     # a program address in the creator field: what is it?
+              if who and on_curve(who) is False:     # fee sharing: the curve names pump.fun's fee account
+                  from bot.sources.solana_rpc import parse_fee_sharing
                   acc = oc._rpc("getAccountInfo", [who, {"encoding": "base64"}])
                   blob = base64.b64decode(acc["data"][0]) if acc else b""
-                  print(f"  {mint} Ersteller-Feld {who}: owner {acc and acc.get('owner')}, {len(blob)} Bytes, hex {blob[:260].hex()}")
+                  print(f"  {mint[:8]} Gebührenkonto {who[:8]}: owner {acc and acc.get('owner')}, {len(blob)} Bytes, "
+                        f"gelesen: {parse_fee_sharing(blob, mint) if blob else '-'}" + ("" if not blob or parse_fee_sharing(blob, mint) else f", Bytes 43-160 {blob[43:160].hex()}"))
               line = f"{mint[:8]} Kurve {'= DexScreener' if mint not in pairs else ('= DexScreener-Paar' if pairs[mint]['pairAddress'] == curve else 'ABWEICHUNG ' + pairs[mint]['pairAddress'])} · {info and info['program']} · Ersteller {c}"
               if c:
                   from bot.sources.solana_rpc import ATA_PROGRAM, TOKEN_PROGRAMS
