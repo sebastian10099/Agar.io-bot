@@ -37,10 +37,24 @@ nutzt denselben), weicht er automatisch auf den nächsten freien aus und
 nennt die Adresse im Log. Die App erkennt den eigenen Bot an einer
 Kennung in `/api/state` und öffnet nie die Seite eines fremden Programms.
 
-**Aktualisieren** geht direkt von der Steuerseite: Knopf „Aktualisieren &
-neu starten“ auf der Paper-Konto-Karte (erscheint, wenn das Programm über
-`get.sh` installiert wurde). Er lädt die neueste Version, der Bot beendet
-sich, die App startet ihn neu; Protokoll in `update.log` im Datenordner.
+**Aktualisieren geht von selbst:** Ist das Programm über `get.sh`
+installiert (`~/NewTokenBot/src`), holt die App bei jedem Doppelklick zuerst
+die neueste Version – ohne Internet startet nach spätestens 90 Sekunden die
+vorhandene. Läuft der Bot, schaut er alle 30 Minuten auf GitHub nach einer
+neuen Version (`get.sh` merkt sich die installierte in `.version`) und
+spielt sie selbst ein: kurzer Neustart, Konto und Einstellungen bleiben.
+Die Steuerseite zeigt die Version neben dem Update-Knopf. Abschalten:
+Einstellung „Automatisch aktualisieren“ (Allgemein), beim Start
+`NEW_TOKEN_BOT_NO_UPDATE=1`. Läuft der Bot schon, geht es auch von der
+Steuerseite: Knopf „Aktualisieren & neu starten“ auf der Paper-Konto-Karte;
+der Bot beendet sich, die App startet ihn neu. Protokoll in `update.log`
+im Datenordner. Eine App von vor diesem Stand muss das einmal noch selbst
+tun (Knopf oder Einzeiler).
+
+**Paper-Live in der App:** Der Knopf **Paper-Live** oben öffnet den Test,
+der auf GitHub mit Spielgeld läuft (eigenes Konto), unter `/live` – die App
+holt die Seite selbst, auch wenn github.io sie nicht ausliefert. Sie läuft
+abgeschottet: ohne Skripte und ohne Zugriff auf den Bot.
 
 **Die App** (`New Token Bot.app`) startet den Bot im Hintergrund, öffnet die
 Steuerseite im Browser und beendet sich über den Knopf **Beenden** oben

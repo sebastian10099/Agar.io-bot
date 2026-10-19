@@ -69,6 +69,7 @@
   .btn.danger { color:var(--red); border-color:color-mix(in srgb, var(--red) 40%, var(--line)); }
   .btn.sm { padding:4px 9px; font-size:12px; border-radius:6px; }
   select.btn { padding-right:28px; appearance:auto; min-width:160px; }
+  a.btn { color:inherit; text-decoration:none; display:inline-block; }
 
   nav { display:flex; gap:2px; padding:0 20px; border-top:1px solid var(--line); overflow-x:auto; }
   nav button { background:none; border:0; border-bottom:2px solid transparent; padding:10px 12px;
@@ -236,6 +237,7 @@
     <div class="actions">
       <button class="btn" id="b-help" title="Hilfe und Tastenkürzel (Taste ?)" aria-label="Hilfe">?</button>
       <button class="btn" id="b-notify" aria-pressed="false">🔔</button>
+      <a class="btn" id="b-live" href="/live" target="_blank" rel="noopener" title="Der Test auf GitHub: derselbe Bot mit Spielgeld, eigenes Konto">Paper-Live</a>
       <button class="btn" id="b-poll" title="Sofort neue Tokens holen (Taste r)">Jetzt pollen</button>
       <button class="btn primary" id="b-toggle" title="Taste p">Pause</button>
       <button class="btn" id="b-quit" title="Bot und Steuerseite beenden">Beenden</button>
@@ -337,6 +339,7 @@
         <button class="btn danger" id="b-reset-all">Alles zurücksetzen (inkl. Edge-Daten)</button>
         <button class="btn" id="b-diag" title="Zustand, Quellen, Konfiguration und Protokoll als Text – zum Einfügen in eine Nachricht">Diagnose kopieren</button>
         <button class="btn" id="b-update" hidden title="Neue Version laden, Bot neu starten">Aktualisieren &amp; neu starten</button>
+        <span class="status" id="build"></span>
       </div>
       <p class="note">Aktuell <b id="k-initial">–</b> Startkapital · läuft seit <b id="k-uptime">–</b> · Polls <b id="k-polls">–</b> · Ø Poll-Dauer <b id="k-pollms">–</b> · Fehler <b id="k-errors">–</b></p>
       <p class="note">Export (CSV, Semikolon, für Excel/Numbers): <a href="/api/export/positions.csv" download="positionen.csv">Positionen</a> · <a href="/api/export/trades.csv" download="trades.csv">Fills</a> · <a href="/api/export/candidates.csv" download="kandidaten.csv">Kandidaten mit Kennzahlen</a></p>
@@ -818,6 +821,7 @@ function paintPollClock() {
 setInterval(() => { if (!document.hidden) paintPollClock(); }, 1000);
 function renderHeader(s) {
   $('b-update').hidden = !s.can_update;
+  $('build').textContent = s.build ? `Version ${s.build}` + (s.can_update && s.config && s.config.auto_update !== false ? ' · aktualisiert sich selbst' : '') : '';
   $('mode').textContent = s.demo ? s.mode + ' · Demo' : s.mode; $('mode').title = s.demo ? 'Demo-Markt: simulierte Tokens, keine echten Kursseiten' : '';
   $('paused').hidden = !s.paused;
   $('b-toggle').textContent = s.paused ? 'Fortsetzen' : 'Pause';

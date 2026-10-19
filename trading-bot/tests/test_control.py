@@ -4,6 +4,7 @@ import json
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from bot import settings
@@ -318,6 +319,28 @@ class ControlApiTests(unittest.TestCase):
                        headers={"Content-Type": "application/json"})
         r = self.c.getresponse()
         return r.status, json.loads(r.read())
+
+    def test_the_paper_live_page_is_shown_sandboxed(self):
+        """/live shows the GitHub test's page inside the app - with a way back, without scripts
+        and in its own origin, so a page from elsewhere can never steer the bot."""
+        from bot import livepage
+        livepage._cache.update(at=0.0, body=b"")
+        self.addCleanup(livepage._cache.update, at=0.0, body=b"")
+        sample = b"<html><body><main><h1>Paper-Live</h1></main></body></html>"
+        with mock.patch.object(livepage, "_fetch", lambda url: sample):
+            self.c.request("GET", "/live")
+            r = self.c.getresponse(); body = r.read()
+        self.assertEqual(r.status, 200)
+        self.assertIn(b"zur\xc3\xbcck zur Steuerung", body); self.assertIn(b"<h1>Paper-Live</h1>", body)
+        csp = r.getheader("Content-Security-Policy") or ""
+        self.assertTrue(csp.startswith("sandbox"), csp); self.assertNotIn("allow-scripts", csp)
+        self.assertNotIn("allow-same-origin", csp)
+        livepage._cache.update(at=0.0)                                         # GitHub gone: the last good page
+        def down(url): raise OSError("offline")
+        self.assertIn(b"<h1>Paper-Live</h1>", livepage.page(fetch=down))
+        livepage._cache.update(at=0.0, body=b"")                               # never fetched: says why
+        self.assertIn("nicht erreichbar", livepage.page(fetch=down).decode("utf-8"))
+        self.assertIn("nicht erreichbar", livepage.page(fetch=lambda url: b"404: Not Found").decode("utf-8"))
 
     def test_schema_config_defaults(self):
         status, schema = self.call("GET", "/api/schema")

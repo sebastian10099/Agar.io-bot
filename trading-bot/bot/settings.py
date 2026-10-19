@@ -21,6 +21,10 @@ SCHEMA: list[dict[str, Any]] = [
      "options": [["dexscreener", "DexScreener"], ["geckoterminal", "GeckoTerminal"], ["pumpfun", "pump.fun"]],
      "help": "Woher neue Tokens kommen. DexScreener liefert immer die Kennzahlen; GeckoTerminal sieht frische Pools früher; pump.fun meldet Solana-Starts Sekunden nach der Erstellung (inoffizielle API, kann ausfallen). Status unten unter „Quellen“."},
 
+    {"path": "auto_update", "type": "bool", "label": "Automatisch aktualisieren", "group": "Allgemein",
+     "help": "Alle 30 Minuten nach einer neuen Version schauen und sie selbst einspielen; der Bot startet dafür "
+             "kurz neu, Konto und Einstellungen bleiben. Nur bei einer Installation über get.sh auf dem Mac."},
+
     {"path": "risk_per_trade_pct", "type": "float", "min": 0.1, "max": 10, "step": 0.1,
      "label": "Risiko pro Trade", "unit": "%", "group": "Risiko",
      "help": "Anteil der Bankroll, der bei einem Stop-Loss verloren geht. Positionsgröße = Risiko ÷ Stop-Abstand."},

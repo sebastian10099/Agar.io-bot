@@ -754,6 +754,12 @@ class Engine:
         result["horizons"] = horizons
         return result
 
+    def _build(self) -> str:
+        """The installed commit (get.sh writes it), shortened; "" for a clone or the demo."""
+        from pathlib import Path as _P
+        from . import updater
+        return updater.installed_version(_P(__file__).resolve().parent.parent)[:7]
+
     def _can_update(self) -> bool:
         from pathlib import Path as _P
         from . import updater
@@ -816,6 +822,7 @@ class Engine:
             "edge_ai": self._report("edge_ai", lambda: self.store.edge_report("ai_decision")),
             "edge_source": self._report("edge_source", lambda: self.store.edge_report("source")),
             "version": VERSION,
+            "build": self._build(),
             "ai": self.advisor.status(),
             "sources": self.discovery.status(),
             "exits_by_reason": self._report("exits", self.store.exit_breakdown),

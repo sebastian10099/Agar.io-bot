@@ -11,6 +11,7 @@
     ]
   },
   "poll_seconds": 10,
+  "auto_update": true,
   "bankroll_usd": 1000,
   "risk_per_trade_pct": 1.0,
   "max_open_positions": 5,

@@ -46,6 +46,18 @@ if [ -z "$PORT" ]; then
 fi
 URL="http://127.0.0.1:$PORT/"
 
+# Installed with get.sh (~/NewTokenBot/src): fetch the newest version before every start,
+# so a double click always runs the current one. No internet (or GitHub slow): after at most
+# 90 s the version already there starts. NEW_TOKEN_BOT_NO_UPDATE=1 turns this off.
+if [ "$PROJECT" = "$HOME/NewTokenBot/src" ] && [ -f "$PROJECT/get.sh" ] && [ -z "${NEW_TOKEN_BOT_NO_UPDATE:-}" ]; then
+  /usr/bin/osascript -e 'display notification "Neueste Version wird geladen …" with title "New Token Bot"' >/dev/null 2>&1
+  GET="$DATA/get.sh"; cp "$PROJECT/get.sh" "$GET"              # get.sh replaces the folder it lies in
+  { echo "=== Start-Update $(date) ==="
+    NEW_TOKEN_BOT_SKIP_APP=1 /usr/bin/perl -e 'alarm 90; exec @ARGV' /bin/bash "$GET" < /dev/null \
+      && echo "aktuell" || echo "Update nicht moeglich - die vorhandene Version startet"
+  } >> "$DATA/update.log" 2>&1
+fi
+
 if [ ! -f "$PROJECT/launch.sh" ]; then
   say_error "Projektordner nicht gefunden: $PROJECT. Bitte install-app.sh im Ordner trading-bot erneut ausfuehren."
   exit 1

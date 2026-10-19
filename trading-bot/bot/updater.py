@@ -48,3 +48,68 @@ def start_update(project: Path, port: int, runner: Optional[Callable[..., Any]] 
     except OSError as error:
         return {"ok": False, "error": f"Aktualisierung ließ sich nicht starten: {error}"}
     return {"ok": True, "detail": "Neue Version wird geladen; der Bot beendet sich gleich und die App startet ihn neu. Log: ~/Library/Application Support/NewTokenBot/update.log"}
+
+
+# --- automatic updates ---------------------------------------------------------------
+# get.sh writes the commit it installed to .version (GitHub puts it in the archive). The
+# running bot asks GitHub every CHECK_EVERY_S for the branch's newest commit and, when it
+# differs, updates itself the same way as the button: positions and settings stay.
+REPO = "sebastian10099/Agar.io-bot"
+BRANCH = "claude/agenen-funktionalitaet-hnw6g5"
+CHECK_EVERY_S = 30 * 60
+FIRST_CHECK_S = 5 * 60
+
+
+def installed_version(project: Path) -> str:
+    try:
+        sha = (project / ".version").read_text().strip()
+    except OSError:
+        return ""
+    return sha if len(sha) == 40 and all(c in "0123456789abcdef" for c in sha) else ""
+
+
+def latest_version(fetch: Optional[Callable[[str], str]] = None) -> str:
+    """The branch's newest commit, "" when GitHub does not answer."""
+    url = f"https://api.github.com/repos/{REPO}/commits/{BRANCH}"
+    try:
+        if fetch is not None:
+            sha = fetch(url)
+        else:
+            import urllib.request
+            from .sources.http import ssl_context
+            req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.sha",
+                                                       "User-Agent": "new-token-bot/0.1"})
+            with urllib.request.urlopen(req, timeout=15, context=ssl_context()) as r:
+                sha = r.read(100).decode("ascii", "replace")
+    except Exception:  # noqa: BLE001 - offline or rate-limited: try again next time
+        return ""
+    sha = sha.strip()
+    return sha if len(sha) == 40 and all(c in "0123456789abcdef" for c in sha) else ""
+
+
+def newer_version(project: Path, fetch: Optional[Callable[[str], str]] = None) -> str:
+    """The newer commit to install, or "" (none, unknown, or not an installation get.sh made)."""
+    mine = installed_version(project)
+    if not mine or not available(project):
+        return ""
+    latest = latest_version(fetch)
+    return latest if latest and latest != mine else ""
+
+
+def watch(engine: Any, project: Path, port: int, wait: Callable[[float], bool],
+          fetch: Optional[Callable[[str], str]] = None, runner: Optional[Callable[..., Any]] = None) -> None:
+    """Background loop: `wait(seconds)` returns True when the bot is shutting down."""
+    delay = FIRST_CHECK_S
+    while not wait(delay):
+        delay = CHECK_EVERY_S
+        if not engine.cfg.get("auto_update", True):
+            continue
+        sha = newer_version(project, fetch)
+        if not sha:
+            continue
+        engine.store.log("info", f"Neue Version {sha[:7]} – aktualisiere mich selbst, Konto und Einstellungen bleiben")
+        result = start_update(project, port, runner)
+        if result["ok"]:
+            engine.stop()
+            return
+        engine.store.log("warn", f"Automatisches Update ging nicht: {result.get('error')}")

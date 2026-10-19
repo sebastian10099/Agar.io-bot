@@ -202,6 +202,12 @@ def main(argv: list[str] = None) -> int:
     threading.Thread(target=server.serve_forever, daemon=True, name="dashboard").start()
     thread = threading.Thread(target=engine.run, daemon=True, name="engine")
     thread.start()
+    if not args.demo:
+        from . import updater
+        project = Path(__file__).resolve().parent.parent
+        if updater.installed_version(project) and updater.available(project):
+            threading.Thread(target=updater.watch, args=(engine, project, port, lambda s: not thread.is_alive() or engine._stop.wait(s)),
+                             daemon=True, name="auto-update").start()
 
     url = f"http://{host}:{port}/"
     print(f"Dashboard: {url}   (Daten in {home})   Ctrl+C beendet.")

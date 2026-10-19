@@ -161,6 +161,15 @@ jobs:
           perl -e 'alarm 300; exec @ARGV' /bin/bash "$APP/Contents/MacOS/New Token Bot" || { cat "$LOG" 2>/dev/null; exit 1; }
           curl -s -m 5 http://127.0.0.1:8794/api/state | grep -q '"app": "new-token-bot"' || { cat "$LOG"; exit 1; }
           echo "Einzeiler: App vom Schreibtisch hat den Bot gestartet"
+          # the double click fetched the newest version first (installed with get.sh)
+          cat "$HOME/Library/Application Support/NewTokenBot/update.log"
+          grep -q "^aktuell" "$HOME/Library/Application Support/NewTokenBot/update.log"
+          test -f "$HOME/NewTokenBot/src/bot/main.py"
+          # the Paper-Live test inside the app, sandboxed
+          curl -s -m 20 -D live.head -o live.html http://127.0.0.1:8794/live
+          grep -qi "content-security-policy: sandbox" live.head
+          grep -q "zurück zur Steuerung" live.html
+          grep -q "Paper-Live" live.html && echo "Paper-Live-Seite in der App: ok" || echo "Paper-Live-Seite: GitHub nicht erreichbar (Hinweis angezeigt)"
           curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8794/api/quit
       - name: RugCheck erreichbar? (Diagnose)
         continue-on-error: true

@@ -9,7 +9,7 @@ import threading
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from . import settings
 from .ai import start_login, store_key
@@ -56,11 +56,13 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
         def log_message(self, *_args: Any) -> None:  # silence per-request logging
             pass
 
-        def _send(self, status: int, body: bytes, ctype: str) -> None:
+        def _send(self, status: int, body: bytes, ctype: str, headers: Optional[dict[str, str]] = None) -> None:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(body)
 
@@ -143,6 +145,9 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
         def _get(self) -> None:
             if self.path in ("/", "/index.html"):
                 self._send(200, (WEB / "index.html").read_bytes(), "text/html; charset=utf-8")
+            elif self.path == "/live":
+                from . import livepage
+                self._send(200, livepage.page(), "text/html; charset=utf-8", {"Content-Security-Policy": livepage.CSP})
             elif self.path == "/api/state":
                 self._json(engine.state())
             elif self.path == "/api/schema":

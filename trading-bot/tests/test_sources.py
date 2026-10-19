@@ -553,6 +553,38 @@ class UpdaterTests(unittest.TestCase):
                 self.assertEqual(cmd[:2], ["/bin/bash", "-c"]); self.assertIn("get.sh", cmd[2]); self.assertIn("New Token Bot.app", cmd[2])
                 self.assertEqual((env["PROJECT"], env["PORT"]), (str(proj), "8770"))
 
+    def test_a_new_version_on_github_updates_the_running_bot(self):
+        """The installed commit (.version from get.sh) against GitHub's newest: only a different,
+        well-formed one starts the update; offline, a clone or switched off, nothing happens."""
+        from bot import updater
+        from unittest import mock
+        mine, newer = "a" * 40, "b" * 40
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"NEW_TOKEN_BOT_ALLOW_UPDATE": "1"}):
+            proj = Path(d)
+            (proj / "get.sh").write_text("#!/bin/bash\n")
+            self.assertEqual(updater.newer_version(proj, fetch=lambda url: newer), "")          # a clone: no .version
+            (proj / ".version").write_text(mine + "\n")
+            self.assertEqual(updater.installed_version(proj), mine)
+            self.assertEqual(updater.newer_version(proj, fetch=lambda url: newer + "\n"), newer)
+            self.assertEqual(updater.newer_version(proj, fetch=lambda url: mine), "")            # up to date
+            self.assertEqual(updater.newer_version(proj, fetch=lambda url: '{"message": "rate limit"}'), "")
+            def offline(url): raise OSError("no network")
+            self.assertEqual(updater.newer_version(proj, fetch=offline), "")
+
+            class Eng:
+                def __init__(self, on): self.cfg, self.stopped, self.logs = {"auto_update": on}, False, []
+                def stop(self): self.stopped = True
+                store = None
+            for on in (True, False):
+                eng = Eng(on)
+                eng.store = type("S", (), {"log": lambda _s, level, msg: eng.logs.append(msg)})()
+                ran, waits = [], iter([False, False, True])
+                updater.watch(eng, proj, 8765, wait=lambda s: next(waits), fetch=lambda url: newer,
+                              runner=lambda cmd, env: ran.append(env["PORT"]))
+                self.assertEqual((eng.stopped, bool(ran)), (on, on), on)
+                if on:
+                    self.assertIn("bbbbbbb", eng.logs[0])
+
     def test_update_route_without_get_sh_is_400_and_state_flag(self):
         from bot.server import make_server
         import http.client, threading
