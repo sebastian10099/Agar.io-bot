@@ -1064,3 +1064,63 @@ class NumberMessageTests(unittest.TestCase):
             self.assertIn("poll_seconds", errors, raw)
             self.assertIn(errors["poll_seconds"], ("keine Zahl",), (raw, errors))
         self.assertEqual(settings.validate({"poll_seconds": "12,0"})[0]["poll_seconds"], 12)
+
+
+class TrackerBatchTests(unittest.TestCase):
+    """The edge report is only as honest as the outcome tracking behind it."""
+
+    def make(self, prices_of, price_of=lambda chain, pair: None):
+        from bot.tracker import Tracker
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.store = Store(Path(self.tmp.name) / "t.sqlite"); self.addCleanup(self.store.close)
+        return Tracker(self.store, CFG, price_of, prices_of)
+
+    def add(self, tracker, i, seen_at=1000.0, chain="solana"):
+        return tracker.record({"seen_at": seen_at, "chain": chain, "token": f"T{i}", "pair": f"P{i}", "symbol": f"S{i}",
+                               "price_usd": 1.0, "score": 50, "decision": "skip", "reasons": [], "snapshot": {}})
+
+    def test_a_busy_poll_is_measured_on_time_in_few_requests(self):
+        calls = []
+        def prices_of(chain, pairs):
+            calls.append(len(pairs)); return {p: 1.5 for p in pairs}
+        tr = self.make(prices_of)
+        for i in range(40):
+            self.add(tr, i)
+        filled = tr.fill_due(now=1000.0 + 61 * 60)
+        self.assertEqual(filled, 120)                                  # 40 candidates x 3 horizons, no backlog
+        self.assertLessEqual(len(calls), 2); self.assertTrue(all(n <= 30 for n in calls))
+        self.assertEqual(self.store._one("SELECT COUNT(*) AS n FROM outcomes WHERE filled_at IS NULL")["n"], 0)
+
+    def test_a_vanished_pair_counts_as_a_total_loss(self):
+        def prices_of(chain, pairs):
+            return {p: 2.0 for p in pairs if p != "P1"}                # P1 was pulled; the rest is priced
+        tr = self.make(prices_of)
+        self.add(tr, 0); c1 = self.add(tr, 1)
+        tr.fill_due(now=1000.0 + 6 * 60)                               # 5-min outcome just due: give it a moment
+        row = self.store._one("SELECT * FROM outcomes WHERE candidate_id=? AND horizon_min=5", (c1,))
+        self.assertIsNone(row["filled_at"])
+        tr.fill_due(now=1000.0 + 16 * 60)                              # 10 min later still nothing: gone
+        row = self.store._one("SELECT * FROM outcomes WHERE candidate_id=? AND horizon_min=5", (c1,))
+        self.assertEqual(row["change_pct"], -100.0)
+        rep = {(r["horizon_min"], r["decision"]): r for r in self.store.edge_report()}
+        self.assertEqual(rep[(5, "skip")]["n"], 2)                     # the loss is in the statistics now
+        self.assertAlmostEqual(rep[(5, "skip")]["avg_change_pct"], (100.0 - 100.0) / 2)
+
+    def test_an_outage_is_never_booked_as_a_loss(self):
+        tr = self.make(lambda chain, pairs: {})                        # DexScreener answers nothing at all
+        cid = self.add(tr, 0)
+        tr.fill_due(now=1000.0 + 30 * 60)
+        self.assertIsNone(self.store._one("SELECT filled_at FROM outcomes WHERE candidate_id=? AND horizon_min=5", (cid,))["filled_at"])
+        tr.fill_due(now=1000.0 + 70 * 60)                              # an hour past due: give up as unknown
+        row = self.store._one("SELECT * FROM outcomes WHERE candidate_id=? AND horizon_min=5", (cid,))
+        self.assertIsNotNone(row["filled_at"]); self.assertIsNone(row["change_pct"])
+
+    def test_without_a_batch_source_single_lookups_still_work(self):
+        from bot.tracker import Tracker
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite")
+            tr = Tracker(store, CFG, lambda chain, pair: 3.0)
+            tr.record({"seen_at": 0.0, "chain": "solana", "token": "t", "pair": "p", "symbol": "T", "price_usd": 1.0,
+                       "score": 1, "decision": "buy", "reasons": [], "snapshot": {}})
+            self.assertEqual(tr.fill_due(now=61 * 60.0), 3)
+            store.close()

@@ -111,6 +111,14 @@ class FakeDex:
         p = self.pair(chain, pair_address)
         return p["price_usd"] if p else None
 
+    def prices(self, chain: str, pair_addresses: list[str]) -> dict[str, float]:
+        out = {}
+        for pair in pair_addresses:
+            price = self.price(chain, pair)
+            if price:
+                out[pair] = price
+        return out
+
 
 class FakeRug:
     def __init__(self) -> None:

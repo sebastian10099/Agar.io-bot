@@ -82,6 +82,18 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
         return _parsed(dex.pairs_for_tokens(chain, addrs))
     out.append(_check("DexScreener – Paare & Parser", dex_pairs))
 
+    if hasattr(dex, "prices"):
+        def dex_batch() -> str:
+            addrs = (found.get(chain) or [])[:8]
+            pairs = [p["pair"] for p in dex.pairs_for_tokens(chain, addrs)] if addrs else []
+            if len(pairs) < 2:
+                raise RuntimeError("übersprungen – weniger als zwei Paare zum Prüfen")
+            got = dex.prices(chain, pairs[:5])
+            if not got:
+                raise RuntimeError("Sammelabfrage lieferte keinen Kurs – Endpunkt geändert?")
+            return f"{len(got)} von {min(5, len(pairs))} Paaren in einer Abfrage bepreist"
+        out.append(_check("DexScreener – Sammelkurse (Tracker)", dex_batch))
+
     gecko = feeds.get("geckoterminal")
     if gecko is not None:
         def gecko_pools() -> str:

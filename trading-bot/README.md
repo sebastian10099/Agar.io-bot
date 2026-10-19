@@ -286,6 +286,14 @@ Bei einem allgemeinen Ausfall passiert das nicht.
 
 ## Der Edge-Report — der wichtigste Teil
 
+**Ehrliche Messung:** Kurse für fällige Ergebnisse werden gesammelt abgefragt
+(bis zu 30 Paare pro Anfrage), damit auch bei vielen Kandidaten jeder Wert
+pünktlich gemessen wird. Ein Paar, das nicht mehr bepreist wird, während die
+anderen Kurse kommen, wurde entfernt (Rug) und zählt als **−100 %** – sonst
+würden gerade die Totalverluste aus der Statistik fallen. Bei einem
+allgemeinen Ausfall wird dagegen nie ein Verlust gebucht, sondern nach einer
+Stunde „unbekannt“.
+
 Der Tracker merkt sich **jeden** bewerteten Token, auch die abgelehnten, und
 holt nach 5, 15 und 60 Minuten den Kurs. Das Dashboard zeigt dann pro
 Entscheidung die durchschnittliche Vorwärtsrendite:

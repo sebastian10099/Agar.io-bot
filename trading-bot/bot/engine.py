@@ -63,7 +63,7 @@ class Engine:
         self.discovery = Discovery(cfg, feeds if feeds is not None else {"dexscreener": DexScreenerFeed(dex)}, log=store.log)
         self.advisor = advisor or ClaudeAdvisor(cfg, log=store.log)
         self.paper = Paper(store, cfg)
-        self.tracker = Tracker(store, cfg, dex.price)
+        self.tracker = Tracker(store, cfg, dex.price, getattr(dex, "prices", None))
         self.paused = False
         self.last_poll: Optional[float] = None
         self.last_poll_wall: Optional[float] = None   # real time, for the liveness indicator

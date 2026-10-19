@@ -159,7 +159,7 @@ class Store:
 
     def due_outcomes(self, now: float, limit: int = 30) -> list[dict[str, Any]]:
         return self._rows(
-            "SELECT o.candidate_id, o.horizon_min, c.chain, c.token, c.pair, c.price_usd "
+            "SELECT o.candidate_id, o.horizon_min, o.due_at, c.chain, c.token, c.pair, c.price_usd "
             "FROM outcomes o JOIN candidates c ON c.id = o.candidate_id "
             "WHERE o.filled_at IS NULL AND o.due_at <= ? ORDER BY o.due_at LIMIT ?",
             (now, limit))

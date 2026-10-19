@@ -112,6 +112,19 @@ class DexScreener:
         pairs = (data or {}).get("pairs") or []
         return normalize_pair(pairs[0]) if pairs else None
 
+    def prices(self, chain: str, pair_addresses: list[str]) -> dict[str, float]:
+        """Current price for up to 30 pairs in one request: {pair address: price}.
+        Pairs missing from the answer are simply absent (pulled or unknown)."""
+        out: dict[str, float] = {}
+        for i in range(0, len(pair_addresses), 30):
+            chunk = pair_addresses[i:i + 30]
+            data = self.fetch(f"{BASE}/latest/dex/pairs/{chain}/{','.join(chunk)}")
+            for raw in (data or {}).get("pairs") or []:
+                n = normalize_pair(raw)
+                if n["pair"] and n["price_usd"] > 0:
+                    out[n["pair"]] = n["price_usd"]
+        return out
+
     def price(self, chain: str, pair_address: str) -> Optional[float]:
         p = self.pair(chain, pair_address)
         return p["price_usd"] if p and p["price_usd"] > 0 else None
