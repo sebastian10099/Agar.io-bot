@@ -1233,6 +1233,81 @@ class AuditTests(unittest.TestCase):
             self.assertTrue(next(c for c in checks if c["name"].startswith("kein Kauf"))["ok"])  # Claude's words are no rule reason
 
 
+class EngineSafetyTests(unittest.TestCase):
+    """Faults found by a review, each with the case that proved it."""
+
+    def setUp(self):
+        import bot.demo as demo
+        cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
+
+    def engine(self, dex, t, feeds=None, cfg=None, store=None, d=None):
+        store = store or Store(Path(d) / "t.sqlite")
+        return Engine(cfg or copy.deepcopy(CFG), store, dex, FakeRug(), clock=lambda: t[0], feeds=feeds or demo_feeds(dex)), store
+
+    def test_a_dexscreener_outage_never_writes_a_position_off(self):
+        with tempfile.TemporaryDirectory() as d:
+            dex = FakeDex(accel=1.0); t = [dex.started]
+            run = next(p for p in dex.pairs_for_tokens("solana", dex.recent_token_addresses(["solana"])["solana"]) if p["symbol"] == "RUN")
+            eng, store = self.engine(dex, t, d=d)
+            pid = eng.paper.open(run, t[0])
+            dex.prices = lambda chain, pairs, follow=None: {}                       # DexScreener is down ...
+            dex.pairs_for_tokens = lambda chain, addrs: []
+            feed = StubFeed({"solana": [{"token": "GeckoMint", "snapshot": dict(run, token="GeckoMint", pair="GeckoPool", age_min=0.5)}]})
+            eng.discovery.feeds = {"gecko": feed}; eng.cfg["discovery"]["sources"] = ["gecko"]   # ... while a feed answers
+            for _ in range(8):
+                t[0] += 10 * 60; eng.poll_once()
+            self.assertEqual(store.position(pid)["status"], "open")
+            store.close()
+
+    def test_a_restart_does_not_write_off_a_position_it_was_not_watching(self):
+        with tempfile.TemporaryDirectory() as d:
+            dex = FakeDex(accel=1.0); t = [dex.started]
+            pairs = {p["symbol"]: p for p in dex.pairs_for_tokens("solana", dex.recent_token_addresses(["solana"])["solana"])}
+            eng, store = self.engine(dex, t, d=d)
+            eng.paper.open(pairs["RUN"], t[0])
+            b = eng.paper.open(pairs["DUMP"], t[0])
+            t[0] += 100 * 60                                                        # the bot was off for 100 minutes
+            orig = dex.prices
+            dex.prices = lambda chain, ps, follow=None: {p: v for p, v in orig(chain, ps, follow).items() if p != pairs["DUMP"]["pair"]}
+            eng2 = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=lambda: t[0], feeds=demo_feeds(dex))
+            eng2.poll_once()                                                        # DUMP misses one answer, RUN is priced
+            self.assertNotEqual(store.position(b)["exit_reason"], "no_price")
+            store.close()
+
+    def test_a_write_off_is_a_total_loss_however_small_the_price(self):
+        with tempfile.TemporaryDirectory() as d:
+            dex = FakeDex(accel=1.0); t = [dex.started]
+            run = next(p for p in dex.pairs_for_tokens("solana", dex.recent_token_addresses(["solana"])["solana"]) if p["symbol"] == "RUN")
+            eng, store = self.engine(dex, t, d=d)
+            eng.paper.open(run, t[0])
+            tiny = eng.paper.open({"chain": "solana", "token": "TinyMint", "pair": "TinyPool", "symbol": "TINY", "price_usd": 1e-13}, t[0])
+            for _ in range(9):                                                      # TINY is never priced again, RUN is
+                t[0] += 10 * 60; eng.poll_once()
+            pos = store.position(tiny)
+            self.assertEqual(pos["exit_reason"], "no_price")
+            self.assertLess(pos["realized_usd"], -pos["size_usd"] * 0.99)          # a total loss, not a gain
+            store.close()
+
+    def test_editing_the_ladder_never_sells_a_rung_twice(self):
+        from bot.paper import Paper
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); cfg = copy.deepcopy(CFG)
+            cfg["exits"]["take_profit_ladder"] = [[50, 0.5], [100, 0.25]]
+            paper = Paper(store, cfg)
+            pid = paper.open({"chain": "solana", "token": "T", "pair": "P", "symbol": "T", "price_usd": 1.0}, 0.0)
+            entry = store.position(pid)["entry_price"]
+            paper.update(store.open_positions()[0], entry * 1.6, 10.0)              # +60 %: the 50 % rung sells half
+            self.assertAlmostEqual(store.position(pid)["remaining_frac"], 0.5)
+            cfg["exits"]["take_profit_ladder"] = [[30, 0.2], [50, 0.5], [100, 0.25]]   # a rung added while open
+            paper.update(store.open_positions()[0], entry * 1.6, 20.0)
+            self.assertAlmostEqual(store.position(pid)["remaining_frac"], 0.3)       # only the new 30 % rung, not 50 % again
+            legacy = paper.open({"chain": "solana", "token": "U", "pair": "Q", "symbol": "U", "price_usd": 1.0}, 0.0)
+            store.update_position(legacy, ladder_done="[1]")                       # an old record: the rung's index
+            self.assertEqual(paper.rungs_done(store.position(legacy)), {50.0})
+            store.close()
+
+
 class CashTests(unittest.TestCase):
     def test_cash_never_goes_negative_when_the_book_fills_up(self):
         from bot.paper import Paper
@@ -1355,9 +1430,9 @@ class TrackerBatchTests(unittest.TestCase):
         tr = self.make(prices_of)
         for i in range(40):
             self.add(tr, i)
-        filled = tr.fill_due(now=1000.0 + 61 * 60)
+        filled = sum(tr.fill_due(now=1000.0 + minute * 60 + 5) for minute in (5, 15, 60))
         self.assertEqual(filled, 120)                                  # 40 candidates x 3 horizons, no backlog
-        self.assertLessEqual(len(calls), 2); self.assertTrue(all(n <= 30 for n in calls))
+        self.assertLessEqual(len(calls), 6); self.assertTrue(all(n <= 30 for n in calls))   # 2 requests per horizon
         self.assertEqual(self.store._one("SELECT COUNT(*) AS n FROM outcomes WHERE filled_at IS NULL")["n"], 0)
 
     def test_a_vanished_pair_counts_as_a_total_loss(self):
@@ -1375,6 +1450,21 @@ class TrackerBatchTests(unittest.TestCase):
         self.assertEqual(rep[(5, "skip")]["n"], 2)                     # the loss is in the statistics now
         self.assertAlmostEqual(rep[(5, "skip")]["avg_change_pct"], (100.0 - 100.0) / 2)
 
+    def test_a_failed_request_is_never_booked_as_a_rug(self):
+        """60 pairs go out in two requests; one fails. Its 30 pairs are unknown, not pulled."""
+        def prices_of(chain, pairs, follow=None):
+            if "P0" in pairs:
+                raise OSError("timeout")
+            return {p: 2.0 for p in pairs}
+        tr = self.make(prices_of)
+        ids = [self.add(tr, i) for i in range(60)]
+        tr.fill_due(now=1000.0 + 16 * 60)                              # the 5-min outcomes are 11 min overdue
+        rugs = self.store._one("SELECT COUNT(*) AS n FROM outcomes WHERE change_pct = -100")["n"]
+        self.assertEqual(rugs, 0)
+        open_ = self.store._one("SELECT COUNT(*) AS n FROM outcomes WHERE horizon_min=5 AND filled_at IS NULL")["n"]
+        self.assertEqual(open_, 30)                                    # tried again next poll
+        self.assertEqual(len(ids), 60)
+
     def test_an_outage_is_never_booked_as_a_loss(self):
         tr = self.make(lambda chain, pairs: {})                        # DexScreener answers nothing at all
         cid = self.add(tr, 0)
@@ -1391,7 +1481,7 @@ class TrackerBatchTests(unittest.TestCase):
             tr = Tracker(store, CFG, lambda chain, pair: 3.0)
             tr.record({"seen_at": 0.0, "chain": "solana", "token": "t", "pair": "p", "symbol": "T", "price_usd": 1.0,
                        "score": 1, "decision": "buy", "reasons": [], "snapshot": {}})
-            self.assertEqual(tr.fill_due(now=61 * 60.0), 3)
+            self.assertEqual(sum(tr.fill_due(now=minute * 60 + 5.0) for minute in (5, 15, 60)), 3)
             store.close()
 
 
@@ -1867,9 +1957,9 @@ class GraduationTests(unittest.TestCase):
             if "/latest/dex/pairs/" in url:
                 wanted = url.rsplit("/", 1)[1].split(",")
                 return {"pairs": [p for p in pairs if p["pairAddress"] in wanted]}
-            if "/tokens/v1/" in url:
-                wanted = url.rsplit("/", 1)[1].split(",")
-                return [p for p in pairs if p["baseToken"]["address"] in wanted]
+            if "/tokens/v1/" in url:                       # every pair the token is part of, either side
+                wanted = [w.lower() for w in url.rsplit("/", 1)[1].split(",")]   # the real API ignores 0x case
+                return [p for p in pairs if p["baseToken"]["address"].lower() in wanted or p["quoteToken"]["address"].lower() in wanted]
             return []
         return fetch, calls
 
@@ -1920,6 +2010,54 @@ class GraduationTests(unittest.TestCase):
         fetch, _ = self.fake_http([dbc, rogue])
         self.assertAlmostEqual(DexScreener(fetch=fetch).prices("solana", ["Dbc8"], {"Dbc8": "Mint8"})["Dbc8"], 0.001)
 
+    def test_a_price_always_belongs_to_the_token_held(self):
+        """Live data showed outcomes of +9,000,000 % in 15 minutes: a pool listing the token
+        on its quote side reports the OTHER token's price (here a dollar coin at 0.96)."""
+        from bot.sources.dexscreener import DexScreener
+        usd = {"address": "USD1mint", "symbol": "USD1"}
+        inverted = {"chainId": "solana", "dexId": "pumpswap", "pairAddress": "Inv9", "url": "https://dexscreener.com/solana/inv9",
+                    "baseToken": usd, "quoteToken": {"address": "Mint9", "symbol": "TRUMP"},
+                    "priceUsd": "0.96", "priceNative": str(0.96 / 1e-5), "liquidity": {"usd": 30000},
+                    "txns": {"m5": {"buys": 3, "sells": 1}}, "volume": {"m5": 100}, "priceChange": {"m5": 0},
+                    "pairCreatedAt": 1_799_990_000_000}
+        fetch, _ = self.fake_http([inverted])
+        dex = DexScreener(fetch=fetch)
+        self.assertAlmostEqual(dex.prices("solana", ["Inv9"], {"Inv9": "Mint9"})["Inv9"], 1e-5)   # not 0.96
+        self.assertAlmostEqual(dex.price("solana", "Inv9", "Mint9"), 1e-5)
+        self.assertEqual(dex.pairs_for_tokens("solana", ["Mint9"]), [])          # no candidate for the dollar coin
+        stranger = dict(inverted, quoteToken={"address": "Other", "symbol": "X"})  # a pair the token is not part of
+        fetch, _ = self.fake_http([stranger])
+        self.assertEqual(DexScreener(fetch=fetch).prices("solana", ["Inv9"], {"Inv9": "Mint9"}), {})
+        # the token's pair vanished; only a dust pool with a fantasy price is left: no price, a rug
+        dust = self.raw("Dust9", "Mint10", "raydium", 0.9, liquidity=40)
+        fetch, _ = self.fake_http([dust])
+        self.assertEqual(DexScreener(fetch=fetch).prices("solana", ["Gone10"], {"Gone10": "Mint10"}), {})
+        # and the token's pool listed the other way round still prices it, also when followed
+        flipped = dict(inverted, pairAddress="Flip11")
+        fetch, _ = self.fake_http([flipped])
+        self.assertAlmostEqual(DexScreener(fetch=fetch).prices("solana", ["Gone11"], {"Gone11": "Mint9"})["Gone11"], 1e-5)
+
+    def test_evm_addresses_are_one_token_however_they_are_spelled(self):
+        from bot.sources.dexscreener import DexScreener
+        checksum = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+        pool = dict(self.raw("0xPool", checksum, "uniswap", 1.0, liquidity=500000), chainId="base")
+        fetch, _ = self.fake_http([pool])
+        got = DexScreener(fetch=fetch).pairs_for_tokens("base", [checksum.lower()])        # GeckoTerminal's spelling
+        self.assertEqual([g["token"] for g in got], [checksum.lower()])
+        feeds = {"a": StubFeed({"base": [{"token": checksum, "snapshot": None}]}),
+                 "b": StubFeed({"base": [{"token": checksum.lower(), "snapshot": None}]})}
+        found = Discovery({"discovery": {"sources": ["a", "b"]}}, feeds).recent(["base"])
+        self.assertEqual(list(found["base"]), [checksum.lower()])                          # one token, not two
+
+    def test_a_dead_promotion_feed_shows_as_down(self):
+        from bot.sources.dexscreener import DexScreener
+        def fetch(url, **kw): raise OSError("403")
+        with self.assertRaises(OSError):
+            DexScreener(fetch=fetch).recent_token_addresses(["solana"])
+        status = Discovery({"discovery": {"sources": ["dexscreener"]}}, {"dexscreener": DexScreenerFeed(DexScreener(fetch=fetch))})
+        status.recent(["solana"])
+        self.assertFalse(status.status()[0]["ok"])
+
     def test_a_vanished_pair_follows_the_token_and_a_true_rug_stays_missing(self):
         from bot.sources.dexscreener import DexScreener
         pool = self.raw("Swap4", "Mint4", "pumpswap", 0.0001, liquidity=20000)
@@ -1929,7 +2067,6 @@ class GraduationTests(unittest.TestCase):
 
     def test_holding_and_tracker_follow_the_graduation(self):
         from bot.sources.dexscreener import DexScreener
-        from bot.tracker import VANISHED_GRACE_S
         frozen_native = 115.0 ** 2 / 32.19e9
         entry = frozen_native * 150 * 0.9
         pairs = [self.raw("Curve6", "Mint6", "pumpfun", entry, native=entry / 150)]
@@ -1944,7 +2081,7 @@ class GraduationTests(unittest.TestCase):
                                 "price_usd": entry, "score": 70, "decision": "buy", "reasons": [], "snapshot": {}})
             # the curve completes: DexScreener drops it, the token trades in PumpSwap at half the entry
             pairs[:] = [self.raw("Swap6", "Mint6", "pumpswap", entry * 0.5, liquidity=18000)]
-            t[0] += 5 * 60 + VANISHED_GRACE_S + 1
+            t[0] += 5 * 60 + 1
             eng.poll_once()
             pos = store.position(pid)
             self.assertEqual((pos["status"], pos["exit_reason"]), ("closed", "stop_loss"))   # sold on the real market, not written off

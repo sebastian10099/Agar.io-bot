@@ -235,8 +235,9 @@ class AiModeTests(unittest.TestCase):
         eng, adv = self.engine_with("advise", {"RUN": {"decision": "skip", "confidence": 0.9, "reasons": [], "risk_flags": []},
                                                "DUMP": {"decision": "buy", "confidence": 0.9, "reasons": [], "risk_flags": []}})
         eng.poll_once()
-        self.t[0] = self.dex.started + 61 * 60
-        eng.poll_once()
+        for minute in (5, 15, 60):                         # the tracker measures each horizon when it is due
+            self.t[0] = self.dex.started + minute * 60 + 5
+            eng.poll_once()
         ai = {(r["decision"], r["horizon_min"]) for r in self.store.edge_report("ai_decision")}
         self.assertIn(("buy", 5), ai)
         self.assertIn(("skip", 5), ai)

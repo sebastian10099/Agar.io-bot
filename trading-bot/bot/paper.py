@@ -119,6 +119,22 @@ class Paper:
         self.store.log("trade", f"SELL {pos.get('symbol')} {frac * 100:.0f}% @ {fill:.8g} "
                                 f"{reason} pnl {pnl:+.2f} (paper)")
 
+    def ladder(self) -> list[tuple[float, float]]:
+        return [(float(t), float(f)) for t, f in self.cfg["exits"]["take_profit_ladder"]]
+
+    def rungs_done(self, pos: dict[str, Any]) -> set[float]:
+        """Profit rungs already sold, by their threshold - so editing the ladder while a position
+        is open never sells a rung twice. Older records stored the rung's place in the ladder."""
+        ladder = self.ladder()
+        done: set[float] = set()
+        for x in pos.get("ladder_done") or []:
+            if isinstance(x, int) and not isinstance(x, bool):
+                if 0 <= x < len(ladder):
+                    done.add(ladder[x][0])
+            else:
+                done.add(float(x))
+        return done
+
     def update(self, pos: dict[str, Any], price: float, now: Optional[float] = None) -> None:
         """Apply exit rules to one open position given a fresh price."""
         now = now or time.time()
@@ -135,14 +151,14 @@ class Paper:
             self._sell(pos, pos["remaining_frac"], price, "stop_loss", now)
             return
 
-        done = list(pos.get("ladder_done") or [])
-        for i, (threshold, frac) in enumerate(ex["take_profit_ladder"]):
-            if i in done or gain < float(threshold):
+        done = self.rungs_done(pos)
+        for threshold, frac in self.ladder():
+            if threshold in done or gain < threshold:
                 continue
-            self._sell(pos, float(frac), price, f"take_profit_{int(threshold)}", now)
-            done.append(i)
-            pos["ladder_done"] = done
-            self.store.update_position(pos["id"], ladder_done=json.dumps(done))
+            self._sell(pos, frac, price, f"take_profit_{int(threshold)}", now)
+            done.add(threshold)
+            pos["ladder_done"] = sorted(done)
+            self.store.update_position(pos["id"], ladder_done=json.dumps(sorted(done)))
             if pos["status"] == "closed":
                 return
 

@@ -25,6 +25,12 @@ def _f(x: Any, default: float = 0.0) -> float:
         return default
 
 
+def canon(address: Any) -> Any:
+    """One spelling per token: EVM addresses (0x...) are case-insensitive - DexScreener writes
+    them checksummed, GeckoTerminal in lower case - Solana's base58 addresses are not."""
+    return address.lower() if isinstance(address, str) and address.startswith("0x") else address
+
+
 def safe_url(value: Any) -> Optional[str]:
     """Only http(s) links reach the control page; a token can set anything
     in its API record, including javascript: URLs."""
@@ -38,6 +44,7 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
     """Flatten one DexScreener pair object into the fields the strategy uses."""
     now = now or time.time()
     base = p.get("baseToken") or {}
+    quote = p.get("quoteToken") or {}
     txns = p.get("txns") or {}
     m5 = txns.get("m5") or {}
     h1 = txns.get("h1") or {}
@@ -51,11 +58,13 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
         "chain": p.get("chainId"),
         "dex": p.get("dexId"),
         "pair": p.get("pairAddress"),
-        "token": base.get("address"),
+        "token": canon(base.get("address")),
+        "quote_token": canon(quote.get("address")),
         "symbol": base.get("symbol"),
         "name": base.get("name"),
         "url": safe_url(p.get("url")),
         "price_usd": _f(p.get("priceUsd")),
+        "price_native": _f(p.get("priceNative")),        # the base token in units of the quote token
         "liquidity_usd": _f(reported),
         "liquidity_kind": "reported" if reported is not None else "unknown",
         "curve": curve.is_curve(p.get("dexId")),
@@ -76,6 +85,19 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
     }
 
 
+def token_price(n: dict[str, Any], token: Optional[str]) -> Optional[float]:
+    """USD price of `token` in this pair. DexScreener's priceUsd is the BASE token's;
+    a pool can list our token as the quote side (and DexScreener may flip a pool's
+    sides between two calls) - then the price is priceUsd / priceNative. A pair the
+    token is not part of gives no price rather than another token's."""
+    token = canon(token)
+    if not token or canon(n.get("token")) == token:
+        return n["price_usd"] if n["price_usd"] > 0 else None
+    if canon(n.get("quote_token")) == token and n["price_usd"] > 0 and n.get("price_native", 0) > 0:
+        return n["price_usd"] / n["price_native"]
+    return None
+
+
 def _rank(n: dict[str, Any]) -> tuple[int, float]:
     """Which pair speaks for a token: a real pool with reported liquidity first
     (after a pump.fun curve completes, its PumpSwap pool), then the curve, then
@@ -93,16 +115,20 @@ class DexScreener:
         within minutes; it is the cheapest keyless discovery feed there is."""
         wanted = set(chains)
         out: dict[str, list[str]] = {c: [] for c in wanted}
+        errors = []
         for path in ("/token-profiles/latest/v1", "/token-boosts/latest/v1"):
             try:
                 items = self.fetch(BASE + path)
-            except Exception:  # noqa: BLE001 - one feed failing must not stop the other
+            except Exception as error:  # noqa: BLE001 - one feed failing must not stop the other
+                errors.append(error)
                 continue
             for item in items if isinstance(items, list) else []:
                 chain = item.get("chainId")
-                addr = item.get("tokenAddress")
+                addr = canon(item.get("tokenAddress"))
                 if chain in wanted and addr and addr not in out[chain]:
                     out[chain].append(addr)
+        if len(errors) == 2:                       # both lists failed: an outage, not "nothing new"
+            raise errors[0]
         return out
 
     def _token_pairs(self, chain: str, addresses: list[str]) -> list[dict[str, Any]]:
@@ -123,7 +149,10 @@ class DexScreener:
     def pairs_for_tokens(self, chain: str, addresses: list[str]) -> list[dict[str, Any]]:
         """Best pair per token (see _rank). Max 30 addresses per call."""
         best: dict[str, dict[str, Any]] = {}
+        wanted = {canon(a) for a in addresses}
         for n in self._token_pairs(chain, addresses):
+            if n["token"] not in wanted:
+                continue                                 # a pool listing the token as its quote side: its numbers are the other token's
             cur = best.get(n["token"])
             if cur is None or _rank(n) > _rank(cur):
                 best[n["token"]] = n
@@ -154,9 +183,12 @@ class DexScreener:
             data = self.fetch(f"{BASE}/latest/dex/pairs/{chain}/{','.join(chunk)}")
             for raw in (data or {}).get("pairs") or []:
                 n = normalize_pair(raw)
-                if n["pair"] and n["price_usd"] > 0:
-                    out[n["pair"]] = n["price_usd"]
-                if n["pair"] and n["curve"]:
+                if not n["pair"]:
+                    continue
+                price = token_price(n, (follow or {}).get(n["pair"]))
+                if price:
+                    out[n["pair"]] = price
+                if n["curve"]:
                     curves[n["pair"]] = str(n.get("dex") or "").lower()
         ask: dict[str, list[str]] = {}
         for pair in pair_addresses:
@@ -164,22 +196,25 @@ class DexScreener:
             if token and (pair not in out or pair in curves):
                 ask.setdefault(token, []).append(pair)
         if ask:
-            by_token: dict[str, list[dict[str, Any]]] = {}
+            markets: dict[str, list[tuple[dict[str, Any], float]]] = {}   # token -> (pair, its price there)
+            ask = {canon(t): pairs for t, pairs in ask.items()}
             for n in self._token_pairs(chain, list(ask)):
-                if n["price_usd"] > 0:
-                    by_token.setdefault(n["token"], []).append(n)
+                for side in {n["token"], n.get("quote_token")} & set(ask):
+                    price = token_price(n, side)
+                    if price:
+                        markets.setdefault(side, []).append((n, price))
             for token, pairs in ask.items():
                 for pair in pairs:
-                    others = [n for n in by_token.get(token, []) if n["pair"] != pair]
-                    if pair not in out:                  # gone: the token's best remaining pool
-                        pick = others
+                    others = [(n, pr) for n, pr in markets.get(token, []) if n["pair"] != pair]
+                    if pair not in out:                  # gone: the token's best remaining market - never a dust pool
+                        pick = [(n, pr) for n, pr in others if _rank(n)[0] >= 1]
                     else:                                # a listed curve: only the pool it graduates into
-                        pick = [n for n in others if _rank(n)[0] == 2
+                        pick = [(n, pr) for n, pr in others if _rank(n)[0] == 2
                                 and str(n.get("dex") or "").lower() in CURVE_SUCCESSORS.get(curves[pair], ())]
                     if pick:
-                        out[pair] = max(pick, key=_rank)["price_usd"]
+                        out[pair] = max(pick, key=lambda x: _rank(x[0]))[1]
         return out
 
-    def price(self, chain: str, pair_address: str) -> Optional[float]:
+    def price(self, chain: str, pair_address: str, token: Optional[str] = None) -> Optional[float]:
         p = self.pair(chain, pair_address)
-        return p["price_usd"] if p and p["price_usd"] > 0 else None
+        return token_price(p, token) if p else None

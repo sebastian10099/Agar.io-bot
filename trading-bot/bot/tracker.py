@@ -19,6 +19,8 @@ from .store import Store
 
 VANISHED_GRACE_S = 10 * 60     # no price this long past due, while others are priced -> -100 %
 GIVE_UP_S = 60 * 60            # no answer at all this long past due -> unknown (never a loss)
+LATE_OK_S = 120                # a price this late (or half the horizon) still measures the horizon; later
+                               # (an outage, a restart) it would be another horizon's outcome -> unknown
 BATCH = 30                     # pairs per request (DexScreener's limit)
 MAX_DUE = 600                  # outcomes handled per poll
 MAX_SINGLE = 20                # single lookups per poll when no batch source exists
@@ -38,10 +40,11 @@ class Tracker:
         self.store.schedule_outcomes(cid, candidate["seen_at"], self.horizons)
         return cid
 
-    def _lookup(self, rows: list[dict[str, Any]]) -> tuple[dict[tuple[str, str], float], set[str]]:
-        """Prices for the due rows, and the chains on which the source answered at all."""
+    def _lookup(self, rows: list[dict[str, Any]]) -> tuple[dict[tuple[str, str], float], set[tuple[str, str]]]:
+        """Prices for the due rows, and the pairs whose request the source answered: only
+        there does a missing price mean the pair is gone (a failed request means nothing)."""
         prices: dict[tuple[str, str], float] = {}
-        answered: set[str] = set()
+        answered: set[tuple[str, str]] = set()
         by_chain: dict[str, list[str]] = {}
         tokens: dict[str, str] = {}
         for r in rows:
@@ -57,20 +60,22 @@ class Tracker:
                         # a graduated curve is priced from its new pool, not counted as a rug
                         got = self.prices_of(chain, chunk, {p: tokens[p] for p in chunk}) or {}
                     except Exception:  # noqa: BLE001 - an outage is handled like "no answer"
-                        got = {}
-                    for pair, price in got.items():
-                        if price and price > 0:
-                            prices[(chain, pair)] = float(price)
-                            answered.add(chain)
+                        continue
+                    hits = {pair: float(price) for pair, price in got.items() if price and price > 0}
+                    for pair, price in hits.items():
+                        prices[(chain, pair)] = price
+                    if hits:                               # the request was answered: its silent pairs are gone
+                        answered.update((chain, pair) for pair in chunk)
             else:
-                for pair in pairs[:MAX_SINGLE]:
+                asked = pairs[:MAX_SINGLE]
+                for pair in asked:
                     try:
                         price = self.price_of(chain, pair)
                     except Exception:  # noqa: BLE001
                         price = None
                     if price and price > 0:
                         prices[(chain, pair)] = float(price)
-                        answered.add(chain)
+                        answered.add((chain, pair))
         return prices, answered
 
     def fill_due(self, now: Optional[float] = None, max_lookups: int = MAX_DUE) -> int:
@@ -84,10 +89,12 @@ class Tracker:
             price = prices.get((row["chain"], row["pair"]))
             base = row["price_usd"] or 0
             late = now - row["due_at"]
-            if price:
+            if price and late <= max(LATE_OK_S, row["horizon_min"] * 30):
                 change = (price / base - 1) * 100 if base > 0 else None
                 self.store.fill_outcome(row["candidate_id"], row["horizon_min"], price, change)
-            elif row["chain"] in answered and late >= VANISHED_GRACE_S:
+            elif price:
+                self.store.fill_outcome(row["candidate_id"], row["horizon_min"], None, None)   # too late to say
+            elif (row["chain"], row["pair"]) in answered and late >= VANISHED_GRACE_S:
                 self.store.fill_outcome(row["candidate_id"], row["horizon_min"], 0.0, -100.0 if base > 0 else None)
             elif late >= GIVE_UP_S:
                 self.store.fill_outcome(row["candidate_id"], row["horizon_min"], None, None)

@@ -170,10 +170,16 @@ class TrackerTests(unittest.TestCase):
                                   "symbol": "T", "price_usd": 1.0, "score": 70, "decision": "buy",
                                   "reasons": [], "snapshot": {}})
             self.assertEqual(tracker.fill_due(now=100.0 + 4 * 60), 0)
-            self.assertEqual(tracker.fill_due(now=100.0 + 61 * 60), 3)
+            for minute in (5, 15, 60):                       # each horizon measured when it is due
+                self.assertEqual(tracker.fill_due(now=100.0 + minute * 60 + 5), 1)
             report = store.edge_report()
             self.assertEqual({r["horizon_min"] for r in report}, {5, 15, 60})
             self.assertTrue(all(abs(r["avg_change_pct"] - 100.0) < 1e-6 for r in report))
+            # the bot was off for six hours: a price now says nothing about 5, 15 or 60 minutes
+            late = tracker.record({"seen_at": 1000.0, "chain": "solana", "token": "t", "pair": "p", "symbol": "T",
+                                   "price_usd": 1.0, "score": 70, "decision": "buy", "reasons": [], "snapshot": {}})
+            self.assertEqual(tracker.fill_due(now=1000.0 + 6 * 3600), 3)
+            self.assertTrue(all(o["change_pct"] is None for o in store.outcomes_for(late)))
             store.close()
 
 

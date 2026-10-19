@@ -87,8 +87,11 @@ class Engine:
         self._reports: dict[str, tuple[float, Any, int]] = {}
         self._bad_tokens: dict[str, float] = {}    # token -> when its record last broke the evaluation
         self._last_discovery_error = ""
-        self._last_priced: dict[int, float] = {}  # position id -> engine time of its last price
-        self._dex_answered = False                # did the numbers source answer during the last discovery?
+        # position id -> engine time of its last price; after a restart the clock starts anew for all,
+        # or one missing price would write off a position the bot simply was not watching
+        self._last_priced: dict[int, float] = {p["id"]: clock() for p in store.open_positions()}
+        self._dex_answered = False                # did DexScreener itself answer during the last discovery?
+        self._dex_answered_now = False
         self._deferred_last = 0
         # tokens to look at again (too new, or watched): (chain, token) -> source, age, when due
         self._followed: dict[tuple[str, str], dict[str, Any]] = {}
@@ -120,6 +123,7 @@ class Engine:
     def _discover(self, now: float, counts: dict[str, int]) -> None:
         """Find, judge and (paper-)buy new tokens."""
         deadline = time.time() + DISCOVERY_BUDGET_S
+        self._dex_answered_now = False
         found = self.discovery.recent(list(self.cfg["chains"]))
         self._bring_back(found, now)
         for chain, tokens in found.items():
@@ -133,6 +137,7 @@ class Engine:
                     break
                 pairs.extend(self.dex.pairs_for_tokens(chain, addresses[i:i + 30]))
             indexed = {p["token"] for p in pairs}
+            self._dex_answered_now = self._dex_answered_now or bool(indexed)   # feed snapshots do not count
             for token, info in tokens.items():
                 snap = info.get("snapshot")
                 if token not in indexed and snap and snap.get("pair") and snap.get("price_usd"):
@@ -302,7 +307,7 @@ class Engine:
             if self._last_discovery_error:
                 self.store.log("info", "Suche nach neuen Tokens läuft wieder")
                 self._last_discovery_error = ""
-            self._dex_answered = counts["seen"] > 0
+            self._dex_answered = self._dex_answered_now
             if counts["deferred"] and not self._deferred_last:
                 self.store.log("info", f"Viele neue Tokens: {counts['deferred']} auf den nächsten Poll verschoben "
                                        f"(Zeitbudget {DISCOVERY_BUDGET_S:.0f} s, Exits laufen trotzdem jede Runde)")
@@ -380,7 +385,7 @@ class Engine:
                 return
             self.store.log("warn", f"{pos.get('symbol')}: seit {(now - last) / 60:.0f} min kein Kurs (Paar verschwunden?) "
                                    f"– Rest als Verlust abgeschrieben")
-            self.paper._sell(pos, pos["remaining_frac"], 1e-12, "no_price", now)
+            self.paper._sell(pos, pos["remaining_frac"], 0.0, "no_price", now)
             self._last_priced.pop(listed["id"], None)
             counts["exits"] += 1
 
@@ -618,6 +623,7 @@ class Engine:
                 **pos, "price": price, "unrealized": round(unreal, 2),
                 "gain_pct": round((price / pos["entry_price"] - 1) * 100, 1) if price else None,
                 "age_min": round((now - pos["opened_at"]) / 60, 1),
+                "rungs_done": sorted(self.paper.rungs_done(pos)),
             })
         return {
             "app": APP_ID, "can_update": self._can_update(), "mode": self.cfg["mode"], "demo": self.demo, "paused": self.paused, "now": now,

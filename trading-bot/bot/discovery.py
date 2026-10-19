@@ -11,6 +11,8 @@ from __future__ import annotations
 import time
 from typing import Any, Callable, Optional
 
+from .sources.dexscreener import canon
+
 LABELS = {
     "dexscreener": "DexScreener – Profile & Boosts",
     "geckoterminal": "GeckoTerminal – neue Pools",
@@ -64,7 +66,7 @@ class Discovery:
                 if chain not in out:
                     continue
                 for item in items:
-                    token = item.get("token")
+                    token = canon(item.get("token"))
                     if not token:
                         continue
                     mine.add((chain, token))

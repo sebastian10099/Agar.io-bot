@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from . import curve
+from .dexscreener import canon
 from .http import HttpError, get_json
 
 BASE = "https://api.geckoterminal.com/api/v2"
@@ -41,7 +42,8 @@ def normalize_pool(pool: dict[str, Any], chain: str, tokens: dict[str, dict[str,
     a = pool.get("attributes") or {}
     rel = pool.get("relationships") or {}
     base_id = ((rel.get("base_token") or {}).get("data") or {}).get("id") or ""
-    token = base_id.split("_", 1)[1] if "_" in base_id else base_id
+    token = canon(base_id.split("_", 1)[1] if "_" in base_id else base_id)
+    quote_id = ((rel.get("quote_token") or {}).get("data") or {}).get("id") or ""
     pair = a.get("address")
     if not token or not pair:
         return None
@@ -65,10 +67,12 @@ def normalize_pool(pool: dict[str, Any], chain: str, tokens: dict[str, dict[str,
         "dex": dex,
         "pair": pair,
         "token": token,
+        "quote_token": canon(quote_id.split("_", 1)[1] if "_" in quote_id else (quote_id or None)),
         "symbol": symbol,
         "name": info.get("name") or name,
         "url": f"https://www.geckoterminal.com/{net}/pools/{pair}",
         "price_usd": _f(a.get("base_token_price_usd")),
+        "price_native": _f(a.get("base_token_price_quote_token")),
         "liquidity_usd": liquidity,
         "liquidity_kind": kind,
         "curve": curve.is_curve(dex),

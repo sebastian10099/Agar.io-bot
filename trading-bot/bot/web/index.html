@@ -478,9 +478,9 @@ function table(rows, cols, empty) {
 
 // Where the exit rules will fire for one position, from the live config.
 function targets(r, cfg) {
-  const e = r.entry_price, done = r.ladder_done || [];
+  const e = r.entry_price, done = r.rungs_done || [];   // thresholds already sold
   const stop = e * (1 + cfg['exits.stop_loss_pct'] / 100);
-  const ladder = (cfg['exits.take_profit_ladder'] || []).map(([pct, frac], i) => ({ pct, frac, price: e * (1 + pct / 100), done: done.includes(i) }));
+  const ladder = (cfg['exits.take_profit_ladder'] || []).map(([pct, frac]) => ({ pct, frac, price: e * (1 + pct / 100), done: done.includes(Number(pct)) }));
   const next = ladder.find((l) => !l.done);
   const trail = cfg['exits.trailing_stop_pct'];
   const armed = (r.peak_price / e - 1) * 100 >= trail;
