@@ -250,7 +250,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   await p.waitForSelector('dialog[open]');
   await p.click('#c-yes');
   await p.waitForFunction(() => document.querySelector('#form-status').textContent.includes('Änderung'));
-  ok((await p.inputValue('input[data-path="exits.time_stop_minutes"]')) === '45', 'Standardwerte in Entwurf geladen (nicht gespeichert)');
+  ok((await p.inputValue('input[data-path="exits.time_stop_minutes"]')) === '60', 'Standardwerte in Entwurf geladen (nicht gespeichert)');
   await p.click('#b-revert');
 
   // --- Übersicht: Position schließen ---

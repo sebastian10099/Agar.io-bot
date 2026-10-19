@@ -1617,6 +1617,16 @@ class TrackerBatchTests(unittest.TestCase):
         self.assertIsNotNone(one(c1)["filled_at"])
         self.assertIsNone(one(c1)["change_pct"])                          # +3,400,000 % is a bad quote: unknown
 
+    def test_an_old_absurd_outcome_does_not_swamp_the_edge(self):
+        """Live page: "buy after 5 min: +78,967 %" - outcomes booked before the made-up-price fix."""
+        tr = self.make(lambda chain, pairs, follow=None: {p: 1.2 for p in pairs})
+        self.add(tr, 0); old = self.add(tr, 1)
+        tr.fill_due(now=1000.0 + 5 * 60 + 5)
+        self.store.fill_outcome(old, 5, 79_000.0, 7_899_900.0)                 # what an older version stored
+        rep = {(r["horizon_min"], r["decision"]): r for r in self.store.edge_report()}
+        self.assertEqual(rep[(5, "skip")]["n"], 1)
+        self.assertAlmostEqual(rep[(5, "skip")]["avg_change_pct"], 20.0)
+
     def test_a_vanished_pair_counts_as_a_total_loss(self):
         def prices_of(chain, pairs, follow=None):
             return {p: 2.0 for p in pairs if p != "P1"}                # P1 was pulled; the rest is priced

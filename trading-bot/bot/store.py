@@ -8,6 +8,10 @@ import time
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+# an outcome above +99,900 % (1000x) is a bad quote, not a market (the tracker books those as unknown
+# since; older databases still hold some) - one of them would swamp every average
+OUTCOME_CAP_PCT = 99_900.0
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS candidates (
     id INTEGER PRIMARY KEY,
@@ -263,7 +267,7 @@ class Store:
         rows = self._rows(
             "SELECT c.decision, c.snapshot, o.horizon_min, o.change_pct "
             "FROM outcomes o JOIN candidates c ON c.id = o.candidate_id "
-            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL")
+            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL AND o.change_pct <= ?", (OUTCOME_CAP_PCT,))
         buckets: dict[tuple, list[float]] = {}
         for r in rows:
             if key == "decision":
@@ -430,7 +434,8 @@ class Store:
     def sweep_samples(self, horizon_min: int) -> list[dict[str, Any]]:
         rows = self._rows(
             "SELECT c.snapshot, o.change_pct FROM outcomes o JOIN candidates c ON c.id = o.candidate_id "
-            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL AND o.horizon_min = ?", (horizon_min,))
+            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL AND o.horizon_min = ? AND o.change_pct <= ?",
+            (horizon_min, OUTCOME_CAP_PCT))
         out = []
         for r in rows:
             try:

@@ -15,14 +15,14 @@ from __future__ import annotations
 import time
 from typing import Any, Callable, Optional
 
-from .store import Store
+from .store import OUTCOME_CAP_PCT, Store
 
 VANISHED_GRACE_S = 10 * 60     # no price this long past due, while others are priced -> -100 %
 GIVE_UP_S = 60 * 60            # no answer at all this long past due -> unknown (never a loss)
 LATE_OK_S = 120                # a price this late (or half the horizon) still measures the horizon; later
                                # (an outage, a restart) it would be another horizon's outcome -> unknown
-OUTCOME_MAX = 1000.0           # a price this many times the one seen is a bad quote (a pool at a made-up
-                               # price), not an outcome: it would swamp every average -> unknown
+OUTCOME_MAX = 1 + OUTCOME_CAP_PCT / 100   # 1000x the price seen is a bad quote (a pool at a made-up
+                                          # price), not an outcome: it would swamp every average -> unknown
 BATCH = 30                     # pairs per request (DexScreener's limit)
 MAX_DUE = 600                  # outcomes handled per poll
 MAX_SINGLE = 20                # single lookups per poll when no batch source exists
