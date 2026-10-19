@@ -68,6 +68,10 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
                 # no safety check possible: never buy, but keep scoring and tracking the
                 # token so the outage does not also blind the edge report
                 watch_only = True
+        elif rug.get("source") == "onchain":
+            # own on-chain check (RugCheck had no answer): authorities and Token-2022 traps
+            if rug["danger"]:
+                reasons.append("onchain danger: " + ", ".join(rug["danger"][:3]))
         else:
             if rug["danger"]:
                 reasons.append("rugcheck danger: " + ", ".join(rug["danger"][:3]))
@@ -90,7 +94,10 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
     if age is not None:
         parts["age"] = 10.0 if 5 <= age <= 30 else _scale(60 - abs(age - 17.5), 0, 55, 10)
     parts["socials"] = 5.0 if p.get("has_socials") else 0.0
-    if rug is not None:
+    if rug is not None and rug.get("source") == "onchain":
+        # sees less than RugCheck (no holder or LP analysis): at most half of its points
+        parts["rugcheck"] = max(0.0, 5.0 - 2.0 * len(rug["warn"]))
+    elif rug is not None:
         parts["rugcheck"] = _scale(f["max_rugcheck_score"] - rug["score"], 0, f["max_rugcheck_score"], 10)
         if rug["warn"]:
             parts["rugcheck"] = max(0.0, parts["rugcheck"] - 2.0 * len(rug["warn"]))

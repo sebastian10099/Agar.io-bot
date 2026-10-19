@@ -145,6 +145,12 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok(srcRows.length === 4 && srcRows.every((r) => r.dot.includes('ok')), 'Quellen-Liste: drei Feeds liefern, RugCheck antwortet (' + srcRows.map((r) => r.text.slice(0, 14)).join(', ') + ')');
   ok(srcRows.some((r) => /\d+ gemeldet · \d+ eigene · \d+ Abfragen/.test(r.text)), 'Quellen zeigen Zähler');
   ok((await p.textContent('#src-pill')) === '3 aktiv', 'Quellen-Pill: 3 aktiv');
+  const fbText = await p.evaluate(() => {
+    const s = JSON.parse(JSON.stringify(state));
+    s.rugcheck = { calls: 3, fails: 3, last_error: 'URLError: DNS', ok: false, fallback: { calls: 2, fails: 0, last_error: '', ok: true } };
+    renderSources(s); const text = document.querySelector('#sources').textContent; renderSources(state); return text;
+  });
+  ok(fbText.includes('Eigenprüfung über Solana-RPC') && fbText.includes('springt ein') && fbText.includes('gestört'), 'RugCheck gestört → Quellen-Karte zeigt die Eigenprüfung als „springt ein“');
   await clearToast(); await p.click('#b-doctor');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Selbsttest'));
   const docRows = await p.$$eval('#doctor li', (l) => l.map((x) => ({ text: x.textContent, ok: !!x.querySelector('.dot.ok'), bad: !!x.querySelector('.dot.bad') })));

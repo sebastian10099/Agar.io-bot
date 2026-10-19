@@ -564,8 +564,8 @@ async function showCandidate(id) {
     <div class="kv">${(d.outcomes || []).map((o) => `<div><span>nach ${o.horizon_min} min</span><b class="${o.filled_at ? cls(o.change_pct) : 'reasons'}">${dueTxt(o)}</b></div>`).join('') || '<div><span>Tracker</span><b class="reasons">keine Horizonte</b></div>'}</div>
     <p class="dlg-h">Regeln</p>
     <p class="note" style="margin:0 0 6px">${esc((c.reasons || []).join(' · ')) || '–'}</p>
-    <p class="dlg-h">RugCheck</p>
-    <p class="note" style="margin:0 0 6px">${rug ? `Score ${Math.round(rug.score)}` + (rug.danger && rug.danger.length ? ` · <span class="neg">Gefahr: ${esc(rug.danger.join(', '))}</span>` : '') + (rug.warn && rug.warn.length ? ` · Warnung: ${esc(rug.warn.join(', '))}` : ' · keine Auffälligkeiten') : (c.chain === 'solana' ? 'nicht erreichbar oder nicht abgefragt' : 'nur für Solana')}</p>
+    <p class="dlg-h">${rug && rug.source === 'onchain' ? 'Sicherheit (eigene Prüfung über die Blockchain, RugCheck antwortete nicht)' : 'RugCheck'}</p>
+    <p class="note" style="margin:0 0 6px">${rug && rug.source === 'onchain' ? (rug.danger.length ? `<span class="neg">Gefahr: ${esc(rug.danger.join(', '))}</span>` : 'keine Gefahr gefunden') + (rug.warn.length ? ` · Warnung: ${esc(rug.warn.join(', '))}` : '') : rug ? `Score ${Math.round(rug.score)}` + (rug.danger && rug.danger.length ? ` · <span class="neg">Gefahr: ${esc(rug.danger.join(', '))}</span>` : '') + (rug.warn && rug.warn.length ? ` · Warnung: ${esc(rug.warn.join(', '))}` : ' · keine Auffälligkeiten') : (c.chain === 'solana' ? 'nicht erreichbar oder nicht abgefragt' : 'nur für Solana')}</p>
     ${s.ai_decision ? `<p class="dlg-h">KI</p><p class="note" style="margin:0 0 6px"><span class="d-${s.ai_decision}">${s.ai_decision}</span> mit ${Math.round((s.ai_confidence || 0) * 100)} % Vertrauen (${esc(s.ai_model || '')}) · ${esc((s.ai_reasons || []).join(' · '))}${(s.ai_flags || []).length ? ` · <span class="neg">Risiken: ${esc(s.ai_flags.join(', '))}</span>` : ''}</p>` : ''}
     <p class="note" style="margin:10px 0 0">${state && state.demo ? '<span class="reasons" title="Demo-Markt: dieser Token existiert nicht wirklich">Demo-Token, keine Kursseite</span> · ' : safeUrl(s.url) ? `<a href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener noreferrer">Kursseite öffnen ↗</a> · ` : ''}<span class="reasons">${esc(c.token)}</span>${d.held ? ' · <b>im Bestand</b>' : ` · <button type="button" class="btn sm" id="d-buy">Jetzt manuell kaufen</button>`}</p>`;
   $('d-body').innerHTML = body;
@@ -1000,7 +1000,13 @@ function renderSources(s) {
     const rc = s.rugcheck || {}; const solana = (s.chains || []).includes('solana');
     const st = !solana ? ['off', 'nur für Solana'] : rc.ok === false ? ['bad', 'gestört'] : rc.ok ? ['ok', 'antwortet'] : ['warn', 'noch keine Abfrage'];
     const detail = rc.calls ? `${rc.calls} Abfragen · ${rc.fails} ohne Antwort${rc.last_error ? ' · zuletzt: ' + esc(rc.last_error) : ''}` : '';
-    return `<li><span class="dot ${st[0]}" role="img" aria-label="${st[1]}"></span><b>RugCheck – Sicherheitsprüfung</b> <span class="reasons">${st[1]}${detail ? ' · ' + detail : ''}</span></li>`;
+    const fb = rc.fallback;
+    const fbRow = !fb || !solana ? '' : (() => {
+      const fs = fb.ok === false ? ['bad', 'gestört'] : fb.ok ? ['ok', rc.ok === false ? 'springt ein' : 'bereit'] : ['warn', rc.ok === false ? 'noch keine Abfrage' : 'Reserve'];
+      const fd = fb.calls ? `${fb.calls} Abfragen · ${fb.fails} ohne Antwort${fb.last_error ? ' · zuletzt: ' + esc(fb.last_error) : ''}` : '';
+      return `<li><span class="dot ${fs[0]}" role="img" aria-label="${fs[1]}"></span><b>Eigenprüfung über Solana-RPC</b> <span class="reasons">${fs[1]}${fd ? ' · ' + fd : ''} · Freeze-/Mint-Authority, Token-2022-Fallen</span></li>`;
+    })();
+    return `<li><span class="dot ${st[0]}" role="img" aria-label="${st[1]}"></span><b>RugCheck – Sicherheitsprüfung</b> <span class="reasons">${st[1]}${detail ? ' · ' + detail : ''}</span></li>` + fbRow;
   })();
 }
 function renderAi(s) {

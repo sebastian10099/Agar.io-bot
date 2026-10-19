@@ -278,6 +278,15 @@ Verbrauch steht auf der Steuerseite. Jeder Fehler (ungültiger Schlüssel,
 Rate-Limit, Modell nicht gefunden) landet im Protokoll, und die Regeln
 entscheiden dann allein weiter.
 
+**Sicherheitsprüfung mit Ersatz:** Zuerst wird RugCheck gefragt. Antwortet
+RugCheck nicht (ausgefallen, gedrosselt, Domain nicht erreichbar), prüft der Bot
+selbst über die Solana-Blockchain (`getAccountInfo` auf den Mint, öffentlicher
+RPC oder `SOLANA_RPC_URL`): aktive Freeze-Authority, aktive Mint-Authority und
+Token-2022-Fallen (Permanent Delegate, Transfer-Hook, pausierbar, eingefrorene
+Konten, Transfergebühr). Diese Eigenprüfung sieht keine Halter- oder LP-Analyse
+und bekommt deshalb nur die Hälfte der Score-Punkte. Erst wenn beide nichts
+liefern, wird nur beobachtet.
+
 **Verschwundene Paare:** Liefert DexScreener für eine offene Position keinen Kurs
 mehr, während andere Kurse kommen, ist das Paar meist entfernt worden (Rug). Ist
 ihr Zeit-Stop abgelaufen und fehlt der Kurs seit 30 Minuten, wird der Rest als

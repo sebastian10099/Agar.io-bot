@@ -128,6 +128,20 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
         return f"{mint[:8]}… Score {r['score']:.0f} · {len(r['danger'])} danger · {len(r['warn'])} warn"
     out.append(_check("RugCheck", rugcheck))
 
+    onchain = getattr(rug, "onchain", None)
+    if onchain is not None:
+        def own_check() -> str:
+            if "solana" not in chains:
+                return "übersprungen – Solana nicht aktiv"
+            mint = (found.get("solana") or ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"])[0]
+            onchain._cache.pop(mint, None)
+            r = onchain.summary(mint)
+            if r is None:
+                raise RuntimeError(f"keine Antwort – {onchain.last_error or 'RPC nicht erreichbar'}")
+            return (f"{mint[:8]}… · {len(r['danger'])} Gefahr · {len(r['warn'])} Warnung · {r.get('program')} "
+                    f"– springt ein, wenn RugCheck nicht antwortet")
+        out.append(_check("Eigenprüfung über Solana-RPC (Ersatz für RugCheck)", own_check))
+
     def sdk() -> str:
         from .preflight import sdk_version
         ai = cfg.get("ai") or {}

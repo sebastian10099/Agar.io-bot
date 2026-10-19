@@ -153,8 +153,9 @@ def build(cfg: dict[str, Any], home: Path, demo: bool) -> Engine:
     from .sources.geckoterminal import GeckoTerminal
     from .sources.pumpfun import PumpFun
     from .sources.rugcheck import RugCheck
+    from .sources.solana_rpc import OnChainCheck, SafetyCheck
     dex = DexScreener()
-    return Engine(cfg, store, dex, RugCheck(),
+    return Engine(cfg, store, dex, SafetyCheck(RugCheck(), OnChainCheck()),
                   feeds={"dexscreener": DexScreenerFeed(dex), "geckoterminal": GeckoTerminal(), "pumpfun": PumpFun()})
 
 

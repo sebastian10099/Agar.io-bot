@@ -201,6 +201,7 @@ class Store:
         ("no price", "kein Kurs", None),
         ("rugcheck unavailable", "RugCheck nicht erreichbar (nur beobachtet)", "filters.allow_rugcheck_unknown"),
         ("rugcheck danger", "RugCheck: Gefahr", "filters.require_rugcheck"),
+        ("onchain danger", "Eigenprüfung: Gefahr (Freeze/Mint/Token-2022)", "filters.require_rugcheck"),
         ("rugcheck score", "RugCheck-Score zu hoch", "filters.max_rugcheck_score"),
         ("score ", "Score unter Schwelle (watch)", "scoring.min_score"),
         ("not opened", "Kauf blockiert (Limit, Pause, Bestand)", "max_open_positions"),

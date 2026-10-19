@@ -1210,3 +1210,101 @@ class SlowWorldTests(unittest.TestCase):
         self.assertIn("Pause", rc.health()["last_error"])
         t[0] += 61
         rc.summary("M99"); self.assertEqual(len(calls), 4)               # tries again after the pause
+
+
+def mint_value(freeze=None, mint_auth=None, program="spl-token", extensions=None):
+    info = {"decimals": 6, "freezeAuthority": freeze, "isInitialized": True, "mintAuthority": mint_auth, "supply": "1000000000000000"}
+    if extensions is not None:
+        info["extensions"] = extensions
+    return {"data": {"parsed": {"info": info, "type": "mint"}, "program": program, "space": 82},
+            "executable": False, "lamports": 1461600, "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "rentEpoch": 0}
+
+
+class OnChainCheckTests(unittest.TestCase):
+    def test_assess_mint_reads_authorities_and_token2022_traps(self):
+        from bot.sources.solana_rpc import assess_mint
+        clean = assess_mint(mint_value())
+        self.assertEqual((clean["danger"], clean["warn"], clean["source"]), ([], [], "onchain"))
+        self.assertIn("Freeze", assess_mint(mint_value(freeze="Creator111"))["danger"][0])
+        self.assertIn("Mint", assess_mint(mint_value(mint_auth="Creator111"))["warn"][0])
+        ext = [{"extension": "permanentDelegate", "state": {"delegate": "Evil111"}},
+               {"extension": "transferHook", "state": {"programId": "Hook111", "authority": None}},
+               {"extension": "transferFeeConfig", "state": {"newerTransferFee": {"transferFeeBasisPoints": 250}}},
+               {"extension": "defaultAccountState", "state": {"accountState": "frozen"}},
+               {"extension": "metadataPointer", "state": {}}]
+        r = assess_mint(mint_value(program="spl-token-2022", extensions=ext))
+        self.assertEqual(len(r["danger"]), 3, r)
+        self.assertIn("Transfergebühr 2.5 %", r["warn"])
+        harmless = assess_mint(mint_value(program="spl-token-2022", extensions=[
+            {"extension": "permanentDelegate", "state": {"delegate": None}}, {"extension": "transferHook", "state": {"programId": None}},
+            {"extension": "transferFeeConfig", "state": {"newerTransferFee": {"transferFeeBasisPoints": 0}}}]))
+        self.assertEqual((harmless["danger"], harmless["warn"]), ([], []))
+        self.assertIsNone(assess_mint(None)); self.assertIsNone(assess_mint({"data": ["base64", "..."]}))
+        self.assertIsNone(assess_mint({"data": {"parsed": {"type": "account", "info": {}}}}))
+
+    def test_rpc_client_caches_and_pauses_after_failures(self):
+        from bot.sources.solana_rpc import OnChainCheck
+        seen = []
+        def post(url, body, timeout=None, headers=None):
+            seen.append(body)
+            return {"jsonrpc": "2.0", "id": 1, "result": {"context": {"slot": 1}, "value": mint_value()}}
+        oc = OnChainCheck(post=post, url="https://rpc.example")
+        self.assertEqual(oc.summary("MintA")["danger"], [])
+        oc.summary("MintA"); self.assertEqual(len(seen), 1)               # cached
+        self.assertEqual(seen[0]["method"], "getAccountInfo"); self.assertEqual(seen[0]["params"][1]["encoding"], "jsonParsed")
+        t = [0.0]; calls = []
+        def broken(url, body, timeout=None, headers=None):
+            calls.append(1); return {"jsonrpc": "2.0", "id": 1, "error": {"code": 429, "message": "Too many requests"}}
+        oc2 = OnChainCheck(post=broken, url="x", clock=lambda: t[0])
+        for i in range(6):
+            self.assertIsNone(oc2.summary(f"M{i}"))
+        self.assertEqual(len(calls), 3); self.assertIn("Too many", oc2.health()["last_error"])
+        self.assertIsNone(OnChainCheck(post=lambda *a, **k: {"result": {"value": None}}, url="x").summary("NoMint"))
+
+    def test_safety_check_prefers_rugcheck_and_falls_back(self):
+        from bot.sources.solana_rpc import SafetyCheck
+        class R:
+            def __init__(self, answer): self.answer, self._cache, self.last_error = answer, {}, ""
+            def summary(self, mint): return self.answer
+            def health(self): return {"calls": 1, "fails": 0 if self.answer else 1, "last_error": "", "ok": bool(self.answer)}
+        onchain = R({"score": 0.0, "danger": [], "warn": [], "source": "onchain"})
+        self.assertEqual(SafetyCheck(R({"score": 100, "danger": [], "warn": []}), onchain).summary("M")["source"], "rugcheck")
+        both_down = SafetyCheck(R(None), R(None))
+        self.assertIsNone(both_down.summary("M"))
+        self.assertEqual(SafetyCheck(R(None), onchain).summary("M")["source"], "onchain")
+        self.assertIn("fallback", SafetyCheck(R(None), onchain).health())
+
+    def test_strategy_with_the_onchain_result(self):
+        from bot.strategy import evaluate
+        from bot.sources.solana_rpc import assess_mint
+        pairs = FakeDex(accel=1.0).pairs_for_tokens("solana", FakeDex(accel=1.0).recent_token_addresses(["solana"])["solana"])
+        run = next(p for p in pairs if p["symbol"] == "RUN")
+        clean = assess_mint(mint_value())
+        v = evaluate(run, clean, CFG)
+        self.assertNotEqual(v["decision"], "skip"); self.assertFalse(v.get("watch_only"))
+        self.assertIn("rugcheck 5", " ".join(v["reasons"]))                 # half of RugCheck's points
+        v = evaluate(run, assess_mint(mint_value(freeze="Creator")), CFG)
+        self.assertEqual(v["decision"], "skip"); self.assertIn("onchain danger", v["reasons"][0])
+        v = evaluate(run, assess_mint(mint_value(mint_auth="Creator")), CFG)
+        self.assertIn("rugcheck 3", " ".join(v["reasons"]))                 # a warning costs two points
+
+    def test_engine_buys_on_the_onchain_check_when_rugcheck_is_down(self):
+        from bot.sources.solana_rpc import SafetyCheck, OnChainCheck
+        class DownRug:
+            _cache = {}; last_error = "DNS"
+            def summary(self, mint): return None
+            def health(self): return {"calls": 1, "fails": 1, "last_error": "DNS", "ok": False}
+        import bot.demo as demo
+        cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0)
+            rpc = OnChainCheck(post=lambda *a, **k: {"result": {"value": mint_value()}}, url="x")
+            eng = Engine(copy.deepcopy(CFG), store, dex, SafetyCheck(DownRug(), rpc), clock=dex.now, feeds=demo_feeds(dex))
+            counts = eng.poll_once()
+            self.assertEqual(counts["buy"], 1, counts)                          # RUN bought on the own check
+            run = next(c for c in store.candidates() if c["symbol"] == "RUN")
+            self.assertEqual(run["snapshot"]["rug"]["source"], "onchain")
+            h = eng.state()["rugcheck"]
+            self.assertFalse(h["ok"]); self.assertTrue(h["fallback"]["ok"])
+            store.close()

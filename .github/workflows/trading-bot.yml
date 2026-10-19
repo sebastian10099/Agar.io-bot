@@ -71,6 +71,10 @@ jobs:
       - name: RugCheck-Rohantwort (Diagnose)
         continue-on-error: true
         run: |
+          for host in api.rugcheck.xyz rugcheck.xyz; do
+            echo "DNS $host: system=$(dig +short $host | head -3 | tr '\n' ' ') 1.1.1.1=$(dig +short @1.1.1.1 $host | head -3 | tr '\n' ' ') 8.8.8.8=$(dig +short @8.8.8.8 $host | head -3 | tr '\n' ' ')"
+          done
+          curl -sS -m 20 -o /dev/null -w 'https://rugcheck.xyz -> HTTP %{http_code}\n' https://rugcheck.xyz || true
           MINT=$(curl -s -m 20 https://api.dexscreener.com/token-profiles/latest/v1 | python3 -c "import json,sys; print(next(x['tokenAddress'] for x in json.load(sys.stdin) if x.get('chainId')=='solana'))")
           echo "Mint: $MINT"
           for UA in "new-token-bot/0.1" "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36"; do
@@ -84,7 +88,23 @@ jobs:
         continue-on-error: true
         env:
           NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-live
-        run: time /bin/bash ./launch.sh --once
+        run: |
+          time /bin/bash ./launch.sh --once
+          echo "--- Warum fällt was durch (echte Marktdaten):"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          from bot.store import Store
+          s = Store(Path(os.environ["NEW_TOKEN_BOT_HOME"]) / "bot.sqlite")
+          w = s.skip_reasons()
+          print(json.dumps(w["decisions"]))
+          for r in w["reasons"]:
+              print(f"{r['n']:4d}  {r['share'] * 100:5.1f} %  {r['label']}")
+          for c in s.candidates(200):
+              if c["decision"] != "skip":
+                  rug = (c["snapshot"].get("rug") or {})
+                  print(f"  {c['decision']:5s} {c['symbol']!s:12.12s} score {c['score']}  Sicherheit: {rug.get('source', 'keine')}  {'; '.join(c['reasons'][:3])}")
+          PY
       - name: Selbsttest gegen die echten Quellen (DexScreener, GeckoTerminal, pump.fun, RugCheck)
         working-directory: trading-bot
         env:
@@ -109,7 +129,8 @@ jobs:
           plutil -lint "$APP/Contents/Info.plist"
           "$HOME/NewTokenBot/bin/ant" --version
           # the launcher starts the bot in the background and returns; never let a dialog hang the job
-          perl -e 'alarm 300; exec @ARGV' "$APP/Contents/MacOS/New Token Bot"
-          curl -s -m 5 http://127.0.0.1:8793/api/state | grep -q '"app": "new-token-bot"'
+          LOG="$HOME/Library/Application Support/NewTokenBot/bot.log"
+          perl -e 'alarm 300; exec @ARGV' /bin/bash -x "$APP/Contents/MacOS/New Token Bot" || { echo "--- Launcher-Fehler, bot.log:"; cat "$LOG" 2>/dev/null; exit 1; }
+          curl -s -m 5 http://127.0.0.1:8793/api/state | grep -q '"app": "new-token-bot"' || { echo "--- bot.log:"; cat "$LOG"; exit 1; }
           echo "App-Launcher hat den Bot gestartet"
           curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8793/api/quit
