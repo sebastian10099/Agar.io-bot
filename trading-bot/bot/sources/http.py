@@ -25,9 +25,19 @@ def ssl_context() -> ssl.SSLContext:
 
 class HttpError(Exception):
     def __init__(self, status: int, body: str) -> None:
-        super().__init__(f"HTTP {status}: {body[:200]}")
+        super().__init__(f"HTTP {status}: {_gist(body)}")
         self.status = status
         self.body = body
+
+
+def _gist(body: str) -> str:
+    """An error page's gist for the log, not its HTML."""
+    head = body.lstrip()[:2000].lower()
+    if head.startswith(("<!doctype", "<html")):
+        if "just a moment" in head or "cloudflare" in head or "cf-chl" in head:
+            return "von Cloudflare blockiert (Browser-Prüfung) – von dieser Internetadresse aus nicht abrufbar"
+        return "HTML-Seite statt Daten"
+    return body[:200]
 
 
 def post_json(url: str, body: Any, timeout: float = 60, headers: Optional[dict] = None) -> Any:

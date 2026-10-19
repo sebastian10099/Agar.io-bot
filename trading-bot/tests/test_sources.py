@@ -392,6 +392,17 @@ class DoctorTests(unittest.TestCase):
         if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
             self.assertFalse(by["Claude-Zugang"]["ok"]); self.assertIn("kein Zugang", by["Claude-Zugang"]["detail"])
 
+    def test_a_cloudflare_blocked_pump_feed_is_a_note(self):
+        from bot.doctor import run_checks
+        from bot.sources.http import HttpError
+        from bot.sources.pumpfun import PumpFun
+        def blocked(url, **kw): raise HttpError(403, "<!DOCTYPE html><title>Just a moment...</title>")
+        def broken(url, **kw): raise HttpError(500, '{"error":"db down"}')
+        for fetch, ok, warn, text in ((blocked, True, True, "Cloudflare"), (broken, False, None, "db down")):
+            checks = run_checks(self.cfg, self.dex, {"pumpfun": PumpFun(fetch=fetch)}, FakeRug(), None)
+            row = next(c for c in checks if c["name"] == "pump.fun – neue Coins")
+            self.assertEqual((row["ok"], row.get("warn")), (ok, warn), row); self.assertIn(text, row["detail"])
+
     def test_parser_check_catches_missing_fields(self):
         from bot.doctor import _parsed
         with self.assertRaises(RuntimeError) as cm:
@@ -1810,6 +1821,15 @@ class HttpRetryTests(unittest.TestCase):
             with self.assertRaises(urllib.error.URLError):
                 http.get_json("https://api.example/x", retries=2)
             self.assertEqual(slept, [1.0, 2.0])              # between attempts only
+
+    def test_an_error_page_is_named_not_pasted(self):
+        from bot.sources.http import HttpError
+        challenge = '<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title>' + "x" * 500
+        e = HttpError(403, challenge)
+        self.assertEqual(str(e), "HTTP 403: von Cloudflare blockiert (Browser-Prüfung) – von dieser Internetadresse aus nicht abrufbar")
+        self.assertEqual(e.body, challenge)                                   # the page itself stays available
+        self.assertEqual(str(HttpError(502, "\n <html><body>Bad gateway</body></html>")), "HTTP 502: HTML-Seite statt Daten")
+        self.assertEqual(str(HttpError(429, '{"error":"Too many requests"}')), 'HTTP 429: {"error":"Too many requests"}')
 
 
 

@@ -121,7 +121,12 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
         def pump_coins() -> str:
             if hasattr(pump, "_last"):
                 pump._last = None
-            items = pump.discover(["solana"]).get("solana") or []
+            try:
+                items = pump.discover(["solana"]).get("solana") or []
+            except Exception as error:  # noqa: BLE001 - a blocked extra feed is a note, the others still find tokens
+                if "Cloudflare" not in str(error):
+                    raise
+                raise Degraded(f"{error} – DexScreener und GeckoTerminal finden neue Tokens trotzdem") from None
             if not items:
                 raise RuntimeError("pump.fun meldet keine Coins (Feed leer oder blockiert)")
             aged = sum(1 for i in items if (i.get("snapshot") or {}).get("age_min") is not None)
