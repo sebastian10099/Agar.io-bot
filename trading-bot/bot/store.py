@@ -38,6 +38,15 @@ CREATE TABLE IF NOT EXISTS outcomes (
     PRIMARY KEY (candidate_id, horizon_min)
 );
 
+-- the price of a candidate every poll for an hour after it was judged (pool tokens): what the
+-- rules would have earned with any entry and exit settings, without waiting for real trades
+CREATE TABLE IF NOT EXISTS paths (
+    candidate_id INTEGER NOT NULL,
+    at REAL NOT NULL,
+    price REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_paths ON paths(candidate_id, at);
+
 CREATE TABLE IF NOT EXISTS positions (
     id INTEGER PRIMARY KEY,
     opened_at REAL NOT NULL,
@@ -172,6 +181,18 @@ class Store:
         for h in horizons:
             self._exec("INSERT OR IGNORE INTO outcomes(candidate_id, horizon_min, due_at) "
                        "VALUES (?,?,?)", (candidate_id, h, seen_at + h * 60))
+
+    def add_path_points(self, points: list[tuple[int, float, float]]) -> None:
+        """[(candidate id, time, price)] in one transaction: a poll's samples."""
+        if points:
+            with self._lock:
+                self._conn.executemany("INSERT INTO paths(candidate_id, at, price) VALUES (?,?,?)", points)
+                self._conn.commit()
+
+    def paths_since(self, since: float) -> list[dict[str, Any]]:
+        """Candidates seen since `since` that have a path, newest last."""
+        return self._rows("SELECT DISTINCT c.id, c.chain, c.token, c.pair, c.seen_at FROM candidates c "
+                          "JOIN paths p ON p.candidate_id = c.id WHERE c.seen_at >= ? ORDER BY c.seen_at", (since,))
 
     def due_outcomes(self, now: float, limit: int = 30) -> list[dict[str, Any]]:
         return self._rows(
@@ -334,6 +355,7 @@ class Store:
             self._conn.execute("DELETE FROM positions")
             if what == "all":
                 self._conn.execute("DELETE FROM outcomes")
+                self._conn.execute("DELETE FROM paths")
                 self._conn.execute("DELETE FROM candidates")
             self._conn.commit()
 
@@ -354,9 +376,17 @@ class Store:
         bounded on a bot that runs for months."""
         with self._lock:
             o = self._conn.execute("DELETE FROM outcomes WHERE candidate_id IN (SELECT id FROM candidates WHERE seen_at < ?)", (before,)).rowcount
+            self._conn.execute("DELETE FROM paths WHERE candidate_id IN (SELECT id FROM candidates WHERE seen_at < ?)", (before,))
             c = self._conn.execute("DELETE FROM candidates WHERE seen_at < ?", (before,)).rowcount
             self._conn.commit()
         return {"candidates": c, "outcomes": o}
+
+    def prune_paths(self, before: float) -> int:
+        """Drop price paths recorded before `before` (they are the bulk of the database)."""
+        with self._lock:
+            n = self._conn.execute("DELETE FROM paths WHERE at < ?", (before,)).rowcount
+            self._conn.commit()
+        return n
 
     def prune_ticks(self, before: float) -> int:
         """Drop ticks of positions closed before `before`; open ones keep theirs."""

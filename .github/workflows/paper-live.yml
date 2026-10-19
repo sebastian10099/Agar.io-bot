@@ -106,6 +106,9 @@ jobs:
               echo "Laufzeit-Prüfung: Befund"; cat "$SITE/audit.txt"
             fi
             { echo; echo "## Laufzeit-Prüfung dieses Laufs"; echo; echo '```'; cat "$SITE/audit.txt"; echo '```'; } >> "$SITE/REPORT.md"
+            if [ -s "$SITE/backtest.txt" ]; then
+              { echo; echo "## Backtest auf den Kursverläufen"; echo; echo '```'; cat "$SITE/backtest.txt"; echo '```'; } >> "$SITE/REPORT.md"
+            fi
             touch "$SITE/.nojekyll"
             (cd "$SITE" && rm -rf .git && git init -q -b paper-live && git add -A \
               && git -c user.name="paper-live" -c user.email="paper-live@users.noreply.github.com" commit -q -m "Paper-Live $(date -u +%FT%TZ)" \
@@ -121,7 +124,11 @@ jobs:
 
           n=0
           while [ "$(date +%s)" -lt "$END" ]; do
-            [ $((n % 5)) -eq 0 ] && save_account          # account every 10 minutes
+            if [ $((n % 5)) -eq 0 ]; then                 # account and backtest every 10 minutes
+              save_account
+              perl -e 'alarm 120; exec @ARGV' python3 tools/backtest.py "$NEW_TOKEN_BOT_HOME" > "$SITE/backtest.txt.new" 2>&1 \
+                && mv "$SITE/backtest.txt.new" "$SITE/backtest.txt" || echo "Backtest fehlgeschlagen"
+            fi
             publish
             if [ $((n % 5)) -eq 0 ]; then                  # a status line in the job log every 10 minutes
               python3 -c "import json,sys; s=json.load(open('$SITE/state.json')); print(f\"{s['polls']} Polls · Bankroll \${s['bankroll']:.2f} · offen {len(s['open_positions'])} · Trades {s['stats']['closed']} · Kandidaten {s['stats']['candidates']}\")" || true

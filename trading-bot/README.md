@@ -606,6 +606,28 @@ Mac-CI-Lauf nach dem echten Poll und in jedem Paper-Live-Schnappschuss
 dem Paper-Konto nach 1,5 Stunden echtem Handel: 17 Positionen, 25 Ausstiege,
 42 Buchungen – alles regelkonform.
 
+**Backtest auf echten Kursverläufen** – ein Paper-Konto hält höchstens fünf
+Positionen, das sind ein paar Trades pro Stunde: viel zu wenig, um zu wissen,
+ob eine Regel Geld verdient. Der Tracker zeichnet deshalb für jeden
+Pool-Token, den der Bot bewertet (Pool ab 5.000 $), eine Stunde lang den
+Kurs auf (Reserven-Kurs, gespeichert bei jeder Änderung; ein verschwundener
+Pool endet bei 0). Darauf spielt
+
+```bash
+python3 tools/backtest.py <Datenordner> [--since EPOCH]
+```
+
+die Einstiegsregeln (eingestellt und die drei Profile, je Token der erste
+Kauf) und Ausstiegs-Varianten (Stop, Trailing, Zeit-Stop, Gewinnstufen) mit
+denselben Kosten und derselben Ausstiegslogik wie das Paper-Konto durch –
+hunderte Trades pro Stunde. Ehrlich gemacht: die beste Ausstiegs-Variante
+wird auf der ersten Hälfte der Zeit gewählt und auf der zweiten, ungesehenen
+gezeigt; auf Zufallsdaten sieht man so, wie „die beste Einstellung“ auf
+bekannten Daten gewinnt und auf neuen verliert. Ein Test beweist, dass die
+Wiederholung auf 300 zufälligen Verläufen genau das Ergebnis des
+Paper-Kontos trifft. Paper-Live hängt das Ergebnis alle zehn Minuten an
+`REPORT.md` an. Kursverläufe werden nach 7 Tagen gelöscht.
+
 **Browser-Prüfung der Steuerseite** – klickt gegen einen laufenden Demo-Server
 jede Funktion durch (Formular, Validierung, Persistenz, Schließen, Pause,
 Filter, Reset), prüft auf Konsolenfehler und auf Überhang am Telefon, und legt

@@ -2737,3 +2737,74 @@ class ChainPriceTests(unittest.TestCase):
             self.assertEqual(pos["exit_reason"], "stop_loss")
             self.assertEqual(ticks(), 2)                                                 # the price it sold at is on the chart
             store.close()
+
+
+class BacktestTests(unittest.TestCase):
+    """tools/backtest.py replays exits on recorded paths - it must reach the paper account's result."""
+
+    def load(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("backtest", ROOT / "tools" / "backtest.py")
+        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+        return mod
+
+    def test_the_replay_matches_the_paper_account(self):
+        import random
+        from bot.paper import Paper
+        bt = self.load()
+        rng = random.Random(7)
+        for case in range(300):
+            ex = {"stop_loss_pct": rng.choice([-15, -30]), "trailing_stop_pct": rng.choice([15, 25]),
+                  "time_stop_minutes": rng.choice([2, 5, 10]),
+                  "take_profit_ladder": rng.choice([[[50, 0.5], [100, 0.25]], [[25, 0.5]], []])}
+            cfg = copy.deepcopy(CFG); cfg["exits"] = ex
+            price, path = 1.0, []
+            for i in range(1, 80):                                               # a poll every 10 s
+                price = max(1e-9, price * (1 + rng.gauss(0, 0.08)) if rng.random() > 0.01 else 0.0)
+                path.append((1000.0 + i * 10.0, price))
+            with tempfile.TemporaryDirectory() as d:
+                store = Store(Path(d) / "t.sqlite"); paper = Paper(store, cfg)
+                pid = paper.open({"chain": "solana", "token": "T", "pair": "P", "symbol": "T", "price_usd": 1.0}, 1000.0)
+                for at, px in path:
+                    pos = store.position(pid)
+                    if pos["status"] != "open":
+                        break
+                    paper.update(pos, px, at)
+                pos = store.position(pid)
+                if pos["status"] == "open":
+                    paper.close_manually(pos, path[-1][1], path[-1][0])
+                want = store.position(pid)["realized_usd"] / store.position(pid)["size_usd"] * 100
+                store.close()
+            got, _ = bt.simulate(1.0, 1000.0, path, ex, cfg["paper"]["fee_pct"], cfg["paper"]["slippage_pct"])
+            self.assertAlmostEqual(got, want, places=6, msg=f"case {case}")
+
+    def test_paths_are_recorded_and_replayed(self):
+        from bot.tracker import Tracker
+        bt = self.load()
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "bot.sqlite")
+            quote = {"P1": 1.0, "P2": 1.0}
+            tr = Tracker(store, CFG, lambda c, p: None, lambda chain, pairs, follow=None: {p: quote[p] for p in pairs if p in quote})
+            snap = {"chain": "solana", "dex": "pumpswap", "curve": False, "liquidity_kind": "reported", "liquidity_usd": 20000,
+                    "price_usd": 1.0, "volume_m5": 9000, "buys_m5": 60, "sells_m5": 20, "change_m5": 20, "change_h1": 20,
+                    "age_min": 10, "fdv": 50000, "market_cap": 50000, "boosts": 0, "has_socials": True,
+                    "rug": {"source": "rugcheck", "score": 100, "danger": [], "warn": []}}
+            for i in (1, 2):
+                tr.record({"seen_at": 0.0, "chain": "solana", "token": f"T{i}", "pair": f"P{i}", "symbol": f"S{i}",
+                           "price_usd": 1.0, "score": 70, "decision": "buy", "reasons": [], "snapshot": snap})
+            tr.record({"seen_at": 0.0, "chain": "solana", "token": "C", "pair": "PC", "symbol": "C", "price_usd": 1.0,
+                       "score": 0, "decision": "skip", "reasons": [], "snapshot": {"curve": True, "liquidity_usd": 9e4}})
+            for i in range(1, 400):
+                quote["P1"] = 1.0 + i * 0.01                                     # T1 climbs
+                if i == 30:
+                    del quote["P2"]                                              # T2's pool is pulled
+                tr.sample_paths(i * 10.0)
+            got = bt.load(Path(d) / "bot.sqlite", 0.0)
+            self.assertEqual(sorted(c["token"] for c in got), ["T1", "T2"])      # the curve is not followed
+            t2 = next(c for c in got if c["token"] == "T2")
+            self.assertEqual(t2["path"][-1][1], 0.0)                             # its path ends at nothing
+            self.assertLessEqual(max(at for at, _ in next(c for c in got if c["token"] == "T1")["path"]), 3600.0)
+            self.assertLess(bt.simulate(1.0, 0.0, t2["path"], CFG["exits"], 1.0, 2.0)[0], -99)
+            store.close()
+            text = bt.report(Path(d) / "bot.sqlite", copy.deepcopy(CFG))
+            self.assertIn("2 Kandidaten mit Kursverlauf", text)

@@ -57,6 +57,7 @@ VERSION = "0.9"
 APP_ID = "new-token-bot"      # marker in /api/state so starters can tell this bot from whatever else listens on the port
 TICK_KEEP_DAYS = 7
 HISTORY_KEEP_DAYS = 30       # candidates and outcomes older than this are dropped at start
+PATH_KEEP_DAYS = 7           # price paths (the backtest's data, the bulk of the database) this long
 DISCOVERY_BUDGET_S = 20.0      # seconds per poll for finding and judging new tokens; the rest waits for the next poll
 NO_PRICE_WRITE_OFF_MIN = 30.0   # minutes without any price (and past the time stop) before a position is written off
 REPORT_TTL = 10.0            # seconds: edge reports and breakdowns are recomputed at most this often       # price ticks of positions closed longer ago are dropped at start
@@ -492,6 +493,7 @@ class Engine:
         interval = float(self.cfg["poll_seconds"])
         self.store.log("info", f"engine started, mode={self.cfg['mode']}, every {interval:.0f}s")
         self.store.prune_ticks(self.clock() - TICK_KEEP_DAYS * 86400)
+        self.store.prune_paths(self.clock() - PATH_KEEP_DAYS * 86400)
         dropped = self.store.prune_history(self.clock() - HISTORY_KEEP_DAYS * 86400)
         if dropped["candidates"]:
             self.store.log("info", f"Verlauf aufgeräumt: {dropped['candidates']} Kandidaten älter als {HISTORY_KEEP_DAYS} Tage")
