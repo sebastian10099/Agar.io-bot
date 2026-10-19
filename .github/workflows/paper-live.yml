@@ -9,7 +9,7 @@ name: Paper-Live (echter Markt, Spielgeld)
 on:
   push:
     branches: [claude/agenen-funktionalitaet-hnw6g5]
-    paths: ['.github/paper-live.json']
+    paths: ['.github/paper-live.json', '.github/workflows/paper-live.yml']
   workflow_dispatch:
     inputs:
       hours:
@@ -29,13 +29,15 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 350
     env:
-      NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/paper
-      SITE: ${{ runner.temp }}/site
       PAGES_URL: https://sebastian10099.github.io/Agar.io-bot/
     steps:
       - uses: actions/checkout@v5
       - name: Paper-Konto vom letzten Lauf holen
         run: |
+          # the runner context exists only inside steps: paths go through GITHUB_ENV
+          echo "NEW_TOKEN_BOT_HOME=$RUNNER_TEMP/paper" >> "$GITHUB_ENV"
+          echo "SITE=$RUNNER_TEMP/site" >> "$GITHUB_ENV"
+          NEW_TOKEN_BOT_HOME="$RUNNER_TEMP/paper"; SITE="$RUNNER_TEMP/site"
           mkdir -p "$NEW_TOKEN_BOT_HOME" "$SITE"
           if git fetch -q --depth 1 origin paper-live 2>/dev/null && git show origin/paper-live:bot.sqlite.gz > "$RUNNER_TEMP/bot.sqlite.gz" 2>/dev/null; then
             gunzip -c "$RUNNER_TEMP/bot.sqlite.gz" > "$NEW_TOKEN_BOT_HOME/bot.sqlite"
