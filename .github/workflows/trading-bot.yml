@@ -220,8 +220,14 @@ jobs:
           dex = DexScreener()
           tokens = dex.recent_token_addresses(["solana"])["solana"][:90]
           pools = [n for n in dex._token_pairs("solana", tokens) if n["dex"] == "pumpswap"][:12]
+          import time
           reader = CurveReader()
-          got = reader.pool_prices({n["pair"]: n["token"] for n in pools}, dex.quote_usd)
+          got = {}
+          for attempt in range(4):                # the public node limits shared runner addresses: try again
+              got = reader.pool_prices({n["pair"]: n["token"] for n in pools}, dex.quote_usd)
+              if got:
+                  break
+              time.sleep(5 + 5 * attempt); reader._paused_until = 0.0
           print(f"SOL laut DexScreener: {dex.quote_usd.get('So11111111111111111111111111111111111111112')} $ · {len(pools)} PumpSwap-Pools · RPC-Aufrufe {reader.calls}, Fehler {reader.fails} {reader.last_error}")
           from bot.sources.curve import token_amount
           devs = []
@@ -245,6 +251,9 @@ jobs:
                   line += f" · Tresore {b} Token / {q} SOL (Dez. {pool['base_decimals']}/{pool['quote_decimals']})"
                   if raw[0] and n["price_usd"] and sol:
                       line += f" · DS-Reserven {raw[0] / n['price_usd']:.0f} Token / {(raw[1] or 0) / sol:.2f} SOL"
+              if raw[0] and raw[1] and n["price_usd"]:
+                  # the price the reserves pay: DexScreener's own reserve figures, base side valued at its price
+                  line += f" · Reserven-Kurs laut DS {n['price_usd'] * raw[1] / raw[0]:.6g} ({(raw[1] / raw[0] - 1) * 100:+.1f} % zum DS-Kurs)"
               print(line)
           if len(pools) >= 3 and not got and reader.fails == 0:
               sys.exit("kein einziger Pool von der Chain gelesen – Layout oder Dezimalstellen stimmen nicht")
