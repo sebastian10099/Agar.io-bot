@@ -278,6 +278,12 @@ Verbrauch steht auf der Steuerseite. Jeder Fehler (ungültiger Schlüssel,
 Rate-Limit, Modell nicht gefunden) landet im Protokoll, und die Regeln
 entscheiden dann allein weiter.
 
+**Verschwundene Paare:** Liefert DexScreener für eine offene Position keinen Kurs
+mehr, während andere Kurse kommen, ist das Paar meist entfernt worden (Rug). Ist
+ihr Zeit-Stop abgelaufen und fehlt der Kurs seit 30 Minuten, wird der Rest als
+Verlust abgeschrieben (Grund `no_price`) – sonst bliebe sie für immer offen.
+Bei einem allgemeinen Ausfall passiert das nicht.
+
 ## Der Edge-Report — der wichtigste Teil
 
 Der Tracker merkt sich **jeden** bewerteten Token, auch die abgelehnten, und

@@ -977,3 +977,44 @@ class CashTests(unittest.TestCase):
                 paper.open({"chain": "solana", "token": f"T{i}", "pair": f"P{i}", "symbol": f"S{i}", "price_usd": 1.0}, 1000.0 + i)
                 self.assertGreaterEqual(paper.cash(), -1e-9, f"after {i + 1} buys: cash {paper.cash():.4f}")
             store.close()
+
+
+class VanishedPairTests(unittest.TestCase):
+    def setUp(self):
+        import bot.demo as demo
+        self.cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.sqlite")
+        self.dex = FakeDex(accel=1.0); self.t = [self.dex.started]; self.dex.now = lambda: self.t[0]
+        self.eng = Engine(copy.deepcopy(CFG), self.store, self.dex, FakeRug(), clock=self.dex.now, feeds=demo_feeds(self.dex))
+        self.eng.poll_once()
+        self.pos = self.store.open_positions()[0]
+        self.real = self.dex.price
+
+    def tearDown(self):
+        import bot.demo as demo
+        demo.CYCLE_MIN = self.cycle
+        self.store.close(); self.tmp.cleanup()
+
+    def run_minutes(self, minutes, step=5):
+        for _ in range(0, minutes, step):
+            self.t[0] += step * 60
+            self.eng.poll_once()
+
+    def test_a_pair_that_vanished_is_written_off_after_the_time_stop(self):
+        pair = self.pos["pair"]
+        self.dex.price = lambda chain, p: None if p == pair else self.real(chain, p)   # the pair is gone (rug)
+        self.run_minutes(40)
+        self.assertEqual(self.store.position(self.pos["id"])["status"], "open")      # not yet: could be a hiccup
+        self.run_minutes(60)
+        closed = self.store.position(self.pos["id"])
+        self.assertEqual((closed["status"], closed["exit_reason"]), ("closed", "no_price"))
+        self.assertLess(closed["realized_usd"], 0)
+        self.assertTrue(any("kein Kurs" in e["message"] for e in self.store.events(40)))
+
+    def test_a_general_outage_does_not_write_positions_off(self):
+        self.dex.price = lambda chain, p: None                                          # DexScreener down for everything
+        def down(chain, addrs): raise RuntimeError("DexScreener 503")
+        self.dex.pairs_for_tokens = down
+        self.run_minutes(120)
+        self.assertEqual(self.store.position(self.pos["id"])["status"], "open")

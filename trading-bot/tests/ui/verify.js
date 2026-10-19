@@ -360,10 +360,13 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   const heldNow = (await (await p.request.get(URL + 'api/state')).json()).open_positions.map((x) => x.token);
   if (heldNow.length) ok((await p.textContent('#cands')).includes('im Bestand'), 'Token im Bestand zeigt „im Bestand“ statt Kaufen');
   else ok(!(await p.textContent('#cands')).includes('im Bestand'), 'nichts im Bestand → überall Kaufen-Knopf');
+  // compare by token, not by count: in the 60x demo other positions close while the dialogs are open
+  const buyId = Number(await watchRow.getAttribute('data-buy'));
+  const buyToken = (await (await p.request.get(URL + 'api/state')).json()).candidates.find((c) => c.id === buyId)?.token;
   await watchRow.click(); await p.waitForSelector('dialog#confirm[open]'); await p.click('#c-yes');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('gekauft'));
-  const openAfter = (await (await p.request.get(URL + 'api/state')).json()).open_positions.length;
-  ok(openAfter === openBefore + 1, `manueller Kauf eröffnet Position (${openBefore} → ${openAfter})`);
+  const openTokens = (await (await p.request.get(URL + 'api/state')).json()).open_positions.map((x) => x.token);
+  ok(!!buyToken && openTokens.includes(buyToken), `manueller Kauf eröffnet Position (${openBefore} vorher, gekaufter Token jetzt offen)`);
   // --- Teilverkauf: ½-Knopf halbiert den Rest, Details-Slider verkauft den Rest ---
   await p.click('nav [data-tab="overview"]');
   const halfBtn = p.locator('#open [data-half]').first();

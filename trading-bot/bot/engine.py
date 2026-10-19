@@ -47,6 +47,7 @@ VERSION = "0.9"
 APP_ID = "new-token-bot"      # marker in /api/state so starters can tell this bot from whatever else listens on the port
 TICK_KEEP_DAYS = 7
 HISTORY_KEEP_DAYS = 30       # candidates and outcomes older than this are dropped at start
+NO_PRICE_WRITE_OFF_MIN = 30.0   # minutes without any price (and past the time stop) before a position is written off
 REPORT_TTL = 10.0            # seconds: edge reports and breakdowns are recomputed at most this often       # price ticks of positions closed longer ago are dropped at start
 
 
@@ -81,6 +82,7 @@ class Engine:
         self._reports: dict[str, tuple[float, Any, int]] = {}
         self._bad_tokens: dict[str, float] = {}    # token -> when its record last broke the evaluation
         self._last_discovery_error = ""
+        self._last_priced: dict[int, float] = {}  # position id -> engine time of its last price
 
     def _report(self, key: str, fn: Callable[[], Any]) -> Any:
         """The page polls every 2 s; the aggregate reports only need to move with the polls."""
@@ -203,14 +205,23 @@ class Engine:
                 self.store.log("error", f"Suche nach neuen Tokens abgebrochen (Exits laufen weiter): {msg}")
                 self._last_discovery_error = msg
 
-        for listed in self.store.open_positions():
+        listed_positions = self.store.open_positions()
+        priced: dict[int, float] = {}
+        for listed in listed_positions:
             try:
                 price = self.dex.price(listed["chain"], listed["pair"])   # network: outside the lock
             except Exception as error:  # noqa: BLE001 - one position without a price must not stop the others
                 self.store.log("error", f"Kein Kurs für {listed.get('symbol')}: {type(error).__name__}: {error}")
-                continue
+                price = None
+            if price:
+                priced[listed["id"]] = price
+        dex_answered = bool(priced) or counts["seen"] > 0
+        for listed in listed_positions:
+            price = priced.get(listed["id"])
             if not price:
+                self._maybe_write_off(listed, now, dex_answered, counts)
                 continue
+            self._last_priced[listed["id"]] = now
             with self._lock:
                 # re-read: a manual close or partial sell may have happened while we waited
                 pos = self.store.position(listed["id"])
@@ -222,6 +233,7 @@ class Engine:
                     self.store.tick(pos["id"], now, price)
                 if pos["status"] != "open":
                     counts["exits"] += 1
+                    self._last_priced.pop(pos["id"], None)
 
         try:
             self.tracker.fill_due(now)
@@ -231,6 +243,25 @@ class Engine:
         self.last_poll_wall = time.time()
         self.poll_count += 1
         return counts
+
+    def _maybe_write_off(self, listed: dict[str, Any], now: float, dex_answered: bool, counts: dict[str, int]) -> None:
+        """A pair that stopped being priced while DexScreener answers for others has
+        most likely been pulled (a rug). Past its time stop and after
+        NO_PRICE_WRITE_OFF_MIN minutes without a price, the rest is written off at 0:
+        a token that cannot be priced cannot be sold either."""
+        last = self._last_priced.get(listed["id"], listed["opened_at"])
+        overdue = now - listed["opened_at"] >= float(self.cfg["exits"]["time_stop_minutes"]) * 60
+        if not (dex_answered and overdue and now - last >= NO_PRICE_WRITE_OFF_MIN * 60):
+            return
+        with self._lock:
+            pos = self.store.position(listed["id"])
+            if pos is None or pos["status"] != "open":
+                return
+            self.store.log("warn", f"{pos.get('symbol')}: seit {(now - last) / 60:.0f} min kein Kurs (Paar verschwunden?) "
+                                   f"– Rest als Verlust abgeschrieben")
+            self.paper._sell(pos, pos["remaining_frac"], 1e-12, "no_price", now)
+            self._last_priced.pop(listed["id"], None)
+            counts["exits"] += 1
 
     # --- loop -----------------------------------------------------------
     def run(self) -> None:
