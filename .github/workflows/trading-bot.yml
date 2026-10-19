@@ -270,6 +270,33 @@ jobs:
           print(f"{len(devs)} von {len(pools)} Pools von der Chain bepreist" + (f", Abweichung im Median {statistics.median(abs(d) for d in devs):.1f} %" if devs else "")
                 + (f", ruhige Pools {statistics.median(quiet):.2f} %" if quiet else ""))
           PY
+      - name: RugCheck-Bericht – Halter ohne Pools (Diagnose)
+        working-directory: trading-bot
+        continue-on-error: true
+        run: |
+          # the full report's holder list: pools and lockers must drop out, or a pool reads as a whale
+          python3 - <<'PY'
+          from bot.sources.dexscreener import DexScreener
+          from bot.sources.http import get_json
+          from bot.sources.rugcheck import BASE, parse_report
+          dex = DexScreener()
+          pools = [n for n in dex._token_pairs("solana", dex.recent_token_addresses(["solana"])["solana"][:60]) if n["dex"] == "pumpswap"][:4]
+          for n in pools:
+              try:
+                  rep = get_json(f"{BASE}/tokens/{n['token']}/report", timeout=20, retries=1)
+              except Exception as e:
+                  print(f"{n['symbol']}: {type(e).__name__} {str(e)[:80]}"); continue
+              known = {a: (i or {}).get("type") for a, i in (rep.get("knownAccounts") or {}).items()}
+              print(f"{n['symbol']} {n['token'][:8]} · Schlüssel: {sorted(rep)[:40]}")
+              print(f"   markets: {[{k: (str(v)[:10] if not isinstance(v, dict) else sorted(v)[:6]) for k, v in m.items()} for m in (rep.get('markets') or [])[:1]]}")
+              print(f"   knownAccounts: {[(a[:6], t) for a, t in list(known.items())[:6]]}")
+              for h in (rep.get("topHolders") or [])[:5]:
+                  print(f"   Halter {str(h.get('address'))[:6]} Besitzer {str(h.get('owner'))[:6]} {h.get('pct')} % insider={h.get('insider')} "
+                        f"bekannt={known.get(h.get('owner')) or known.get(h.get('address'))}")
+              r = parse_report(rep)
+              print(f"   -> holders {r.get('holders')} · insider_wallets {r.get('insider_wallets')} · creator {r.get('creator_pct')} % · "
+                    f"lp_locked {r.get('lp_locked_pct')} · danger {r['danger']} · warn {r['warn'][:3]}")
+          PY
       - name: pump.fun über den PumpPortal-Datenstrom (von einer Rechenzentrums-Adresse)
         working-directory: trading-bot
         continue-on-error: true

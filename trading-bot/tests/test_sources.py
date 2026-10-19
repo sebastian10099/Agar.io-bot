@@ -3010,3 +3010,51 @@ class PumpPortalTests(unittest.TestCase):
         self.assertIn("HttpError", feed.note)
         with self.assertRaises(HttpError):
             PumpFeed(Api(), Stream(None)).discover(["solana"])                     # both down: the source is down
+
+
+class RugCheckReportTests(unittest.TestCase):
+    """The full report says who could dump on the pool; pools and lockers are not holders."""
+
+    REPORT = {
+        "score_normalised": 12, "risks": [{"name": "Large Amount of LP Unlocked", "level": "danger"}],
+        "token": {"supply": 1_000_000_000_000_000}, "creatorBalance": 30_000_000_000_000,
+        "graphInsidersDetected": 7,
+        "markets": [{"pubkey": "PoolPubkey", "liquidityA": "VaultA", "liquidityB": "VaultB", "lp": {"lpLockedPct": 0}}],
+        "knownAccounts": {"PoolAuthority": {"name": "Pump AMM", "type": "AMM"}, "LockerX": {"name": "Streamflow", "type": "LOCKER"}},
+        "topHolders": [
+            {"address": "VaultA", "owner": "PoolAuthority", "pct": 31.0, "insider": False},     # the pool's own tokens
+            {"address": "Acc1", "owner": "LockerX", "pct": 15.0, "insider": False},             # locked away
+            {"address": "Acc2", "owner": "Whale", "pct": 27.0, "insider": True},
+            {"address": "Acc3", "owner": "Fish", "pct": 4.0, "insider": False},
+        ],
+    }
+
+    def test_holders_without_pools_and_lockers(self):
+        from bot.sources.rugcheck import parse_report
+        r = parse_report(self.REPORT)
+        self.assertEqual(r["holders"]["top1"], 27.0)                              # the whale, not the pool (31 %)
+        self.assertEqual(r["holders"]["top10"], 31.0)
+        self.assertEqual(r["holders"]["insiders"], 27.0)
+        self.assertIn("eine Wallet hält 27 % aller Tokens", r["danger"])           # the own check's lines (25 %)
+        self.assertIn("Insider-Netzwerk: 7 verbundene Wallets", r["warn"])
+        self.assertEqual(r["creator_pct"], 3.0)
+        self.assertEqual(r["lp_locked_pct"], 0.0)
+        self.assertIn("Large Amount of LP Unlocked", r["danger"])
+        calm = dict(self.REPORT, topHolders=self.REPORT["topHolders"][:2] + [{"address": "A", "owner": "B", "pct": 3.0}],
+                    graphInsidersDetected=0)
+        r = parse_report(calm)
+        self.assertEqual(r["holders"]["top1"], 3.0); self.assertEqual(r["warn"], [])
+        self.assertIn("RugCheck: bereits gerugged", parse_report(dict(calm, rugged=True))["danger"])
+        self.assertNotIn("holders", parse_report({"score": 5, "risks": []}))           # the summary has no holders
+
+    def test_a_whale_is_skipped_even_on_pumpswap(self):
+        from bot.sources.rugcheck import parse_report
+        from bot.strategy import evaluate
+        v = evaluate(dict(_run_fixture(), dex="pumpswap"), dict(parse_report(self.REPORT), source="rugcheck"), CFG)
+        self.assertEqual(v["decision"], "skip")
+        self.assertTrue(any("27 %" in r for r in v["reasons"]), v["reasons"])
+
+
+def _run_fixture():
+    dex = FakeDex(accel=1.0)
+    return next(p for p in dex.pairs_for_tokens("solana", dex.recent_token_addresses(["solana"])["solana"]) if p["symbol"] == "RUN")
