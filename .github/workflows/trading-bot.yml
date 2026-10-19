@@ -281,3 +281,75 @@ jobs:
         # informative: free APIs may rate-limit or block cloud IPs; the log shows each source's answer
         continue-on-error: true
         run: python3 -m bot.doctor
+      - name: "VPS verbinden.command: Tunnel, Browser, Knopf durch den Tunnel (ssh und open nachgestellt)"
+        working-directory: trading-bot
+        env:
+          NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-tunnel
+          HOME: ${{ runner.temp }}/home-tunnel
+        run: |
+          mkdir -p "$HOME" fake
+          # the bot as it runs on the VPS: port 8765, only on 127.0.0.1
+          python3 -m bot.main --demo --no-open --port 8765 > "$RUNNER_TEMP/tunnel-bot.log" 2>&1 &
+          for _ in $(seq 1 60); do curl -s -m 1 http://127.0.0.1:8765/api/state | grep -q '"app": "new-token-bot"' && break; sleep 1; done
+          # ssh stand-in: forwards -L local:127.0.0.1:remote with a small relay, as the real tunnel does
+          cat > fake/ssh <<'EOF'
+          #!/bin/bash
+          for a in "$@"; do case "$a" in *:127.0.0.1:*) spec="$a" ;; esac; done
+          echo "$@" > "$HOME/ssh-args"
+          exec python3 - "${spec%%:*}" "${spec##*:}" <<'PY'
+          import socket, sys, threading
+          lp, rp = int(sys.argv[1]), int(sys.argv[2])
+          srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+          srv.bind(("127.0.0.1", lp)); srv.listen(16)
+          def pipe(a, b):
+              try:
+                  while True:
+                      d = a.recv(65536)
+                      if not d:
+                          break
+                      b.sendall(d)
+              except OSError:
+                  pass
+              finally:
+                  for x in (a, b):
+                      try:
+                          x.shutdown(socket.SHUT_RDWR)
+                      except OSError:
+                          pass
+          while True:
+              c, _ = srv.accept()
+              u = socket.create_connection(("127.0.0.1", rp))
+              threading.Thread(target=pipe, args=(c, u), daemon=True).start()
+              threading.Thread(target=pipe, args=(u, c), daemon=True).start()
+          PY
+          EOF
+          # browser stand-in: loads the page, then presses "Pause" the way the page does (same-origin JSON POST)
+          cat > fake/open <<'EOF'
+          #!/bin/bash
+          echo "$1" > "$HOME/opened"
+          curl -s -m 5 "$1" | grep -qi "<html" || { echo "Seite nicht geladen" > "$HOME/post"; exit 1; }
+          curl -s -m 5 -X POST -H 'Content-Type: application/json' -H "Origin: ${1%/}" -d '{"action": "pause"}' "${1}api/control" > "$HOME/post"
+          EOF
+          chmod +x fake/ssh fake/open
+          export PATH="$PWD/fake:$PATH"
+          /bin/bash "./VPS verbinden.command" root@203.0.113.5 > "$RUNNER_TEMP/tunnel.out" 2>&1 &
+          pid=$!
+          for _ in $(seq 1 40); do [ -s "$HOME/post" ] && break; sleep 1; done
+          cat "$RUNNER_TEMP/tunnel.out"
+          echo "ssh $(cat "$HOME/ssh-args")"
+          echo "geöffnet: $(cat "$HOME/opened")   Knopf: $(cat "$HOME/post")"
+          [ "$(cat "$HOME/opened")" = "http://127.0.0.1:18765/" ]
+          grep -q '"ok": true' "$HOME/post"
+          curl -s http://127.0.0.1:8765/api/state | python3 -c "import json,sys; assert json.load(sys.stdin)['paused'] is True; print('der Bot ist über den Tunnel pausiert')"
+          [ "$(cat "$HOME/Library/Application Support/NewTokenBot/vps.txt")" = "root@203.0.113.5" ]
+          kill "$pid"; sleep 1
+          if curl -s -m 2 http://127.0.0.1:18765/api/state > /dev/null; then echo "Tunnel nach dem Schließen noch offen"; exit 1; fi
+          echo "Fenster zu: Tunnel getrennt"
+          # second start without an argument uses the remembered server
+          rm -f "$HOME/post" "$HOME/ssh-args"
+          /bin/bash "./VPS verbinden.command" > "$RUNNER_TEMP/tunnel2.out" 2>&1 &
+          pid=$!
+          for _ in $(seq 1 40); do [ -s "$HOME/post" ] && break; sleep 1; done
+          grep -q "root@203.0.113.5" "$HOME/ssh-args" && echo "zweiter Start nimmt den gemerkten Server"
+          kill "$pid"
+          curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8765/api/quit > /dev/null
