@@ -154,6 +154,38 @@ def label(ex: dict[str, Any]) -> str:
     return f"Stop {ex['stop_loss_pct']} % · Trailing {ex['trailing_stop_pct']} % · Zeit {ex['time_stop_minutes']} min · Stufen {ladder}"
 
 
+RUG_SIGNS = [
+    ("Insider-Netzwerk erkannt", lambda s, r: (r.get("insider_wallets") or 0) > 0 if r else None),
+    ("10 größte Wallets ≥ 35 %", lambda s, r: r["holders"]["top10"] >= 35 if r and r.get("holders") else None),
+    ("Ersteller hält > 5 %", lambda s, r: r["creator_pct"] > 5 if r and r.get("creator_pct") is not None else None),
+    ("„LP Unlocked“", lambda s, r: any("LP Unlocked" in str(d) for d in r.get("danger") or []) if r else None),
+    ("Bewertung > 3× Liquidität", lambda s, r: (s.get("fdv") or 0) > 3 * (s.get("liquidity_usd") or 1e18)),
+    ("5-min-Anstieg > 150 %", lambda s, r: (s.get("change_m5") or 0) > 150),
+    ("Alter < 10 min", lambda s, r: (s.get("age_min") or 0) < 10),
+]
+
+
+def rug_table(cands: list[dict[str, Any]]) -> list[str]:
+    """How often a pool token fell 90 % within its hour, with and without each sign at the
+    moment it was judged. Signs RugCheck reports only exist for tokens it was asked about."""
+    pool = entries(cands, None)
+    rug = {c["id"]: min(p for _, p in c["path"]) <= c["price_usd"] * 0.1 for c in pool}
+    lines = [f"Rugs (−90 % binnen der Stunde): {sum(rug.values())} von {len(pool)} Pool-Tokens"]
+    for name, sign in RUG_SIGNS:
+        yes, no = [], []
+        for c in pool:
+            try:
+                v = sign(c["snapshot"], c["snapshot"].get("rug"))
+            except (KeyError, TypeError, ZeroDivisionError):
+                v = None
+            if v is not None:
+                (yes if v else no).append(rug[c["id"]])
+        if yes and no:
+            lines.append(f"  {name:<28} mit: {sum(yes) / len(yes) * 100:3.0f} % von {len(yes):>3} · "
+                         f"ohne: {sum(no) / len(no) * 100:3.0f} % von {len(no):>3}")
+    return lines
+
+
 def report(db_path: Path, cfg: dict[str, Any], since: float = 0.0) -> str:
     cands = load(db_path, since)
     fee, slip = float(cfg["paper"]["fee_pct"]), float(cfg["paper"]["slippage_pct"])
@@ -168,6 +200,7 @@ def report(db_path: Path, cfg: dict[str, Any], since: float = 0.0) -> str:
     combos = [dict(zip(GRID, values)) for values in itertools.product(*GRID.values())]
     pool = entries(cands, None)
     lines.append(f"Vergleich – jeder Pool-Token gekauft, Ausstiege wie eingestellt: {stats(run(pool, cfg['exits'], fee, slip))}")
+    lines += [""] + rug_table(cands)
     for name, pcfg in profiles.items():
         trades = entries(cands, pcfg)
         lines.append(f"\n{name}: {stats(run(trades, pcfg['exits'], fee, slip))}")

@@ -2865,6 +2865,25 @@ class BacktestTests(unittest.TestCase):
             else:
                 self.assertIn(" 0 von ", text)                                  # noise: nothing holds
 
+    def test_the_rug_table_splits_by_each_sign(self):
+        """Young tokens crash 90 %, old ones only wobble: the table shows it per sign."""
+        bt = self.load()
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "bot.sqlite")
+            for i in range(10):
+                young = i < 4
+                snap = {"curve": False, "liquidity_kind": "reported", "liquidity_usd": 20000.0, "fdv": 40000.0,
+                        "change_m5": 20.0, "age_min": 5.0 if young else 60.0}
+                cid = store.add_candidate({"seen_at": i * 60.0, "chain": "solana", "token": f"T{i}", "pair": f"P{i}",
+                                           "symbol": f"S{i}", "price_usd": 1.0, "score": 0, "decision": "skip",
+                                           "reasons": [], "snapshot": snap})
+                store.add_path_points([(cid, i * 60.0 + 30, 0.05 if young else 0.95)])
+            store.close()
+            lines = bt.rug_table(bt.load(Path(d) / "bot.sqlite", 0.0))
+        self.assertIn("4 von 10", lines[0])
+        self.assertIn("mit: 100 % von   4 · ohne:   0 % von   6", next(l for l in lines if "Alter" in l))
+        self.assertFalse(any("Insider" in l for l in lines))            # no RugCheck data: no row, no guess
+
     def test_paths_are_recorded_and_replayed(self):
         from bot.tracker import Tracker
         bt = self.load()
