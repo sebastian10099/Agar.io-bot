@@ -187,6 +187,31 @@ def rug_table(cands: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+# An idea found by looking at the data is only tested on data that came after it: the rule
+# and its start are written down here before that data exists, and never fitted to it.
+PROBES = [
+    ("Frühkauf in eigenen PumpSwap-Pools (Alter < 1,5 min, Coin nicht von pump.fun)",
+     1792418400.0,      # 19 Oct 2026 14:00 UTC - the idea came from the two hours before
+     lambda c: c["snapshot"].get("dex") == "pumpswap" and not c["token"].endswith("pump")
+     and (c["snapshot"].get("age_min") if c["snapshot"].get("age_min") is not None else 99) < 1.5),
+]
+
+
+def probes(cands: list[dict[str, Any]], ex: dict[str, Any], fee: float, slip: float,
+           table: Optional[list] = None) -> list[str]:
+    pool = entries(cands, None)
+    lines = []
+    for name, start, rule in PROBES if table is None else table:
+        hits = [c for c in pool if rule(c)]
+        rugs = lambda cs: sum(min(x for _, x in c["path"]) <= c["price_usd"] * 0.1 for c in cs)
+        before = [c for c in hits if c["seen_at"] < start]
+        after = [c for c in hits if c["seen_at"] >= start]
+        lines += [f"Probe: {name}",
+                  f"  Daten, aus denen die Idee stammt: {stats(run(before, ex, fee, slip))} · Rugs {rugs(before)}",
+                  f"  danach – die eigentliche Probe:   {stats(run(after, ex, fee, slip))} · Rugs {rugs(after)}"]
+    return lines
+
+
 def report(db_path: Path, cfg: dict[str, Any], since: float = 0.0) -> str:
     cands = load(db_path, since)
     fee, slip = float(cfg["paper"]["fee_pct"]), float(cfg["paper"]["slippage_pct"])
@@ -202,6 +227,7 @@ def report(db_path: Path, cfg: dict[str, Any], since: float = 0.0) -> str:
     pool = entries(cands, None)
     lines.append(f"Vergleich – jeder Pool-Token gekauft, Ausstiege wie eingestellt: {stats(run(pool, cfg['exits'], fee, slip))}")
     lines += [""] + rug_table(cands)
+    lines += [""] + probes(cands, cfg["exits"], fee, slip)
     for name, pcfg in profiles.items():
         trades = entries(cands, pcfg)
         lines.append(f"\n{name}: {stats(run(trades, pcfg['exits'], fee, slip))}")

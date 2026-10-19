@@ -2884,6 +2884,23 @@ class BacktestTests(unittest.TestCase):
         self.assertIn("mit: 100 % von   4 · ohne:   0 % von   6", next(l for l in lines if "Alter" in l))
         self.assertFalse(any("Insider" in l for l in lines))            # no RugCheck data: no row, no guess
 
+    def test_a_probe_counts_only_what_came_after_its_start(self):
+        bt = self.load()
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "bot.sqlite")
+            for i in range(6):
+                snap = {"curve": False, "dex": "pumpswap", "liquidity_kind": "reported", "liquidity_usd": 20000.0,
+                        "fdv": 15000.0, "age_min": 0.5}
+                cid = store.add_candidate({"seen_at": 1000.0 + i * 60, "chain": "solana", "token": f"T{i}", "pair": f"P{i}",
+                                           "symbol": f"S{i}", "price_usd": 1.0, "score": 0, "decision": "skip",
+                                           "reasons": [], "snapshot": snap})
+                store.add_path_points([(cid, 1000.0 + i * 60 + 30, 2.0 if i < 4 else 0.05)])   # the idea wins, then rugs
+            store.close()
+            table = [("früh", 1000.0 + 4 * 60, lambda c: c["snapshot"]["age_min"] < 1.5)]
+            lines = bt.probes(bt.load(Path(d) / "bot.sqlite", 0.0), copy.deepcopy(CFG["exits"]), 0.0, 0.0, table)
+        self.assertIn("   4 Trades", lines[1]); self.assertIn("Rugs 0", lines[1])
+        self.assertIn("   2 Trades", lines[2]); self.assertIn("Rugs 2", lines[2])
+
     def test_paths_are_recorded_and_replayed(self):
         from bot.tracker import Tracker
         bt = self.load()
