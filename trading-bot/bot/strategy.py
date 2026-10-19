@@ -30,7 +30,8 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
     if age is None:
         reasons.append("age unknown")
     elif age < f["min_age_minutes"]:
-        reasons.append(f"too new ({age:.1f} min)")
+        # rounded down: 1.47 min must not read "1.5" against a 1.5 minimum
+        reasons.append(f"too new ({math.floor(age * 10) / 10:.1f} min < {f['min_age_minutes']:g})")
     elif age > f["max_age_minutes"]:
         reasons.append(f"too old ({age:.0f} min)")
 

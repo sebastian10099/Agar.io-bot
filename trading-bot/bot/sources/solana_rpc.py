@@ -182,7 +182,7 @@ class OnChainCheck:
 
     def holders(self, mint: str, supply_raw: int) -> Optional[dict[str, Any]]:
         """Share of the supply in the largest wallets, program-owned accounts left out."""
-        largest, last = None, None
+        largest, last, used = None, None, self.url
         for url in list(self.holder_urls):
             try:
                 largest = self._rpc("getTokenLargestAccounts", [mint, {"commitment": "confirmed"}], url)
@@ -192,6 +192,7 @@ class OnChainCheck:
             if url != self.holder_urls[0]:                  # remember the one that answers
                 self.holder_urls.remove(url)
                 self.holder_urls.insert(0, url)
+            used = url
             break
         else:
             raise last or RuntimeError("kein RPC-Endpunkt")
@@ -199,7 +200,7 @@ class OnChainCheck:
             return None
         accounts = [a for a in largest if isinstance(a, dict) and a.get("address")][:20]
         values = self._rpc("getMultipleAccounts", [[a["address"] for a in accounts],
-                                                   {"encoding": "jsonParsed", "commitment": "confirmed"}])
+                                                   {"encoding": "jsonParsed", "commitment": "confirmed"}], used)
         if not isinstance(values, list) or len(values) != len(accounts):
             return None
         wallets: dict[str, float] = {}

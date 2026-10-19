@@ -140,6 +140,18 @@ class Store:
                         (chain, token))
         return row["t"] if row and row["t"] is not None else None
 
+    def verdicts_since(self, since: float) -> list[dict[str, Any]]:
+        """Evaluations since `since`, oldest first (what the engine re-reads after a restart)."""
+        rows = self._rows("SELECT seen_at, chain, token, decision, reasons, snapshot FROM candidates "
+                          "WHERE seen_at >= ? ORDER BY seen_at, id", (since,))
+        for r in rows:
+            try:
+                r["reasons"] = json.loads(r["reasons"] or "[]")
+                r["snapshot"] = json.loads(r["snapshot"] or "{}")
+            except json.JSONDecodeError:
+                r["reasons"], r["snapshot"] = [], {}
+        return rows
+
     def last_verdict(self, chain: str, token: str) -> Optional[dict[str, Any]]:
         """Most recent evaluation of a token: when, what, and why."""
         row = self._one("SELECT seen_at, decision, reasons FROM candidates WHERE chain=? AND token=? "
@@ -396,9 +408,22 @@ class Store:
             self._conn.close()
 
     def realized_since(self, since: float) -> float:
-        row = self._one("SELECT COALESCE(SUM(realized_usd),0) AS s FROM positions "
-                        "WHERE closed_at IS NOT NULL AND closed_at >= ?", (since,))
-        return float(row["s"]) if row else 0.0
+        """Realized P&L of the fills since `since`: partial take-profits and entry
+        fees of positions that are still open count the moment they happen, as in
+        realized_all(). A position's entry fee is its realized total minus its sells."""
+        rows = self._rows(
+            "SELECT p.opened_at, p.realized_usd, "
+            "COALESCE(SUM(t.usd - p.size_usd * t.frac), 0) AS sells, "
+            "COALESCE(SUM(CASE WHEN t.at >= ? THEN t.usd - p.size_usd * t.frac ELSE 0 END), 0) AS sells_since "
+            "FROM positions p LEFT JOIN trades t ON t.position_id = p.id AND t.side = 'sell' "
+            "WHERE p.opened_at >= ? OR p.id IN (SELECT position_id FROM trades WHERE side = 'sell' AND at >= ?) "
+            "GROUP BY p.id", (since, since, since))
+        total = 0.0
+        for r in rows:
+            total += float(r["sells_since"])
+            if r["opened_at"] >= since:
+                total += float(r["realized_usd"]) - float(r["sells"])      # the entry fee
+        return total
 
     def sweep_samples(self, horizon_min: int) -> list[dict[str, Any]]:
         rows = self._rows(

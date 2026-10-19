@@ -1088,6 +1088,25 @@ class FollowTests(unittest.TestCase):
             self.assertEqual(len(seen()), 2)                  # gone from the feed, judged again all the same
             store.close()
 
+    def test_a_restart_keeps_the_follow_ups(self):
+        from bot.engine import RESEE_TOO_NEW
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            feed = StubFeed({"solana": [{"token": "mintTooNew111111111111111111111111111111", "snapshot": None},
+                                        {"token": "mintDump11111111111111111111111111111111", "snapshot": None}]})
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["gecko"]
+            Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds={"gecko": feed}).poll_once()
+            feed.items = {}
+            t[0] = dex.started + 60
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds={"gecko": feed})      # restarted
+            self.assertEqual(set(k[1][:8] for k in eng._followed), {"mintTooN", "mintDump"})
+            self.assertAlmostEqual(eng._followed[("solana", "mintTooNew111111111111111111111111111111")]["ready_at"],
+                                   dex.started + RESEE_TOO_NEW)
+            self.assertEqual(eng._followed[("solana", "mintTooNew111111111111111111111111111111")]["source"], "gecko")
+            t[0] = dex.started + RESEE_TOO_NEW + 30; eng.poll_once()
+            self.assertEqual(len([c for c in store.candidates() if c["symbol"] == "NEW"]), 2)
+            store.close()
+
     def test_waits_until_the_minimum_age_and_gives_up_on_a_token_never_listed(self):
         from bot.engine import FOLLOW_GRACE_S
         with tempfile.TemporaryDirectory() as d:
@@ -1110,6 +1129,29 @@ class FollowTests(unittest.TestCase):
             self.assertEqual(len([c for c in store.candidates() if c["symbol"] == "GHOST"]), 1)
             t[0] = dex.started + 5.5 * 60 + FOLLOW_GRACE_S + 1; eng.poll_once()
             self.assertNotIn(("solana", "GhostMint"), eng._followed)
+            store.close()
+
+
+class DailyPnlTests(unittest.TestCase):
+    def test_partial_exits_and_fees_count_on_the_day_they_happen(self):
+        from bot.paper import Paper
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite")
+            cfg = copy.deepcopy(CFG); cfg["paper"]["fee_pct"] = 1.0; cfg["paper"]["slippage_pct"] = 0.0
+            paper = Paper(store, cfg)
+            midnight = 1_000_000.0
+            pair = {"chain": "solana", "pair": "P", "symbol": "A", "price_usd": 1.0}
+            old = paper.open(dict(pair, token="A"), now=midnight - 3600)              # yesterday: fee yesterday
+            paper._sell(store.position(old), 0.5, 1.5, "take_profit_50", midnight - 60)  # yesterday's profit
+            paper._sell(store.position(old), 0.25, 2.0, "take_profit_100", midnight + 60)
+            new = paper.open(dict(pair, token="B"), now=midnight + 120)                  # today: still open
+            size_a, size_b = store.position(old)["size_usd"], store.position(new)["size_usd"]
+            today = size_a * 0.25 * 2.0 * 0.99 - size_a * 0.25 - size_b * 0.01
+            self.assertAlmostEqual(store.realized_since(midnight), today, places=6)
+            self.assertAlmostEqual(store.realized_since(0), store.realized_all(), places=6)
+            paper._sell(store.position(new), 1.0, 0.5, "stop_loss", midnight + 300)
+            today += size_b * 0.5 * 0.99 - size_b
+            self.assertAlmostEqual(store.realized_since(midnight), today, places=6)
             store.close()
 
 
@@ -1829,6 +1871,8 @@ class HttpRetryTests(unittest.TestCase):
         self.assertEqual(str(e), "HTTP 403: von Cloudflare blockiert (Browser-Prüfung) – von dieser Internetadresse aus nicht abrufbar")
         self.assertEqual(e.body, challenge)                                   # the page itself stays available
         self.assertEqual(str(HttpError(502, "\n <html><body>Bad gateway</body></html>")), "HTTP 502: HTML-Seite statt Daten")
+        origin_down = "<!DOCTYPE html><title>example.com | 521: Web server is down</title>Cloudflare Ray ID: 8f"
+        self.assertEqual(str(HttpError(521, origin_down)), "HTTP 521: HTML-Seite statt Daten")     # down, not blocked
         self.assertEqual(str(HttpError(429, '{"error":"Too many requests"}')), 'HTTP 429: {"error":"Too many requests"}')
 
 
@@ -1854,7 +1898,7 @@ class PaperLiveSnapshotTests(unittest.TestCase):
             self.assertNotIn("<script>alert(1)", page); self.assertIn("&lt;script&gt;", page)
             self.assertIn("Offene Positionen", page); self.assertIn("https://pump.fun/coin/", page)   # the demo curve token
             self.assertIn("Kurve", page)
-            self.assertIn("| Bankroll |", report); self.assertNotIn("</script>|x", report)
+            self.assertIn("| Bankroll (realisiert) |", report); self.assertNotIn("</script>|x", report)
             self.assertEqual(json.loads((out / "state.json").read_text())["app"], "new-token-bot")
             pl.write({"candidates": [], "open_positions": [], "closed": [], "stats": {}}, out)        # a bot that has not polled yet
             self.assertIn("noch kein Poll", (out / "REPORT.md").read_text())
@@ -1940,8 +1984,10 @@ class HolderTests(unittest.TestCase):
     def test_extra_holder_endpoints_are_tried_and_the_answering_one_kept_first(self):
         from bot.sources import solana_rpc
         post, calls = self.rpc([(self.WALLETS[0], 5.0)])
-        asked = []
+        asked, owners_from = [], []
         def routed(url, body, timeout=None):
+            if body["method"] == "getMultipleAccounts":
+                owners_from.append(url)
             if body["method"] == "getTokenLargestAccounts":
                 asked.append(url)
                 if url != "https://keyed.example/?api-key=k":
@@ -1956,6 +2002,7 @@ class HolderTests(unittest.TestCase):
         self.assertEqual(asked, ["https://public.example", "https://busy.example", "https://keyed.example/?api-key=k"])
         oc.summary("M2")
         self.assertEqual(asked[3:], ["https://keyed.example/?api-key=k"])     # straight to the one that answers
+        self.assertEqual(owners_from, ["https://keyed.example/?api-key=k"] * 2)   # the owners from the same node
         self.assertEqual(solana_rpc.OnChainCheck(post=routed, url="x").holder_urls, ["x"])   # an explicit URL is used alone
 
     def test_results_expire_so_holders_are_looked_at_again(self):

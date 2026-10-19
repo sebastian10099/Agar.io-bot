@@ -25,16 +25,17 @@ def ssl_context() -> ssl.SSLContext:
 
 class HttpError(Exception):
     def __init__(self, status: int, body: str) -> None:
-        super().__init__(f"HTTP {status}: {_gist(body)}")
+        super().__init__(f"HTTP {status}: {_gist(status, body)}")
         self.status = status
         self.body = body
 
 
-def _gist(body: str) -> str:
-    """An error page's gist for the log, not its HTML."""
-    head = body.lstrip()[:2000].lower()
+def _gist(status: int, body: str) -> str:
+    """An error page's gist for the log, not its HTML. Only a challenge page is a block:
+    Cloudflare also serves the 5xx pages of a server that is simply down."""
+    head = body.lstrip()[:4000].lower()
     if head.startswith(("<!doctype", "<html")):
-        if "just a moment" in head or "cloudflare" in head or "cf-chl" in head:
+        if status in (403, 429, 503) and any(m in head for m in ("just a moment", "cf-chl", "attention required")):
             return "von Cloudflare blockiert (Browser-Prüfung) – von dieser Internetadresse aus nicht abrufbar"
         return "HTML-Seite statt Daten"
     return body[:200]

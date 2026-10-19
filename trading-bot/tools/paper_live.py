@@ -71,6 +71,26 @@ def token_url(chain: str, token: str, dex: Optional[str], url: Optional[str]) ->
     return url if isinstance(url, str) and url.startswith("https://") else None
 
 
+def position_url(p: dict[str, Any], sn: dict[str, Any]) -> Optional[str]:
+    """A position whose candidate has scrolled out of the snapshot still gets a link: pump.fun
+    mints end in "pump", anything else goes to its pair on DexScreener."""
+    url = token_url(p["chain"], p["token"], sn.get("dex"), sn.get("url"))
+    if url or not str(p.get("token") or "").isalnum():
+        return url
+    if p["chain"] == "solana" and p["token"].endswith("pump"):
+        return f"https://pump.fun/coin/{p['token']}"
+    return f"https://dexscreener.com/{p['chain']}/{p['pair']}" if str(p.get("pair") or "").isalnum() else None
+
+
+def _num(v: Any, fmt: str) -> str:
+    """German decimal comma for scores and prices."""
+    return "–" if v is None else format(v, fmt).replace(".", ",").replace("-", "−")
+
+
+def _hit(m: dict[str, Any]) -> str:
+    return f"{m['wins'] / m['closed_n'] * 100:.0f} %" if m["closed_n"] else "–"
+
+
 def model(state: dict[str, Any], now: float) -> dict[str, Any]:
     """Everything the two renderings show, computed once."""
     cands = state.get("candidates") or []
@@ -79,15 +99,14 @@ def model(state: dict[str, Any], now: float) -> dict[str, Any]:
     for p in state.get("open_positions") or []:
         c = by_token.get(p["token"]) or {}
         sn = c.get("snapshot") or {}
-        open_rows.append({**p, "url": token_url(p["chain"], p["token"], sn.get("dex"), sn.get("url"))})
+        open_rows.append({**p, "url": position_url(p, sn)})
     closed_rows = []
     for p in (state.get("closed") or [])[:25]:
         c = by_token.get(p["token"]) or {}
         sn = c.get("snapshot") or {}
         pct = p["realized_usd"] / p["size_usd"] * 100 if p.get("size_usd") else None
         mins = (p["closed_at"] - p["opened_at"]) / 60 if p.get("closed_at") else None
-        closed_rows.append({**p, "pct": pct, "minutes": mins,
-                            "url": token_url(p["chain"], p["token"], sn.get("dex"), sn.get("url"))})
+        closed_rows.append({**p, "pct": pct, "minutes": mins, "url": position_url(p, sn)})
     interesting = [c for c in cands if c["decision"] != "skip"][:15]
     stats = state.get("stats") or {}
     initial = float(state.get("initial") or 0)
@@ -126,15 +145,15 @@ def render_md(m: dict[str, Any], site: Optional[str] = None) -> str:
          ""]
     if site:
         L += [f"Fenster mit Tabellen: {site}", ""]
-    L += ["| Bankroll | Gewinn gesamt | davon offen | heute | Trades | Treffer | Kandidaten |",
+    L += ["| Bankroll (realisiert) | Gewinn gesamt | davon offen | heute realisiert | Trades | Treffer | Kandidaten |",
           "|---:|---:|---:|---:|---:|---:|---:|",
           f"| {_usd(m['bankroll'])} | {_usd(m['total_pnl'], True)} | {_usd(m['unrealized'], True)} | {_usd(m['today'], True)} | "
-          f"{m['closed_n']} | {(m['wins'] / m['closed_n'] * 100 if m['closed_n'] else 0):.0f} % | {m['candidates_n']} |", ""]
+          f"{m['closed_n']} | {_hit(m)} | {m['candidates_n']} |", ""]
     L += [f"## Offene Positionen ({len(m['open'])})", ""]
     if m["open"]:
         L += ["| Token | Einstieg | jetzt | Δ | offen $ | Alter |", "|---|---:|---:|---:|---:|---:|"]
         for p in m["open"]:
-            L.append(f"| {_md_link(p['symbol'], p['url'])} | {p['entry_price']:.4g} | {(p.get('price') or 0):.4g} | "
+            L.append(f"| {_md_link(p['symbol'], p['url'])} | {_num(p['entry_price'], '.4g')} | {_num(p.get('price'), '.4g')} | "
                      f"{_pct(p.get('gain_pct'))} | {_usd(p.get('unrealized'), True)} | {p.get('age_min', 0):.0f} min |")
     else:
         L.append("keine")
@@ -160,7 +179,7 @@ def render_md(m: dict[str, Any], site: Optional[str] = None) -> str:
         for c in m["interesting"]:
             sn = c.get("snapshot") or {}
             L.append(f"| {_t(c['seen_at'], '%H:%M')} | {_md_link(c['symbol'], token_url(c['chain'], c['token'], sn.get('dex'), sn.get('url')))} | "
-                     f"{c['decision']} | {c.get('score') or '–'} | {_liq(sn)} | {_usd(sn.get('volume_m5'))} | "
+                     f"{c['decision']} | {_num(c.get('score') or None, '.1f')} | {_liq(sn)} | {_usd(sn.get('volume_m5'))} | "
                      f"{_md('; '.join((c.get('reasons') or [])[:2]))} |")
     else:
         L.append("noch keine")
@@ -195,14 +214,14 @@ th { color:var(--muted); font-weight:600; font-size:12px; } td.num, th.num { tex
 
 def render_html(m: dict[str, Any]) -> str:
     total_cls = _cls(m["total_pnl"])
-    hit = f"{(m['wins'] / m['closed_n'] * 100 if m['closed_n'] else 0):.0f} %"
+    hit = _hit(m)
     live = (f"letzter Poll vor {m['last_poll_ago']:.0f} s" if m["last_poll_ago"] is not None else "noch kein Poll")
     parts = [f"""<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="60"><title>Paper-Live · New Token Bot</title><style>{CSS}</style></head><body><main>
 <h1>Paper-Live · New Token Bot</h1>
 <div class="sub"><span class="pill">Spielgeld · echte Kurse</span> Stand {_h(_t(m['now'], '%d.%m.%Y %H:%M:%S'))} · läuft seit {_h(_t(m['started']))} · {m['polls']} Polls · {_h(live)}{' · <b>pausiert</b>' if m['paused'] else ''} · lädt jede Minute neu</div>
 <div class="kpis">
-<div class="kpi"><span>Bankroll</span><b>{_usd(m['bankroll'])}</b></div>
+<div class="kpi"><span>Bankroll (realisiert)</span><b>{_usd(m['bankroll'])}</b></div>
 <div class="kpi"><span>Gewinn gesamt</span><b class="{total_cls}">{_usd(m['total_pnl'], True)}</b></div>
 <div class="kpi"><span>davon offen</span><b class="{_cls(m['unrealized'])}">{_usd(m['unrealized'], True)}</b></div>
 <div class="kpi"><span>heute realisiert</span><b class="{_cls(m['today'])}">{_usd(m['today'], True)}</b></div>
@@ -210,7 +229,7 @@ def render_html(m: dict[str, Any]) -> str:
 <div class="kpi"><span>Kandidaten bewertet</span><b>{m['candidates_n']}</b></div>
 </div>"""]
     rows = "".join(
-        f"<tr><td>{_a(p['symbol'], p['url'])}</td><td class=num>{p['entry_price']:.4g}</td><td class=num>{(p.get('price') or 0):.4g}</td>"
+        f"<tr><td>{_a(p['symbol'], p['url'])}</td><td class=num>{_num(p['entry_price'], '.4g')}</td><td class=num>{_num(p.get('price'), '.4g')}</td>"
         f"<td class='num {_cls(p.get('gain_pct'))}'>{_pct(p.get('gain_pct'))}</td><td class='num {_cls(p.get('unrealized'))}'>{_usd(p.get('unrealized'), True)}</td>"
         f"<td class=num>{_usd(p['size_usd'] * p['remaining_frac'])}</td><td class=num>{p.get('age_min', 0):.0f} min</td></tr>" for p in m["open"])
     parts.append(f"<section><h2>Offene Positionen ({len(m['open'])})</h2>" + (
@@ -235,7 +254,7 @@ def render_html(m: dict[str, Any]) -> str:
         parts.append(f"<section><h2>Warum fällt was durch</h2><table>{rows}</table></section>")
     rows = "".join(
         f"<tr><td>{_h(_t(c['seen_at'], '%H:%M'))}</td><td>{_a(c['symbol'], token_url(c['chain'], c['token'], (c.get('snapshot') or {}).get('dex'), (c.get('snapshot') or {}).get('url')))}</td>"
-        f"<td>{_h(c['decision'])}</td><td class=num>{_h(c.get('score') or '–')}</td><td class=num>{_liq(c.get('snapshot') or {})}</td>"
+        f"<td>{_h(c['decision'])}</td><td class=num>{_num(c.get('score') or None, '.1f')}</td><td class=num>{_liq(c.get('snapshot') or {})}</td>"
         f"<td class=num>{_usd((c.get('snapshot') or {}).get('volume_m5'))}</td><td class=why>{_h('; '.join((c.get('reasons') or [])[:3]))}</td></tr>"
         for c in m["recent"])
     parts.append(f"<section><h2>Zuletzt bewertet</h2><table><tr><th>Zeit</th><th>Token</th><th>Urteil</th><th class=num>Score</th><th class=num>Liquidität</th><th class=num>Vol 5m</th><th>Gründe</th></tr>{rows}</table></section>")

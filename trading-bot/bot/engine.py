@@ -18,6 +18,7 @@ RESEE_TOO_NEW = 2 * 60       # "too new" is a timing issue, not a verdict: look 
 RESEE_WATCH = 5 * 60         # a watch passed every filter; its numbers move fast, so re-check every five minutes
 FOLLOW_GRACE_S = 10 * 60     # a token followed past its feed: this long after it is due for DexScreener to list it
 FOLLOW_MAX = 2000
+FOLLOW_RESTORE_S = 30 * 60   # after a restart, follow-ups are picked up from this far back
 
 
 _PRESETS: Optional[dict[str, dict[str, Any]]] = None
@@ -91,6 +92,7 @@ class Engine:
         self._deferred_last = 0
         # tokens to look at again (too new, or watched): (chain, token) -> source, age, when due
         self._followed: dict[tuple[str, str], dict[str, Any]] = {}
+        self._restore_followed()
 
     def _report(self, key: str, fn: Callable[[], Any]) -> Any:
         """The page polls every 2 s; the aggregate reports only need to move with the polls."""
@@ -238,6 +240,19 @@ class Engine:
         if len(self._followed) > FOLLOW_MAX:
             del self._followed[min(self._followed, key=lambda k: self._followed[k]["ready_at"])]
 
+    def _restore_followed(self) -> None:
+        """A restart forgets the follow-ups while the feeds have moved on: pick them up
+        again from the recorded verdicts, replayed in order so the latest one counts."""
+        try:
+            rows = self.store.verdicts_since(self.clock() - FOLLOW_RESTORE_S)
+        except Exception as error:  # noqa: BLE001 - without them the bot still runs, it only sees less
+            self.store.log("error", f"Wiedervorlage nicht geladen: {type(error).__name__}: {error}")
+            return
+        for r in rows:
+            snap = r["snapshot"] if isinstance(r["snapshot"], dict) else {}
+            p = {"token": r["token"], "source": snap.get("source"), "age_min": snap.get("age_min")}
+            self._follow(r["chain"], p, r["decision"], r["reasons"], r["seen_at"])
+
     def _bring_back(self, found: dict[str, dict[str, Any]], now: float) -> None:
         """The launch feeds (GeckoTerminal, pump.fun) list only the last few dozen
         tokens: by the time one is old enough to buy, or due for another look while
@@ -246,7 +261,8 @@ class Engine:
         for (chain, token), info in list(self._followed.items()):
             if chain not in found or now > info["ready_at"] + FOLLOW_GRACE_S:
                 del self._followed[(chain, token)]
-            elif now >= info["ready_at"] and token not in found[chain]:
+            elif (now >= info["ready_at"] and token not in found[chain]
+                  and now - self._bad_tokens.get(token, -1e18) >= RESEE_SECONDS):   # broke: its half hour first
                 # no feed numbers: they would be minutes old; the age is all that still holds
                 snap = {"age_min": (now - info["born"]) / 60.0} if info["born"] is not None else None
                 found[chain][token] = {"source": info["source"], "snapshot": snap}

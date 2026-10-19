@@ -1,3 +1,4 @@
+import copy
 import http.client
 import json
 import os
@@ -42,6 +43,9 @@ class StrategyTests(unittest.TestCase):
         v = evaluate(p, RUG.summary(p["token"]), CFG)
         self.assertEqual(v["decision"], "skip")
         self.assertTrue(any("too new" in r for r in v["reasons"]))
+        cfg = copy.deepcopy(CFG); cfg["filters"]["min_age_minutes"] = 1.5
+        v = evaluate(fixture("NEW", age_min=1.47), None, cfg)
+        self.assertEqual(v["reasons"][0], "too new (1.4 min < 1.5)")     # never "1.5" against a 1.5 minimum
 
     def test_rug_danger_is_skipped(self):
         p = fixture("HONEY")
@@ -123,9 +127,13 @@ class PaperTests(unittest.TestCase):
         self.assertEqual(self.store.closed_positions()[0]["exit_reason"], "time_stop")
 
     def test_daily_loss_limit_blocks_entries(self):
-        pos, pid = self._open()
-        self.store.update_position(pid, realized_usd=-CFG["bankroll_usd"] * 0.06,
-                                   status="closed", closed_at=time.time())
+        limit = CFG["bankroll_usd"] * CFG["daily_loss_limit_pct"] / 100
+        now, n = time.time(), 0
+        while -self.paper.daily_pnl() < limit:                  # total losses today, through real sells
+            self.assertIsNone(self.paper.can_open("solana", f"T{n}"))
+            pid = self.paper.open(dict(self.p, token=f"T{n}"), now)
+            self.paper._sell(self.store.position(pid), 1.0, self.p["price_usd"] * 0.01, "stop_loss", now)
+            n += 1
         self.assertEqual(self.paper.can_open("solana", "x"), "daily loss limit hit")
 
 
