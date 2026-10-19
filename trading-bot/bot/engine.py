@@ -301,6 +301,18 @@ class Engine:
                     priced[pos["id"]] = price
         return priced
 
+    def _price_now(self, chain: str, pair: str, token: str) -> Optional[float]:
+        """Current price for a manual action, following the token to its new
+        pool like the polls do (a graduated curve is gone or frozen)."""
+        batch = getattr(self.dex, "prices", None)
+        if batch is None:
+            return self.dex.price(chain, pair)
+        try:
+            got = batch(chain, [pair], {pair: token}) or {}
+        except Exception:  # noqa: BLE001 - the caller falls back to the last known price
+            return None
+        return float(got[pair]) if got.get(pair) else None
+
     def _maybe_write_off(self, listed: dict[str, Any], now: float, dex_answered: bool, counts: dict[str, int]) -> None:
         """A pair that stopped being priced while DexScreener answers for others has
         most likely been pulled (a rug). Past its time stop and after
@@ -380,7 +392,7 @@ class Engine:
             pos = self.store.position(pid)
             if pos is None or pos["status"] != "open":
                 return {"ok": False, "error": "Position ist nicht offen"}
-            price = self.dex.price(pos["chain"], pos["pair"]) or self.last_prices.get(pos["pair"])
+            price = self._price_now(pos["chain"], pos["pair"], pos["token"]) or self.last_prices.get(pos["pair"])
             if not price:
                 return {"ok": False, "error": "Kein Kurs verfügbar"}
             self.paper.close_manually(pos, price, self.clock())
@@ -403,7 +415,7 @@ class Engine:
                 return {"ok": False, "error": "Position ist nicht offen"}
             if frac > pos["remaining_frac"] + 1e-9:
                 return {"ok": False, "error": f"Nur noch {pos['remaining_frac'] * 100:.0f}% der Position offen"}
-            price = self.dex.price(pos["chain"], pos["pair"]) or self.last_prices.get(pos["pair"])
+            price = self._price_now(pos["chain"], pos["pair"], pos["token"]) or self.last_prices.get(pos["pair"])
             if not price:
                 return {"ok": False, "error": "Kein Kurs verfügbar"}
             if abs(frac - pos["remaining_frac"]) < 1e-9:
@@ -450,8 +462,7 @@ class Engine:
             blocked = self.paper.can_open(c["chain"], c["token"])
             if blocked:
                 return {"ok": False, "error": "Nicht eröffnet: " + blocked}
-            fresh = self.dex.pair(c["chain"], c["pair"])
-            price = fresh["price_usd"] if fresh and fresh["price_usd"] > 0 else None
+            price = self._price_now(c["chain"], c["pair"], c["token"])
             if not price:
                 return {"ok": False, "error": "Kein aktueller Kurs für diesen Token"}
             p = {"chain": c["chain"], "token": c["token"], "pair": c["pair"], "symbol": c["symbol"], "price_usd": price}

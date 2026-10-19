@@ -1652,3 +1652,25 @@ class GraduationTests(unittest.TestCase):
             five = next(o for o in store.outcomes_for(store.candidates()[0]["id"]) if o["horizon_min"] == 5)
             self.assertAlmostEqual(five["change_pct"], -50.0, places=1)                       # not -100 % "rug"
             store.close()
+
+    def test_manual_close_and_buy_follow_the_new_pool(self):
+        # the Schließen button on a token whose curve completed sells at the new pool's price
+        from bot.sources.dexscreener import DexScreener
+        frozen_native = 115.0 ** 2 / 32.19e9
+        frozen = frozen_native * 150
+        pairs = [self.raw("Curve7", "Mint7", "pumpfun", frozen, native=frozen_native),
+                 self.raw("Swap7", "Mint7", "pumpswap", frozen * 0.6, liquidity=17000)]
+        fetch, _ = self.fake_http(pairs)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite")
+            eng = Engine(copy.deepcopy(CFG), store, DexScreener(fetch=fetch), FakeRug(), clock=lambda: 1_800_000_000.0)
+            pid = eng.paper.open({"chain": "solana", "token": "Mint7", "pair": "Curve7", "symbol": "GRAD", "price_usd": frozen}, 1_800_000_000.0)
+            self.assertTrue(eng.close_position(pid)["ok"])
+            sell = [t for t in store.trades_for(pid) if t["side"] == "sell"][0]
+            self.assertAlmostEqual(sell["price"], frozen * 0.6 * (1 - eng.paper.slippage_pct / 100), places=12)
+            cid = eng.tracker.record({"seen_at": 1_800_000_000.0, "chain": "solana", "token": "Mint7", "pair": "Curve7", "symbol": "GRAD",
+                                      "price_usd": frozen, "score": 1, "decision": "watch", "reasons": [], "snapshot": {}})
+            r = eng.open_from_candidate(cid)
+            self.assertTrue(r["ok"], r)
+            self.assertAlmostEqual(r["position"]["entry_price"], frozen * 0.6 * (1 + eng.paper.slippage_pct / 100), places=12)
+            store.close()
