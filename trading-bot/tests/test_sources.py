@@ -2467,7 +2467,7 @@ class HolderTests(unittest.TestCase):
         self.assertEqual(mild["danger"], []); self.assertEqual(len(mild["warn"]), 2, mild)       # 12 % and 36 %
         cfg = copy.deepcopy(CFG)
         pair = {"chain": "solana", "token": "MintWhale", "pair": "P", "price_usd": 1.0, "liquidity_usd": 40000.0,
-                "volume_m5": 9000.0, "buys_m5": 40, "sells_m5": 10, "change_m5": 10.0, "fdv": 1e6, "age_min": 10.0}
+                "volume_m5": 9000.0, "buys_m5": 40, "sells_m5": 10, "change_m5": 10.0, "fdv": 1e5, "age_min": 10.0}
         self.assertIn("Wallet hält 30 %", evaluate(pair, whale, cfg)["reasons"][0])
 
     def test_holder_rpc_trouble_is_a_warning_not_a_failure(self):

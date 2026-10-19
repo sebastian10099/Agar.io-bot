@@ -31,6 +31,7 @@
     "max_price_change_m5_pct": 150,
     "min_price_change_m5_pct": 0,
     "max_fdv_usd": 20000000,
+    "max_fdv_liquidity_ratio": 3,
     "require_rugcheck": true,
     "max_rugcheck_score": 2000,
     "allow_rugcheck_unknown": false,

@@ -7,7 +7,7 @@
     "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
     "priceUsd": "0.00042", "txns": {"m5": {"buys": 48, "sells": 19}, "h1": {"buys": 210, "sells": 90}},
     "volume": {"m5": 18000, "h1": 95000}, "priceChange": {"m5": 22, "h1": 140},
-    "liquidity": {"usd": 64000}, "fdv": 420000, "marketCap": 420000,
+    "liquidity": {"usd": 64000}, "fdv": 160000, "marketCap": 160000,
     "info": {"socials": [{"type": "twitter", "url": "https://x.com/run"}]}, "boosts": {"active": 1}
   },
   {
@@ -18,7 +18,7 @@
     "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
     "priceUsd": "0.0011", "txns": {"m5": {"buys": 31, "sells": 12}, "h1": {"buys": 80, "sells": 30}},
     "volume": {"m5": 9000, "h1": 30000}, "priceChange": {"m5": 35, "h1": 60},
-    "liquidity": {"usd": 22000}, "fdv": 300000, "marketCap": 300000
+    "liquidity": {"usd": 22000}, "fdv": 55000, "marketCap": 55000
   },
   {
     "_demo": {"scenario": "flat", "listed_offset_min": -1},
@@ -38,7 +38,7 @@
     "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
     "priceUsd": "0.0005", "txns": {"m5": {"buys": 20, "sells": 8}, "h1": {"buys": 50, "sells": 20}},
     "volume": {"m5": 4000, "h1": 12000}, "priceChange": {"m5": 12, "h1": 30},
-    "liquidity": {"usd": 6000}, "fdv": 120000, "marketCap": 120000
+    "liquidity": {"usd": 6000}, "fdv": 15000, "marketCap": 15000
   },
   {
     "_demo": {"scenario": "flat", "listed_offset_min": -15},
@@ -48,7 +48,7 @@
     "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
     "priceUsd": "0.02", "txns": {"m5": {"buys": 300, "sells": 90}, "h1": {"buys": 900, "sells": 300}},
     "volume": {"m5": 250000, "h1": 600000}, "priceChange": {"m5": 420, "h1": 2000},
-    "liquidity": {"usd": 180000}, "fdv": 9000000, "marketCap": 9000000
+    "liquidity": {"usd": 180000}, "fdv": 450000, "marketCap": 450000
   },
   {
     "_demo": {"scenario": "rug", "listed_offset_min": -10},
@@ -58,7 +58,7 @@
     "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
     "priceUsd": "0.003", "txns": {"m5": {"buys": 60, "sells": 2}, "h1": {"buys": 120, "sells": 3}},
     "volume": {"m5": 20000, "h1": 40000}, "priceChange": {"m5": 50, "h1": 200},
-    "liquidity": {"usd": 45000}, "fdv": 500000, "marketCap": 500000
+    "liquidity": {"usd": 45000}, "fdv": 110000, "marketCap": 110000
   },
   {
     "_demo": {"scenario": "flat", "listed_offset_min": -25},
@@ -68,7 +68,7 @@
     "quoteToken": {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"},
     "priceUsd": "0.0007", "txns": {"m5": {"buys": 16, "sells": 13}, "h1": {"buys": 60, "sells": 50}},
     "volume": {"m5": 3200, "h1": 15000}, "priceChange": {"m5": 1, "h1": 5},
-    "liquidity": {"usd": 16000}, "fdv": 150000, "marketCap": 150000
+    "liquidity": {"usd": 16000}, "fdv": 40000, "marketCap": 40000
   },
   {
     "_demo": {"scenario": "runner", "listed_offset_min": 4},

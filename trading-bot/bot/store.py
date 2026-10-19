@@ -236,6 +236,7 @@ class Store:
         ("buy/sell", "Käufe/Verkäufe zu niedrig", "filters.min_buy_sell_ratio_m5"),
         ("parabolic", "zu spät, parabolisch", "filters.max_price_change_m5_pct"),
         ("falling", "fallend", "filters.min_price_change_m5_pct"),
+        ("thin pool", "Bewertung zu hoch für den Pool", "filters.max_fdv_liquidity_ratio"),
         ("FDV", "FDV zu hoch", "filters.max_fdv_usd"),
         ("no price", "kein Kurs", None),
         ("rugcheck unavailable", "RugCheck nicht erreichbar (nur beobachtet)", "filters.allow_rugcheck_unknown"),

@@ -59,6 +59,10 @@ SCHEMA: list[dict[str, Any]] = [
      "help": "Darüber gilt der Token als parabolisch – zu spät."},
     {"path": "filters.max_fdv_usd", "type": "float", "min": 0, "max": 1e12, "step": 100000,
      "label": "Max. FDV", "unit": "$", "group": "Filter"},
+    {"path": "filters.max_fdv_liquidity_ratio", "type": "float", "min": 0, "max": 1000, "step": 0.5,
+     "label": "Max. Bewertung / Liquidität", "unit": "×", "group": "Filter",
+     "help": "Ist der Token (FDV) viel mehr wert als der Pool dahinter, leeren ihn wenige Verkäufer: "
+             "im Live-Test stürzten 31–40 % solcher Pools binnen einer Stunde um 80 % ab, sonst 13 %. 0 = aus."},
     {"path": "filters.require_rugcheck", "type": "bool",
      "label": "Sicherheitsprüfung verlangen", "group": "Filter",
      "help": "Solana-Tokens werden nur gekauft, wenn RugCheck oder – falls RugCheck nicht antwortet – die eigene Prüfung über die Blockchain (Freeze-/Mint-Authority, Token-2022-Fallen) ein Ergebnis liefert."},

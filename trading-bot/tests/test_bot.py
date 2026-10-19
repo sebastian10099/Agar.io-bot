@@ -57,6 +57,23 @@ class StrategyTests(unittest.TestCase):
         cfg = copy.deepcopy(CFG); cfg["filters"]["allow_curve_buys"] = True
         self.assertEqual(evaluate(p, RUG.summary(p["token"]), cfg)["decision"], "buy")
 
+    def test_a_pool_far_smaller_than_its_valuation_is_skipped(self):
+        """Live: 31-40 % of pools valued over 3x their liquidity crashed by 80 % within the
+        hour, 13 % of the rest."""
+        p = fixture("RUN")
+        thin = dict(p, fdv=p["liquidity_usd"] * 6)
+        v = evaluate(thin, RUG.summary(p["token"]), CFG)
+        self.assertEqual(v["decision"], "skip")
+        self.assertIn("thin pool: valuation 6.0x its liquidity > 3x", v["reasons"])
+        self.assertEqual(evaluate(dict(p, fdv=p["liquidity_usd"] * 3), RUG.summary(p["token"]), CFG)["decision"], "buy")
+        off = copy.deepcopy(CFG); off["filters"]["max_fdv_liquidity_ratio"] = 0
+        self.assertEqual(evaluate(thin, RUG.summary(p["token"]), off)["decision"], "buy")
+        curve = dict(thin, dex="pumpfun", curve=True, liquidity_kind="curve")       # a curve is judged on its own terms
+        self.assertFalse(any("thin pool" in r for r in evaluate(curve, RUG.summary(p["token"]), CFG)["reasons"]))
+        from bot.store import Store
+        label = next(lab for needle, lab, _ in Store.REASON_RULES if needle in "thin pool: valuation 6.0x its liquidity > 3x")
+        self.assertEqual(label, "Bewertung zu hoch für den Pool")                   # not "FDV zu hoch"
+
     def test_unlocked_lp_is_a_warning_on_launchpad_pools_only(self):
         lp = {"score": 52.0, "danger": ["Large Amount of LP Unlocked"], "warn": ["Low amount of LP Providers"], "source": "rugcheck"}
         for dex in ("pumpswap", "meteora"):

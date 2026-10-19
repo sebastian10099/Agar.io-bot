@@ -68,6 +68,12 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
 
     if p["fdv"] and p["fdv"] > f["max_fdv_usd"]:
         reasons.append(f"FDV ${p['fdv']:,.0f} > ${f['max_fdv_usd']:,.0f}")
+    # a valuation many times the pool behind it: few sellers empty it (live: 31-40 % of such pools
+    # crashed by 80 % within the hour, 13 % of the rest). Curves keep their own liquidity measure.
+    cap = float(f.get("max_fdv_liquidity_ratio") or 0)
+    on_curve_now = p.get("curve") or p.get("liquidity_kind") == "curve"
+    if cap > 0 and not on_curve_now and liq > 0 and p["fdv"] and p["fdv"] / liq > cap:
+        reasons.append(f"thin pool: valuation {p['fdv'] / liq:.1f}x its liquidity > {cap:g}x")
 
     if p["price_usd"] <= 0:
         reasons.append("no price")

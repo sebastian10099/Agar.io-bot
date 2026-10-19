@@ -331,7 +331,11 @@ klappt das zuverlässig.
 - Liquidität 15 k–2 M $, 5-Minuten-Volumen ≥ 3 k $, ≥ 15 Käufe in 5 Minuten (Bonding-Kurven: siehe unten)
 - Käufe/Verkäufe ≥ 1.2 — es muss mehr rein- als rausgehen
 - 5-Minuten-Kursänderung zwischen 0 % und +150 % — nichts Fallendes, nichts Parabolisches
-- FDV ≤ 20 M $
+- FDV ≤ 20 M $, und höchstens das **Dreifache der Liquidität** – ein Token, der
+  viel mehr wert ist als der Pool dahinter, ist mit wenigen Verkäufen leer: in
+  den Live-Daten stürzten 31–40 % solcher Pools binnen einer Stunde um 80 % ab,
+  von den übrigen 13 % (269 Pools). Ein frisch umgezogener pump.fun-Coin liegt
+  beim etwa 2,5- bis 3-Fachen; wer weit darüber liegt, ist meist schon gelaufen
 - RugCheck: keine `danger`-Einstufung (Freeze-Authority, Holder-Konzentration, …), Score ≤ 2000. Ist RugCheck nicht erreichbar, wird der Token bewertet und verfolgt (`watch`), aber **nicht** gekauft – auch nicht von der KI.
 
 **Score** aus Liquidität, Aktivität (Volumen/Liquidität), Kaufdruck, Momentum,
