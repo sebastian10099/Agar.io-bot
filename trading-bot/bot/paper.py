@@ -57,7 +57,9 @@ class Paper:
         risk_usd = self.bankroll() * float(self.cfg["risk_per_trade_pct"]) / 100.0
         stop = abs(float(self.cfg["exits"]["stop_loss_pct"])) / 100.0
         size = risk_usd / max(0.05, stop)
-        return max(0.0, min(size, self.cash()))
+        # the entry fee comes on top of the size, so size + fee must fit into the cash
+        affordable = self.cash() / (1 + self.fee_pct / 100.0)
+        return max(0.0, min(size, affordable))
 
     # --- entries --------------------------------------------------------
     def can_open(self, chain: str, token: str) -> Optional[str]:

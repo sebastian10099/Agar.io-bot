@@ -940,3 +940,40 @@ class QuietErrorTests(unittest.TestCase):
             t[0] += 20; eng.poll_once()
             self.assertIn("läuft wieder", store.events(5)[0]["message"] + " ".join(e["message"] for e in store.events(5)))
             store.close()
+
+
+class FeedOnlyBuyTests(unittest.TestCase):
+    def test_a_token_dexscreener_does_not_know_is_never_bought(self):
+        """Exits are priced by DexScreener; a position it cannot price could never be stopped out."""
+        import bot.demo as demo
+        cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.addCleanup(setattr, demo, "CYCLE_MIN", cycle)
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            run = next(p for p in dex.pairs_for_tokens("solana", dex.recent_token_addresses(["solana"])["solana"]) if p["symbol"] == "RUN")
+            fresh = dict(run, token="GeckoOnlyMint", pair="GeckoOnlyPool", symbol="GONLY")      # rules would buy these numbers
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["gecko"]
+            cfg["filters"]["allow_rugcheck_unknown"] = True; cfg["scoring"]["min_score"] = 50     # the rules say buy
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds={"gecko": StubFeed({"solana": [{"token": "GeckoOnlyMint", "snapshot": fresh}]})})
+            eng.poll_once()
+            c = next(c for c in store.candidates() if c["symbol"] == "GONLY")
+            self.assertTrue(c["snapshot"]["via_feed"])
+            self.assertEqual(c["decision"], "watch", c["reasons"])
+            self.assertTrue(any("DexScreener" in r for r in c["reasons"]), c["reasons"])
+            self.assertEqual(store.open_positions(), [])
+            store.close()
+
+
+class CashTests(unittest.TestCase):
+    def test_cash_never_goes_negative_when_the_book_fills_up(self):
+        from bot.paper import Paper
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite")
+            cfg = copy.deepcopy(CFG); cfg["risk_per_trade_pct"] = 10; cfg["max_open_positions"] = 50; cfg["paper"]["fee_pct"] = 5
+            paper = Paper(store, cfg)
+            for i in range(30):
+                if paper.can_open("solana", f"T{i}"):
+                    break
+                paper.open({"chain": "solana", "token": f"T{i}", "pair": f"P{i}", "symbol": f"S{i}", "price_usd": 1.0}, 1000.0 + i)
+                self.assertGreaterEqual(paper.cash(), -1e-9, f"after {i + 1} buys: cash {paper.cash():.4f}")
+            store.close()

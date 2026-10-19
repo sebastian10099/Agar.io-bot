@@ -136,6 +136,13 @@ class Engine:
                     verdict = evaluate(p, rug, self.cfg)
                     decision = verdict["decision"]
                     p["rule_decision"] = decision
+                    if p.get("via_feed"):
+                        # exits are priced by DexScreener: a position it cannot price would never be
+                        # stopped out, so a feed-only token is watched until DexScreener lists it
+                        verdict["watch_only"] = True
+                        verdict["reasons"].insert(0, "noch nicht bei DexScreener – kein Kurs für Stop-Loss, nur beobachten")
+                        if decision == "buy":
+                            decision = "watch"
                     p["rug"] = rug
                     ai = self.advisor.judge(p, rug, verdict) if decision in ("buy", "watch") else None
                     if ai:

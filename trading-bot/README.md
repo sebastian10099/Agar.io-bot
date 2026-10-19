@@ -189,7 +189,8 @@ auch über die Steuerseite). Eingebaut sind zwei kostenlose Feeds ohne Schlüsse
 Die erste Quelle in der Reihenfolge, die einen Token nennt, gilt als seine
 Quelle (steht am Kandidaten). Die Kennzahlen holt immer DexScreener; ist ein
 Token dort noch nicht gelistet, wird er mit den Zahlen des Feeds bewertet und
-der Kandidat trägt „via Feed“. Fällt eine Quelle aus, steht das einmal im
+der Kandidat trägt „via Feed“. Gekauft wird so ein Token erst, wenn DexScreener ihn listet –
+sonst gäbe es keinen Kurs für Stop-Loss und Zeit-Stop. Fällt eine Quelle aus, steht das einmal im
 Protokoll und in der Quellen-Karte – die anderen laufen weiter.
 
 **Wiedervorlage:** Ein Token, der nur „zu neu“ war, wird nach zwei Minuten
