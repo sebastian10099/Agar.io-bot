@@ -30,4 +30,4 @@ main() {
   echo "Programm liegt in $root/src"
   bash "$root/src/install-app.sh" < /dev/null
 }
-main "$@"
+main ${1+"$@"}

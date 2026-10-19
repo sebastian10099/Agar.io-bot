@@ -14,7 +14,9 @@ CANDIDATES=(
 )
 
 DEMO=""
-[[ " $* " == *" --demo "* ]] && DEMO="--demo"
+# macOS ships bash 3.2, where "$@" / $* with no arguments count as unset under
+# set -u and abort the script: use the forms that are safe in every version.
+[[ " ${*:-} " == *" --demo "* ]] && DEMO="--demo"
 
 PY=""
 LAST=""
@@ -39,4 +41,4 @@ if [ -z "$PY" ]; then
 fi
 
 echo "Python: $PY"
-exec "$PY" -m bot.main "$@"
+exec "$PY" -m bot.main ${1+"$@"}

@@ -66,5 +66,35 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(preflight.main(["--demo"]), 0)
 
 
+class LauncherScriptTests(unittest.TestCase):
+    """launch.sh runs under set -u; with no arguments it must still get past the argument checks."""
+
+    def run_sh(self, *args, home):
+        import os
+        from pathlib import Path
+        root = Path(__file__).parent.parent
+        env = dict(os.environ, NEW_TOKEN_BOT_HOME=home)
+        return subprocess.run(["bash", str(root / "launch.sh"), *args], capture_output=True, text=True, timeout=180, env=env, stdin=subprocess.DEVNULL)
+
+    def test_with_and_without_arguments(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            r = self.run_sh("--demo", "--once", home=d)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn('"seen"', r.stdout)
+            r = self.run_sh(home=d)                     # what a double-click on "Start Trading Bot.command" does
+            self.assertNotIn("unbound variable", r.stderr)
+            self.assertIn("preflight", r.stdout)        # reached the Python check (offline here, so it may stop there)
+
+    def test_scripts_use_the_bash32_safe_forms(self):
+        from pathlib import Path
+        root = Path(__file__).parent.parent
+        for name in ("launch.sh", "Start Trading Bot.command", "Start Demo.command", "get.sh"):
+            text = (root / name).read_text()
+            code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+            self.assertNotIn('"$@"', code.replace('${1+"$@"}', ""), name)
+            self.assertNotIn(" $* ", code, name)
+
+
 if __name__ == "__main__":
     unittest.main()
