@@ -305,7 +305,8 @@ Rate-Limit, Modell nicht gefunden) landet im Protokoll, und die Regeln
 entscheiden dann allein weiter.
 
 **Sicherheitsprüfung mit Ersatz:** Zuerst wird RugCheck gefragt. Antwortet
-RugCheck nicht (ausgefallen, gedrosselt, Domain nicht erreichbar), prüft der Bot
+RugCheck nicht (ausgefallen, gedrosselt, Domain nicht erreichbar – Stand
+19.10.2026 existiert `rugcheck.xyz` im DNS gar nicht mehr), prüft der Bot
 selbst über die Solana-Blockchain (`getAccountInfo` auf den Mint, öffentlicher
 RPC oder `SOLANA_RPC_URL`): aktive Freeze-Authority, aktive Mint-Authority und
 Token-2022-Fallen (Permanent Delegate, Transfer-Hook, pausierbar, eingefrorene

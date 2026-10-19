@@ -1009,7 +1009,9 @@ function renderSources(s) {
     return `<li><span class="dot ${st[0]}" role="img" aria-label="${st[1]}"></span><b>${esc(r.label)}</b> <span class="reasons">${st[1]}${detail ? ' · ' + detail : ''}</span></li>`;
   }).join('') + (() => {
     const rc = s.rugcheck || {}; const solana = (s.chains || []).includes('solana');
-    const st = !solana ? ['off', 'nur für Solana'] : rc.ok === false ? ['bad', 'gestört'] : rc.ok ? ['ok', 'antwortet'] : ['warn', 'noch keine Abfrage'];
+    // RugCheck down while the own check answers is covered: yellow, not a red alarm
+    const covered = rc.ok === false && rc.fallback && rc.fallback.ok;
+    const st = !solana ? ['off', 'nur für Solana'] : covered ? ['warn', 'nicht erreichbar – die Eigenprüfung springt ein'] : rc.ok === false ? ['bad', 'gestört'] : rc.ok ? ['ok', 'antwortet'] : ['warn', 'noch keine Abfrage'];
     const detail = rc.calls ? `${rc.calls} Abfragen · ${rc.fails} ohne Antwort${rc.last_error ? ' · zuletzt: ' + esc(rc.last_error) : ''}` : '';
     const fb = rc.fallback;
     const fbRow = !fb || !solana ? '' : (() => {

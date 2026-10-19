@@ -150,9 +150,15 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   const fbText = await p.evaluate(() => {
     const s = JSON.parse(JSON.stringify(state));
     s.rugcheck = { calls: 3, fails: 3, last_error: 'URLError: DNS', ok: false, fallback: { calls: 2, fails: 0, last_error: '', ok: true } };
-    renderSources(s); const text = document.querySelector('#sources').textContent; renderSources(state); return text;
+    renderSources(s); const text = document.querySelector('#sources').textContent;
+    const rcDot = [...document.querySelectorAll('#sources li')].find((li) => /RugCheck/.test(li.textContent)).querySelector('.dot').className;
+    s.rugcheck.fallback.ok = false; renderSources(s);
+    const bothDown = [...document.querySelectorAll('#sources li')].find((li) => /RugCheck/.test(li.textContent)).querySelector('.dot').className;
+    renderSources(state); return { text, rcDot, bothDown };
   });
-  ok(fbText.includes('Eigenprüfung über Solana-RPC') && fbText.includes('springt ein') && fbText.includes('gestört'), 'RugCheck gestört → Quellen-Karte zeigt die Eigenprüfung als „springt ein“');
+  ok(fbText.text.includes('Eigenprüfung über Solana-RPC') && fbText.text.includes('springt ein') && /warn/.test(fbText.rcDot),
+     'RugCheck aus, Eigenprüfung springt ein → RugCheck-Zeile gelb, nicht rot');
+  ok(/bad/.test(fbText.bothDown), 'RugCheck und Eigenprüfung aus → RugCheck-Zeile rot');
   await clearToast(); await p.click('#b-doctor');
   await p.waitForFunction(() => document.querySelector('#toast').textContent.includes('Selbsttest'));
   const docRows = await p.$$eval('#doctor li', (l) => l.map((x) => ({ text: x.textContent, ok: !!x.querySelector('.dot.ok'), bad: !!x.querySelector('.dot.bad') })));
