@@ -2778,6 +2778,13 @@ class BacktestTests(unittest.TestCase):
             got, _ = bt.simulate(1.0, 1000.0, path, ex, cfg["paper"]["fee_pct"], cfg["paper"]["slippage_pct"])
             self.assertAlmostEqual(got, want, places=6, msg=f"case {case}")
 
+    def test_a_made_up_price_in_a_path_is_refused_like_the_engine_does(self):
+        bt = self.load()
+        ex = {"stop_loss_pct": -30, "trailing_stop_pct": 25, "time_stop_minutes": 60, "take_profit_ladder": [[50, 0.5]]}
+        ret, why = bt.simulate(1.0, 0.0, [(10.0, 1.05), (20.0, 40.0), (30.0, 1.04), (4000.0, 1.0)], ex, 1.0, 2.0)
+        self.assertEqual(why, "time_stop")
+        self.assertLess(ret, 0)                                                   # no take profit at 40x
+
     def test_paths_are_recorded_and_replayed(self):
         from bot.tracker import Tracker
         bt = self.load()

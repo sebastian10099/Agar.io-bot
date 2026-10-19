@@ -38,6 +38,7 @@ GRID = {
     "take_profit_ladder": [[[50, 0.5], [100, 0.25]], [[25, 0.5], [50, 0.25]], [[100, 0.5]], []],
 }
 MIN_TRADES = 8          # fewer trades than this say nothing
+JUMP_MAX = 10.0         # bot/engine.py PRICE_JUMP_MAX: a price this far above the last one is refused
 
 
 def simulate(entry: float, opened_at: float, path: list[tuple[float, float]], ex: dict[str, Any],
@@ -50,7 +51,7 @@ def simulate(entry: float, opened_at: float, path: list[tuple[float, float]], ex
     ladder = sorted((float(t), float(f)) for t, f in ex.get("take_profit_ladder") or [])
     done: set[float] = set()
     deadline = opened_at + float(ex["time_stop_minutes"]) * 60
-    last = entry
+    last = entry                                            # the last believable price (the engine's PRICE_JUMP_MAX rule)
 
     def sell(frac: float, price: float) -> None:
         nonlocal remaining, realized
@@ -65,6 +66,8 @@ def simulate(entry: float, opened_at: float, path: list[tuple[float, float]], ex
         if at > deadline:                                   # stored on change: at the time stop the price was the last one
             sell(remaining, last)
             return realized * 100, "time_stop"
+        if price > last * JUMP_MAX:                         # a bad quote: the engine keeps the last believable price
+            price = last
         last = price
         peak = max(peak, price)
         gain = (price / fill_in - 1) * 100
