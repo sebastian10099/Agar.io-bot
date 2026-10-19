@@ -22,6 +22,9 @@ FOLLOW_RESTORE_S = 30 * 60   # after a restart, follow-ups are picked up from th
 # a holding quoted at this many times its last price from one poll to the next is a bad quote (a pool
 # opened at a made-up price, another token's number), not a market: no real pool moves 10x in seconds
 PRICE_JUMP_MAX = 10.0
+# a pool's price read on the chain is this second's, DexScreener's up to half a minute old: the chain's
+# wins - unless it is this many times above DexScreener's, which no half minute explains (a misread)
+CHAIN_MAX_ABOVE = 3.0
 
 
 _PRESETS: Optional[dict[str, dict[str, Any]]] = None
@@ -206,10 +209,11 @@ class Engine:
                         decision = "watch"
                         verdict["reasons"].insert(0, "not opened: paused")
                     elif decision == "buy":
+                        p, fell = self._entry_price(chain, p)          # network: outside the lock
                         # check and open in one step under the dashboard's lock, or a manual
                         # "Kaufen" in between could open the same token a second time
                         with self._lock:
-                            blocked = self.paper.can_open(chain, p["token"]) or self.paper.reentry_paused(chain, p["token"], now)
+                            blocked = fell or self.paper.can_open(chain, p["token"]) or self.paper.reentry_paused(chain, p["token"], now)
                             if not blocked:
                                 opened = self.paper.open(p, now)
                         if blocked:
@@ -232,6 +236,19 @@ class Engine:
                     self.store.log("error", f"Token {p.get('symbol') or p.get('token')} übersprungen (30 min): "
                                             f"{type(error).__name__}: {error}")
 
+
+    def _entry_price(self, chain: str, p: dict[str, Any]) -> tuple[dict[str, Any], Optional[str]]:
+        """A buy is filled at the pool's price this second where the chain can be read
+        (DexScreener's figure in the verdict may be half a minute old) - and not at all
+        when that price has already fallen to the stop loss."""
+        fresh = self._fresher(self._chain_prices(chain, {p["pair"]: p["token"]}).get(p["pair"]), p["price_usd"])
+        if not fresh or fresh == p["price_usd"]:
+            return p, None
+        p = dict(p, price_usd=fresh, price_dex=p["price_usd"])
+        moved = (fresh / p["price_dex"] - 1) * 100
+        if moved <= float(self.cfg["exits"]["stop_loss_pct"]):
+            return p, f"price {moved:+.0f}% on the chain since DexScreener's figure"
+        return p, None
 
     def _follow(self, chain: str, p: dict[str, Any], decision: str, reasons: list[str], now: float) -> None:
         """Remember a token that is to be judged again: one that was only too new
@@ -356,9 +373,11 @@ class Engine:
                 except Exception as error:  # noqa: BLE001
                     self.store.log("error", f"Kurse ({chain}): {type(error).__name__}: {error}")
                     got = {}
+                fresh = self._chain_prices(chain, {p["pair"]: p["token"] for p in group})
                 for pos in group:
-                    if got.get(pos["pair"]):
-                        priced[pos["id"]] = float(got[pos["pair"]])
+                    best = self._fresher(fresh.get(pos["pair"]), got.get(pos["pair"]))
+                    if best:
+                        priced[pos["id"]] = best
                 continue
             for pos in group:
                 try:
@@ -401,17 +420,32 @@ class Engine:
         self._refused.pop(pos["id"], None)
         return price
 
+    def _chain_prices(self, chain: str, pairs: dict[str, str]) -> dict[str, float]:
+        """{pair: price this second} for the pools the chain reader can read (PumpSwap)."""
+        read = getattr(self.curves, "pool_prices", None)
+        if read is None or chain != "solana" or not pairs:
+            return {}
+        try:
+            return read(pairs, getattr(self.dex, "quote_usd", None) or {}) or {}
+        except Exception:  # noqa: BLE001 - DexScreener's price stands in
+            return {}
+
+    @staticmethod
+    def _fresher(chain_price: Optional[float], dex_price: Optional[float]) -> Optional[float]:
+        if chain_price and chain_price > 0 and (not dex_price or chain_price <= dex_price * CHAIN_MAX_ABOVE):
+            return float(chain_price)
+        return float(dex_price) if dex_price else None
+
     def _price_now(self, chain: str, pair: str, token: str) -> Optional[float]:
         """Current price for a manual action, following the token to its new
         pool like the polls do (a graduated curve is gone or frozen)."""
+        fresh = self._chain_prices(chain, {pair: token}).get(pair)
         batch = getattr(self.dex, "prices", None)
-        if batch is None:
-            return self.dex.price(chain, pair)
         try:
-            got = batch(chain, [pair], {pair: token}) or {}
+            listed = (batch(chain, [pair], {pair: token}) or {}).get(pair) if batch is not None else self.dex.price(chain, pair)
         except Exception:  # noqa: BLE001 - the caller falls back to the last known price
-            return None
-        return float(got[pair]) if got.get(pair) else None
+            listed = None
+        return self._fresher(fresh, listed)
 
     def _maybe_write_off(self, listed: dict[str, Any], now: float, dex_answered: bool, counts: dict[str, int]) -> None:
         """A pair that stopped being priced while DexScreener answers for others has

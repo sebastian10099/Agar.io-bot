@@ -15,6 +15,7 @@ BASE = "https://api.dexscreener.com"
 # LaunchLab graduate into ordinary Meteora/Raydium pools, which anyone can open too: their
 # curves keep their own price while listed and follow the token only once the pair is gone.
 CURVE_SUCCESSORS = {"pumpfun": {"pumpswap"}, "pump-fun": {"pumpswap"}}
+LEARNED_QUOTES = {"So11111111111111111111111111111111111111112"}   # wrapped SOL: what pools are priced in
 SUCCESSOR_MIN_LIQ = 1000.0    # a real pool this deep outranks a bonding curve: the curve has completed and moved there
 
 
@@ -138,6 +139,20 @@ def _rank(n: dict[str, Any], token: Optional[str] = None) -> tuple[int, float]:
 class DexScreener:
     def __init__(self, fetch=get_json) -> None:
         self.fetch = fetch
+        self._quotes: dict[str, list[float]] = {}     # quote token -> its last USD prices, from the pairs seen
+
+    @property
+    def quote_usd(self) -> dict[str, float]:
+        """USD price of each quote token (SOL above all), the median of its last 25
+        pairs: whoever reads a pool's reserves on the chain needs it in dollars."""
+        return {q: sorted(v)[len(v) // 2] for q, v in self._quotes.items() if v}
+
+    def _learn(self, n: dict[str, Any]) -> None:
+        quote = n.get("quote_token")
+        if quote in LEARNED_QUOTES and n["price_usd"] > 0 and n.get("price_native", 0) > 0:
+            seen = self._quotes.setdefault(quote, [])
+            seen.append(n["price_usd"] / n["price_native"])
+            del seen[:-25]
 
     def recent_token_addresses(self, chains: Iterable[str]) -> dict[str, list[str]]:
         """Recently promoted tokens (profiles + boosts). New launches show up here
@@ -172,6 +187,7 @@ class DexScreener:
             for p in pairs if isinstance(pairs, list) else []:
                 n = normalize_pair(p)
                 if n["token"] and n["pair"]:
+                    self._learn(n)
                     out.append(n)
         return out
 
@@ -214,6 +230,7 @@ class DexScreener:
                 n = normalize_pair(raw)
                 if not n["pair"]:
                     continue
+                self._learn(n)
                 price = token_price(n, (follow or {}).get(n["pair"]))
                 if price:
                     out[n["pair"]] = price

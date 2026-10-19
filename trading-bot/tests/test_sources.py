@@ -2567,3 +2567,104 @@ class HolderTests(unittest.TestCase):
         oc.summary("M")
         self.assertEqual(calls.count("getTokenLargestAccounts"), 2)
 
+
+
+class ChainPriceTests(unittest.TestCase):
+    """DexScreener refreshes a pair about every 30 seconds (live: the same price three
+    polls in a row); a PumpSwap pool's vaults on the chain hold this second's price."""
+
+    KEYS = {name: __import__("hashlib").sha256(name.encode()).digest()
+            for name in ("pool", "creator", "mint", "lp", "base_vault", "quote_vault", "other", "foreign")}
+
+    def addr(self, name):
+        from bot.sources.solana_rpc import b58encode
+        return b58encode(self.KEYS[name])
+
+    def chain(self, base_raw=2_000_000 * 10 ** 6, quote_raw=30 * 10 ** 9, base_mint="mint"):
+        import base64
+        import struct
+        from bot.sources.curve import PUMPSWAP_PROGRAM, WSOL
+        from bot.sources.solana_rpc import b58decode
+        k = self.KEYS
+        pool = (b"\0" * 8 + b"\xfe" + b"\0\0" + k["creator"] + k[base_mint] + b58decode(WSOL) + k["lp"]
+                + k["base_vault"] + k["quote_vault"] + struct.pack("<Q", 1) + k["creator"])
+        vault = lambda mint, amount: mint + k["pool"] + struct.pack("<Q", amount) + b"\0" * 93
+        mint = lambda dec: b"\0" * 36 + struct.pack("<Q", 10 ** 15) + bytes([dec, 1]) + b"\0" * 36
+        accounts = {self.addr("pool"): (PUMPSWAP_PROGRAM, pool),
+                    self.addr("foreign"): ("SomeOtherAmm1111111111111111111111111111111", pool),
+                    self.addr("base_vault"): ("Tokenkeg", vault(k["mint"], base_raw)),
+                    self.addr("quote_vault"): ("Tokenkeg", vault(b58decode(WSOL), quote_raw)),
+                    self.addr("mint"): ("Tokenkeg", mint(6)), self.addr("other"): ("Tokenkeg", mint(6)),
+                    WSOL: ("Tokenkeg", mint(9))}
+        calls = []
+
+        def post(url, body, timeout=None):
+            asked = body["params"][0]; calls.append(asked)
+            return {"result": {"value": [None if a not in accounts else
+                                         {"owner": accounts[a][0], "data": [base64.b64encode(accounts[a][1]).decode(), "base64"]}
+                                         for a in asked]}}
+        return post, calls
+
+    def test_a_pumpswap_pool_is_priced_from_its_vaults(self):
+        from bot.sources.curve import WSOL, CurveReader
+        post, calls = self.chain()
+        reader = CurveReader(post=post, url="http://rpc")
+        sol = {WSOL: 150.0}
+        got = reader.pool_prices({self.addr("pool"): self.addr("mint")}, sol)
+        self.assertAlmostEqual(got[self.addr("pool")], 30 / 2_000_000 * 150.0)           # 30 SOL for 2M tokens
+        self.assertEqual(len(calls), 3)                                                 # pool, mints, vaults
+        reader.pool_prices({self.addr("pool"): self.addr("mint")}, sol)
+        self.assertEqual(len(calls), 4)                                                 # from now on: the vaults only
+        self.assertEqual(set(calls[-1]), {self.addr("base_vault"), self.addr("quote_vault")})
+        # another token's pool, a pool of another program, an unknown account: no price, never asked again
+        odd = {self.addr("pool"): self.addr("other"), self.addr("foreign"): self.addr("mint"), self.addr("lp"): self.addr("mint")}
+        fresh = CurveReader(post=post, url="http://rpc")
+        self.assertEqual(fresh.pool_prices(odd, sol), {})
+        n = len(calls)
+        self.assertEqual(fresh.pool_prices(odd, sol), {})
+        self.assertEqual(len(calls), n)
+        self.assertEqual(CurveReader(post=post, url="http://rpc").pool_prices({self.addr("pool"): self.addr("mint")}, {}), {})   # no SOL price yet
+
+    def test_dexscreener_learns_the_sol_price_from_its_pairs(self):
+        from bot.sources.dexscreener import DexScreener
+        sol = {"address": "So11111111111111111111111111111111111111112", "symbol": "SOL"}
+        pairs = [{"chainId": "solana", "dexId": "pumpswap", "pairAddress": f"P{i}", "baseToken": {"address": f"T{i}"},
+                  "quoteToken": sol, "priceUsd": str(0.00001 * px), "priceNative": "0.00001"} for i, px in enumerate((149, 150, 151, 9999))]
+        dex = DexScreener(fetch=lambda url, **kw: {"pairs": pairs})
+        dex.prices("solana", ["P0", "P1", "P2", "P3"])
+        self.assertAlmostEqual(dex.quote_usd["So11111111111111111111111111111111111111112"], 151.0)   # the median, not the outlier
+
+    def engine(self, d, chain_price):
+        dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+        run = next(p for p in dex.pairs_for_tokens("solana", dex.recent_token_addresses(["solana"])["solana"]) if p["symbol"] == "RUN")
+
+        class Chain:
+            calls = 0
+            def health(self): return {}
+            def read(self, accounts): return {}
+            def pool_prices(self, pairs, quote_usd):
+                Chain.calls += 1
+                return {p: chain_price[0] for p in pairs if p == run["pair"] and chain_price[0]}
+        store = Store(Path(d) / "t.sqlite")
+        return Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=lambda: t[0], feeds=demo_feeds(dex), curves=Chain()), store, run, t
+
+    def test_holdings_and_buys_use_the_chain_price(self):
+        with tempfile.TemporaryDirectory() as d:
+            chain_price = [None]
+            eng, store, run, t = self.engine(d, chain_price)
+            listed = 0.001
+            eng.dex.prices = lambda chain, ps, follow=None: {run["pair"]: listed}
+            p, fell = eng._entry_price("solana", run)
+            self.assertEqual((p["price_usd"], fell), (run["price_usd"], None))           # nothing on the chain: DexScreener's
+            chain_price[0] = run["price_usd"] * 1.2                                      # it ran on since DexScreener's figure
+            p, fell = eng._entry_price("solana", run)
+            self.assertEqual(p["price_usd"], run["price_usd"] * 1.2); self.assertIsNone(fell)
+            self.assertEqual(p["price_dex"], run["price_usd"])
+            chain_price[0] = run["price_usd"] * 0.5                                      # it crashed meanwhile: no buy
+            self.assertIn("-50% on the chain", eng._entry_price("solana", run)[1])
+            pid = eng.paper.open(run, t[0])
+            chain_price[0] = listed * 0.9
+            self.assertAlmostEqual(eng._position_prices([store.position(pid)])[pid], listed * 0.9)
+            chain_price[0] = listed * 5                                                  # no half minute explains that
+            self.assertAlmostEqual(eng._position_prices([store.position(pid)])[pid], listed)
+            store.close()

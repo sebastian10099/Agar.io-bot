@@ -289,6 +289,20 @@ Seitdem:
   (unbekannt statt +3.400.000 %), und die Laufzeit-Prüfung schlägt bei jedem
   solchen Sprung an.
 
+**Kurse direkt von der Chain** – DexScreener frischt ein Paar nur etwa alle
+30 Sekunden auf (im Live-Lauf derselbe Kurs drei Polls lang). Ein Stop-Loss
+feuerte so bis zu einer halben Minute zu spät, und ein Kauf wurde zu einem
+Kurs gebucht, den der Markt schon verlassen hatte – bei Coins mit +100 % in
+fünf Minuten schönt das jedes Paper-Ergebnis. Für PumpSwap-Pools (dort
+handelt ein pump.fun-Coin nach seiner Kurve, also fast alles, was der Bot
+kauft) liest der Bot deshalb die beiden Tresore des Pools auf der Chain: ein
+RPC-Aufruf je Poll für alle Positionen, der Kurs dieser Sekunde. Der
+SOL-Kurs dazu kommt aus DexScreeners SOL-Paaren (Median). Gekauft wird zum
+Chain-Kurs; ist der seit DexScreeners Zahl schon bis zum Stop-Loss gefallen,
+gar nicht. Liegt der Chain-Kurs mehr als das Dreifache über DexScreener, gilt
+er als Lesefehler und DexScreener zählt. Andere Pools und Ausfälle des Knotens:
+weiter DexScreener. Jeder Mac-CI-Lauf vergleicht beide Kurse an echten Pools.
+
 **Harte Filter** (ein Verstoß = `skip`, Grund wird gespeichert):
 
 - Alter 2–120 Minuten — nicht in der ersten Minute kaufen, nicht alten Tokens hinterherlaufen
