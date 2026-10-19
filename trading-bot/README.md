@@ -201,11 +201,13 @@ schnell), ein harter `skip` (RugCheck-Gefahr, zu alt, parabolisch) erst nach
 einer halben Stunde. So verpasst der Bot nicht das Fenster zwischen Minute 2
 und 30, nur weil er den Token in Minute 1 schon gesehen hat. GeckoTerminal und
 pump.fun listen nur die letzten paar Dutzend Starts – wenn ein Token alt genug
-ist, steht er dort längst nicht mehr. Der Bot merkt sich deshalb jeden Token,
-der nur „zu neu“ war, und holt ihn selbst wieder, sobald er das Mindestalter
-erreicht (mit den aktuellen Zahlen von DexScreener; listet DexScreener ihn
-zehn Minuten danach noch immer nicht, wird er vergessen). Ohne das sah der Bot
-neue Tokens nur zu früh und die beworbenen nur zu spät – und kaufte nie.
+ist oder wieder fällig wird, steht er dort längst nicht mehr. Der Bot merkt
+sich deshalb jeden Token, der nur „zu neu“ war oder beobachtet wird, und holt
+ihn selbst wieder: den zu neuen, sobald er das Mindestalter erreicht, den
+beobachteten nach fünf Minuten, jeweils mit den aktuellen Zahlen von
+DexScreener (listet DexScreener ihn zehn Minuten danach noch immer nicht, wird
+er vergessen). Ohne das sah der Bot neue Tokens nur zu früh und die beworbenen
+nur zu spät – und kaufte nie.
 
 **Harte Filter** (ein Verstoß = `skip`, Grund wird gespeichert):
 

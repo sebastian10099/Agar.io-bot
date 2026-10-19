@@ -15,9 +15,9 @@ from .tracker import Tracker
 
 RESEE_SECONDS = 30 * 60      # a hard skip (rug danger, too old, parabolic) is not re-evaluated within half an hour
 RESEE_TOO_NEW = 2 * 60       # "too new" is a timing issue, not a verdict: look again in two minutes
-YOUNG_GRACE_S = 10 * 60      # a launch followed past its feed: this long after it is old enough for DexScreener to list it
-YOUNG_MAX = 2000
 RESEE_WATCH = 5 * 60         # a watch passed every filter; its numbers move fast, so re-check every five minutes
+FOLLOW_GRACE_S = 10 * 60     # a token followed past its feed: this long after it is due for DexScreener to list it
+FOLLOW_MAX = 2000
 
 
 _PRESETS: Optional[dict[str, dict[str, Any]]] = None
@@ -89,8 +89,8 @@ class Engine:
         self._last_priced: dict[int, float] = {}  # position id -> engine time of its last price
         self._dex_answered = False                # did the numbers source answer during the last discovery?
         self._deferred_last = 0
-        # launches judged "too new": (chain, token) -> source, age, when old enough
-        self._young: dict[tuple[str, str], dict[str, Any]] = {}
+        # tokens to look at again (too new, or watched): (chain, token) -> source, age, when due
+        self._followed: dict[tuple[str, str], dict[str, Any]] = {}
 
     def _report(self, key: str, fn: Callable[[], Any]) -> Any:
         """The page polls every 2 s; the aggregate reports only need to move with the polls."""
@@ -119,7 +119,7 @@ class Engine:
         """Find, judge and (paper-)buy new tokens."""
         deadline = time.time() + DISCOVERY_BUDGET_S
         found = self.discovery.recent(list(self.cfg["chains"]))
-        self._bring_back_young(found, now)
+        self._bring_back(found, now)
         for chain, tokens in found.items():
             if not tokens:
                 continue
@@ -213,10 +213,7 @@ class Engine:
                     if opened is not None:
                         self.last_prices[p["pair"]] = p["price_usd"]
                         self.store.tick(opened, now, p["price_usd"])
-                    if decision == "skip" and any("too new" in r for r in verdict["reasons"]):
-                        self._follow_young(chain, p, now)
-                    else:
-                        self._young.pop((chain, p["token"]), None)
+                    self._follow(chain, p, decision, verdict["reasons"], now)
                 except Exception as error:  # noqa: BLE001 - one broken record must not stop the others
                     self.errors += 1
                     self._bad_tokens[p.get("token") or ""] = now
@@ -224,21 +221,31 @@ class Engine:
                                             f"{type(error).__name__}: {error}")
 
 
-    def _follow_young(self, chain: str, p: dict[str, Any], now: float) -> None:
+    def _follow(self, chain: str, p: dict[str, Any], decision: str, reasons: list[str], now: float) -> None:
+        """Remember a token that is to be judged again: one that was only too new
+        (once it reaches the minimum age) or one being watched (in five minutes)."""
+        key = (chain, p["token"])
         age = p.get("age_min")
-        wait = (float(self.cfg["filters"]["min_age_minutes"]) - (age or 0.0)) * 60.0
-        self._young[(chain, p["token"])] = {"source": p.get("source"), "ready_at": now + max(RESEE_TOO_NEW, wait),
-                                            "born": now - age * 60.0 if age is not None else None}
-        if len(self._young) > YOUNG_MAX:
-            del self._young[min(self._young, key=lambda k: self._young[k]["ready_at"])]
+        if decision == "skip" and any("too new" in r for r in reasons):
+            wait = max(RESEE_TOO_NEW, (float(self.cfg["filters"]["min_age_minutes"]) - (age or 0.0)) * 60.0)
+        elif decision == "watch":
+            wait = RESEE_WATCH
+        else:
+            self._followed.pop(key, None)
+            return
+        self._followed[key] = {"source": p.get("source"), "ready_at": now + wait,
+                               "born": now - age * 60.0 if age is not None else None}
+        if len(self._followed) > FOLLOW_MAX:
+            del self._followed[min(self._followed, key=lambda k: self._followed[k]["ready_at"])]
 
-    def _bring_back_young(self, found: dict[str, dict[str, Any]], now: float) -> None:
+    def _bring_back(self, found: dict[str, dict[str, Any]], now: float) -> None:
         """The launch feeds (GeckoTerminal, pump.fun) list only the last few dozen
-        tokens: by the time one is old enough to buy they have moved on, and it would
-        never be judged at its real age. So the engine asks for it again itself."""
-        for (chain, token), info in list(self._young.items()):
-            if chain not in found or now > info["ready_at"] + YOUNG_GRACE_S:
-                del self._young[(chain, token)]
+        tokens: by the time one is old enough to buy, or due for another look while
+        watched, they have moved on and it would never be judged again. So the
+        engine asks DexScreener for it itself."""
+        for (chain, token), info in list(self._followed.items()):
+            if chain not in found or now > info["ready_at"] + FOLLOW_GRACE_S:
+                del self._followed[(chain, token)]
             elif now >= info["ready_at"] and token not in found[chain]:
                 # no feed numbers: they would be minutes old; the age is all that still holds
                 snap = {"age_min": (now - info["born"]) / 60.0} if info["born"] is not None else None

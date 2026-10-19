@@ -1031,9 +1031,9 @@ class FeedOnlyBuyTests(unittest.TestCase):
             store.close()
 
 
-class YoungFollowTests(unittest.TestCase):
+class FollowTests(unittest.TestCase):
     """GeckoTerminal and pump.fun list only the last few dozen launches: a token
-    judged too new is gone from them by the time it is old enough."""
+    judged too new, or watched, is gone from them by the time it is due again."""
 
     def setUp(self):
         import bot.demo as demo
@@ -1058,11 +1058,27 @@ class YoungFollowTests(unittest.TestCase):
             again = seen()[0]
             self.assertFalse(any("too new" in r for r in again["reasons"]), again["reasons"])
             self.assertEqual(again["snapshot"]["source"], "gecko")    # still credited to the feed that found it
-            self.assertEqual(eng._young, {})                  # judged at its real age: no longer followed
+            self.assertEqual(eng._followed, {})                  # judged at its real age: no longer followed
+            store.close()
+
+    def test_a_watched_launch_is_looked_at_again_every_five_minutes(self):
+        from bot.engine import RESEE_WATCH
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            feed = StubFeed({"solana": [{"token": "mintDump11111111111111111111111111111111", "snapshot": None}]})
+            cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["gecko"]
+            eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds={"gecko": feed})
+            def seen(): return [c for c in store.candidates() if c["symbol"] == "DUMP"]
+            eng.poll_once(); feed.items = {}
+            self.assertEqual(seen()[0]["decision"], "watch", seen()[0]["reasons"])
+            t[0] = dex.started + RESEE_WATCH - 30; eng.poll_once()
+            self.assertEqual(len(seen()), 1)
+            t[0] = dex.started + RESEE_WATCH + 30; eng.poll_once()
+            self.assertEqual(len(seen()), 2)                  # gone from the feed, judged again all the same
             store.close()
 
     def test_waits_until_the_minimum_age_and_gives_up_on_a_token_never_listed(self):
-        from bot.engine import YOUNG_GRACE_S
+        from bot.engine import FOLLOW_GRACE_S
         with tempfile.TemporaryDirectory() as d:
             store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
             run = next(p for p in dex.pairs_for_tokens("solana", dex.recent_token_addresses(["solana"])["solana"]) if p["symbol"] == "RUN")
@@ -1071,7 +1087,7 @@ class YoungFollowTests(unittest.TestCase):
             cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["gecko"]; cfg["filters"]["min_age_minutes"] = 6
             eng = Engine(cfg, store, dex, FakeRug(), clock=dex.now, feeds={"gecko": feed})
             eng.poll_once(); feed.items = {}
-            info = eng._young[("solana", "GhostMint")]
+            info = eng._followed[("solana", "GhostMint")]
             self.assertAlmostEqual(info["ready_at"] - dex.started, 5.5 * 60)      # at 6 min of age, not every 2 min
             asked = []
             orig = dex.pairs_for_tokens
@@ -1081,8 +1097,8 @@ class YoungFollowTests(unittest.TestCase):
             t[0] = dex.started + 6 * 60; eng.poll_once()
             self.assertIn("GhostMint", asked)                 # asked for, but DexScreener does not know it
             self.assertEqual(len([c for c in store.candidates() if c["symbol"] == "GHOST"]), 1)
-            t[0] = dex.started + 5.5 * 60 + YOUNG_GRACE_S + 1; eng.poll_once()
-            self.assertNotIn(("solana", "GhostMint"), eng._young)
+            t[0] = dex.started + 5.5 * 60 + FOLLOW_GRACE_S + 1; eng.poll_once()
+            self.assertNotIn(("solana", "GhostMint"), eng._followed)
             store.close()
 
 
