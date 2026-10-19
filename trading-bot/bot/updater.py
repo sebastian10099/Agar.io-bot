@@ -16,7 +16,7 @@ LOG="$HOME/Library/Application Support/NewTokenBot/update.log"
 mkdir -p "$(dirname "$LOG")"
 {
   echo "=== Aktualisierung $(date) ==="
-  bash "$PROJECT/get.sh" || { echo "get.sh fehlgeschlagen"; exit 1; }
+  NEW_TOKEN_BOT_NO_OPEN=1 bash "$PROJECT/get.sh" || { echo "get.sh fehlgeschlagen"; exit 1; }
   # wait until the old bot has released its port
   for _ in $(seq 1 60); do
     curl -s -m 1 "http://127.0.0.1:$PORT/api/state" | grep -q '"app": "new-token-bot"' || break

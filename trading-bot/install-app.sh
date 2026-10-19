@@ -53,5 +53,12 @@ else
   rm -f "$TMPZ"
 fi
 
-/usr/bin/open -R "$DEST" 2>/dev/null || true
-echo "Fertig. Doppelklick auf 'New Token Bot' startet den Bot und oeffnet die Steuerseite."
+# Installed by hand (the one-liner): start it right away. Not in CI, and not when the app's own
+# update runs this - that one restarts the bot itself once the old one has stopped.
+if [ -z "${CI:-}" ] && [ -z "${NEW_TOKEN_BOT_NO_OPEN:-}" ]; then
+  echo "Fertig. Die App startet jetzt den Bot und oeffnet die Steuerseite im Browser."
+  /usr/bin/open "$DEST" 2>/dev/null || true
+else
+  /usr/bin/open -R "$DEST" 2>/dev/null || true
+  echo "Fertig. Doppelklick auf 'New Token Bot' startet den Bot und oeffnet die Steuerseite."
+fi
