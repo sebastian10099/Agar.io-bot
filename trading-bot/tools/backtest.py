@@ -195,6 +195,14 @@ PROBES = [
      1792418400.0,      # 19 Oct 2026 14:00 UTC - the idea came from the two hours before
      lambda c: c["snapshot"].get("dex") == "pumpswap" and not c["token"].endswith("pump")
      and (c["snapshot"].get("age_min") if c["snapshot"].get("age_min") is not None else 99) < 1.5),
+    # the --search's best rule on 153 tokens, the only one so far that held on the unseen half
+    # (+25 to +38 % on 14-16 trades); with the exit it was found with
+    ("Kaufdruck ≥ 3 (Liq ≥ 15k, ≥ 8 Käufe, Alter ≤ 30 min, Bewertung/Liq ≤ 3x, ohne RugCheck-Gefahr)",
+     1792420200.0,      # 19 Oct 2026 14:30 UTC
+     lambda c: not (c["snapshot"].get("rug") or {}).get("danger") and _passes(c["snapshot"], {
+         "min_liquidity_usd": 15000, "min_buys_m5": 8, "min_buy_sell_ratio": 3.0, "change_m5": (-100, 1e9),
+         "max_age_min": 30, "max_fdv_liquidity": 3}),
+     {"stop_loss_pct": -30, "trailing_stop_pct": 35, "time_stop_minutes": 60, "take_profit_ladder": [[100, 0.5]]}),
 ]
 
 
@@ -202,14 +210,15 @@ def probes(cands: list[dict[str, Any]], ex: dict[str, Any], fee: float, slip: fl
            table: Optional[list] = None) -> list[str]:
     pool = entries(cands, None)
     lines = []
-    for name, start, rule in PROBES if table is None else table:
+    for name, start, rule, *own_exit in PROBES if table is None else table:
+        ex_used = own_exit[0] if own_exit else ex
         hits = [c for c in pool if rule(c)]
         rugs = lambda cs: sum(min(x for _, x in c["path"]) <= c["price_usd"] * 0.1 for c in cs)
         before = [c for c in hits if c["seen_at"] < start]
         after = [c for c in hits if c["seen_at"] >= start]
         lines += [f"Probe: {name}",
-                  f"  Daten, aus denen die Idee stammt: {stats(run(before, ex, fee, slip))} · Rugs {rugs(before)}",
-                  f"  danach – die eigentliche Probe:   {stats(run(after, ex, fee, slip))} · Rugs {rugs(after)}"]
+                  f"  Daten, aus denen die Idee stammt: {stats(run(before, ex_used, fee, slip))} · Rugs {rugs(before)}",
+                  f"  danach – die eigentliche Probe:   {stats(run(after, ex_used, fee, slip))} · Rugs {rugs(after)}"]
     return lines
 
 
