@@ -263,12 +263,16 @@ Minuten lag der Median bei +16 %. RugCheck nannte fast alle dieser Pool-Tokens
 - **Kurven-Coins werden nur beobachtet** (Einstellung „Tokens auf der
   Bonding-Kurve kaufen“, ab Werk aus) und alle fünf Minuten neu angesehen –
   zieht der Coin in einen Pool um, kann er dort gekauft werden.
-- **„LP Unlocked“ zählt bei PumpSwap-Pools als Warnung** (Score-Abzug), bei
-  allen anderen Börsen als Gefahr. Zuerst galt das auch für Meteora – mit
-  ehrlichen Kursen verloren dann 3 von 5 so markierten Meteora-Käufen binnen
-  drei Minuten alles (die Liquidität wurde abgezogen), darum nicht mehr;
-  Gefahren bei den
-  Haltern schließen überall aus.
+- **„LP Unlocked“ zählt nur im eigenen Pool von pump.fun als Warnung**
+  (Score-Abzug: ein PumpSwap-Pool eines Coins, dessen Adresse auf „pump“
+  endet – diese Liquidität kann niemand abziehen). Überall sonst ist es eine
+  Gefahr: Wer selbst einen Pool auf PumpSwap oder Meteora eröffnet, hält die
+  LP-Anteile und kann alles mit einer Transaktion herausziehen. RugCheck
+  markiert 77 von 80 solcher PumpSwap-Pools, aber nur 1 von 10 Pools von
+  pump.fun. Als der Bot sie trotzdem kaufte, fielen 3 von 9 solcher
+  PumpSwap-Pools und 3 von 5 auf Meteora in einem Schritt auf null – kein
+  Stop-Loss kann da noch verkaufen. Gefahren bei den Haltern schließen
+  überall aus.
 - **Zeit-Stop 60 statt 45 Minuten** – die Gewinner liefen weiter.
 
 Die Profile auf diesen Daten nachgerechnet, mit den echten Regeln des Bots

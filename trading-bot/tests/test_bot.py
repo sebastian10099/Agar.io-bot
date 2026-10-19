@@ -74,16 +74,18 @@ class StrategyTests(unittest.TestCase):
         label = next(lab for needle, lab, _ in Store.REASON_RULES if needle in "thin pool: valuation 6.0x its liquidity > 3x")
         self.assertEqual(label, "Bewertung zu hoch für den Pool")                   # not "FDV zu hoch"
 
-    def test_unlocked_lp_is_a_warning_on_pumpswap_only(self):
+    def test_unlocked_lp_is_a_warning_in_pump_funs_own_pool_only(self):
         lp = {"score": 52.0, "danger": ["Large Amount of LP Unlocked"], "warn": ["Low amount of LP Providers"], "source": "rugcheck"}
-        v = evaluate(dict(fixture("RUN"), dex="pumpswap"), lp, CFG)
+        migrated = dict(fixture("RUN"), dex="pumpswap", token="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgpump")
+        v = evaluate(migrated, lp, CFG)
         self.assertNotEqual(v["decision"], "skip", v["reasons"])
         self.assertIn("rugcheck", " ".join(v["reasons"]))
-        for dex in ("meteora", "raydium"):                                       # live: 3 of 5 such Meteora buys were pulled
-            v = evaluate(dict(fixture("RUN"), dex=dex), lp, CFG)
+        # live: 3 of 9 such PumpSwap pools of a coin not from pump.fun, 3 of 5 on Meteora were pulled
+        for dex, token in (("pumpswap", fixture("RUN")["token"]), ("meteora", migrated["token"]), ("raydium", migrated["token"])):
+            v = evaluate(dict(fixture("RUN"), dex=dex, token=token), lp, CFG)
             self.assertEqual(v["decision"], "skip", dex); self.assertIn("LP Unlocked", v["reasons"][0])
         holders = dict(lp, danger=["Large Amount of LP Unlocked", "Top 10 holders high ownership"])
-        v = evaluate(dict(fixture("RUN"), dex="pumpswap"), holders, CFG)           # who holds the supply always counts
+        v = evaluate(migrated, holders, CFG)                                       # who holds the supply always counts
         self.assertEqual(v["decision"], "skip"); self.assertIn("Top 10 holders", v["reasons"][0])
 
     def test_rug_danger_is_skipped(self):

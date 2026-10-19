@@ -21,11 +21,18 @@ def _scale(x: float, lo: float, hi: float, pts: float) -> float:
     return _clamp((x - lo) / (hi - lo), 0.0, 1.0) * pts
 
 
-# PumpSwap, where a pump.fun coin moves after its curve: RugCheck calls nearly every pool's
-# liquidity "unlocked", and there it is a warning, not a verdict. Not on Meteora: with reserve
-# prices, 3 of 5 Meteora buys flagged so lost everything within three minutes - the liquidity
-# was pulled (live, 19 Oct 2026; the earlier "+39 %" came from last-trade prices).
+# The pool a pump.fun coin moves to after its curve belongs to pump.fun: nobody can pull its
+# liquidity, and an "LP unlocked" there is a warning, not a verdict. pump.fun's coins end in
+# "pump". Any other pool on PumpSwap (or Meteora) was opened by someone for a coin of their own
+# and holds their LP - RugCheck flags 77 of 80 of those, 1 of 10 of pump.fun's own (live,
+# 19 Oct 2026). Flagged and bought anyway, 3 of 9 such PumpSwap pools and 3 of 5 on Meteora
+# went to zero in one step: the liquidity was pulled, faster than any stop.
 LP_MANAGED_DEXES = {"pumpswap"}
+PUMPFUN_SUFFIX = "pump"
+
+
+def lp_managed(p: dict[str, Any]) -> bool:
+    return str(p.get("dex") or "").lower() in LP_MANAGED_DEXES and str(p.get("token") or "").endswith(PUMPFUN_SUFFIX)
 
 
 def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, Any]) -> dict[str, Any]:
@@ -93,7 +100,7 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
                 reasons.append("onchain danger: " + ", ".join(rug["danger"][:3]))
         else:
             danger = list(rug["danger"])
-            if str(p.get("dex") or "").lower() in LP_MANAGED_DEXES:
+            if lp_managed(p):
                 soft = [d for d in danger if "LP Unlocked" in str(d)]
                 danger = [d for d in danger if d not in soft]
             if danger:
@@ -127,7 +134,7 @@ def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, An
         parts["rugcheck"] = max(0.0, 5.0 - 2.0 * len(rug["warn"]))
     elif rug is not None:
         parts["rugcheck"] = _scale(f["max_rugcheck_score"] - rug["score"], 0, f["max_rugcheck_score"], 10)
-        warnings = len(rug["warn"]) + (len(rug["danger"]) if str(p.get("dex") or "").lower() in LP_MANAGED_DEXES else 0)
+        warnings = len(rug["warn"]) + (len(rug["danger"]) if lp_managed(p) else 0)
         if warnings:
             parts["rugcheck"] = max(0.0, parts["rugcheck"] - 2.0 * warnings)
     else:

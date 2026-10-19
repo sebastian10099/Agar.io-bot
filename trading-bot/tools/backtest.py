@@ -159,6 +159,7 @@ RUG_SIGNS = [
     ("10 größte Wallets ≥ 35 %", lambda s, r: r["holders"]["top10"] >= 35 if r and r.get("holders") else None),
     ("Ersteller hält > 5 %", lambda s, r: r["creator_pct"] > 5 if r and r.get("creator_pct") is not None else None),
     ("„LP Unlocked“", lambda s, r: any("LP Unlocked" in str(d) for d in r.get("danger") or []) if r else None),
+    ("Pool nicht von pump.fun", lambda s, r: not (s.get("dex") == "pumpswap" and str(s.get("token") or "").endswith("pump"))),
     ("Bewertung > 3× Liquidität", lambda s, r: (s.get("fdv") or 0) > 3 * (s.get("liquidity_usd") or 1e18)),
     ("5-min-Anstieg > 150 %", lambda s, r: (s.get("change_m5") or 0) > 150),
     ("Alter < 10 min", lambda s, r: (s.get("age_min") or 0) < 10),
