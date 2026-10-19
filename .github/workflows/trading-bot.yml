@@ -125,8 +125,25 @@ jobs:
               v = math.sqrt(K * native) if native > 0 else 0
               print(f"  {dex:12s} {a.get('name', '')[:22]:22s} reserve={a.get('reserve_in_usd')} fdv={a.get('fdv_usd')} mcap={a.get('market_cap_usd')} native={native:.3e} quoteUSD={a.get('quote_token_price_usd')} "
                     f"vSOL(Formel)={v:.1f} m5={a.get('transactions', {}).get('m5')} vol5m={a.get('volume_usd', {}).get('m5')}")
-          if g.get("data"):
-              a = dict(g["data"][0]["attributes"]); print("Ein Gecko-Pool roh:", json.dumps(a)[:900])
+          for c in coins[:50]:
+              if c.get("quote_mint") and c.get("virtual_sol_reserves") and c.get("virtual_token_reserves"):
+                  k = c["virtual_sol_reserves"] * c["virtual_token_reserves"] / 1e24
+                  print(f"  Kurve {str(c.get('symbol'))[:10]:10s} quote={str(c.get('quote_mint'))[:6]} program={str(c.get('program'))[:6]} protocol={c.get('protocol')} decimals={c.get('base_decimals')}/{c.get('quote_decimals')} k/1e24={k:.3f}")
+          # graduated coins: a new PumpSwap pool is a pump.fun curve that just completed
+          grads = []
+          for pool in g.get("data") or []:
+              if pool["relationships"]["dex"]["data"]["id"] == "pumpswap":
+                  grads.append(pool["relationships"]["base_token"]["data"]["id"].split("_", 1)[1])
+          print("Graduierte Coins (neue PumpSwap-Pools):", grads[:3])
+          for mint in grads[:3]:
+              ps = get_json("https://api.dexscreener.com/tokens/v1/solana/" + mint) or []
+              for p in ps:
+                  print(f"  {mint[:8]} {p.get('dexId'):10s} pair={p.get('pairAddress', '')[:8]} liq={p.get('liquidity')} price={p.get('priceUsd')} m5={p.get('txns', {}).get('m5')} h1={p.get('txns', {}).get('h1')} labels={p.get('labels')} keys={sorted(set(p) - {'chainId', 'url', 'baseToken', 'quoteToken', 'info', 'txns', 'volume', 'priceChange'})}")
+              try:
+                  one = get_json(f"https://frontend-api-v3.pump.fun/coins/{mint}", headers=pumpfun.HEADERS, retries=0)
+                  print(f"  pump.fun: complete={one.get('complete')} pool={one.get('pool_address') or one.get('raydium_pool')} vSOL={one.get('virtual_sol_reserves')}")
+              except Exception as e:
+                  print("  pump.fun Einzelabfrage:", type(e).__name__, str(e)[:120])
           PY
       - name: Ein echter Poll gegen die Live-Märkte
         working-directory: trading-bot

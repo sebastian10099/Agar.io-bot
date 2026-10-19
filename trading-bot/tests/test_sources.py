@@ -860,6 +860,28 @@ class CrossSiteTests(unittest.TestCase):
         status, data = self.req("POST", "/api/control", body='[1, 2]', headers={"Content-Type": "application/json"})
         self.assertEqual(status, 400, data)
 
+    def test_a_client_that_gives_up_is_not_an_error(self):
+        # curl -m 2 or a reloaded page: the answer has nowhere to go – no traceback, no red log line
+        import contextlib, io, socket, struct
+        slow = self.eng.state
+        def state():
+            time.sleep(0.3)
+            return dict(slow(), padding="x" * 2_000_000)
+        self.eng.state = state
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            for _ in range(3):
+                s = socket.create_connection(("127.0.0.1", self.port))
+                s.sendall(b"GET /api/state HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+                s.close()                                    # reset: the client is gone
+            time.sleep(1.0)
+        self.assertEqual(err.getvalue(), "")
+        self.assertEqual([e["message"] for e in self.store.events(50) if e["level"] == "error"], [])
+        self.eng.state = slow
+        status, _ = self.req("GET", "/api/state")
+        self.assertEqual(status, 200)
+
 
 class UrlSafetyTests(unittest.TestCase):
     def test_only_http_links_survive_normalisation(self):

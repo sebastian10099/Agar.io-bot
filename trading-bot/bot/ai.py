@@ -63,17 +63,26 @@ SCHEMA = {
 }
 
 
+KEYCHAIN_TTL_S = 30.0          # the page asks for the AI status every 2 s; each Keychain read is a subprocess
+_keychain_cache: dict[str, tuple[float, str]] = {}
+
+
 def keychain_key(provider: str = "anthropic") -> str:
     if sys.platform != "darwin":
         return ""
+    hit = _keychain_cache.get(provider)
+    if hit and time.time() - hit[0] < KEYCHAIN_TTL_S:
+        return hit[1]
     try:
         result = subprocess.run(
             ["/usr/bin/security", "find-generic-password", "-s", KEYCHAIN_SERVICES.get(provider, KEYCHAIN_SERVICE),
              "-a", os.environ.get("USER", ""), "-w"],
             capture_output=True, text=True, timeout=10)
+        value = result.stdout.strip() if result.returncode == 0 else ""
     except (OSError, subprocess.TimeoutExpired):
-        return ""
-    return result.stdout.strip() if result.returncode == 0 else ""
+        value = ""
+    _keychain_cache[provider] = (time.time(), value)
+    return value
 
 
 def profile_dir() -> str:
@@ -180,6 +189,7 @@ def store_key(value: str, provider: str = "anthropic") -> dict[str, Any]:
         return {"ok": False, "error": f"Schlüsselbund nicht erreichbar: {error}"}
     if result.returncode != 0:
         return {"ok": False, "error": "Der Schlüssel konnte nicht gespeichert werden."}
+    _keychain_cache.pop(provider, None)        # the next status read sees the new key at once
     return {"ok": True}
 
 

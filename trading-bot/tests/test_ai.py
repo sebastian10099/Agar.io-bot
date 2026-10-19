@@ -105,9 +105,6 @@ class AdvisorTests(unittest.TestCase):
         self.assertTrue(logs and logs[0].startswith("KI:"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class LoginTests(unittest.TestCase):
     def test_profile_detection_and_login_paths(self):
@@ -208,3 +205,32 @@ class OpenRouterTests(unittest.TestCase):
         clean, errors = settings.validate({"ai.provider": "openrouter", "ai.openrouter_model": "deepseek/deepseek-chat-v3-0324:free"})
         self.assertEqual(errors, {}); self.assertEqual(clean["ai.provider"], "openrouter")
         self.assertIn("ai.provider", settings.validate({"ai.provider": "gemini"})[1])
+
+
+class KeychainCacheTests(unittest.TestCase):
+    def test_the_keychain_is_read_once_not_on_every_page_refresh(self):
+        import os
+        from unittest import mock
+        from bot import ai
+        calls = []
+
+        def run(args, **_kw):
+            calls.append(args[1])
+            return mock.Mock(returncode=0, stdout="sk-ant-" + "x" * 30 + "\n")
+        ai._keychain_cache.clear()
+        env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
+        try:
+            with mock.patch.object(ai.sys, "platform", "darwin"), mock.patch.object(ai.subprocess, "run", side_effect=run), \
+                    mock.patch.dict(os.environ, env, clear=True):
+                for _ in range(20):                     # 40 s of the page polling every 2 s
+                    self.assertEqual(ai.credential_source(), "keychain")
+                self.assertEqual(calls.count("find-generic-password"), 1)
+                self.assertTrue(ai.store_key("sk-ant-" + "y" * 30)["ok"])
+                ai.credential_source()
+                self.assertEqual(calls.count("find-generic-password"), 2)   # a new key is seen at once
+        finally:
+            ai._keychain_cache.clear()
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import sys
 import threading
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -16,6 +17,7 @@ from .ai import start_login, store_key
 WEB = Path(__file__).parent / "web"
 LOCAL_NAMES = {"127.0.0.1", "localhost", "[::1]"}
 MAX_BODY = 1_000_000
+GONE = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)   # the client hung up mid-answer
 
 
 def _host_name(host: str) -> str:
@@ -85,6 +87,8 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
         def _guarded(self, handler) -> None:
             try:
                 handler()
+            except GONE:
+                self.close_connection = True     # the page reloaded or curl gave up: nobody to answer
             except BadRequest as error:
                 self._json({"ok": False, "error": str(error)}, 400)
             except (ValueError, TypeError, KeyError, AttributeError) as error:
@@ -236,4 +240,12 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             else:
                 self._json({"error": "not found"}, 404)
 
-    return ThreadingHTTPServer((host, port), Handler)
+    return _Server((host, port), Handler)
+
+
+class _Server(ThreadingHTTPServer):
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        # a client that hangs up is normal for a page polling every 2 s; everything else is printed
+        if isinstance(sys.exc_info()[1], GONE):
+            return
+        super().handle_error(request, client_address)
