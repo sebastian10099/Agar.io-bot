@@ -859,3 +859,13 @@ class CrossSiteTests(unittest.TestCase):
         self.assertEqual(status, 400, data)
         status, data = self.req("POST", "/api/control", body='[1, 2]', headers={"Content-Type": "application/json"})
         self.assertEqual(status, 400, data)
+
+
+class UrlSafetyTests(unittest.TestCase):
+    def test_only_http_links_survive_normalisation(self):
+        from bot.sources.dexscreener import normalize_pair, safe_url
+        for bad in ("javascript:alert(1)", " JavaScript:alert(1)", "data:text/html,<b>x</b>", "vbscript:x", "", None, 42, "//evil.example", "https://" + "a" * 600):
+            self.assertIsNone(safe_url(bad), bad)
+        self.assertEqual(safe_url(" https://dexscreener.com/solana/abc "), "https://dexscreener.com/solana/abc")
+        self.assertIsNone(normalize_pair({"baseToken": {}, "url": "javascript:alert(document.cookie)"}, NOW)["url"])
+        self.assertEqual(normalize_pair({"baseToken": {}, "url": "https://dexscreener.com/x"}, NOW)["url"], "https://dexscreener.com/x")

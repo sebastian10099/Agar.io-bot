@@ -408,6 +408,8 @@ const usd = (v) => v == null ? '–' : (v < 0 ? '−' : '') + '$' + Math.abs(v).
 const pct = (v) => v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(1) + '%';
 const cls = (v) => v == null ? '' : v > 0 ? 'pos' : v < 0 ? 'neg' : '';
 const px = (v) => v == null ? '–' : v >= 1 ? v.toFixed(4) : v.toPrecision(4);
+// a token's API record is attacker-controlled: only http(s) links become hrefs
+const safeUrl = (u) => (typeof u === 'string' && /^https?:\/\//i.test(u.trim())) ? u.trim() : '';
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const hhmm = (t) => new Date(t * 1000).toLocaleTimeString('de-DE');
 const dur = (s) => s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1) + ' h';
@@ -565,7 +567,7 @@ async function showCandidate(id) {
     <p class="dlg-h">RugCheck</p>
     <p class="note" style="margin:0 0 6px">${rug ? `Score ${Math.round(rug.score)}` + (rug.danger && rug.danger.length ? ` · <span class="neg">Gefahr: ${esc(rug.danger.join(', '))}</span>` : '') + (rug.warn && rug.warn.length ? ` · Warnung: ${esc(rug.warn.join(', '))}` : ' · keine Auffälligkeiten') : (c.chain === 'solana' ? 'nicht erreichbar oder nicht abgefragt' : 'nur für Solana')}</p>
     ${s.ai_decision ? `<p class="dlg-h">KI</p><p class="note" style="margin:0 0 6px"><span class="d-${s.ai_decision}">${s.ai_decision}</span> mit ${Math.round((s.ai_confidence || 0) * 100)} % Vertrauen (${esc(s.ai_model || '')}) · ${esc((s.ai_reasons || []).join(' · '))}${(s.ai_flags || []).length ? ` · <span class="neg">Risiken: ${esc(s.ai_flags.join(', '))}</span>` : ''}</p>` : ''}
-    <p class="note" style="margin:10px 0 0">${state && state.demo ? '<span class="reasons" title="Demo-Markt: dieser Token existiert nicht wirklich">Demo-Token, keine Kursseite</span> · ' : s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">Kursseite öffnen ↗</a> · ` : ''}<span class="reasons">${esc(c.token)}</span>${d.held ? ' · <b>im Bestand</b>' : ` · <button type="button" class="btn sm" id="d-buy">Jetzt manuell kaufen</button>`}</p>`;
+    <p class="note" style="margin:10px 0 0">${state && state.demo ? '<span class="reasons" title="Demo-Markt: dieser Token existiert nicht wirklich">Demo-Token, keine Kursseite</span> · ' : safeUrl(s.url) ? `<a href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener noreferrer">Kursseite öffnen ↗</a> · ` : ''}<span class="reasons">${esc(c.token)}</span>${d.held ? ' · <b>im Bestand</b>' : ` · <button type="button" class="btn sm" id="d-buy">Jetzt manuell kaufen</button>`}</p>`;
   $('d-body').innerHTML = body;
   const buy = $('d-buy');
   if (buy) buy.onclick = () => busy(buy, async () => {
@@ -584,7 +586,7 @@ function renderCandidates(s) {
   $('n-cands').textContent = s.candidates.length ? `(${s.candidates.length})` : '';
   $('cands').innerHTML = table(rows, [
     {h: 'Zeit', sort: 'seen_at', f: (r) => hhmm(r.seen_at)},
-    {h: 'Token', sort: 'symbol', f: (r) => `<button type="button" class="linkish" data-cdetail="${r.id}" aria-label="${esc(r.symbol)} Details"><b>${esc(r.symbol)}</b></button> ${s.demo ? '' : r.snapshot.url ? `<a href="${esc(r.snapshot.url)}" target="_blank" rel="noopener" aria-label="${esc(r.symbol)} im Browser öffnen" title="Kursseite öffnen">↗</a>` : ''}${r.snapshot.source ? `<div class="reasons">${esc(srcShort[r.snapshot.source] || r.snapshot.source)}${r.snapshot.via_feed ? ' · via Feed' : ''}</div>` : ''}`},
+    {h: 'Token', sort: 'symbol', f: (r) => `<button type="button" class="linkish" data-cdetail="${r.id}" aria-label="${esc(r.symbol)} Details"><b>${esc(r.symbol)}</b></button> ${s.demo ? '' : safeUrl(r.snapshot.url) ? `<a href="${esc(safeUrl(r.snapshot.url))}" target="_blank" rel="noopener noreferrer" aria-label="${esc(r.symbol)} im Browser öffnen" title="Kursseite öffnen">↗</a>` : ''}${r.snapshot.source ? `<div class="reasons">${esc(srcShort[r.snapshot.source] || r.snapshot.source)}${r.snapshot.via_feed ? ' · via Feed' : ''}</div>` : ''}`},
     {h: 'Entscheidung', sort: 'decision', f: (r) => `<span class="d-${r.decision}">${r.decision}</span>`},
     {h: 'Score', sort: 'score', f: (r) => r.score || '–', num: true},
     {h: 'Liq.', sort: 'liq', f: (r) => usd(r.snapshot.liquidity_usd), num: true},

@@ -348,6 +348,7 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   // --- Kandidaten: „Danach“-Spalte und Details-Dialog ---
   ok((await p.textContent('#cands thead')).includes('Danach'), 'Spalte „Danach“ (Rendite 5/15/60 min) vorhanden');
   ok((await p.$$('#cands a[href]')).length === 0 && (await p.textContent('#mode')).includes('Demo'), 'Demo: keine toten Kursseiten-Links, Modus-Pill sagt Demo');
+  ok(await p.evaluate(() => safeUrl('javascript:alert(1)') === '' && safeUrl(' JAVASCRIPT:x') === '' && safeUrl('data:text/html,x') === '' && safeUrl('https://dexscreener.com/a') === 'https://dexscreener.com/a'), 'Links: nur http(s) wird zum Link, javascript:/data: nie');
   ok((await p.$$('#cands tbody .after, #cands tbody td:nth-child(10) .reasons')).length >= 1, 'Danach-Zellen gerendert (Wert oder „…“)');
   await p.locator('#cands tbody [data-cdetail]').first().click(); await p.waitForSelector('dialog#detail[open]');
   const cdBody = await p.textContent('#d-body');

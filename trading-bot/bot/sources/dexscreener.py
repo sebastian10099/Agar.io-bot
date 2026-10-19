@@ -17,6 +17,15 @@ def _f(x: Any, default: float = 0.0) -> float:
         return default
 
 
+def safe_url(value: Any) -> Optional[str]:
+    """Only http(s) links reach the control page; a token can set anything
+    in its API record, including javascript: URLs."""
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    return value if value.lower().startswith(("https://", "http://")) and len(value) <= 500 else None
+
+
 def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, Any]:
     """Flatten one DexScreener pair object into the fields the strategy uses."""
     now = now or time.time()
@@ -36,7 +45,7 @@ def normalize_pair(p: dict[str, Any], now: Optional[float] = None) -> dict[str, 
         "token": base.get("address"),
         "symbol": base.get("symbol"),
         "name": base.get("name"),
-        "url": p.get("url"),
+        "url": safe_url(p.get("url")),
         "price_usd": _f(p.get("priceUsd")),
         "liquidity_usd": _f(liq.get("usd")),
         "fdv": _f(p.get("fdv")),
