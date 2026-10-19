@@ -1627,6 +1627,20 @@ class TrackerBatchTests(unittest.TestCase):
         self.assertEqual(rep[(5, "skip")]["n"], 1)
         self.assertAlmostEqual(rep[(5, "skip")]["avg_change_pct"], 20.0)
 
+    def test_the_edge_starts_anew_with_the_reserve_price_model(self):
+        """Outcomes measured with the last trade's price (before PRICE_MODEL 2) flatter dying coins."""
+        tr = self.make(lambda chain, pairs, follow=None: {p: 3.0 for p in pairs})
+        self.add(tr, 0, seen_at=1000.0)
+        tr.fill_due(now=1000.0 + 5 * 60 + 5)                                  # measured by an older version
+        self.assertEqual(len(self.store.edge_report()), 1)
+        dex = FakeDex(accel=1.0)
+        Engine(copy.deepcopy(CFG), self.store, dex, FakeRug(), clock=lambda: 5000.0, feeds={})
+        self.assertEqual(self.store.edge_report(), [])                        # left out from now on
+        self.add(tr, 1, seen_at=6000.0)
+        tr.fill_due(now=6000.0 + 5 * 60 + 5)
+        Engine(copy.deepcopy(CFG), self.store, dex, FakeRug(), clock=lambda: 9000.0, feeds={})   # a restart keeps the mark
+        self.assertEqual(self.store.edge_report()[0]["n"], 1)
+
     def test_a_vanished_pair_counts_as_a_total_loss(self):
         def prices_of(chain, pairs, follow=None):
             return {p: 2.0 for p in pairs if p != "P1"}                # P1 was pulled; the rest is priced

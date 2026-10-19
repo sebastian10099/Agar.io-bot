@@ -57,6 +57,9 @@ VERSION = "0.9"
 APP_ID = "new-token-bot"      # marker in /api/state so starters can tell this bot from whatever else listens on the port
 TICK_KEEP_DAYS = 7
 HISTORY_KEEP_DAYS = 30       # candidates and outcomes older than this are dropped at start
+# the price every report measures with: 2 = what a pool's reserves pay (1 was DexScreener's last
+# trade, which kept dying coins at their old price). A database from before starts its edge anew.
+PRICE_MODEL = 2
 PATH_KEEP_DAYS = 7           # price paths (the backtest's data, the bulk of the database) this long
 DISCOVERY_BUDGET_S = 20.0      # seconds per poll for finding and judging new tokens; the rest waits for the next poll
 NO_PRICE_WRITE_OFF_MIN = 30.0   # minutes without any price (and past the time stop) before a position is written off
@@ -107,6 +110,9 @@ class Engine:
         # tokens to look at again (too new, or watched): (chain, token) -> source, age, when due
         self._followed: dict[tuple[str, str], dict[str, Any]] = {}
         self._restore_followed()
+        if store.get("price_model") != PRICE_MODEL:
+            store.set("edge_since", clock())
+            store.set("price_model", PRICE_MODEL)
 
     def _report(self, key: str, fn: Callable[[], Any]) -> Any:
         """The page polls every 2 s; the aggregate reports only need to move with the polls."""

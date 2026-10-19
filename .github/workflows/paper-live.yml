@@ -71,17 +71,21 @@ jobs:
           # a filter profile from .github/paper-live.json ("profile": a name from bot/presets.json) becomes the run's config
           python3 - "$NEW_TOKEN_BOT_HOME/config.json" <<'PY'
           import json, sys
-          name = json.load(open("../.github/paper-live.json")).get("profile")
-          if name:
-              flat = json.load(open("bot/presets.json"))[name]
-              cfg = {}
-              for path, value in flat.items():
-                  head, _, key = path.rpartition(".")
-                  (cfg.setdefault(head, {}) if head else cfg)[key] = value
-              json.dump(cfg, open(sys.argv[1], "w"), ensure_ascii=False, indent=2)
-              print(f"Profil: {name}")
-          else:
-              print("Profil: Standard")
+          run = json.load(open("../.github/paper-live.json"))
+          name = run.get("profile")
+          cfg = {}
+          for path, value in (json.load(open("bot/presets.json"))[name] if name else {}).items():
+              head, _, key = path.rpartition(".")
+              (cfg.setdefault(head, {}) if head else cfg)[key] = value
+          # "config" in paper-live.json: settings only this paper run uses (e.g. a looser daily limit,
+          # so a bad hour does not stop the data); the same keys as bot/config.json
+          for key, value in (run.get("config") or {}).items():
+              if isinstance(value, dict):
+                  cfg.setdefault(key, {}).update(value)
+              else:
+                  cfg[key] = value
+          json.dump(cfg, open(sys.argv[1], "w"), ensure_ascii=False, indent=2)
+          print(f"Profil: {name or 'Standard'}" + (f" · eigene Werte: {run['config']}" if run.get("config") else ""))
           PY
           /bin/bash ./launch.sh --no-open --port 8765 > "$RUNNER_TEMP/bot.out" 2>&1 &
           for _ in $(seq 1 120); do curl -s -m 2 http://127.0.0.1:8765/api/state | grep -q '"app": "new-token-bot"' && break; sleep 1; done

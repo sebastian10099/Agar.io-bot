@@ -282,6 +282,11 @@ class Store:
             r["change_pct"] = None if r["change_pct"] is None else round(r["change_pct"], 2)
         return rows
 
+    def edge_since(self) -> float:
+        """Outcomes before this moment were measured with an older price model (the last
+        trade's price, which flatters dying coins); the reports leave them out."""
+        return float(self.get("edge_since", 0.0) or 0.0)
+
     def edge_report(self, key: str = "decision") -> list[dict[str, Any]]:
         """Average forward return per bucket and horizon. key='decision' groups by
         the final decision; 'rule_decision' / 'ai_decision' read the snapshot, so
@@ -289,7 +294,8 @@ class Store:
         rows = self._rows(
             "SELECT c.decision, c.snapshot, o.horizon_min, o.change_pct "
             "FROM outcomes o JOIN candidates c ON c.id = o.candidate_id "
-            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL AND o.change_pct <= ?", (OUTCOME_CAP_PCT,))
+            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL AND o.change_pct <= ? AND c.seen_at >= ?",
+            (OUTCOME_CAP_PCT, self.edge_since()))
         buckets: dict[tuple, list[float]] = {}
         for r in rows:
             if key == "decision":
@@ -465,8 +471,8 @@ class Store:
     def sweep_samples(self, horizon_min: int) -> list[dict[str, Any]]:
         rows = self._rows(
             "SELECT c.snapshot, o.change_pct FROM outcomes o JOIN candidates c ON c.id = o.candidate_id "
-            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL AND o.horizon_min = ? AND o.change_pct <= ?",
-            (horizon_min, OUTCOME_CAP_PCT))
+            "WHERE o.filled_at IS NOT NULL AND o.change_pct IS NOT NULL AND o.horizon_min = ? AND o.change_pct <= ? "
+            "AND c.seen_at >= ?", (horizon_min, OUTCOME_CAP_PCT, self.edge_since()))
         out = []
         for r in rows:
             try:
