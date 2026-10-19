@@ -113,6 +113,15 @@ jobs:
               curve = find_program_address([b"bonding-curve", b58decode(mint)], PUMP_PROGRAM)
               info = assess_mint(oc._rpc("getAccountInfo", [mint, {"encoding": "jsonParsed"}]))
               c = oc.creator_share(mint, info and info["program"], info and info["supply_raw"] or 0)
+              import base64
+              from bot.sources.solana_rpc import b58encode, on_curve
+              raw = oc._rpc("getAccountInfo", [curve, {"encoding": "base64"}])
+              data = base64.b64decode(raw["data"][0]) if raw else b""
+              who = b58encode(data[49:81]) if len(data) >= 81 else None
+              if who and on_curve(who) is False:     # a program address in the creator field: what is it?
+                  acc = oc._rpc("getAccountInfo", [who, {"encoding": "base64"}])
+                  blob = base64.b64decode(acc["data"][0]) if acc else b""
+                  print(f"  {mint} Ersteller-Feld {who}: owner {acc and acc.get('owner')}, {len(blob)} Bytes, hex {blob[:260].hex()}")
               line = f"{mint[:8]} Kurve {'= DexScreener' if mint not in pairs else ('= DexScreener-Paar' if pairs[mint]['pairAddress'] == curve else 'ABWEICHUNG ' + pairs[mint]['pairAddress'])} · {info and info['program']} · Ersteller {c}"
               if c:
                   from bot.sources.solana_rpc import ATA_PROGRAM, TOKEN_PROGRAMS
