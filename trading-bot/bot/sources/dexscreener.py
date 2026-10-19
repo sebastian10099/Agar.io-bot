@@ -10,10 +10,11 @@ from .http import get_json
 
 BASE = "https://api.dexscreener.com"
 # where a bonding curve's token trades once the curve completes; any other pool next to a
-# running curve (someone's own pool, often at a very different price) never prices it
-CURVE_SUCCESSORS = {"pumpfun": {"pumpswap"}, "pump-fun": {"pumpswap"},
-                    "meteoradbc": {"meteora", "meteoradammv2"}, "meteora-dbc": {"meteora", "meteoradammv2"},
-                    "launchlab": {"raydium"}, "raydium-launchlab": {"raydium"}}
+# running curve (someone's own pool, often at a very different price) never prices it.
+# Only pump.fun's is unmistakable - PumpSwap is pump.fun's own exchange. Meteora DBC and
+# LaunchLab graduate into ordinary Meteora/Raydium pools, which anyone can open too: their
+# curves keep their own price while listed and follow the token only once the pair is gone.
+CURVE_SUCCESSORS = {"pumpfun": {"pumpswap"}, "pump-fun": {"pumpswap"}}
 SUCCESSOR_MIN_LIQ = 1000.0    # a real pool this deep outranks a bonding curve: the curve has completed and moved there
 
 

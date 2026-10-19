@@ -273,9 +273,11 @@ abgeschlossene Kurve heißt „Kurve fertig“.
 PumpSwap-Pool um, und die Kurve friert ein oder verschwindet. Offene Positionen
 und der Tracker folgen dem Token: Fehlt das Paar, zählt der beste verbliebene
 Pool des Tokens; bei einer noch gelisteten Kurve zählt nur der Pool, in den
-sie umzieht (pump.fun → PumpSwap, ab 1.000 $ Liquidität) – nie ein fremder
-Pool, den jemand neben der laufenden Kurve eröffnet hat, oft zu einem ganz
-anderen Kurs. So wird ein „graduierter“ Coin weder mit einem eingefrorenen
+sie umzieht (pump.fun → PumpSwap, pump.funs eigene Börse, ab 1.000 $
+Liquidität) – nie ein fremder Pool, den jemand neben der laufenden Kurve
+eröffnet hat, oft zu einem ganz anderen Kurs. Meteora- und LaunchLab-Kurven
+ziehen in gewöhnliche Meteora-/Raydium-Pools um, die jeder eröffnen kann;
+sie behalten deshalb ihren eigenen Kurs, bis das Kurvenpaar verschwindet. So wird ein „graduierter“ Coin weder mit einem eingefrorenen
 Kurs gehalten noch als Totalverlust abgeschrieben, und kein Stop-Loss löst
 auf einem fremden Kurs aus.
 

@@ -1915,6 +1915,10 @@ class GraduationTests(unittest.TestCase):
         self.assertAlmostEqual(got["Curve7"], price * 0.8)                        # the PumpSwap pool, though smaller
         fetch, _ = self.fake_http([foreign])                                       # the curve is gone: any pool
         self.assertAlmostEqual(DexScreener(fetch=fetch).prices("solana", ["Curve7"], {"Curve7": "Mint7"})["Curve7"], price * 0.1)
+        dbc = self.raw("Dbc8", "Mint8", "meteoradbc", 0.001, native=0.001 / 150)      # Meteora's launchpad curve
+        rogue = self.raw("Pool8", "Mint8", "meteora", 0.0001, liquidity=30000)       # an ordinary Meteora pool beside it
+        fetch, _ = self.fake_http([dbc, rogue])
+        self.assertAlmostEqual(DexScreener(fetch=fetch).prices("solana", ["Dbc8"], {"Dbc8": "Mint8"})["Dbc8"], 0.001)
 
     def test_a_vanished_pair_follows_the_token_and_a_true_rug_stays_missing(self):
         from bot.sources.dexscreener import DexScreener
