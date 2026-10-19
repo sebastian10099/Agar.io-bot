@@ -632,6 +632,22 @@ class PresetTests(unittest.TestCase):
             self.assertTrue(eng.delete_profile("Meins")["ok"]); self.assertNotIn("Meins", eng.profiles())
             store.close()
 
+    def test_saving_a_profile_never_freezes_the_presets(self):
+        from bot.engine import presets
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex()
+            eng = Engine(copy.deepcopy(CFG), store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            self.assertTrue(eng.save_profile("Meins")["ok"])
+            self.assertEqual(set(store.get("profiles")), {"Meins"})                  # only the user's own is stored
+            self.assertFalse(eng.save_profile("★ Eigen")["ok"])                      # ★ is for the presets
+            stale = {"filters.min_liquidity_usd": 1.0}                                 # an older version froze a preset
+            store.set("profiles", {"★ Standard": stale, "Meins": store.get("profiles")["Meins"],
+                                   "Kaputt": {"exits.take_profit_ladder": [[float("nan"), 0.5]]}})
+            got = eng.profiles()
+            self.assertEqual(got["★ Standard"], presets()["★ Standard"])               # the shipped one wins
+            self.assertIn("Meins", got); self.assertNotIn("Kaputt", got)
+            store.close()
+
     def test_age_falls_back_to_the_feed(self):
         with tempfile.TemporaryDirectory() as d:
             store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
@@ -913,6 +929,26 @@ class CrossSiteTests(unittest.TestCase):
         status, data = self.req("POST", "/api/positions/sell", body='{"id": {"x": 1}, "frac": 0.5}', headers={"Content-Type": "application/json"})
         self.assertEqual(status, 400, data)
         status, data = self.req("POST", "/api/control", body='[1, 2]', headers={"Content-Type": "application/json"})
+        self.assertEqual(status, 400, data)
+
+    def test_poisoned_numbers_are_refused_and_the_page_keeps_working(self):
+        """A NaN or infinite profit rung was accepted, written into /api/state as bare NaN
+        (which the browser cannot parse - the page went offline), kept in config.json and
+        stopped every exit."""
+        j = {"Content-Type": "application/json"}
+        for patch in ('{"patch": {"exits.take_profit_ladder": [[NaN, 0.5]]}}',
+                      '{"patch": {"exits.take_profit_ladder": "1e999: 0.5"}}',
+                      '{"patch": {"exits.stop_loss_pct": ' + "9" * 400 + '}}',
+                      '{"patch": {"ai.model": null}}'):
+            status, data = self.req("POST", "/api/config", body=patch, headers=j)
+            self.assertIn(status, (400, 422), (patch[:60], data))                     # refused with a reason
+        status, data = self.req("GET", "/api/state")
+        json.loads(data, parse_constant=lambda c: self.fail(f"{c} in /api/state"))   # strict JSON for the browser
+        for body in ('{"id": 1e30}', '{"id": Infinity}', '{"id": 99999999999999999999999}'):
+            status, data = self.req("POST", "/api/positions/close", body=body, headers=j)
+            self.assertIn(status, (400, 409), (body, data))                          # an answer, not a 500
+        status, data = self.req("POST", "/api/control", body='{"action": "pause"}',
+                                headers={"Content-Type": "application/json", "Content-Length": "abc"})
         self.assertEqual(status, 400, data)
 
     def test_a_client_that_gives_up_is_not_an_error(self):

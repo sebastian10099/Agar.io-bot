@@ -413,7 +413,8 @@ const liq = (sn) => sn.liquidity_kind === 'graduated'
   : sn.liquidity_kind === 'curve' ? `<span title="pump.fun-Bonding-Kurve: Liquidität aus den Reserven auf der Chain">${usd(sn.liquidity_usd)} <span class="reasons">Kurve</span></span>` : usd(sn.liquidity_usd);
 const pct = (v) => v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(1) + '%';
 const cls = (v) => v == null ? '' : v > 0 ? 'pos' : v < 0 ? 'neg' : '';
-const px = (v) => v == null ? '–' : v >= 1 ? v.toFixed(4) : v.toPrecision(4);
+// German decimal comma; tiny meme-coin prices as 0,0000002 – never 2.000e-7
+const px = (v) => v == null ? '–' : v.toLocaleString('de-DE', v >= 1 ? {minimumFractionDigits: 2, maximumFractionDigits: 4} : {maximumSignificantDigits: 4});
 // a token's API record is attacker-controlled: only http(s) links become hrefs
 const safeUrl = (u) => (typeof u === 'string' && /^https?:\/\//i.test(u.trim())) ? u.trim() : '';
 // when a pump.fun curve completes, DexScreener drops the curve pair and its page says "not found";

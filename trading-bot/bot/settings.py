@@ -5,6 +5,7 @@ so a new parameter is one entry here and nothing else."""
 from __future__ import annotations
 
 import copy
+import math
 from typing import Any, Optional
 
 CHAINS = ["solana", "ethereum", "base", "bsc"]
@@ -145,8 +146,8 @@ def parse_ladder(value: Any) -> list[list[float]]:
         if not isinstance(item, (list, tuple)) or len(item) != 2:
             raise ValueError("Jede Stufe ist ein Paar aus Gewinn% und Anteil")
         pct, frac = float(item[0]), float(item[1])
-        if pct <= 0:
-            raise ValueError("Gewinn% jeder Stufe muss größer als 0 sein")
+        if not (math.isfinite(pct) and 0 < pct <= 100_000):         # NaN and Infinity broke the page and every exit
+            raise ValueError("Gewinn% jeder Stufe muss eine Zahl zwischen 0 und 100000 sein")
         if not 0 < frac <= 1:
             raise ValueError("Anteil jeder Stufe muss zwischen 0 und 1 liegen")
         out.append([pct, frac])
@@ -173,7 +174,7 @@ def validate(patch: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
                     raw = raw.replace(",", ".").strip()
                 try:
                     value = float(raw)
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, OverflowError):
                     raise ValueError("keine Zahl") from None
                 if value != value or value in (float("inf"), float("-inf")):  # NaN / Infinity
                     raise ValueError("keine Zahl")
@@ -215,13 +216,15 @@ def validate(patch: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
                     raise ValueError("muss eines von " + ", ".join(allowed) + " sein")
                 clean[path] = raw
             elif kind == "text":
-                value = str(raw).strip()
+                if not isinstance(raw, str):
+                    raise ValueError("muss Text sein")
+                value = raw.strip()
                 if not value or len(value) > entry.get("max_len", 200):
                     raise ValueError("fehlt oder ist zu lang")
                 clean[path] = value
             else:
                 errors[path] = "unbekannter Typ"
-        except (TypeError, ValueError) as error:
+        except (TypeError, ValueError, OverflowError) as error:
             errors[path] = str(error) or "ungültig"
     return clean, errors
 

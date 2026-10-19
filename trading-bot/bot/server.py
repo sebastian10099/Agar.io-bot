@@ -97,7 +97,7 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                 self.close_connection = True     # the page reloaded or curl gave up: nobody to answer
             except BadRequest as error:
                 self._json({"ok": False, "error": str(error)}, 400)
-            except (ValueError, TypeError, KeyError, AttributeError) as error:
+            except (ValueError, TypeError, KeyError, AttributeError, OverflowError) as error:
                 self._json({"ok": False, "error": f"ungültige Eingabe: {error}"}, 400)
             except Exception as error:  # noqa: BLE001 - answer instead of dropping the connection
                 engine.store.log("error", f"API {self.command} {self.path[:80]}: {type(error).__name__}: {error}")
@@ -110,7 +110,11 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             self._guarded(self._get)
 
         def do_POST(self) -> None:  # noqa: N802
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                self._json({"ok": False, "error": "ungültige Content-Length"}, 400)
+                return
             raw = self.rfile.read(min(length, MAX_BODY)) if length > 0 else b""
             if not self._host_ok():
                 self._refuse(403, "fremder Host-Name")

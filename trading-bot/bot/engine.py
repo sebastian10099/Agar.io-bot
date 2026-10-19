@@ -534,23 +534,26 @@ class Engine:
     # --- named parameter profiles --------------------------------------
     def profiles(self) -> dict[str, dict[str, Any]]:
         """Built-in presets (★, read-only, only the filter block) first, then the user's own."""
-        return {**presets(), **(self.store.get("profiles", {}) or {})}
+        own = self.store.get("profiles", {}) or {}
+        # earlier versions stored the presets along with the user's own: the shipped ones win;
+        # a stored profile the validation now refuses (NaN from an older version) is left out
+        return {**presets(), **{k: v for k, v in own.items() if k not in presets() and not settings.validate(v)[1]}}
 
     def save_profile(self, name: str, flat: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         name = (name or "").strip()
         if not name or len(name) > 40:
             return {"ok": False, "error": "Name fehlt oder ist länger als 40 Zeichen"}
-        if name in presets():
-            return {"ok": False, "error": "Voreinstellungen (★) können nicht überschrieben werden – anderen Namen wählen"}
+        if name in presets() or name.startswith("★"):
+            return {"ok": False, "error": "★ ist den Voreinstellungen vorbehalten – anderen Namen wählen"}
         flat = flat if flat is not None else settings.flat(self.cfg)
         clean, errors = settings.validate(flat)
         if errors:
             return {"ok": False, "error": "Profil enthält ungültige Werte: " + ", ".join(errors)}
-        profiles = self.profiles()
-        profiles[name] = clean
-        self.store.set("profiles", profiles)
+        own = {k: v for k, v in (self.store.get("profiles", {}) or {}).items() if k not in presets()}
+        own[name] = clean
+        self.store.set("profiles", own)                   # only the user's own: a new release's presets reach them
         self.store.log("info", f"dashboard: Profil „{name}“ gespeichert")
-        return {"ok": True, "profiles": profiles}
+        return {"ok": True, "profiles": self.profiles()}
 
     def apply_profile(self, name: str) -> dict[str, Any]:
         profile = self.profiles().get(name)
