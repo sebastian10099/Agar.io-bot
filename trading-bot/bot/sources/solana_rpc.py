@@ -49,6 +49,7 @@ TOKEN_PROGRAMS = {"spl-token": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
                   "spl-token-2022": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"}
 CREATOR_DANGER, CREATOR_WARN = 15.0, 5.0   # % of supply still in the creator's wallet
 
+HOLDER_PAUSE_S = 30.0         # after a 429 the holder query rests, so the node's rate window can recover
 CACHE_TTL_S = 300.0           # holders move: a token seen again after 5 minutes is checked again
 HOLDER_DANGER = (25.0, 60.0)  # % of supply: one wallet, the ten largest wallets
 HOLDER_WARN = (10.0, 35.0)
@@ -244,6 +245,7 @@ class OnChainCheck:
         self.last_error = ""
         self._streak = 0
         self._paused_until = 0.0
+        self._holders_paused_until = 0.0
 
     def health(self) -> dict[str, Any]:
         return {"calls": self.calls, "fails": self.fails, "last_error": self.last_error,
@@ -259,6 +261,8 @@ class OnChainCheck:
 
     def holders(self, mint: str, supply_raw: int) -> Optional[dict[str, Any]]:
         """Share of the supply in the largest wallets, program-owned accounts left out."""
+        if self.clock() < self._holders_paused_until:
+            raise RuntimeError(f"Rate-Limit – Halter-Abfrage ruht noch {self._holders_paused_until - self.clock():.0f} s")
         largest, last, used = None, None, self.url
         for url in list(self.holder_urls):
             try:
@@ -272,6 +276,8 @@ class OnChainCheck:
             used = url
             break
         else:
+            if last is not None and ("429" in str(last) or "too many requests" in str(last).lower()):
+                self._holders_paused_until = self.clock() + HOLDER_PAUSE_S
             raise last or RuntimeError("kein RPC-Endpunkt")
         if not isinstance(largest, list) or supply_raw <= 0:
             return None

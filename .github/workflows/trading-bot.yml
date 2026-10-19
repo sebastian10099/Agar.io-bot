@@ -184,28 +184,6 @@ jobs:
               print(line)
           PY
           ) || echo "Ersteller-Probe fehlgeschlagen"
-          # other free ways to the holder distribution: all token accounts of a coin from the public node,
-          # and GeckoTerminal's holder statistics
-          (cd trading-bot && python3 - <<'PY'
-          import json, urllib.request
-          from bot.sources.solana_rpc import OnChainCheck
-          get = lambda u: json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "new-token-bot/0.1", "Accept": "application/json"}), timeout=20))
-          fresh = get("https://api.geckoterminal.com/api/v2/networks/solana/new_pools?include=base_token")
-          mints = [t["attributes"]["address"] for t in fresh.get("included", []) if t["attributes"]["address"].endswith("pump")][:3]
-          oc = OnChainCheck()
-          for mint in mints:
-              try:
-                  accs = oc._rpc("getProgramAccounts", ["TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", {"encoding": "base64", "dataSlice": {"offset": 32, "length": 40}, "filters": [{"memcmp": {"offset": 0, "bytes": mint}}]}])
-                  print(f"{mint[:8]} getProgramAccounts: {type(accs).__name__} {len(accs) if isinstance(accs, list) else str(accs)[:150]}")
-              except Exception as e:
-                  print(f"{mint[:8]} getProgramAccounts: {type(e).__name__}: {str(e)[:150]}")
-              try:
-                  info = get(f"https://api.geckoterminal.com/api/v2/networks/solana/tokens/{mint}/info")
-                  print(f"{mint[:8]} GeckoTerminal holders: {json.dumps((info.get('data') or {}).get('attributes', {}).get('holders'))[:300]}")
-              except Exception as e:
-                  print(f"{mint[:8]} GeckoTerminal info: {type(e).__name__}: {str(e)[:150]}")
-          PY
-          ) || echo "Halter-Probe fehlgeschlagen"
           # DNS over HTTPS bypasses the runner's resolver: Status 3 = the name does not exist anywhere
           for host in api.rugcheck.xyz rugcheck.xyz; do
             echo "DoH $host: $(curl -s -m 15 -H 'accept: application/dns-json' "https://cloudflare-dns.com/dns-query?name=$host&type=A" | head -c 300)"

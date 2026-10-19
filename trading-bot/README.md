@@ -363,7 +363,13 @@ Eigenprüfung sieht keine LP-Locks und keine Insider-Verbindungen und bekommt
 deshalb nur die Hälfte der Score-Punkte. Erst wenn beide nichts liefern, wird
 nur beobachtet. Die Halter-Abfrage (`getTokenLargestAccounts`) drosselt der
 öffentliche RPC hart, und kein freier öffentlicher Knoten beantwortet sie ohne
-Schlüssel (geprüft: publicnode, drpc, ankr, onfinality, omniatech). Ohne
+Schlüssel (geprüft: publicnode, drpc, ankr, onfinality, omniatech); auch die
+Abfrage aller Token-Konten eines Coins (`getProgramAccounts`) wird gedrosselt,
+und GeckoTerminal hat für frische Coins keine Halterzahlen (geprüft Oktober
+2026). Auf einem VPS mit eigener IP-Adresse kann die öffentliche Abfrage
+klappen – der Selbsttest zeigt es. Nach einer Drosselung (429) ruht sie 30
+Sekunden, statt das Limit mit jedem Token weiter auszureizen; solange prüft
+der Bot nur den Ersteller. Ohne
 Antwort prüft der Bot bei pump.fun-Coins wenigstens den **Ersteller**: Sein
 Kurvenkonto nennt ihn, daraus folgt die Adresse seines Token-Kontos, und beides
 lässt sich mit gewöhnlichen, nicht gedrosselten Abfragen lesen. Hält der

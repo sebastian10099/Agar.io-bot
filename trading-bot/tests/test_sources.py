@@ -2100,6 +2100,21 @@ class HolderTests(unittest.TestCase):
         post, _ = self.creator_rpc({}, creator=pda, fee_config=None)                     # named, but no such account
         self.assertNotIn("creator", OnChainCheck(post=post, url="x").summary(self.MINT))
 
+    def test_after_a_429_the_holder_query_rests_and_the_creator_check_carries_on(self):
+        from bot.sources.solana_rpc import HOLDER_PAUSE_S, OnChainCheck
+        post, asked = self.creator_rpc({self.WALLETS[0]: 10_000_000_000_000})
+        t = [0.0]
+        oc = OnChainCheck(post=post, url="x", clock=lambda: t[0])
+        oc.summary(self.MINT)
+        oc._cache.clear(); t[0] += 5
+        r = oc.summary(self.MINT)
+        self.assertEqual([m for m, _ in asked].count("getTokenLargestAccounts"), 1)      # resting: not asked again
+        self.assertEqual(r["creator"]["share"], 1.0)                                      # the creator check still ran
+        self.assertIn("ruht", oc.health()["last_error"])
+        oc._cache.clear(); t[0] += HOLDER_PAUSE_S
+        oc.summary(self.MINT)
+        self.assertEqual([m for m, _ in asked].count("getTokenLargestAccounts"), 2)      # tried again after the pause
+
     def test_results_expire_so_holders_are_looked_at_again(self):
         from bot.sources.solana_rpc import CACHE_TTL_S, OnChainCheck
         post, calls = self.rpc([(self.WALLETS[0], 5.0)])
