@@ -371,6 +371,23 @@ class DoctorTests(unittest.TestCase):
         self.assertIn("Selbsttest ohne Befund", self.store.events(5)[0]["message"])
         json.dumps(r)
 
+    def test_the_chain_price_row_says_whether_the_node_answers(self):
+        from bot.doctor import run_checks
+        class Dex:
+            quote_usd = {}
+            def recent_token_addresses(self, chains): return {"solana": ["M1"]}
+            def pairs_for_tokens(self, chain, addrs):
+                return [{"chain": "solana", "dex": "pumpswap", "pair": "P1", "token": "M1", "symbol": "M", "price_usd": 1e-5,
+                         "liquidity_usd": 20000, "volume_m5": 1, "buys_m5": 1, "sells_m5": 1, "change_m5": 0, "age_min": 5}]
+        class Chain:
+            price = None
+            def pool_prices(self, pairs, quote_usd): return {"P1": self.price} if self.price else {}
+        chain = Chain()
+        row = lambda: next(c for c in run_checks(self.cfg, Dex(), {}, FakeRug(), None, chain) if c["name"].startswith("Kurse von der Chain"))
+        self.assertIn("kein Pool von der Chain gelesen", row()["detail"])
+        chain.price = 1.02e-5
+        self.assertTrue(row()["ok"]); self.assertIn("1 von 1 PumpSwap-Pools", row()["detail"]); self.assertIn("2.0 %", row()["detail"])
+
     def test_failures_are_findings_not_crashes(self):
         from bot.doctor import run_checks
         class DeadDex:

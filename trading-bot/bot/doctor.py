@@ -196,6 +196,25 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
                     f"virtuelle Tokens{' · abgeschlossen' if st['complete'] else ''} – liefert die Liquidität der Kurven-Coins")
         out.append(_check("pump.fun-Kurven (Solana-RPC)", curve_reserves))
 
+    if curves is not None and hasattr(curves, "pool_prices"):
+        def pool_prices() -> str:
+            if "solana" not in chains:
+                return "übersprungen – Solana nicht aktiv"
+            pairs = dex.pairs_for_tokens("solana", (found.get("solana") or [])[:30]) if found.get("solana") else []
+            pools = [p for p in pairs if p.get("dex") == "pumpswap"][:5]
+            if not pools:
+                return "übersprungen – gerade kein PumpSwap-Pool in den Quellen"
+            got = curves.pool_prices({p["pair"]: p["token"] for p in pools}, getattr(dex, "quote_usd", None) or {})
+            if not got:
+                raise Degraded(f"kein Pool von der Chain gelesen – {getattr(curves, 'last_error', '') or 'Knoten antwortet nicht'}"
+                               " – Positionen werden mit DexScreeners Reserven bepreist (bis zu 30 s alt); "
+                               "ein eigener Knoten (SOLANA_RPC_URL) hilft")
+            dev = [abs(got[p["pair"]] / p["price_usd"] - 1) * 100 for p in pools if got.get(p["pair"]) and p["price_usd"]]
+            return (f"{len(got)} von {len(pools)} PumpSwap-Pools sekundengenau bepreist"
+                    + (f" · Abstand zu DexScreeners Reserven im Median {sorted(dev)[len(dev) // 2]:.1f} %" if dev else "")
+                    + " – Kauf, Stop-Loss und Exit-Wache nutzen diesen Kurs")
+        out.append(_check("Kurse von der Chain (PumpSwap)", pool_prices))
+
     def sdk() -> str:
         from .preflight import sdk_version
         ai = cfg.get("ai") or {}
