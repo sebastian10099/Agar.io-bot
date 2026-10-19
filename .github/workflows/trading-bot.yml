@@ -100,6 +100,19 @@ jobs:
           print(json.dumps(w["decisions"]))
           for r in w["reasons"]:
               print(f"{r['n']:4d}  {r['share'] * 100:5.1f} %  {r['label']}")
+          import statistics
+          by = {}
+          for c in s.candidates(500):
+              by.setdefault(c["snapshot"].get("source") or "?", []).append(c)
+          print("--- nach Quelle (Median):")
+          for src, cs in sorted(by.items()):
+              med = lambda k: statistics.median([float(c["snapshot"].get(k) or 0) for c in cs])
+              liq_fail = sum(1 for c in cs if any("liquidity $" in r for r in c["reasons"]))
+              dexes = sorted({str(c["snapshot"].get("dex")) for c in cs})
+              print(f"  {src:14s} n={len(cs):3d}  Liq ${med('liquidity_usd'):,.0f}  Vol5m ${med('volume_m5'):,.0f}  Käufe5m {med('buys_m5'):.0f}  Alter {med('age_min'):.0f} min  an Liquidität gescheitert {liq_fail}  Dex: {', '.join(dexes)[:80]}")
+          for c in [c for c in by.get("pumpfun", [])][:5]:
+              sn = c["snapshot"]
+              print(f"    pump.fun-Beispiel {c['symbol']!s:10.10s} dex={sn.get('dex')} liq={sn.get('liquidity_usd')} vol5m={sn.get('volume_m5')} buys5m={sn.get('buys_m5')} alter={sn.get('age_min')}")
           for c in s.candidates(200):
               if c["decision"] != "skip":
                   rug = (c["snapshot"].get("rug") or {})
@@ -133,4 +146,5 @@ jobs:
           perl -e 'alarm 300; exec @ARGV' /bin/bash -x "$APP/Contents/MacOS/New Token Bot" || { echo "--- Launcher-Fehler, bot.log:"; cat "$LOG" 2>/dev/null; exit 1; }
           curl -s -m 5 http://127.0.0.1:8793/api/state | grep -q '"app": "new-token-bot"' || { echo "--- bot.log:"; cat "$LOG"; exit 1; }
           echo "App-Launcher hat den Bot gestartet"
+          echo "--- bot.log (Anfang):"; head -20 "$LOG" || true
           curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8793/api/quit

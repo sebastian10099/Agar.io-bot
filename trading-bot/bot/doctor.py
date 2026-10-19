@@ -118,12 +118,17 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
     def rugcheck() -> str:
         if "solana" not in chains:
             return "übersprungen – Solana nicht aktiv"
+        rc = getattr(rug, "rugcheck", rug)           # RugCheck alone, never the fallback behind it
         mint = (found.get("solana") or ["So11111111111111111111111111111111111111112"])[0]
-        if hasattr(rug, "_cache"):
-            rug._cache.pop(mint, None)
-        r = rug.summary(mint)
+        if hasattr(rc, "_cache"):
+            rc._cache.pop(mint, None)
+        if hasattr(rc, "_paused_until"):
+            rc._paused_until = 0.0
+        r = rc.summary(mint)
         if r is None:
-            why = getattr(rug, "last_error", "") or "Rate-Limit, blockiert oder Token unbekannt"
+            why = getattr(rc, "last_error", "") or "Rate-Limit, blockiert oder Token unbekannt"
+            if getattr(rug, "onchain", None) is not None:
+                why += " – die Eigenprüfung über Solana-RPC springt ein (nächste Zeile)"
             raise RuntimeError(f"keine Antwort – {why}")
         return f"{mint[:8]}… Score {r['score']:.0f} · {len(r['danger'])} danger · {len(r['warn'])} warn"
     out.append(_check("RugCheck", rugcheck))

@@ -1308,3 +1308,18 @@ class OnChainCheckTests(unittest.TestCase):
             h = eng.state()["rugcheck"]
             self.assertFalse(h["ok"]); self.assertTrue(h["fallback"]["ok"])
             store.close()
+
+
+class DoctorRugRowTests(unittest.TestCase):
+    def test_rugcheck_row_tests_rugcheck_alone(self):
+        """With RugCheck down the RugCheck row must be red even though the fallback answers."""
+        from bot.doctor import run_checks
+        from bot.sources.rugcheck import RugCheck
+        from bot.sources.solana_rpc import SafetyCheck, OnChainCheck
+        down = RugCheck(fetch=lambda url, **kw: (_ for _ in ()).throw(OSError("Could not resolve host: api.rugcheck.xyz")))
+        rpc = OnChainCheck(post=lambda *a, **k: {"result": {"value": mint_value()}}, url="x")
+        dex = FakeDex()
+        rows = {c["name"]: c for c in run_checks(CFG, dex, demo_feeds(dex), SafetyCheck(down, rpc), None)}
+        self.assertFalse(rows["RugCheck"]["ok"]); self.assertIn("resolve host", rows["RugCheck"]["detail"])
+        self.assertIn("springt ein", rows["RugCheck"]["detail"])
+        self.assertTrue(rows["Eigenprüfung über Solana-RPC (Ersatz für RugCheck)"]["ok"])
