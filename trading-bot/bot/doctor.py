@@ -123,7 +123,8 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
             rug._cache.pop(mint, None)
         r = rug.summary(mint)
         if r is None:
-            raise RuntimeError("keine Antwort (Rate-Limit, blockiert oder Token unbekannt)")
+            why = getattr(rug, "last_error", "") or "Rate-Limit, blockiert oder Token unbekannt"
+            raise RuntimeError(f"keine Antwort – {why}")
         return f"{mint[:8]}… Score {r['score']:.0f} · {len(r['danger'])} danger · {len(r['warn'])} warn"
     out.append(_check("RugCheck", rugcheck))
 

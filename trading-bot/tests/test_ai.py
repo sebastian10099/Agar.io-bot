@@ -140,8 +140,24 @@ class AntPathTests(unittest.TestCase):
             self.assertEqual(ai.ant_path(), "")
             os.makedirs(os.path.join(d, "NewTokenBot", "bin"))
             exe = os.path.join(d, "NewTokenBot", "bin", "ant")
-            open(exe, "w").write("#!/bin/sh\n"); os.chmod(exe, 0o755)
+            open(exe, "w").write("#!/bin/sh\necho 'ant version 1.42.0'\n"); os.chmod(exe, 0o755)
             self.assertEqual(ai.ant_path(), exe)
+
+    def test_apache_ant_is_not_mistaken_for_the_anthropic_cli(self):
+        import os, tempfile
+        from unittest import mock
+        from bot import ai
+        with tempfile.TemporaryDirectory() as d:
+            bindir = os.path.join(d, "bin"); os.makedirs(bindir)
+            apache = os.path.join(bindir, "ant")
+            open(apache, "w").write("#!/bin/sh\necho 'Apache Ant(TM) version 1.10.15 compiled on August 25 2024'\n"); os.chmod(apache, 0o755)
+            with mock.patch.dict(os.environ, {"HOME": d, "PATH": bindir}):
+                self.assertFalse(ai.is_anthropic_ant(apache))
+                self.assertEqual(ai.ant_path(), "")                       # Apache Ant on PATH is ignored
+                ours = os.path.join(d, "NewTokenBot", "bin"); os.makedirs(ours)
+                good = os.path.join(ours, "ant")
+                open(good, "w").write("#!/bin/sh\necho 'ant version 1.42.0'\n"); os.chmod(good, 0o755)
+                self.assertEqual(ai.ant_path(), good)
 
 
 class OpenRouterTests(unittest.TestCase):

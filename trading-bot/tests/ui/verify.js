@@ -357,7 +357,9 @@ const ok = (cond, msg) => { if (cond) console.log('  ✓ ' + msg); else { consol
   ok(!!(await p.$('#d-buy')) || cdBody.includes('im Bestand'), 'Kandidaten-Dialog bietet Kaufen oder zeigt „im Bestand“');
   await p.keyboard.press('Escape'); await p.waitForFunction(() => !document.querySelector('dialog#detail[open]'));
   // the demo clock runs 60x, so the first position may already be closed by now: only then is nothing "im Bestand"
-  const heldNow = (await (await p.request.get(URL + 'api/state')).json()).open_positions.map((x) => x.token);
+  // compare the table with the state it was rendered from (the page refreshes every 2 s; the API may be newer)
+  await p.evaluate(() => refresh());
+  const heldNow = await p.evaluate(() => state.open_positions.map((x) => x.token));
   if (heldNow.length) ok((await p.textContent('#cands')).includes('im Bestand'), 'Token im Bestand zeigt „im Bestand“ statt Kaufen');
   else ok(!(await p.textContent('#cands')).includes('im Bestand'), 'nichts im Bestand → überall Kaufen-Knopf');
   // compare by token, not by count: in the 60x demo other positions close while the dialogs are open

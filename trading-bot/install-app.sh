@@ -19,8 +19,14 @@ echo "App liegt auf dem Schreibtisch: $DEST"
 # Anthropic-CLI fuer "Mit Claude anmelden" (einmalig). Mit Homebrew per brew,
 # sonst direkt als Download von GitHub nach ~/NewTokenBot/bin/ant.
 ANT_DIR="$HOME/NewTokenBot/bin"
-if command -v ant >/dev/null 2>&1 || [ -x /opt/homebrew/bin/ant ] || [ -x /usr/local/bin/ant ] || [ -x "$ANT_DIR/ant" ]; then
-  echo "Anthropic-CLI (ant) ist da."
+# `ant` is also Apache Ant (Java build tool): only accept a binary that answers "ant version 1.x"
+is_anthropic_ant() { [ -x "$1" ] && "$1" --version 2>&1 | head -n 1 | grep -q '^ant version [0-9]'; }
+HAVE_ANT=""
+for c in "$ANT_DIR/ant" "$(command -v ant 2>/dev/null)" /opt/homebrew/bin/ant /usr/local/bin/ant; do
+  if [ -n "$c" ] && is_anthropic_ant "$c"; then HAVE_ANT="$c"; break; fi
+done
+if [ -n "$HAVE_ANT" ]; then
+  echo "Anthropic-CLI (ant) ist da: $HAVE_ANT"
 elif command -v brew >/dev/null 2>&1 && [ -z "${NEW_TOKEN_BOT_ANT_ZIP:-}" ]; then
   echo "Installiere die Anthropic-CLI (ant) fuer die Claude-Anmeldung ..."
   if brew install anthropics/tap/ant < /dev/null; then

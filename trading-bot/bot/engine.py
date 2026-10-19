@@ -47,6 +47,7 @@ VERSION = "0.9"
 APP_ID = "new-token-bot"      # marker in /api/state so starters can tell this bot from whatever else listens on the port
 TICK_KEEP_DAYS = 7
 HISTORY_KEEP_DAYS = 30       # candidates and outcomes older than this are dropped at start
+DISCOVERY_BUDGET_S = 20.0      # seconds per poll for finding and judging new tokens; the rest waits for the next poll
 NO_PRICE_WRITE_OFF_MIN = 30.0   # minutes without any price (and past the time stop) before a position is written off
 REPORT_TTL = 10.0            # seconds: edge reports and breakdowns are recomputed at most this often       # price ticks of positions closed longer ago are dropped at start
 
@@ -83,6 +84,8 @@ class Engine:
         self._bad_tokens: dict[str, float] = {}    # token -> when its record last broke the evaluation
         self._last_discovery_error = ""
         self._last_priced: dict[int, float] = {}  # position id -> engine time of its last price
+        self._dex_answered = False                # did the numbers source answer during the last discovery?
+        self._deferred_last = 0
 
     def _report(self, key: str, fn: Callable[[], Any]) -> Any:
         """The page polls every 2 s; the aggregate reports only need to move with the polls."""
@@ -109,11 +112,18 @@ class Engine:
 
     def _discover(self, now: float, counts: dict[str, int]) -> None:
         """Find, judge and (paper-)buy new tokens."""
+        deadline = time.time() + DISCOVERY_BUDGET_S
         found = self.discovery.recent(list(self.cfg["chains"]))
         for chain, tokens in found.items():
             if not tokens:
                 continue
-            pairs = self.dex.pairs_for_tokens(chain, list(tokens))
+            pairs: list[dict[str, Any]] = []
+            addresses = list(tokens)
+            for i in range(0, len(addresses), 30):
+                if time.time() > deadline:
+                    counts["deferred"] += len(addresses) - i
+                    break
+                pairs.extend(self.dex.pairs_for_tokens(chain, addresses[i:i + 30]))
             indexed = {p["token"] for p in pairs}
             for token, info in tokens.items():
                 snap = info.get("snapshot")
@@ -127,6 +137,9 @@ class Engine:
             for p in pairs:
                 if now - self._bad_tokens.get(p.get("token") or "", -1e18) < RESEE_SECONDS:
                     continue                                   # broke last time: give its record half an hour
+                if time.time() > deadline:
+                    counts["deferred"] += 1                    # not recorded, so judged on the next poll
+                    continue
                 try:
                     p["source"] = (tokens.get(p["token"]) or {}).get("source")
                     counts["seen"] += 1
@@ -134,8 +147,12 @@ class Engine:
                     if last is not None and now - last["seen_at"] < resee_after(last):
                         continue
                     counts["new"] += 1
-                    rug = self.rug.summary(p["token"]) if chain == "solana" else None
-                    verdict = evaluate(p, rug, self.cfg)
+                    # cheap filters first: RugCheck (a slow web call) only for tokens that pass the rest
+                    verdict = evaluate(p, None, self.cfg)
+                    rug = None
+                    if chain == "solana" and verdict["decision"] != "skip":
+                        rug = self.rug.summary(p["token"])
+                        verdict = evaluate(p, rug, self.cfg)
                     decision = verdict["decision"]
                     p["rule_decision"] = decision
                     if p.get("via_feed"):
@@ -191,31 +208,12 @@ class Engine:
 
 
     def _poll(self, now: float) -> dict[str, int]:
-        counts = {"seen": 0, "new": 0, "buy": 0, "watch": 0, "skip": 0, "exits": 0}
+        counts = {"seen": 0, "new": 0, "buy": 0, "watch": 0, "skip": 0, "exits": 0, "deferred": 0}
 
-        try:
-            self._discover(now, counts)
-            if self._last_discovery_error:
-                self.store.log("info", "Suche nach neuen Tokens läuft wieder")
-                self._last_discovery_error = ""
-        except Exception as error:  # noqa: BLE001 - discovery trouble must never suspend the exits below
-            self.errors += 1
-            msg = f"{type(error).__name__}: {error}"
-            if msg != self._last_discovery_error:          # log a lasting outage once, not every poll
-                self.store.log("error", f"Suche nach neuen Tokens abgebrochen (Exits laufen weiter): {msg}")
-                self._last_discovery_error = msg
-
+        # exits first: a slow discovery must never delay a stop loss
         listed_positions = self.store.open_positions()
-        priced: dict[int, float] = {}
-        for listed in listed_positions:
-            try:
-                price = self.dex.price(listed["chain"], listed["pair"])   # network: outside the lock
-            except Exception as error:  # noqa: BLE001 - one position without a price must not stop the others
-                self.store.log("error", f"Kein Kurs für {listed.get('symbol')}: {type(error).__name__}: {error}")
-                price = None
-            if price:
-                priced[listed["id"]] = price
-        dex_answered = bool(priced) or counts["seen"] > 0
+        priced = self._position_prices(listed_positions)   # network: outside the lock
+        dex_answered = bool(priced) or self._dex_answered
         for listed in listed_positions:
             price = priced.get(listed["id"])
             if not price:
@@ -236,6 +234,24 @@ class Engine:
                     self._last_priced.pop(pos["id"], None)
 
         try:
+            self._discover(now, counts)
+            if self._last_discovery_error:
+                self.store.log("info", "Suche nach neuen Tokens läuft wieder")
+                self._last_discovery_error = ""
+            self._dex_answered = counts["seen"] > 0
+            if counts["deferred"] and not self._deferred_last:
+                self.store.log("info", f"Viele neue Tokens: {counts['deferred']} auf den nächsten Poll verschoben "
+                                       f"(Zeitbudget {DISCOVERY_BUDGET_S:.0f} s, Exits laufen trotzdem jede Runde)")
+            self._deferred_last = counts["deferred"]
+        except Exception as error:  # noqa: BLE001 - discovery trouble must never stop the poll
+            self.errors += 1
+            self._dex_answered = False                     # an outage: never a reason to write positions off
+            msg = f"{type(error).__name__}: {error}"
+            if msg != self._last_discovery_error:          # log a lasting outage once, not every poll
+                self.store.log("error", f"Suche nach neuen Tokens abgebrochen (Exits laufen weiter): {msg}")
+                self._last_discovery_error = msg
+
+        try:
             self.tracker.fill_due(now)
         except Exception as error:  # noqa: BLE001
             self.store.log("error", f"Tracker: {type(error).__name__}: {error}")
@@ -243,6 +259,35 @@ class Engine:
         self.last_poll_wall = time.time()
         self.poll_count += 1
         return counts
+
+    def _position_prices(self, positions: list[dict[str, Any]]) -> dict[int, float]:
+        """Current price per open position: one batch request per chain when the
+        source supports it, single lookups otherwise."""
+        priced: dict[int, float] = {}
+        by_chain: dict[str, list[dict[str, Any]]] = {}
+        for pos in positions:
+            by_chain.setdefault(pos["chain"], []).append(pos)
+        for chain, group in by_chain.items():
+            batch = getattr(self.dex, "prices", None)
+            if batch is not None:
+                try:
+                    got = batch(chain, list({p["pair"] for p in group})) or {}
+                except Exception as error:  # noqa: BLE001
+                    self.store.log("error", f"Kurse ({chain}): {type(error).__name__}: {error}")
+                    got = {}
+                for pos in group:
+                    if got.get(pos["pair"]):
+                        priced[pos["id"]] = float(got[pos["pair"]])
+                continue
+            for pos in group:
+                try:
+                    price = self.dex.price(chain, pos["pair"])
+                except Exception as error:  # noqa: BLE001 - one position without a price must not stop the others
+                    self.store.log("error", f"Kein Kurs für {pos.get('symbol')}: {type(error).__name__}: {error}")
+                    price = None
+                if price:
+                    priced[pos["id"]] = price
+        return priced
 
     def _maybe_write_off(self, listed: dict[str, Any], now: float, dex_answered: bool, counts: dict[str, int]) -> None:
         """A pair that stopped being priced while DexScreener answers for others has

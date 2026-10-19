@@ -30,13 +30,21 @@ class BadRequest(Exception):
     pass
 
 
+def _cell(value: Any) -> Any:
+    """Token names and symbols come from strangers: text that a spreadsheet would
+    read as a formula (=, +, -, @, tab, CR) gets a leading apostrophe. Numbers stay numbers."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
 def _csv(rows: list, columns: list) -> bytes:
     out = io.StringIO()
     w = csv.writer(out, delimiter=";")
     w.writerow(columns)
     for r in rows:
         w.writerow(["" if r.get(c) is None else
-                    (datetime.fromtimestamp(r[c]).isoformat(timespec="seconds") if c.endswith("_at") or c == "at" else r[c])
+                    (datetime.fromtimestamp(r[c]).isoformat(timespec="seconds") if c.endswith("_at") or c == "at" else _cell(r[c]))
                     for c in columns])
     return ("\ufeff" + out.getvalue()).encode("utf-8")
 

@@ -104,14 +104,29 @@ def credential_source() -> str:
 ANT_INSTALL = "brew install anthropics/tap/ant && xattr -d com.apple.quarantine \"$(brew --prefix)/bin/ant\""
 
 
+def is_anthropic_ant(path: str) -> bool:
+    """`ant` is also the name of Apache Ant, the Java build tool (common on
+    developer Macs and preinstalled on CI images). The Anthropic CLI answers
+    `--version` with "ant version 1.x"; Apache Ant with "Apache Ant(TM) version ..."."""
+    try:
+        out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    first = ((out.stdout or "") + (out.stderr or "")).strip().splitlines()[:1]
+    return bool(first) and first[0].lower().startswith("ant version ") and "apache" not in first[0].lower()
+
+
 def ant_path() -> str:
+    """The Anthropic CLI, never Apache Ant. Our own download comes first."""
     import shutil
-    found = shutil.which("ant")
-    if found:
-        return found
-    for candidate in ("/opt/homebrew/bin/ant", "/usr/local/bin/ant",     # launchd/.command shells have a short PATH
-                      os.path.expanduser("~/NewTokenBot/bin/ant")):     # install-app.sh without Homebrew
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+    seen = []
+    for candidate in (os.path.expanduser("~/NewTokenBot/bin/ant"),     # install-app.sh without Homebrew
+                      shutil.which("ant") or "",
+                      "/opt/homebrew/bin/ant", "/usr/local/bin/ant"):    # launchd/.command shells have a short PATH
+        if not candidate or candidate in seen:
+            continue
+        seen.append(candidate)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK) and is_anthropic_ant(candidate):
             return candidate
     return ""
 

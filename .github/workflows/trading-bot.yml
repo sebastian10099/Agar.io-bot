@@ -24,8 +24,8 @@ jobs:
       matrix:
         python: ['3.9', '3.11', '3.13']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - name: Tests ohne Anthropic-SDK
@@ -42,7 +42,7 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Werkzeuge
         run: |
           /bin/bash --version | head -1
@@ -68,12 +68,23 @@ jobs:
         env:
           NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-demo
         run: /bin/bash ./launch.sh --demo --once
+      - name: RugCheck-Rohantwort (Diagnose)
+        continue-on-error: true
+        run: |
+          MINT=$(curl -s -m 20 https://api.dexscreener.com/token-profiles/latest/v1 | python3 -c "import json,sys; print(next(x['tokenAddress'] for x in json.load(sys.stdin) if x.get('chainId')=='solana'))")
+          echo "Mint: $MINT"
+          for UA in "new-token-bot/0.1" "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Safari/537.36"; do
+            echo "--- User-Agent: $UA"
+            curl -sS -m 20 -o rc.json -w 'HTTP %{http_code} in %{time_total}s\n' -H 'Accept: application/json' -H "User-Agent: $UA" \
+              "https://api.rugcheck.xyz/v1/tokens/$MINT/report/summary" || true
+            head -c 400 rc.json; echo
+          done
       - name: Ein echter Poll gegen die Live-Märkte
         working-directory: trading-bot
         continue-on-error: true
         env:
           NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-live
-        run: /bin/bash ./launch.sh --once
+        run: time /bin/bash ./launch.sh --once
       - name: Selbsttest gegen die echten Quellen (DexScreener, GeckoTerminal, pump.fun, RugCheck)
         working-directory: trading-bot
         env:

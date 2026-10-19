@@ -66,6 +66,30 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(preflight.main(["--demo"]), 0)
 
 
+class InstallerAntTests(unittest.TestCase):
+    def test_installer_ignores_apache_ant_and_downloads_the_cli(self):
+        """Apache Ant on PATH must not count as the Anthropic CLI (seen on the macOS CI image)."""
+        import os, tempfile, zipfile
+        from pathlib import Path
+        root = Path(__file__).parent.parent
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d) / "home"; (home / "Desktop").mkdir(parents=True)
+            bindir = Path(d) / "bin"; bindir.mkdir()
+            (bindir / "ant").write_text("#!/bin/sh\necho 'Apache Ant(TM) version 1.10.15 compiled on August 25 2024'\n"); (bindir / "ant").chmod(0o755)
+            (bindir / "open").write_text("#!/bin/sh\nexit 0\n"); (bindir / "open").chmod(0o755)
+            z = Path(d) / "ant.zip"
+            with zipfile.ZipFile(z, "w") as zf:
+                zf.writestr("ant", "#!/bin/sh\necho 'ant version 1.42.0'\n")
+            env = dict(os.environ, HOME=str(home), PATH=f"{bindir}:/usr/bin:/bin", NEW_TOKEN_BOT_ANT_ZIP=f"file://{z}")
+            r = subprocess.run(["bash", str(root / "install-app.sh")], capture_output=True, text=True, timeout=120, env=env, stdin=subprocess.DEVNULL)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertNotIn("ist da", r.stdout)                          # Apache Ant did not count
+            installed = home / "NewTokenBot" / "bin" / "ant"
+            self.assertTrue(installed.is_file(), r.stdout)
+            r2 = subprocess.run(["bash", str(root / "install-app.sh")], capture_output=True, text=True, timeout=120, env=env, stdin=subprocess.DEVNULL)
+            self.assertIn(f"ist da: {installed}", r2.stdout)              # second run finds our own download
+
+
 class LauncherScriptTests(unittest.TestCase):
     """launch.sh runs under set -u; with no arguments it must still get past the argument checks."""
 

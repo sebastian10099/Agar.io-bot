@@ -1124,3 +1124,89 @@ class TrackerBatchTests(unittest.TestCase):
                        "score": 1, "decision": "buy", "reasons": [], "snapshot": {}})
             self.assertEqual(tr.fill_due(now=61 * 60.0), 3)
             store.close()
+
+
+class CsvTests(unittest.TestCase):
+    def test_token_names_cannot_become_spreadsheet_formulas(self):
+        from bot.server import _csv
+        rows = [{"symbol": "=HYPERLINK(\"http://evil\",\"x\")", "name": "+cmd|' /C calc'!A0", "reasons": "@SUM(1)",
+                 "note": "-2+3", "tab": "\t=1", "ok": "PEPE", "pnl": -5.25, "price": 0.0001}]
+        text = _csv(rows, ["symbol", "name", "reasons", "note", "tab", "ok", "pnl", "price"]).decode("utf-8-sig")
+        line = text.splitlines()[1].split(";")
+        self.assertTrue(all(cell.lstrip('"').startswith("'") for cell in line[:5]), line)
+        self.assertEqual(line[5], "PEPE")
+        self.assertEqual(line[6], "-5.25")                     # real numbers stay numbers
+        self.assertEqual(line[7], "0.0001")
+
+
+class SlowWorldTests(unittest.TestCase):
+    """Real APIs are slow: a poll must still check the stop losses promptly."""
+
+    def setUp(self):
+        import bot.demo as demo
+        self.cycle = demo.CYCLE_MIN; demo.CYCLE_MIN = 1e9
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.sqlite")
+        self.dex = FakeDex(accel=1.0); self.t = [self.dex.started]; self.dex.now = lambda: self.t[0]
+
+    def tearDown(self):
+        import bot.demo as demo
+        demo.CYCLE_MIN = self.cycle
+        self.store.close(); self.tmp.cleanup()
+
+    def test_rugcheck_is_only_asked_for_tokens_that_pass_the_other_filters(self):
+        from bot.strategy import evaluate
+        rug = FakeRug(); asked = []
+        orig = rug.summary
+        rug.summary = lambda mint: (asked.append(mint), orig(mint))[1]
+        eng = Engine(copy.deepcopy(CFG), self.store, self.dex, rug, clock=self.dex.now, feeds={"dexscreener": demo_feeds(self.dex)["dexscreener"]})
+        eng.poll_once()
+        pairs = self.dex.pairs_for_tokens("solana", self.dex.recent_token_addresses(["solana"])["solana"])
+        need = {p["token"] for p in pairs if evaluate(p, None, CFG)["decision"] != "skip"}
+        self.assertEqual(set(asked), need)
+        self.assertLess(len(asked), len(pairs))
+
+    def test_stop_loss_fires_even_when_discovery_is_slow(self):
+        import time as _t
+        import bot.engine as engine_mod
+        eng = Engine(copy.deepcopy(CFG), self.store, self.dex, FakeRug(), clock=self.dex.now, feeds=demo_feeds(self.dex))
+        eng.poll_once()
+        pid = self.store.open_positions()[0]["id"]
+        real = self.dex.price
+        self.dex.price = lambda c, p: (real(c, p) or 0) * 0.4
+        self.dex.prices = lambda c, ps: {p: v * 0.4 for p, v in FakeDex.prices(self.dex, c, ps).items()}
+        many = [{"token": f"Slow{i}", "snapshot": None} for i in range(200)]
+        feeds = demo_feeds(self.dex); feeds["slow"] = StubFeed({"solana": many})
+        eng.discovery.feeds = feeds; eng.cfg["discovery"]["sources"] = ["slow", "dexscreener"]
+        orig_pairs = FakeDex.pairs_for_tokens
+        def slow_pairs(chain, addrs):
+            _t.sleep(0.02 * len(addrs)); return orig_pairs(self.dex, chain, addrs)
+        self.dex.pairs_for_tokens = slow_pairs
+        old_budget = engine_mod.DISCOVERY_BUDGET_S; engine_mod.DISCOVERY_BUDGET_S = 0.5
+        self.addCleanup(setattr, engine_mod, "DISCOVERY_BUDGET_S", old_budget)
+        seen_closed_at = []
+        orig_discover = eng._discover
+        def spy(now, counts):
+            seen_closed_at.append(self.store.position(pid)["status"])   # state when discovery starts
+            return orig_discover(now, counts)
+        eng._discover = spy
+        self.t[0] += 120
+        started = _t.time(); eng.poll_once(); took = _t.time() - started
+        self.assertEqual(seen_closed_at, ["closed"])                     # exits ran before the slow part
+        self.assertEqual(self.store.position(pid)["exit_reason"], "stop_loss")
+        self.assertLess(took, 8.0)
+
+    def test_a_struggling_rugcheck_is_paused_instead_of_costing_seconds_per_token(self):
+        from bot.sources.rugcheck import RugCheck
+        calls = []
+        def fetch(url, **kw):
+            calls.append(kw); raise OSError("429 Too Many Requests")
+        t = [1000.0]
+        rc = RugCheck(fetch=fetch, clock=lambda: t[0])
+        for i in range(10):
+            self.assertIsNone(rc.summary(f"M{i}"))
+        self.assertEqual(len(calls), 3)                                  # three failures, then a pause
+        self.assertTrue(all(kw.get("retries") == 0 for kw in calls))     # no retry sleeps inside a poll
+        self.assertIn("Pause", rc.health()["last_error"])
+        t[0] += 61
+        rc.summary("M99"); self.assertEqual(len(calls), 4)               # tries again after the pause
