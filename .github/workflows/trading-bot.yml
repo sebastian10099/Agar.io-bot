@@ -103,7 +103,10 @@ jobs:
           import json, urllib.request
           from bot.sources.solana_rpc import OnChainCheck, PUMP_PROGRAM, assess_mint, b58decode, find_program_address
           get = lambda u: json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "new-token-bot/0.1"}), timeout=20))
-          mints = [x["tokenAddress"] for x in get("https://api.dexscreener.com/token-profiles/latest/v1") if x.get("chainId") == "solana" and x["tokenAddress"].endswith("pump")][:6]
+          mints = [x["tokenAddress"] for x in get("https://api.dexscreener.com/token-profiles/latest/v1") if x.get("chainId") == "solana" and x["tokenAddress"].endswith("pump")][:3]
+          # and the fresh launches the bot actually trades (GeckoTerminal's newest pump.fun pools)
+          fresh = get("https://api.geckoterminal.com/api/v2/networks/solana/new_pools?include=base_token")
+          mints += [t["attributes"]["address"] for t in fresh.get("included", []) if t["attributes"]["address"].endswith("pump")][:8]
           pairs = {p["baseToken"]["address"]: p for p in get("https://api.dexscreener.com/tokens/v1/solana/" + ",".join(mints)) if p.get("dexId") == "pumpfun"}
           oc = OnChainCheck()
           for mint in mints:
