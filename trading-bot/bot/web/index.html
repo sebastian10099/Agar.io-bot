@@ -1000,11 +1000,11 @@ $('b-doctor').onclick = () => busy($('b-doctor'), async () => {
 function renderSources(s) {
   const rows = s.sources || [];
   const on = rows.filter((r) => r.enabled);
-  const bad = on.filter((r) => r.ok === false);
+  const bad = on.filter((r) => r.ok === false && !r.throttled);
   $('src-pill').textContent = `${on.length} aktiv` + (bad.length ? ` · ${bad.length} gestört` : '');
   $('src-pill').className = 'pill ' + (bad.length ? 'paused' : on.length ? 'paper' : '');
   $('sources').innerHTML = rows.map((r) => {
-    const st = !r.enabled ? ['off', 'aus'] : !r.available ? ['bad', 'nicht verfügbar'] : r.ok === false ? ['bad', 'gestört'] : r.ok ? ['ok', 'liefert'] : ['warn', 'noch kein Poll'];
+    const st = !r.enabled ? ['off', 'aus'] : !r.available ? ['bad', 'nicht verfügbar'] : r.ok === false && r.throttled ? ['warn', 'Pause (Rate-Limit)'] : r.ok === false ? ['bad', 'gestört'] : r.ok ? ['ok', 'liefert'] : ['warn', 'noch kein Poll'];
     const detail = r.enabled && r.ok ? `${r.found} gemeldet · ${r.unique} eigene · ${r.calls} Abfragen` : r.enabled && r.error ? esc(r.error) : '';
     return `<li><span class="dot ${st[0]}" role="img" aria-label="${st[1]}"></span><b>${esc(r.label)}</b> <span class="reasons">${st[1]}${detail ? ' · ' + detail : ''}</span></li>`;
   }).join('') + (() => {

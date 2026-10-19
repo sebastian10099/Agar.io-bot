@@ -10,9 +10,10 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from . import curve
-from .http import get_json
+from .http import HttpError, get_json
 
 BASE = "https://api.geckoterminal.com/api/v2"
+RATE_LIMIT_PAUSE_S = 60.0      # after a 429 the free tier wants a break; asking again at once only extends it
 NETWORKS = {"solana": "solana", "ethereum": "eth", "base": "base", "bsc": "bsc"}
 HEADERS = {"Accept": "application/json;version=20230302"}
 
@@ -101,6 +102,7 @@ class GeckoTerminal:
         self.min_interval = min_interval
         self.clock = clock
         self._last: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+        self._paused_until = 0.0
         self.calls = 0
 
     def new_pools(self, chain: str) -> list[dict[str, Any]]:
@@ -111,8 +113,16 @@ class GeckoTerminal:
         now = self.clock()
         if cached and now - cached[0] < self.min_interval:
             return cached[1]
+        if now < self._paused_until:
+            raise RuntimeError(f"Rate-Limit (HTTP 429) – Pause, nächste Abfrage in {self._paused_until - now:.0f} s")
         self.calls += 1
-        data = self.fetch(f"{BASE}/networks/{net}/new_pools?include=base_token&page=1", headers=HEADERS)
+        try:
+            data = self.fetch(f"{BASE}/networks/{net}/new_pools?include=base_token&page=1", headers=HEADERS, retries=0)
+        except HttpError as error:
+            if error.status == 429:
+                self._paused_until = now + RATE_LIMIT_PAUSE_S
+                raise RuntimeError(f"Rate-Limit (HTTP 429) – Pause {RATE_LIMIT_PAUSE_S:.0f} s") from None
+            raise
         tokens = {t.get("id"): (t.get("attributes") or {})
                   for t in (data or {}).get("included") or [] if t.get("type") == "token"}
         out = []

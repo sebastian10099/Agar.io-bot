@@ -99,6 +99,7 @@ class Discovery:
                 "enabled": name in enabled,
                 "available": feed is not None,
                 "ok": st.get("ok"), "error": st.get("error", ""),
+                "throttled": "HTTP 429" in st.get("error", ""),       # up, only asking to slow down
                 "found": st.get("found", 0), "unique": st.get("unique", 0),
                 "calls": st.get("calls", 0), "at": st.get("at"),
             })

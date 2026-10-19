@@ -94,6 +94,35 @@ class StubFeed:
         return {c: list(self.items.get(c, [])) for c in chains}
 
 
+class GeckoRateLimitTests(unittest.TestCase):
+    def test_a_429_pauses_the_feed_instead_of_hammering_it(self):
+        from bot.doctor import _check
+        from bot.sources.http import HttpError
+        t = [NOW]; calls = []
+        def fetch(url, **kw):
+            calls.append(kw.get("retries"))
+            raise HttpError(429, '{"status":{"error_code":429}}')
+        g = GeckoTerminal(fetch=fetch, min_interval=0, clock=lambda: t[0])
+        with self.assertRaises(RuntimeError) as first:
+            g.discover(["solana"])
+        self.assertIn("HTTP 429", str(first.exception))
+        self.assertEqual(calls, [0])                                   # no immediate retries
+        t[0] += 30
+        with self.assertRaises(RuntimeError) as paused:
+            g.discover(["solana"])
+        self.assertIn("Pause", str(paused.exception)); self.assertEqual(len(calls), 1)
+        self.assertTrue(_check("GeckoTerminal", lambda: g.discover(["solana"]))["warn"])   # self-test: a note
+        t[0] += 31
+        with self.assertRaises(RuntimeError):
+            g.discover(["solana"])
+        self.assertEqual(len(calls), 2)                                # asked again after the pause
+        cfg = copy.deepcopy(CFG); cfg["discovery"]["sources"] = ["geckoterminal"]
+        d = Discovery(cfg, {"geckoterminal": g})
+        d.recent(["solana"])
+        row = next(r for r in d.status() if r["name"] == "geckoterminal")
+        self.assertEqual((row["ok"], row["throttled"]), (False, True))   # shown as a pause, not as broken
+
+
 class DiscoveryTests(unittest.TestCase):
     def test_first_feed_owns_a_token_and_status_counts(self):
         cfg = {"discovery": {"sources": ["a", "b", "missing"]}}

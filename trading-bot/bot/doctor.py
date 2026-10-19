@@ -111,7 +111,7 @@ def run_checks(cfg: dict[str, Any], dex: Any, feeds: dict[str, Any], rug: Any,
     if gecko is not None:
         def gecko_pools() -> str:
             if hasattr(gecko, "_last"):
-                gecko._last.pop(chain, None)          # force a real call, not the cached answer
+                gecko._last.pop(chain, None)          # force a real call, not the cached answer (a 429 pause stays)
             items = gecko.discover([chain]).get(chain) or []
             return _parsed([i["snapshot"] for i in items if i.get("snapshot")])
         out.append(_check("GeckoTerminal – neue Pools & Parser", gecko_pools))
