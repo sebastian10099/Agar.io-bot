@@ -142,6 +142,26 @@ jobs:
           echo "App-Launcher hat den Bot gestartet"
           echo "--- bot.log (Anfang):"; head -20 "$LOG" || true
           curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8793/api/quit
+      - name: "Einzeiler aus der README: von GitHub laden, App auf den Schreibtisch, Doppelklick"
+        env:
+          HOME: ${{ runner.temp }}/home-get
+          NEW_TOKEN_BOT_HOME: ${{ runner.temp }}/ntb-get
+          NEW_TOKEN_BOT_ARGS: --demo
+          NEW_TOKEN_BOT_PORT: '8794'
+          NEW_TOKEN_BOT_ANT_ZIP: https://github.com/anthropics/anthropic-cli/releases/download/v1.42.0/ant_1.42.0_macos_arm64.zip
+        run: |
+          mkdir -p "$HOME/Desktop"
+          # the exact command the README gives, unchanged - it fetches the branch as pushed
+          curl -fsSL https://raw.githubusercontent.com/sebastian10099/Agar.io-bot/claude/agenen-funktionalitaet-hnw6g5/trading-bot/get.sh | bash
+          APP="$HOME/Desktop/New Token Bot.app"
+          test -x "$APP/Contents/MacOS/New Token Bot"
+          test "$(cat "$APP/Contents/Resources/project.path")" = "$HOME/NewTokenBot/src"
+          test -f "$HOME/NewTokenBot/src/bot/main.py"
+          LOG="$HOME/Library/Application Support/NewTokenBot/bot.log"
+          perl -e 'alarm 300; exec @ARGV' /bin/bash "$APP/Contents/MacOS/New Token Bot" || { cat "$LOG" 2>/dev/null; exit 1; }
+          curl -s -m 5 http://127.0.0.1:8794/api/state | grep -q '"app": "new-token-bot"' || { cat "$LOG"; exit 1; }
+          echo "Einzeiler: App vom Schreibtisch hat den Bot gestartet"
+          curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8794/api/quit
       - name: RugCheck erreichbar? (Diagnose)
         continue-on-error: true
         run: |
