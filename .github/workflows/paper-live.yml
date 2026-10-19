@@ -126,7 +126,7 @@ jobs:
           while [ "$(date +%s)" -lt "$END" ]; do
             if [ $((n % 5)) -eq 0 ]; then                 # account and backtest every 10 minutes
               save_account
-              perl -e 'alarm 120; exec @ARGV' python3 tools/backtest.py "$NEW_TOKEN_BOT_HOME" > "$SITE/backtest.txt.new" 2>&1 \
+              perl -e 'alarm 120; exec @ARGV' python3 tools/backtest.py "$NEW_TOKEN_BOT_HOME" --search > "$SITE/backtest.txt.new" 2>&1 \
                 && mv "$SITE/backtest.txt.new" "$SITE/backtest.txt" || echo "Backtest fehlgeschlagen"
             fi
             publish

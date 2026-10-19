@@ -634,6 +634,15 @@ Wiederholung auf 300 zufälligen Verläufen genau das Ergebnis des
 Paper-Kontos trifft. Paper-Live hängt das Ergebnis alle zehn Minuten an
 `REPORT.md` an. Kursverläufe werden nach 7 Tagen gelöscht.
 
+Mit `--search` sucht er darüber hinaus nach Einstiegsregeln, die Geld
+verdient hätten: 729 Kombinationen aus Mindest-Liquidität, Käufen,
+Kaufdruck, 5-Minuten-Änderung, Alter und Bewertung/Liquidität, jede mit sechs
+Ausstiegs-Varianten, gewählt auf der ersten Hälfte, gezeigt auf der zweiten.
+Bei hunderten Kombinationen sieht auf bekannten Daten immer etwas gut aus –
+die Zeile „… von … Kombinationen lagen in beiden Hälften im Plus“ sagt, ob
+mehr dahintersteckt als Glück. Ein Test pflanzt einen echten Vorteil ein (die
+Suche findet ihn) und prüft reines Rauschen (dann hält nichts).
+
 **Browser-Prüfung der Steuerseite** – klickt gegen einen laufenden Demo-Server
 jede Funktion durch (Formular, Validierung, Persistenz, Schließen, Pause,
 Filter, Reset), prüft auf Konsolenfehler und auf Überhang am Telefon, und legt

@@ -7,7 +7,7 @@ the paper account can hold - with the paper account's own costs and exit
 logic (stop loss first, then the profit ladder, the trailing stop, the time
 stop).
 
-    python3 tools/backtest.py <data dir or bot.sqlite> [--since EPOCH]
+    python3 tools/backtest.py <data dir or bot.sqlite> [--since EPOCH] [--search]
 
 Honest by construction: entries are the bot's own verdicts on the numbers it
 had at that moment; an exit setting is chosen on the first half of the time
@@ -184,6 +184,89 @@ def report(db_path: Path, cfg: dict[str, Any], since: float = 0.0) -> str:
     return "\n".join(lines)
 
 
+# --search: which entry rules would have earned money? Every combination of these thresholds,
+# each with a handful of exit settings, chosen on the first half and shown on the second.
+ENTRY_GRID = {
+    "min_liquidity_usd": [8000, 15000, 30000],
+    "min_buys_m5": [8, 30, 100],
+    "min_buy_sell_ratio": [1.0, 1.5, 3.0],
+    "change_m5": [(0, 50), (0, 150), (-100, 1e9)],
+    "max_age_min": [30, 120, 1e9],
+    "max_fdv_liquidity": [1.5, 3, 1e9],
+}
+EXIT_SET = [
+    {"stop_loss_pct": -30, "trailing_stop_pct": 25, "time_stop_minutes": 60, "take_profit_ladder": [[50, 0.5], [100, 0.25]]},
+    {"stop_loss_pct": -20, "trailing_stop_pct": 15, "time_stop_minutes": 20, "take_profit_ladder": [[25, 0.5], [50, 0.25]]},
+    {"stop_loss_pct": -15, "trailing_stop_pct": 15, "time_stop_minutes": 10, "take_profit_ladder": [[25, 0.5]]},
+    {"stop_loss_pct": -30, "trailing_stop_pct": 35, "time_stop_minutes": 60, "take_profit_ladder": [[100, 0.5]]},
+    {"stop_loss_pct": -40, "trailing_stop_pct": 25, "time_stop_minutes": 30, "take_profit_ladder": []},
+    {"stop_loss_pct": -20, "trailing_stop_pct": 25, "time_stop_minutes": 30, "take_profit_ladder": [[50, 0.5], [100, 0.25]]},
+]
+
+
+def _passes(s: dict[str, Any], rule: dict[str, Any]) -> bool:
+    try:
+        liq, fdv = float(s["liquidity_usd"]), float(s.get("fdv") or 0)
+        lo, hi = rule["change_m5"]
+        return (liq >= rule["min_liquidity_usd"] and s["buys_m5"] >= rule["min_buys_m5"]
+                and s["buys_m5"] >= rule["min_buy_sell_ratio"] * max(1, s["sells_m5"])
+                and lo <= s["change_m5"] <= hi and (s.get("age_min") or 0) <= rule["max_age_min"]
+                and (fdv <= 0 or fdv / liq <= rule["max_fdv_liquidity"]))
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return False
+
+
+def _rule_label(rule: dict[str, Any]) -> str:
+    lo, hi = rule["change_m5"]
+    big = lambda v, unit="": "egal" if v >= 1e9 else f"{v:g}{unit}"
+    change = "egal" if hi >= 1e9 else f"{lo:g} bis {hi:g} %"
+    return (f"Liq ≥ {rule['min_liquidity_usd'] / 1000:g}k · Käufe ≥ {rule['min_buys_m5']} · Kauf/Verkauf ≥ {rule['min_buy_sell_ratio']:g}"
+            f" · 5m {change} · Alter ≤ {big(rule['max_age_min'], ' min')} · Bewertung/Liq ≤ {big(rule['max_fdv_liquidity'], 'x')}")
+
+
+def search(db_path: Path, cfg: dict[str, Any], since: float = 0.0, top: int = 5) -> str:
+    """Every entry rule of ENTRY_GRID with every exit of EXIT_SET, judged honestly: the
+    ranking uses the first half of the time only, the second half is shown beside it.
+    With hundreds of combinations the best of the first half is partly luck - only what
+    holds on the second half counts."""
+    fee, slip = float(cfg["paper"]["fee_pct"]), float(cfg["paper"]["slippage_pct"])
+    # pool tokens without a safety danger (the bot never buys those), first verdict each
+    pool = [c for c in entries(load(db_path, since), None) if not ((c["snapshot"].get("rug") or {}).get("danger"))]
+    if len(pool) < 4 * MIN_TRADES:
+        return f"Suche: erst {len(pool)} Pool-Tokens mit Kursverlauf – zu wenig (mindestens {4 * MIN_TRADES})"
+    half_at = pool[len(pool) // 2]["seen_at"]
+    rets = [[simulate(c["price_usd"], c["seen_at"], c["path"], ex, fee, slip)[0] for ex in EXIT_SET] for c in pool]
+    rules = [dict(zip(ENTRY_GRID, values)) for values in itertools.product(*ENTRY_GRID.values())]
+    found = []
+    seen: set[tuple[int, ...]] = set()
+    for rule in rules:                                      # the loosest rule first: it names a set of trades
+        picked = [i for i, c in enumerate(pool) if _passes(c["snapshot"], rule)]
+        first = [i for i in picked if pool[i]["seen_at"] < half_at]
+        second = [i for i in picked if pool[i]["seen_at"] >= half_at]
+        if len(first) < MIN_TRADES or len(second) < MIN_TRADES // 2 or tuple(picked) in seen:
+            continue
+        seen.add(tuple(picked))
+        for e in range(len(EXIT_SET)):
+            a = [rets[i][e] for i in first]
+            b = [rets[i][e] for i in second]
+            found.append((statistics.mean(a), rule, e, a, b))
+    lines = [f"Suche über {len(rules)} Einstiegsregeln ({len(seen)} verschiedene Auswahlen) × {len(EXIT_SET)} Ausstiege auf {len(pool)} Pool-Tokens "
+             f"(Rangfolge nur nach der ersten Hälfte, {sum(c['seen_at'] < half_at for c in pool)} Tokens):"]
+    all_b = [rets[i][0] for i, c in enumerate(pool) if c["seen_at"] >= half_at]
+    lines.append(f"  zum Vergleich, jeder Pool-Token, zweite Hälfte: {stats(all_b)}")
+    if not found:
+        return "\n".join(lines + ["  keine Regel mit genug Käufen in beiden Hälften"])
+    found.sort(key=lambda x: x[0], reverse=True)
+    for mean_a, rule, e, a, b in found[:top]:
+        lines.append(f"\n  {_rule_label(rule)}\n    Ausstieg: {label(EXIT_SET[e])}")
+        lines.append(f"    erste Hälfte:  {stats(a)}")
+        lines.append(f"    zweite Hälfte: {stats(b)}")
+    both = sum(1 for m, _, _, a, b in found if m > 0 and statistics.mean(b) > 0)
+    lines.append(f"\n  {both} von {len(found)} Kombinationen lagen in beiden Hälften im Plus "
+                 f"({sum(1 for m, *_ in found if m > 0)} in der ersten)")
+    return "\n".join(lines)
+
+
 def main(argv: list[str]) -> int:
     args = [a for a in argv if not a.startswith("--")]
     if not args:
@@ -197,6 +280,9 @@ def main(argv: list[str]) -> int:
     cfg = load_config(db_path.parent)
     cfg.pop("_dropped", None)
     print(report(db_path, cfg, since))
+    if "--search" in argv:
+        print()
+        print(search(db_path, cfg, since))
     return 0
 
 

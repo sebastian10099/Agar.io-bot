@@ -2785,6 +2785,34 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(why, "time_stop")
         self.assertLess(ret, 0)                                                   # no take profit at 40x
 
+    def test_the_search_finds_a_real_edge_and_exposes_luck(self):
+        """A planted rule (busy pools rise, the rest fall) holds on the unseen half; on
+        noise nothing does - the best of the first half is luck."""
+        import random
+        bt = self.load()
+        for planted in (True, False):
+            rng = random.Random(3)
+            with tempfile.TemporaryDirectory() as d:
+                store = Store(Path(d) / "bot.sqlite")
+                for i in range(160):
+                    busy = rng.random() < 0.4
+                    snap = {"curve": False, "liquidity_kind": "reported", "liquidity_usd": 20000.0, "fdv": 40000.0,
+                            "buys_m5": 150 if busy else 20, "sells_m5": 40 if busy else 10, "change_m5": 20.0, "age_min": 10.0}
+                    cid = store.add_candidate({"seen_at": i * 60.0, "chain": "solana", "token": f"T{i}", "pair": f"P{i}",
+                                               "symbol": f"S{i}", "price_usd": 1.0, "score": 0, "decision": "skip",
+                                               "reasons": [], "snapshot": snap})
+                    drift = (0.01 if busy else -0.01) if planted else 0.0                # no edge: noise and costs
+                    store.add_path_points([(cid, i * 60.0 + k * 30, max(0.01, 1 + drift * k + rng.gauss(0, 0.02))) for k in range(1, 80)])
+                store.close()
+                text = bt.search(Path(d) / "bot.sqlite", copy.deepcopy(CFG))
+            if planted:
+                import re
+                top = text.split("\n\n")[1]                                       # the best rule of the first half ...
+                self.assertTrue("Käufe ≥ 100" in top or "Kauf/Verkauf ≥ 3" in top, top)   # ... picks the busy pools
+                self.assertRegex(top, r"zweite Hälfte:\s+\d+ Trades · Ø\s+\+")        # and holds on the unseen half
+            else:
+                self.assertIn(" 0 von ", text)                                  # noise: nothing holds
+
     def test_paths_are_recorded_and_replayed(self):
         from bot.tracker import Tracker
         bt = self.load()
