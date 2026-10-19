@@ -1018,3 +1018,49 @@ class VanishedPairTests(unittest.TestCase):
         self.dex.pairs_for_tokens = down
         self.run_minutes(120)
         self.assertEqual(self.store.position(self.pos["id"])["status"], "open")
+
+
+class ConfigFileTests(unittest.TestCase):
+    def test_a_broken_config_file_does_not_stop_the_start(self):
+        from bot.main import load_config
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d); (home / "config.json").write_text('{"poll_seconds": 15, "filters": {')     # cut off mid-write
+            cfg = load_config(home)
+            self.assertEqual(cfg["poll_seconds"], CFG["poll_seconds"])                              # defaults
+            self.assertTrue(list(home.glob("config.json.kaputt-*")), "the broken file is kept for inspection")
+            self.assertEqual(json.loads((home / "config.json").read_text()).get("_hint") is not None, True)
+
+    def test_invalid_values_in_the_file_fall_back_to_defaults(self):
+        from bot.main import load_config
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d)
+            (home / "config.json").write_text(json.dumps({
+                "poll_seconds": "abc", "risk_per_trade_pct": 500, "max_open_positions": 3,
+                "filters": {"min_liquidity_usd": -5, "min_age_minutes": 3, "max_age_minutes": 2},
+                "ai": {"mode": "yolo", "provider": "openrouter"}, "bankroll_usd": "viel"}))
+            cfg = load_config(home)
+            self.assertEqual(cfg["poll_seconds"], CFG["poll_seconds"])
+            self.assertEqual(cfg["risk_per_trade_pct"], CFG["risk_per_trade_pct"])
+            self.assertEqual(cfg["max_open_positions"], 3)                                         # valid values stay
+            self.assertEqual(cfg["filters"]["min_liquidity_usd"], CFG["filters"]["min_liquidity_usd"])
+            self.assertLess(cfg["filters"]["min_age_minutes"], cfg["filters"]["max_age_minutes"])  # cross-check holds
+            self.assertEqual(cfg["ai"]["mode"], CFG["ai"]["mode"]); self.assertEqual(cfg["ai"]["provider"], "openrouter")
+            self.assertEqual(cfg["bankroll_usd"], CFG["bankroll_usd"])
+
+    def test_saving_survives_a_broken_file_and_writes_atomically(self):
+        from bot.main import persist_to
+        with tempfile.TemporaryDirectory() as d:
+            home = Path(d); (home / "config.json").write_text("{nonsense")
+            persist_to(home)({"poll_seconds": 12})
+            self.assertEqual(json.loads((home / "config.json").read_text())["poll_seconds"], 12)
+            self.assertEqual([p.name for p in home.iterdir() if p.name.endswith(".tmp")], [])
+
+
+class NumberMessageTests(unittest.TestCase):
+    def test_non_numbers_get_a_german_message(self):
+        from bot import settings
+        for raw in ("abc", "", None, [], "inf", "nan", "1e999"):
+            _, errors = settings.validate({"poll_seconds": raw})
+            self.assertIn("poll_seconds", errors, raw)
+            self.assertIn(errors["poll_seconds"], ("keine Zahl",), (raw, errors))
+        self.assertEqual(settings.validate({"poll_seconds": "12,0"})[0]["poll_seconds"], 12)

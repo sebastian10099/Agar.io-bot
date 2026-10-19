@@ -163,8 +163,11 @@ def validate(patch: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
             if kind in ("int", "float"):
                 if isinstance(raw, str):
                     raw = raw.replace(",", ".").strip()
-                value = float(raw)
-                if value != value:  # NaN
+                try:
+                    value = float(raw)
+                except (TypeError, ValueError):
+                    raise ValueError("keine Zahl") from None
+                if value != value or value in (float("inf"), float("-inf")):  # NaN / Infinity
                     raise ValueError("keine Zahl")
                 if kind == "int":
                     if abs(value - round(value)) > 1e-9:

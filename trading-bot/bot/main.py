@@ -8,11 +8,13 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import signal
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 from typing import Any
@@ -33,21 +35,79 @@ def data_dir() -> Path:
     return Path.home() / ".new-token-bot"
 
 
+def _write_atomic(path: Path, text: str) -> None:
+    """Write via a temp file and rename, so a crash mid-write never leaves half a file."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
+def _read_user_config(user: Path) -> dict[str, Any]:
+    """The user's config.json, or {} if it is missing or unreadable. A broken file
+    is kept as config.json.kaputt-<time> and replaced, so the bot still starts."""
+    if not user.is_file():
+        return {}
+    try:
+        data = json.loads(user.read_text())
+        if not isinstance(data, dict):
+            raise ValueError("kein JSON-Objekt")
+        return data
+    except (ValueError, UnicodeDecodeError) as error:
+        backup = user.with_name(f"config.json.kaputt-{int(time.time())}")
+        try:
+            os.replace(user, backup)
+        except OSError:
+            backup = user
+        print(f"Warnung: {user} war nicht lesbar ({error}); gesichert als {backup.name}, starte mit Standardwerten.")
+        return {}
+
+
 def load_config(home: Path) -> dict[str, Any]:
-    cfg = json.loads((HERE / "config.json").read_text())
+    from . import settings
+
+    defaults = json.loads((HERE / "config.json").read_text())
+    cfg = copy.deepcopy(defaults)
     user = home / "config.json"
-    if user.is_file():
-        override = json.loads(user.read_text())
-        for key, value in override.items():
-            if key.startswith("_"):
-                continue
-            if isinstance(value, dict) and isinstance(cfg.get(key), dict):
-                cfg[key].update(value)
-            else:
-                cfg[key] = value
-    else:
+    override = _read_user_config(user)
+    for key, value in override.items():
+        if key.startswith("_"):
+            continue
+        if isinstance(value, dict) and isinstance(cfg.get(key), dict):
+            cfg[key].update(value)
+        else:
+            cfg[key] = value
+
+    # every value the form could set goes through the form's own validation
+    dropped = []
+    for entry in settings.SCHEMA:
+        path = entry["path"]
+        value = settings.get_path(cfg, path)
+        if value == settings.get_path(defaults, path):
+            continue
+        clean, errors = settings.validate({path: value})
+        if errors:
+            settings.set_path(cfg, path, settings.get_path(defaults, path))
+            dropped.append(f"{path}={value!r} ({errors[path]})")
+        else:
+            settings.set_path(cfg, path, clean[path])
+    for path in settings.cross_check(cfg):
+        settings.set_path(cfg, path, settings.get_path(defaults, path))
+        dropped.append(f"{path} (passt nicht zum Gegenwert)")
+    try:
+        bankroll = float(cfg.get("bankroll_usd"))
+        if not 10 <= bankroll <= 1e9:
+            raise ValueError
+        cfg["bankroll_usd"] = bankroll
+    except (TypeError, ValueError):
+        cfg["bankroll_usd"] = defaults["bankroll_usd"]
+        dropped.append("bankroll_usd")
+    if dropped:
+        print("Warnung: ungültige Werte in config.json ignoriert, Standard genommen: " + "; ".join(dropped))
+    cfg["_dropped"] = dropped
+
+    if not user.is_file():
         home.mkdir(parents=True, exist_ok=True)
-        user.write_text(json.dumps({"_hint": "Werte hier ueberschreiben, Rest kommt aus bot/config.json"}, indent=2))
+        _write_atomic(user, json.dumps({"_hint": "Werte hier ueberschreiben, Rest kommt aus bot/config.json"}, indent=2))
     return cfg
 
 
@@ -58,11 +118,11 @@ def persist_to(home: Path):
 
     def save(clean: dict[str, Any]) -> None:
         user = home / "config.json"
-        current = json.loads(user.read_text()) if user.is_file() else {}
+        current = _read_user_config(user)
         current.pop("_hint", None)
         for path, value in clean.items():
             set_path(current, path, value)
-        user.write_text(json.dumps(current, indent=2, ensure_ascii=False) + "\n")
+        _write_atomic(user, json.dumps(current, indent=2, ensure_ascii=False) + "\n")
 
     return save
 
@@ -115,8 +175,11 @@ def main(argv: list[str] = None) -> int:
         print("mode muss 'paper' sein. Echtgeld-Ausfuehrung ist nicht enthalten (siehe bot/live.py).")
         return 2
 
+    dropped = cfg.pop("_dropped", [])
     engine = build(cfg, home, args.demo)
     engine.persist = persist_to(home)
+    if dropped:
+        engine.store.log("warn", "config.json: ungültige Werte ignoriert, Standard genommen: " + "; ".join(dropped))
     engine.home = home
     engine.demo = args.demo
 
