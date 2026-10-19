@@ -37,6 +37,56 @@ jobs:
           python -m pip install --quiet anthropic certifi
           python -W error::ResourceWarning -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
 
+  vps:
+    name: VPS – Installation als systemd-Dienst (Ubuntu), echte Märkte
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Installieren wie auf einem frischen Server
+        run: sudo NTB_SOURCE="$GITHUB_WORKSPACE" bash trading-bot/deploy/vps-install.sh
+      - name: Dienst läuft, nur lokal erreichbar, pollt die echten Märkte
+        run: |
+          state() { curl -s -m 5 http://127.0.0.1:8765/api/state; }
+          systemctl is-active new-token-bot
+          systemctl is-enabled new-token-bot
+          state | python3 -c "import json,sys; s=json.load(sys.stdin); print(s['app'], s['mode'], 'update-Knopf', s['can_update'])"
+          ss -ltn | grep ':8765'
+          ip="$(hostname -I | awk '{print $1}')"
+          if curl -s -m 3 "http://$ip:8765/api/state" > /dev/null; then echo "Steuerseite ist von außen erreichbar!"; exit 1; fi
+          echo "von außen ($ip:8765) nicht erreichbar – gut"
+          n=0
+          for _ in $(seq 1 60); do
+            n="$(state | python3 -c "import json,sys; print(json.load(sys.stdin)['polls'])")"
+            [ "$n" -ge 2 ] && break
+            sleep 2
+          done
+          echo "Polls: $n"; [ "$n" -ge 2 ]
+          state | python3 -c "import json,sys; s=json.load(sys.stdin); print('Quellen:', [(x['name'], x['ok'], x['found']) for x in s['sources']]); print('Kandidaten:', s['stats']['candidates'])"
+          sudo -u newtokenbot test -w /var/lib/new-token-bot/bot.sqlite
+          if sudo -u newtokenbot test -w /opt/new-token-bot/src/bot/main.py; then echo "der Bot kann sein Programm ändern!"; exit 1; fi
+          [ "$(sudo stat -c %a /etc/new-token-bot.env)" = 600 ]
+      - name: Absturz → Neustart · Beenden → bleibt aus · erneut installieren → Konto bleibt
+        run: |
+          state() { curl -s -m 5 http://127.0.0.1:8765/api/state; }
+          up() { for _ in $(seq 1 40); do state | grep -q '"app": "new-token-bot"' && return 0; sleep 1; done; return 1; }
+          before="$(state | python3 -c "import json,sys; print(json.load(sys.stdin)['stats']['candidates'])")"
+          sudo systemctl kill -s KILL new-token-bot
+          sleep 2
+          up && echo "nach dem Absturz neu gestartet"
+          curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8765/api/quit
+          sleep 10
+          if systemctl is-active --quiet new-token-bot; then echo "läuft nach Beenden weiter"; exit 1; fi
+          echo "Beenden hält ihn an"
+          sudo NTB_SOURCE="$GITHUB_WORKSPACE" bash trading-bot/deploy/vps-install.sh > /dev/null
+          up
+          after="$(state | python3 -c "import json,sys; print(json.load(sys.stdin)['stats']['candidates'])")"
+          echo "Kandidaten vorher $before, nach dem Update $after"
+          [ "$after" -ge "$before" ]
+      - name: Protokoll des Dienstes
+        if: always()
+        run: sudo journalctl -u new-token-bot -n 60 --no-pager
+
   macos:
     name: macOS – Startskripte (bash 3.2), Apple-Python, echte Märkte
     runs-on: macos-14
@@ -60,8 +110,8 @@ jobs:
             sleep 1
           done
           cat run.log
-          ! grep -q "unbound variable" run.log
-          ! grep -q "Exception occurred" run.log          # a client hanging up must not print a server traceback
+          if grep -q "unbound variable" run.log; then echo "unbound variable im Starter"; exit 1; fi
+          if grep -q "Exception occurred" run.log; then echo "Server-Traceback"; exit 1; fi   # a client hanging up must not print one
           curl -s -m 5 http://127.0.0.1:8765/api/state | grep -q '"app": "new-token-bot"'
           curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8765/api/quit
       - name: Demo-Durchlauf über launch.sh

@@ -17,6 +17,7 @@ eine Kante hat. Läuft als lokale Mac-App, ohne Abhängigkeiten außer Python 3.
 | Als App aus einem Klon | einmal `bash install-app.sh` im Ordner `trading-bot`, danach Doppelklick auf **New Token Bot** |
 | Live-Markt, Spielgeld | Doppelklick auf **Start Trading Bot.command** |
 | Offline-Demo, Zeitraffer | Doppelklick auf **Start Demo.command** |
+| Auf einem VPS (Linux-Server), rund um die Uhr | auf dem Server `curl -fsSL https://raw.githubusercontent.com/sebastian10099/Agar.io-bot/claude/agenen-funktionalitaet-hnw6g5/trading-bot/deploy/vps-install.sh \| sudo bash`, auf dem Mac Doppelklick auf **VPS verbinden.command** – siehe [Auf einem VPS](#auf-einem-vps--rund-um-die-uhr-ohne-den-mac) |
 
 **Vorab-Check beim Start** (`bot/preflight.py`, von `launch.sh` und der App
 aufgerufen): prüft HTTPS mit dem gewählten Python und installiert bei
@@ -26,7 +27,8 @@ Klappt HTTPS mit keinem Python, steht die Abhilfe im Log und im Dialog.
 
 **Schutz vor fremden Webseiten:** Die Steuer-API antwortet nur auf Anfragen
 an `127.0.0.1`, `localhost` oder `::1`; ändernde Anfragen müssen JSON sein und
-dürfen nur von der Steuerseite selbst kommen. Eine andere Webseite im selben
+dürfen nur von der Steuerseite selbst kommen (gleicher Ursprung – auch durch
+einen SSH-Tunnel mit anderem Port). Eine andere Webseite im selben
 Browser kann den Bot damit weder pausieren noch Einstellungen ändern oder das
 Konto zurücksetzen; abgewiesene Versuche stehen im Protokoll.
 
@@ -60,6 +62,40 @@ einträgst, überschreibt die Standardwerte aus `bot/config.json`.
 Falls der Starter „Kein Python gefunden, das HTTPS-Verbindungen aufbauen kann"
 meldet: Der python.org-Build bringt keine Zertifikate mit. Einmalig
 `/Applications/Python 3.x/Install Certificates.command` doppelklicken.
+
+## Auf einem VPS – rund um die Uhr, ohne den Mac
+
+Ein kleiner Linux-Server reicht (1 CPU, 512 MB RAM; Ubuntu 22.04/24.04 oder
+Debian 12). Auf dem Server, als root oder mit sudo:
+
+```
+curl -fsSL https://raw.githubusercontent.com/sebastian10099/Agar.io-bot/claude/agenen-funktionalitaet-hnw6g5/trading-bot/deploy/vps-install.sh | sudo bash
+```
+
+`deploy/vps-install.sh` installiert Python, lädt den Bot nach
+`/opt/new-token-bot`, legt den Systembenutzer `newtokenbot` an und richtet den
+systemd-Dienst `new-token-bot` ein: Er startet beim Booten, nach einem Absturz
+von selbst neu, läuft im Paper-Modus und darf nur seinen Datenordner
+`/var/lib/new-token-bot` beschreiben – sein eigenes Programm nicht. Derselbe
+Befehl noch einmal **aktualisiert**; Konto und Einstellungen bleiben.
+
+**Die Steuerseite** hört auch auf dem Server nur auf `127.0.0.1` – aus dem
+Internet ist sie nicht erreichbar, es gibt kein Passwort, das man erraten
+könnte. Man holt sie über SSH auf den Mac: Doppelklick auf
+**VPS verbinden.command** (fragt beim ersten Mal nach `benutzer@server`, baut
+den Tunnel auf und öffnet `http://127.0.0.1:18765/`; Fenster offen lassen),
+oder von Hand `ssh -N -L 18765:127.0.0.1:8765 benutzer@server`.
+
+**Schlüssel** (Claude, eigener Solana-Knoten für die Halter-Prüfung) stehen in
+`/etc/new-token-bot.env`, lesbar nur für root; danach
+`sudo systemctl restart new-token-bot`. Protokoll: `sudo journalctl -u
+new-token-bot -f`. „Beenden“ auf der Steuerseite hält den Dienst an,
+`sudo systemctl start new-token-bot` startet ihn wieder.
+
+Getestet wird das bei jedem Push auf einem echten Ubuntu-Server von GitHub:
+installieren, Dienst aktiv, von außen nicht erreichbar, echte Polls als
+eingeschränkter Benutzer, Absturz → Neustart, Beenden → bleibt aus, erneut
+installieren → Konto bleibt.
 
 ## Die Steuerseite
 
@@ -431,6 +467,8 @@ bot/
   doctor.py      Selbsttest: Erreichbarkeit und Parser aller Quellen
   preflight.py   Startcheck: HTTPS/CA-Zertifikate und Anthropic-SDK, repariert per pip
   sources/       DexScreener, GeckoTerminal, pump.fun, RugCheck, Solana-RPC (Eigenprüfung, Kurven-Reserven)
+deploy/
+  vps-install.sh Linux-Server: Installation/Aktualisierung als systemd-Dienst
 tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
 ```
 

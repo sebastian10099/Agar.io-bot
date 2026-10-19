@@ -894,6 +894,19 @@ class CrossSiteTests(unittest.TestCase):
         status, _ = self.req("POST", "/api/control", body='{"action": "pause"}', headers={"Content-Type": "application/json; charset=utf-8"})
         self.assertEqual(status, 200)
 
+    def test_the_page_through_an_ssh_tunnel_works_and_other_local_pages_do_not(self):
+        tunnel = "127.0.0.1:18765"                      # ssh -L 18765:127.0.0.1:<port> vps
+        status, data = self.req("POST", "/api/control", body='{"action": "pause"}',
+                                headers={"Host": tunnel, "Content-Type": "application/json", "Origin": f"http://{tunnel}"})
+        self.assertEqual(status, 200, data); self.assertTrue(self.eng.paused)
+        self.eng.set_paused(False)
+        status, _ = self.req("POST", "/api/control", body='{"action": "pause"}',          # another local page
+                             headers={"Host": tunnel, "Content-Type": "application/json", "Origin": "http://127.0.0.1:9999"})
+        self.assertEqual(status, 403); self.assertFalse(self.eng.paused)
+        status, _ = self.req("POST", "/api/control", body='{"action": "pause"}',          # a rebinding name never counts
+                             headers={"Host": "evil.example:18765", "Content-Type": "application/json", "Origin": "http://evil.example:18765"})
+        self.assertEqual(status, 403); self.assertFalse(self.eng.paused)
+
     def test_bad_numbers_get_an_answer_not_a_dropped_connection(self):
         status, data = self.req("POST", "/api/positions/close", body='{"id": "abc"}', headers={"Content-Type": "application/json"})
         self.assertEqual(status, 400, data)

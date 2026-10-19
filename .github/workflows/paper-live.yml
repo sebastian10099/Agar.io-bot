@@ -69,7 +69,7 @@ jobs:
               print("Profil: Standard")
           PY
           /bin/bash ./launch.sh --no-open --port 8765 > "$RUNNER_TEMP/bot.out" 2>&1 &
-          for i in $(seq 1 120); do curl -s -m 2 http://127.0.0.1:8765/api/state | grep -q '"app": "new-token-bot"' && break; sleep 1; done
+          for _ in $(seq 1 120); do curl -s -m 2 http://127.0.0.1:8765/api/state | grep -q '"app": "new-token-bot"' && break; sleep 1; done
           head -20 "$RUNNER_TEMP/bot.out"
 
           save_account() {   # consistent copy of the running database, compressed

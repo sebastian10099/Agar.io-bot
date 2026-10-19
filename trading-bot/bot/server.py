@@ -81,8 +81,14 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
             origin = self.headers.get("Origin")
             if origin is None:
                 return True                      # same-origin requests may omit it
+            origin = origin.strip().lower()
+            # same origin as the local address the browser used - through an SSH tunnel
+            # (ssh -L 18765:127.0.0.1:8765 vps) that port is not the server's own
+            host = (self.headers.get("Host") or "").strip().lower()
+            if host and _host_name(host) in LOCAL_NAMES and origin == f"http://{host}":
+                return True
             port = self.server.server_address[1]
-            return origin.strip().lower() in {f"http://{n}:{port}" for n in LOCAL_NAMES}
+            return origin in {f"http://{n}:{port}" for n in LOCAL_NAMES}
 
         def _guarded(self, handler) -> None:
             try:
