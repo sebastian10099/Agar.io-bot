@@ -328,7 +328,12 @@ deshalb nur die Hälfte der Score-Punkte. Erst wenn beide nichts liefern, wird
 nur beobachtet. Die Halter-Abfrage (`getTokenLargestAccounts`) drosselt der
 öffentliche RPC hart, und kein freier öffentlicher Knoten beantwortet sie ohne
 Schlüssel (geprüft: publicnode, drpc, ankr, onfinality, omniatech). Ohne
-Antwort steht beim Token „Halterverteilung unbekannt“ als Warnung. Wer einen
+Antwort prüft der Bot bei pump.fun-Coins wenigstens den **Ersteller**: Sein
+Kurvenkonto nennt ihn, daraus folgt die Adresse seines Token-Kontos, und beides
+lässt sich mit gewöhnlichen, nicht gedrosselten Abfragen lesen. Hält der
+Ersteller noch ≥ 15 % der Menge, ist das Gefahr (≥ 5 % Warnung) – er kann
+jederzeit auf alle Käufer abverkaufen. Die übrige Verteilung bleibt dann
+„unbekannt“ (Warnung). Wer einen
 kostenlosen Schlüssel hat (z. B. Helius), trägt den Knoten in
 `SOLANA_HOLDER_RPCS` ein (mehrere mit Komma); der Bot probiert sie der Reihe
 nach und bleibt beim ersten, der antwortet.

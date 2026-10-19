@@ -22,9 +22,7 @@ import time
 from typing import Any, Callable, Optional
 
 from .http import post_json
-from .solana_rpc import PAUSE_S, TIMEOUT_S, TRIP_AFTER, rpc_url
-
-PUMP_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+from .solana_rpc import PAUSE_S, PUMP_PROGRAM, TIMEOUT_S, TRIP_AFTER, rpc_url
 PUMP_DEXES = {"pumpfun", "pump-fun"}
 CURVE_DEXES = PUMP_DEXES | {"meteoradbc", "meteora-dbc", "launchlab", "raydium-launchlab"}
 TOKEN_DECIMALS = 6            # every pump.fun token

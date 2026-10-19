@@ -15,6 +15,9 @@ signals that make a token a trap no matter what its chart looks like:
                                    owned by programs - the pump.fun curve, AMM
                                    pools, lockers - do not count: their owner
                                    address lies off the ed25519 curve.
+- when the holder query gets no answer (the public endpoint throttles it hard):
+  for a pump.fun coin the creator's share - its curve account names the
+  creator, whose token account address follows from it; two plain reads.
 
 It sees less than RugCheck did (no LP-lock or insider analysis), so the
 strategy gives it only half of RugCheck's score points. RPC: SOLANA_RPC_URL,
@@ -22,6 +25,8 @@ default the public mainnet endpoint (rate-limited, enough for the few tokens
 that reach this check)."""
 from __future__ import annotations
 
+import base64
+import hashlib
 import os
 import time
 from typing import Any, Callable, Optional
@@ -32,6 +37,12 @@ DEFAULT_RPC = "https://api.mainnet-beta.solana.com"
 TIMEOUT_S = 8
 TRIP_AFTER = 3
 PAUSE_S = 60.0
+
+PUMP_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+TOKEN_PROGRAMS = {"spl-token": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                  "spl-token-2022": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"}
+CREATOR_DANGER, CREATOR_WARN = 15.0, 5.0   # % of supply still in the creator's wallet
 
 CACHE_TTL_S = 300.0           # holders move: a token seen again after 5 minutes is checked again
 HOLDER_DANGER = (25.0, 60.0)  # % of supply: one wallet, the ten largest wallets
@@ -52,6 +63,25 @@ def b58decode(text: str) -> bytes:
     return b"\x00" * (len(text) - len(text.lstrip("1"))) + raw
 
 
+def b58encode(raw: bytes) -> str:
+    n = int.from_bytes(raw, "big")
+    out = ""
+    while n:
+        n, r = divmod(n, 58)
+        out = _B58[r] + out
+    return "1" * (len(raw) - len(raw.lstrip(b"\x00"))) + out
+
+
+def find_program_address(seeds: list[bytes], program: str) -> str:
+    """The chain's own derivation: the first bump (from 255 down) whose hash is off the curve."""
+    pid = b58decode(program)
+    for bump in range(255, -1, -1):
+        h = hashlib.sha256(b"".join(seeds) + bytes([bump]) + pid + b"ProgramDerivedAddress").digest()
+        if not _point_on_curve(h):
+            return b58encode(h)
+    raise ValueError("no program address")
+
+
 def on_curve(address: str) -> Optional[bool]:
     """Is this Solana address an ed25519 public key (a wallet) or not (a
     program-derived address)? Same test as the chain's own: does the 32-byte
@@ -62,6 +92,10 @@ def on_curve(address: str) -> Optional[bool]:
         return None
     if len(b) != 32:
         return None
+    return _point_on_curve(b)
+
+
+def _point_on_curve(b: bytes) -> bool:
     y = int.from_bytes(b, "little")
     sign, y = y >> 255, y & ((1 << 255) - 1)
     if y >= _P:
@@ -135,6 +169,23 @@ def assess_mint(value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         supply = 0
     return {"score": 0.0, "danger": danger, "warn": warn, "source": "onchain",
             "program": data.get("program") if isinstance(data, dict) else None, "supply_raw": supply}
+
+
+def creator_of_curve(data: bytes) -> Optional[str]:
+    """pump.fun BondingCurve: 8-byte discriminator, five u64 reserves, the 'complete'
+    flag, then the creator's public key (bytes 49-81)."""
+    if len(data) < 81:
+        return None
+    creator = b58encode(data[49:81])
+    return creator if on_curve(creator) else None
+
+
+def judge_creator(share: float) -> tuple[list[str], list[str]]:
+    if share >= CREATOR_DANGER:
+        return [f"der Ersteller hält {share:.0f} % (kann jederzeit abverkaufen)"], []
+    if share >= CREATOR_WARN:
+        return [], [f"der Ersteller hält {share:.0f} %"]
+    return [], []
 
 
 def judge_holders(h: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -219,6 +270,23 @@ class OnChainCheck:
         return {"top1": round(top[0], 2) if top else 0.0, "top10": round(sum(top[:10]), 2),
                 "wallets": len(top), "programs": round(programs, 2)}
 
+    def creator_share(self, mint: str, program: Optional[str], supply_raw: int) -> Optional[dict[str, Any]]:
+        """Share of the supply in the creator's wallet, for a pump.fun coin (None for any other)."""
+        if supply_raw <= 0 or program not in TOKEN_PROGRAMS:
+            return None
+        curve = self._rpc("getAccountInfo", [find_program_address([b"bonding-curve", b58decode(mint)], PUMP_PROGRAM),
+                                             {"encoding": "base64", "commitment": "confirmed"}])
+        if not isinstance(curve, dict) or curve.get("owner") != PUMP_PROGRAM:
+            return None                                    # not a pump.fun coin
+        creator = creator_of_curve(base64.b64decode((curve.get("data") or [""])[0]))
+        if creator is None:
+            return None
+        ata = find_program_address([b58decode(creator), b58decode(TOKEN_PROGRAMS[program]), b58decode(mint)], ATA_PROGRAM)
+        acc = self._rpc("getAccountInfo", [ata, {"encoding": "jsonParsed", "commitment": "confirmed"}])
+        info = ((((acc or {}).get("data") or {}).get("parsed") or {}).get("info") or {}) if isinstance(acc, dict) else {}
+        amount = int((info.get("tokenAmount") or {}).get("amount") or 0)   # no account: sold out or never bought
+        return {"creator": creator, "share": round(amount / supply_raw * 100, 2)}
+
     def summary(self, mint: str) -> Optional[dict[str, Any]]:
         hit = self._cache.get(mint)
         if hit and self.clock() - hit[0] < CACHE_TTL_S:
@@ -241,13 +309,28 @@ class OnChainCheck:
             return None
         self.last_error = ""
         self._streak = 0
+        supply = int(result.pop("supply_raw", 0) or 0)
         try:
-            h = self.holders(mint, int(result.pop("supply_raw", 0) or 0))
+            h = self.holders(mint, supply)
         except Exception as error:  # noqa: BLE001 - the authority check stands; the gap is shown
             h = None
             self.last_error = f"Halter: {type(error).__name__}: {str(error)[:100]}"
         if h is None:
-            result["warn"].append("Halterverteilung unbekannt (RPC ohne Antwort)")
+            c = None
+            if mint.endswith("pump"):
+                try:
+                    c = self.creator_share(mint, result.get("program"), supply)
+                except Exception as error:  # noqa: BLE001 - then the gap stays as it is
+                    self.last_error = (self.last_error + " · " if self.last_error else "") + \
+                        f"Ersteller: {type(error).__name__}: {str(error)[:80]}"
+            if c is None:
+                result["warn"].append("Halterverteilung unbekannt (RPC ohne Antwort)")
+            else:
+                danger, warn = judge_creator(c["share"])
+                result["danger"] += danger
+                result["warn"] += warn
+                result["warn"].append(f"Halterverteilung unbekannt – nur der Ersteller geprüft ({c['share']:.1f} %)")
+                result["creator"] = c
         else:
             danger, warn = judge_holders(h)
             result["danger"] += danger

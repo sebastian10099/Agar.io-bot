@@ -97,12 +97,29 @@ jobs:
         run: |
           echo "DNS api.rugcheck.xyz: system=$(dig +short api.rugcheck.xyz | head -1) 1.1.1.1=$(dig +short @1.1.1.1 api.rugcheck.xyz | head -1)"
           curl -sS -m 20 -o /dev/null -w 'https://api.rugcheck.xyz -> HTTP %{http_code}\n' https://api.rugcheck.xyz/v1/stats/recent || true
-          # the holder query of the own check: what does the public RPC answer?
-          MINT=$(curl -s -m 20 https://api.dexscreener.com/token-profiles/latest/v1 | python3 -c "import json,sys; print(next(x['tokenAddress'] for x in json.load(sys.stdin) if x.get('chainId')=='solana'))")
-          for RPC in https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com https://solana.drpc.org https://rpc.ankr.com/solana https://solana.api.onfinality.io/public https://endpoints.omniatech.io/v1/sol/mainnet/public; do
-            echo "--- $RPC"
-            curl -s -m 20 -X POST -H 'Content-Type: application/json' -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getTokenLargestAccounts\",\"params\":[\"$MINT\",{\"commitment\":\"confirmed\"}]}" "$RPC" | head -c 300; echo
-          done
+          # creator check on live pump.fun coins: curve address = DexScreener's pair, creator at bytes 49-81,
+          # and the derived token account really belongs to the creator and the coin
+          (cd trading-bot && python3 - <<'PY'
+          import json, urllib.request
+          from bot.sources.solana_rpc import OnChainCheck, PUMP_PROGRAM, assess_mint, b58decode, find_program_address
+          get = lambda u: json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "new-token-bot/0.1"}), timeout=20))
+          mints = [x["tokenAddress"] for x in get("https://api.dexscreener.com/token-profiles/latest/v1") if x.get("chainId") == "solana" and x["tokenAddress"].endswith("pump")][:6]
+          pairs = {p["baseToken"]["address"]: p for p in get("https://api.dexscreener.com/tokens/v1/solana/" + ",".join(mints)) if p.get("dexId") == "pumpfun"}
+          oc = OnChainCheck()
+          for mint in mints:
+              curve = find_program_address([b"bonding-curve", b58decode(mint)], PUMP_PROGRAM)
+              info = assess_mint(oc._rpc("getAccountInfo", [mint, {"encoding": "jsonParsed"}]))
+              c = oc.creator_share(mint, info and info["program"], info and info["supply_raw"] or 0)
+              line = f"{mint[:8]} Kurve {'= DexScreener' if mint not in pairs else ('= DexScreener-Paar' if pairs[mint]['pairAddress'] == curve else 'ABWEICHUNG ' + pairs[mint]['pairAddress'])} · {info and info['program']} · Ersteller {c}"
+              if c:
+                  from bot.sources.solana_rpc import ATA_PROGRAM, TOKEN_PROGRAMS
+                  ata = find_program_address([b58decode(c["creator"]), b58decode(TOKEN_PROGRAMS[info["program"]]), b58decode(mint)], ATA_PROGRAM)
+                  acc = oc._rpc("getAccountInfo", [ata, {"encoding": "jsonParsed"}])
+                  parsed = ((acc or {}).get("data") or {}).get("parsed", {}).get("info", {}) if acc else {}
+                  line += f" · Konto {'gehört dem Ersteller' if parsed.get('owner') == c['creator'] and parsed.get('mint') == mint else ('fehlt (verkauft/nie gekauft)' if acc is None else 'FALSCH ' + str(parsed)[:120])}"
+              print(line)
+          PY
+          ) || echo "Ersteller-Probe fehlgeschlagen"
           # DNS over HTTPS bypasses the runner's resolver: Status 3 = the name does not exist anywhere
           for host in api.rugcheck.xyz rugcheck.xyz; do
             echo "DoH $host: $(curl -s -m 15 -H 'accept: application/dns-json' "https://cloudflare-dns.com/dns-query?name=$host&type=A" | head -c 300)"
