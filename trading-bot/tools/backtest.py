@@ -220,6 +220,14 @@ PROBES = [
          "min_liquidity_usd": 15000, "min_buys_m5": 8, "min_buy_sell_ratio": 3.0, "change_m5": (-100, 1e9),
          "max_age_min": 30, "max_fdv_liquidity": 3}),
      {"stop_loss_pct": -30, "trailing_stop_pct": 35, "time_stop_minutes": 60, "take_profit_ladder": [[100, 0.5]]}),
+    # the --search on 1059 tokens with honest payouts (19 Oct 16:51 - 20 Oct 10:38 UTC): the first rule
+    # that held on the unseen half (+23 % on 12 trades, then +29 % on 10) - one of 31 of 2586 that did
+    ("Aktive große Pools (Liq ≥ 30k, ≥ 100 Käufe, 5m 0 bis 50 %, Bewertung/Liq ≤ 1,5x, ohne RugCheck-Gefahr)",
+     1792493400.0,      # 20 Oct 2026 10:50 UTC
+     lambda c: not (c["snapshot"].get("rug") or {}).get("danger") and _passes(c["snapshot"], {
+         "min_liquidity_usd": 30000, "min_buys_m5": 100, "min_buy_sell_ratio": 1.0, "change_m5": (0, 50),
+         "max_age_min": 1e9, "max_fdv_liquidity": 1.5}),
+     {"stop_loss_pct": -20, "trailing_stop_pct": 15, "time_stop_minutes": 20, "take_profit_ladder": [[25, 0.5], [50, 0.25]]}),
 ]
 
 
