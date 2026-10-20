@@ -88,6 +88,10 @@ class StrategyTests(unittest.TestCase):
         for dex, token in (("pumpswap", fixture("RUN")["token"]), ("meteora", migrated["token"]), ("raydium", migrated["token"])):
             v = evaluate(dict(fixture("RUN"), dex=dex, token=token), lp, CFG)
             self.assertEqual(v["decision"], "skip", dex); self.assertIn("LP Unlocked", v["reasons"][0])
+        # live, 20 Oct 2026: "pump" addresses ground by scammers, their own pools worth more than the coin
+        fake = dict(migrated, fdv=migrated["liquidity_usd"] * 0.6)
+        v = evaluate(fake, lp, CFG)
+        self.assertEqual(v["decision"], "skip"); self.assertIn("LP Unlocked", v["reasons"][0])
         holders = dict(lp, danger=["Large Amount of LP Unlocked", "Top 10 holders high ownership"])
         v = evaluate(migrated, holders, CFG)                                       # who holds the supply always counts
         self.assertEqual(v["decision"], "skip"); self.assertIn("Top 10 holders", v["reasons"][0])

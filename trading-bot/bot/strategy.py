@@ -33,13 +33,23 @@ LP_MANAGED_DEXES = {"pumpswap"}
 PUMPFUN_SUFFIX = "pump"
 
 
+# A pool pump.fun opens for a coin leaving its curve holds about a fifth of the coin: the coin is
+# worth ~4x the pool. Whoever opens a pool for a coin of their own puts most of it in: the pool is
+# worth more than the coin. Scammers grind addresses ending in "pump" too (20 Oct 2026: three such
+# pools, valued 0.6-0.8x their liquidity, were emptied within five minutes of the buy).
+PUMPFUN_MIN_FDV_LIQ = 1.2
+
+
 def lp_managed(p: dict[str, Any]) -> bool:
-    return str(p.get("dex") or "").lower() in LP_MANAGED_DEXES and str(p.get("token") or "").endswith(PUMPFUN_SUFFIX)
+    if str(p.get("dex") or "").lower() not in LP_MANAGED_DEXES or not str(p.get("token") or "").endswith(PUMPFUN_SUFFIX):
+        return False
+    fdv, liq = float(p.get("fdv") or 0), float(p.get("liquidity_usd") or 0)
+    return not (fdv > 0 and liq > 0 and fdv / liq < PUMPFUN_MIN_FDV_LIQ)
 
 
 def own_pumpswap_pool(p: dict[str, Any]) -> bool:
     """A pool someone opened on PumpSwap for a coin of their own (not one of pump.fun's)."""
-    return str(p.get("dex") or "").lower() == "pumpswap" and not str(p.get("token") or "").endswith(PUMPFUN_SUFFIX)
+    return str(p.get("dex") or "").lower() == "pumpswap" and not lp_managed(p)
 
 
 def evaluate(p: dict[str, Any], rug: Optional[dict[str, Any]], cfg: dict[str, Any]) -> dict[str, Any]:

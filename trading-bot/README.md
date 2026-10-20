@@ -280,7 +280,13 @@ Minuten lag der Median bei +16 %. RugCheck nannte fast alle dieser Pool-Tokens
   zieht der Coin in einen Pool um, kann er dort gekauft werden.
 - **„LP Unlocked“ zählt nur im eigenen Pool von pump.fun als Warnung**
   (Score-Abzug: ein PumpSwap-Pool eines Coins, dessen Adresse auf „pump“
-  endet – diese Liquidität kann niemand abziehen). Überall sonst ist es eine
+  endet und der wie ein pump.fun-Umzug gebaut ist – diese Liquidität kann
+  niemand abziehen). Die Endung allein reicht nicht: Betrüger erzeugen sich
+  „pump“-Adressen. Ein Pool, der mehr wert ist als der ganze Coin
+  (Bewertung unter dem 1,2-Fachen der Liquidität), wurde vom Ersteller
+  befüllt – am 20.10.2026 wurden drei solche „pump“-Pools binnen fünf
+  Minuten nach dem Kauf geleert; ein echter Umzug hält rund ein Fünftel des
+  Coins (Bewertung um das 4-Fache). Überall sonst ist es eine
   Gefahr: Wer selbst einen Pool auf PumpSwap oder Meteora eröffnet, hält die
   LP-Anteile und kann alles mit einer Transaktion herausziehen. RugCheck
   markiert 77 von 80 solcher PumpSwap-Pools, aber nur 1 von 10 Pools von
