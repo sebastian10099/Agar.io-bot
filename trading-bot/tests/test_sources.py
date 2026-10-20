@@ -664,8 +664,7 @@ class PresetTests(unittest.TestCase):
     def test_presets_are_listed_valid_and_read_only(self):
         from bot import settings
         from bot.engine import presets
-        self.assertEqual(set(presets()), {"★ Locker – mehr Kandidaten (Paper)", "★ Standard", "★ Streng – nur die besten",
-                                          "★ Frühkauf – hohes Risiko (Paper)"})
+        self.assertEqual(set(presets()), {"★ Locker – mehr Kandidaten (Paper)", "★ Standard", "★ Streng – nur die besten"})
         keys = [set(flat) for flat in presets().values()]
         self.assertTrue(all(k == keys[0] for k in keys), "every preset sets the same keys - switching back undoes all of one")
         for name, flat in presets().items():

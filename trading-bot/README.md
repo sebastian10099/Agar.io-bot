@@ -297,15 +297,15 @@ Minuten lag der Median bei +16 %. RugCheck nannte fast alle dieser Pool-Tokens
   gekauft verloren sie. Gefunden durch Suchen in denselben Daten – darum
   prüft der Backtest diese Idee als **vorab festgelegte Probe** nur auf den
   Daten ab 19.10.2026, 14:00 UTC.
-- **Profil „★ Frühkauf – hohes Risiko (Paper)“** – dieselbe Idee zum
-  Ausprobieren mit Spielgeld: kauft nur Pools, die jemand selbst auf
-  PumpSwap eröffnet hat, in ihren ersten 1,5 Minuten, und nimmt dort
-  „LP unlocked“ hin (Schalter „Frühkauf: selbst eröffnete PumpSwap-Pools“).
-  Freeze-/Mint-Authority, Token-2022-Fallen und große Einzelhalter schließen
-  weiter aus. Der Ersteller kann die Liquidität jederzeit abziehen – ein
-  Teil dieser Käufe endet bei null. Paper-Live testet dieses Profil ab
-  19.10.2026 mit einem neuen Konto (1.000 $); ob es trägt, zeigt erst der
-  Lauf, nicht die Daten, aus denen es stammt.
+- **Frühkauf – im Test gescheitert.** Dieselbe Idee lief am 19.10.2026
+  als Profil in Paper-Live: nur Pools, die jemand selbst auf PumpSwap
+  eröffnet hat, in ihren ersten 1,5 Minuten, „LP unlocked“ hingenommen
+  (Schalter „Frühkauf: selbst eröffnete PumpSwap-Pools“). Mit ehrlicher
+  Auszahlung (siehe unten) verlor sie: 10 Trades −33 % je Trade, dann mit
+  zwei weiteren Filtern („Mutable metadata“ ablehnen, größte Wallet ≤ 10 %)
+  40 Trades −16 % je Trade, 16 davon Totalverluste; die vorab festgelegte
+  Probe im Backtest zeigte dasselbe (42 Trades, −14 %). Das Profil wird
+  nicht mehr mitgeliefert; die Schalter bleiben, um es nachzuprüfen.
 - **Ohne RugCheck kein Pool außerhalb von pump.fun:** Antwortet RugCheck
   nicht, prüft der Bot selbst auf der Chain (Freeze, Mint, Token-2022,
   Halter) – wer die Liquidität eines Pools hält, sieht er dabei nicht. Solche

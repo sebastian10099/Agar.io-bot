@@ -23,6 +23,10 @@ FIX = json.loads((ROOT / "tests" / "fixtures" / "pairs.json").read_text())
 RUG = FakeRug()
 
 
+# the "Frühkauf" profile as it ran in Paper-Live on 19 Oct 2026 (no longer shipped: it lost)
+EARLY_PROFILE = {"filters.min_age_minutes": 0, "filters.max_age_minutes": 1.5, "filters.min_liquidity_usd": 5000, "filters.min_volume_m5_usd": 0, "filters.min_buys_m5": 0, "filters.min_buy_sell_ratio_m5": 0, "filters.min_price_change_m5_pct": -100, "filters.max_price_change_m5_pct": 100000, "filters.max_fdv_usd": 50000000, "filters.max_fdv_liquidity_ratio": 0, "filters.max_rugcheck_score": 4000, "filters.allow_rugcheck_unknown": True, "filters.require_holder_check": True, "filters.allow_curve_buys": False, "filters.early_own_pools": True, "scoring.min_score": 0, "filters.max_top_holder_pct": 10, "filters.reject_mutable_metadata": True}
+
+
 def fixture(symbol, age_min=10.0):
     raw = next(p for p in FIX if p["baseToken"]["symbol"] == symbol)
     raw = {k: v for k, v in raw.items() if k != "_demo"}
@@ -89,9 +93,8 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(v["decision"], "skip"); self.assertIn("Top 10 holders", v["reasons"][0])
 
     def test_early_mode_buys_only_pools_their_creator_opened_on_pumpswap(self):
-        from bot.engine import presets
         cfg = copy.deepcopy(CFG)
-        for path, value in presets()["★ Frühkauf – hohes Risiko (Paper)"].items():
+        for path, value in EARLY_PROFILE.items():
             group, key = path.split(".")
             cfg[group][key] = value
         lp = {"score": 52.0, "danger": ["Large Amount of LP Unlocked"], "warn": [], "source": "rugcheck",
@@ -110,9 +113,8 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(evaluate(own, lp, CFG)["decision"], "skip")              # off by default
 
     def test_the_early_profile_refuses_a_whale_and_changeable_metadata(self):
-        from bot.engine import presets
         cfg = copy.deepcopy(CFG)
-        for path, value in presets()["★ Frühkauf – hohes Risiko (Paper)"].items():
+        for path, value in EARLY_PROFILE.items():
             group, key = path.split(".")
             cfg[group][key] = value
         own = dict(fixture("RUN", age_min=0.8), dex="pumpswap")

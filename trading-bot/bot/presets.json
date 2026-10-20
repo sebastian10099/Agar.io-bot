@@ -58,25 +58,5 @@
     "filters.early_own_pools": false,
     "filters.max_top_holder_pct": 100,
     "filters.reject_mutable_metadata": false
-  },
-  "★ Frühkauf – hohes Risiko (Paper)": {
-    "filters.min_age_minutes": 0,
-    "filters.max_age_minutes": 1.5,
-    "filters.min_liquidity_usd": 5000,
-    "filters.min_volume_m5_usd": 0,
-    "filters.min_buys_m5": 0,
-    "filters.min_buy_sell_ratio_m5": 0,
-    "filters.min_price_change_m5_pct": -100,
-    "filters.max_price_change_m5_pct": 100000,
-    "filters.max_fdv_usd": 50000000,
-    "filters.max_fdv_liquidity_ratio": 0,
-    "filters.max_rugcheck_score": 4000,
-    "filters.allow_rugcheck_unknown": true,
-    "filters.require_holder_check": true,
-    "filters.allow_curve_buys": false,
-    "filters.early_own_pools": true,
-    "scoring.min_score": 0,
-    "filters.max_top_holder_pct": 10,
-    "filters.reject_mutable_metadata": true
   }
 }
