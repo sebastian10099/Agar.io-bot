@@ -37,3 +37,20 @@ Futures für Privatkunden in Deutschland.
 
 Folge: Cash-and-Carry läuft ab jetzt als vorab festgelegte Probe mit Spielgeld
 vorwärts im Krypto-Desk (Funding live von OKX, BTC-USDT-SWAP).
+
+## 3. Funding-Rotation – durchgefallen
+
+Vorab festgelegt in `2026-10-21-funding-rotation-vorab.md`, gerechnet mit `funding_rotation.py`.
+In-sample 2020–2022 lag "Top 5" vorn (+27,8 %, aber schon da knapp unter "nur BTC" mit +29,1 %).
+
+| Out-of-sample | Top 5 (ausgewählt) | nur BTC |
+|---|---:|---:|
+| 2023 | −0,8 % | +3,9 % |
+| 2024 | +0,8 % | +6,5 % |
+| 2025 | −2,8 % | +2,8 % |
+| 2026 (bis September) | −2,6 % | +1,0 % |
+| zusammen (1.000 $ Start) | 946 $ (−5,4 %) | 1.142 $ (+14,2 %) |
+
+Die Wechselkosten fressen das höhere Funding der kleinen Coins auf. Der einzige Ansatz, der
+in allen drei Prüfungen nach Kosten verdient hat, ist Cash-and-Carry mit BTC allein – rund
+3–6 % im Jahr, zuletzt weniger. Er läuft als Probe vorwärts im Krypto-Desk.
