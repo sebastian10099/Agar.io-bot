@@ -58,12 +58,16 @@ def flat(price):
     return lambda t: (price, price * 1.001, price * 0.999, price)
 
 
-def desk_with(feed, cfg=None, now=T0 + 600):
+def no_funding(since_ms):
+    return []
+
+
+def desk_with(feed, cfg=None, now=T0 + 600, funding=no_funding):
     store = Store(Path(tempfile.mkdtemp()) / "bot.sqlite")
     clock = {"now": now}
     feed.now = now
     conf = {"crypto": {"timemachine": False, "backtest": False, **(cfg or {})}}
-    desk = CryptoDesk(store, conf, feed=feed, clock=lambda: clock["now"])
+    desk = CryptoDesk(store, conf, feed=feed, clock=lambda: clock["now"], funding=funding)
     return desk, store, clock
 
 
@@ -196,7 +200,8 @@ class DeskTests(unittest.TestCase):
                     "verdict": ["Urteil: Kein klarer Vorsprung: etwa Null nach Gebühren (Ø R +0.000)."]}
         store = Store(Path(tempfile.mkdtemp()) / "bot.sqlite")
         feed.now = clock["now"]
-        desk = CryptoDesk(store, {"crypto": {"backtest": False}}, feed=feed, clock=lambda: clock["now"], tm_run=slow_tm)
+        desk = CryptoDesk(store, {"crypto": {"backtest": False}}, feed=feed, clock=lambda: clock["now"], tm_run=slow_tm,
+                          funding=no_funding)
         desk.step()
         self.assertEqual(sorted(p["symbol"] for p in desk.book["positions"]), ["AAAUSDT", "CCCUSDT"])
         self.assertEqual(desk.book["positions"][1]["opened_at"], T0 + 600 + 300)   # priced after the first replay
@@ -218,7 +223,8 @@ class DeskTests(unittest.TestCase):
         feed = market()
         desk, store, clock = desk_with(feed)
         desk.step()
-        again = CryptoDesk(store, {"crypto": {"timemachine": False, "backtest": False}}, feed=feed, clock=lambda: clock["now"])
+        again = CryptoDesk(store, {"crypto": {"timemachine": False, "backtest": False}}, feed=feed, clock=lambda: clock["now"],
+                           funding=no_funding)
         self.assertEqual(len(again.book["positions"]), 1)
         self.assertEqual(again.book["scan_day"], "2026-09-22")
         store.close()
@@ -269,12 +275,59 @@ class DeskTests(unittest.TestCase):
         store = Store(Path(tempfile.mkdtemp()) / "bot.sqlite")
         feed.now = T0 + 600
         desk = CryptoDesk(store, {"crypto": {"backtest": False, "require_hint": True}}, feed=feed,
-                          clock=lambda: T0 + 600, tm_run=fake_tm)
+                          clock=lambda: T0 + 600, tm_run=fake_tm, funding=no_funding)
         desk.step()
         self.assertEqual(desk.book["positions"], [])
         self.assertEqual(calls[0]["rule"], "daily:breakout20")
         self.assertEqual(desk.book["last_scan"]["passed"][0]["why"], "Zeitmaschine sieht keinen Vorsprung")
         self.assertEqual(crypto.verdict_key("Urteil: Schwacher Hinweis, keine Gewissheit"), "schwacher Hinweis")
+        store.close()
+
+    def test_carry_collects_funding_once_per_payment(self):
+        paid = [(T0 * 1000 + 8 * 3600_000, 0.0001), (T0 * 1000 + 16 * 3600_000, -0.00002)]
+        calls = []
+
+        def funding(since_ms):
+            calls.append(since_ms)
+            return [p for p in paid if p[0] > since_ms]
+        feed = market()
+        desk, store, clock = desk_with(feed, funding=funding, now=T0 - 3600)
+        desk.book["carry"]["since_ms"] = T0 * 1000           # started at midnight
+        desk.step()
+        c = desk.book["carry"]
+        self.assertEqual((c["payments"], c["negative"]), (2, 1))
+        self.assertAlmostEqual(c["funding"], 500 * (0.0001 - 0.00002))
+        clock["now"] = feed.now = T0 - 3600 + crypto.CARRY_EVERY_S
+        desk.step()                                          # asks again, gets nothing new
+        self.assertEqual(c["payments"], 2)
+        self.assertEqual(calls[-1], T0 * 1000 + 16 * 3600_000)
+        v = desk.view()["carry"]
+        self.assertAlmostEqual(v["value"], 1000 - 500 * 2 * crypto.CARRY_LEG_COST + 500 * 0.00008)
+        self.assertLess(v["pnl"], 0)                          # the fees come first, the funding pays them back over time
+        store.close()
+
+    def test_carry_outage_retries_and_logs_once(self):
+        def down(since_ms):
+            raise RuntimeError("OKX nicht erreichbar")
+        feed = market()
+        desk, store, clock = desk_with(feed, funding=down, now=T0 - 3600)
+        desk.step()
+        clock["now"] = feed.now = T0 - 3600 + 600
+        desk.step()
+        errors = [e for e in store.events(50) if e["level"] == "error"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Cash-and-Carry", desk.view()["status"])
+        store.close()
+
+    def test_old_book_gets_a_carry_account(self):
+        feed = market()
+        desk, store, clock = desk_with(feed)
+        book = desk.book
+        del book["carry"]
+        store.set(crypto.KEY, book)
+        again = CryptoDesk(store, {"crypto": {"backtest": False, "timemachine": False}}, feed=feed,
+                           clock=lambda: clock["now"], funding=no_funding)
+        self.assertEqual(again.book["carry"]["notional"], 500.0)
         store.close()
 
     def test_reset_starts_a_new_book(self):
@@ -307,6 +360,8 @@ class LivePageTests(unittest.TestCase):
             report = (Path(d) / "REPORT.md").read_text()
         self.assertIn("Krypto-Desk", page)
         self.assertIn('<path class=cv-line d="M', page)
+        self.assertIn('<path class=cv-carry d="M', page)
+        self.assertIn("Cash-and-Carry", page)
         self.assertIn("<title>", page)
         self.assertNotIn("<b>x</b>", page)
         self.assertIn("## Krypto-Desk", report)

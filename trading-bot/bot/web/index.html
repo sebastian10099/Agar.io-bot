@@ -10,13 +10,13 @@
   :root {
     --bg:#f5f6f8; --panel:#ffffff; --line:#e3e6eb; --line-strong:#888c96; --fg:#15181d; --dim:#5d6572; --muted:#f0f2f5;
     --green:#15803d; --red:#dc2626; --amber:#b45309; --blue:#2563eb; --on-accent:#ffffff; --knob-off:#ffffff; --focus:#2563eb;
-    --green-bg:#ecfdf3; --red-bg:#fff5f5; --amber-bg:#fffbeb;
+    --green-bg:#ecfdf3; --red-bg:#fff5f5; --amber-bg:#fffbeb; --violet:#7c3aed;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg:#0e1117; --panel:#161b24; --line:#262d3a; --line-strong:#696d77; --fg:#e6e9ef; --dim:#8b95a7; --muted:#1d2330;
       --green:#3ddc84; --red:#ff5c6c; --amber:#ffb454; --blue:#6ea8fe; --on-accent:#0e1117; --knob-off:#e6e9ef; --focus:#9cc3ff;
-      --green-bg:#11261a; --red-bg:#2a1518; --amber-bg:#2a2112;
+      --green-bg:#11261a; --red-bg:#2a1518; --amber-bg:#2a2112; --violet:#b69cff;
     }
   }
   * { box-sizing:border-box; }
@@ -139,6 +139,8 @@
   .tip .key.bench, .legend .key.bench { background:none; border-top:2px dashed var(--line-strong); height:0; }
   .chart .line.bench { stroke:var(--line-strong); stroke-dasharray:5 4; stroke-width:2; }
   .chart .end-label.bench { fill:var(--dim); font-weight:normal; }
+  .chart .line.carry { stroke:var(--violet); }
+  .tip .key.carry, .legend .key.carry { background:var(--violet); }
   .legend { display:inline-flex; gap:14px; font-size:12px; color:var(--dim); text-transform:none; letter-spacing:0; font-weight:normal; }
   .legend .key { display:inline-block; width:14px; height:2px; background:var(--blue); vertical-align:middle; margin-right:6px; border-radius:1px; }
   .sweep-row { display:grid; grid-template-columns:200px 1fr; gap:6px 14px; align-items:start; padding:10px 0; border-bottom:1px solid var(--line); }
@@ -297,10 +299,11 @@
       <p class="note" id="cx-status"></p>
     </section>
     <section class="chart-card">
-      <h2>Konto gegen „BTC halten“ <span class="spacer"></span><span class="legend" id="cx-legend"></span></h2>
+      <h2>Konto gegen „BTC halten“ und Cash-and-Carry <span class="spacer"></span><span class="legend" id="cx-legend"></span></h2>
       <div id="cx-chart" class="chart" tabindex="0" role="img" aria-label="Krypto-Konto und BTC halten über die Zeit"></div>
       <div id="cx-tip" class="tip" hidden role="status" aria-live="polite"></div>
       <p class="note">Alle 10 Minuten ein Punkt: was das Konto brächte, wenn man jetzt alles verkaufte (nach Gebühr und Schlupf), und derselbe Startbetrag einfach in BTC. Liegt die blaue Linie nicht über der grauen, hat der Desk nichts gebracht, was man nicht auch ohne Handeln bekäme.</p>
+      <p class="note" id="cx-carry"></p>
     </section>
     <section><h2>Offene Krypto-Positionen <span class="spacer"></span><span id="cx-n-open" class="pill"></span></h2><div id="cx-open" class="scroll x"></div></section>
     <div class="grid two">
@@ -1254,7 +1257,9 @@ function renderCrypto(s) {
   $('cx-pill').className = 'pill' + (c.enabled ? ' paper' : ' paused');
   const kpi = (label, value, klass = '') => `<div class="kpi"><span>${label}</span><b class="${klass}">${value}</b></div>`;
   $('cx-kpis').innerHTML = kpi('Konto', usd(c.equity)) + kpi('Gewinn seit Start', `${usd(c.pnl)} · ${signPct(c.pnl_pct)}`, cls(c.pnl))
-    + kpi('BTC halten', signPct(c.bench_pct), cls(c.bench_pct)) + kpi('Offen', `${c.positions.length} / ${c.max_open}`)
+    + kpi('BTC halten', signPct(c.bench_pct), cls(c.bench_pct))
+    + (c.carry ? kpi('Cash-and-Carry', `${usd(c.carry.value)} · ${signPct(c.carry.pnl_pct)}`, cls(c.carry.pnl)) : '')
+    + kpi('Offen', `${c.positions.length} / ${c.max_open}`)
     + kpi('Trades · Treffer', `${c.closed_n} · ${c.win_rate == null ? '–' : Math.round(c.win_rate * 100) + ' %'}`)
     + kpi('Ø je Trade', rr(c.avg_r), cls(c.avg_r)) + kpi('Größter Rückgang', c.max_drawdown_pct ? '−' + c.max_drawdown_pct.toFixed(1).replace('.', ',') + ' %' : '–');
   const cf = c.config;
@@ -1262,6 +1267,11 @@ function renderCrypto(s) {
     + `höchstens ${cf.hold_days} Tage · Gebühr ${cf.fee_pct} % + Schlupf ${cf.slip_pct} % je Seite · Scan täglich ab 00:02 UTC, Einstieg bis ${cf.entry_window_h}:00 UTC`
     + (cf.require_hint ? ' · kauft nur mit Zeitmaschinen-Hinweis' : '');
   renderCryptoChart(c);
+  const ca = c.carry;
+  $('cx-carry').textContent = !ca ? '' : `Cash-and-Carry (violett, eigenes Spielgeld-Konto): die Hälfte in BTC, gleich viel im Perpetual short – verdient am Funding, nicht am Kurs. `
+    + `Vorab geprüft: ab 2023 jedes Jahr nach Kosten im Plus (2–6 % im Jahr), 2026 bisher unter 1 %. `
+    + `Seit Start ${ca.payments} Funding-Zahlungen (${ca.negative} negativ), zusammen ${usd(ca.funding)}, Gebühren ${usd(ca.costs)} schon abgezogen`
+    + (ca.apr_pct == null ? '' : `, hochgerechnet ${ca.apr_pct.toFixed(1).replace('.', ',')} % im Jahr`) + ` · Quelle ${ca.source}.`;
   $('cx-n-open').textContent = c.positions.length;
   $('cx-open').innerHTML = table(c.positions, [
     { h: 'Coin', f: (r) => esc(r.symbol.replace(/USDT$/, '')) + (r.late ? ' <span class="pill" title="von Hand außerhalb des Einstiegsfensters gekauft">spät</span>' : '') },
@@ -1303,12 +1313,12 @@ function renderCrypto(s) {
 }
 function renderCryptoChart(c) {
   const host = $('cx-chart');
-  const pts = (c.curve || []).map(([at, value, bench]) => ({ at, value, bench }));
-  $('cx-legend').innerHTML = '<span><i class="key"></i>Konto</span><span><i class="key bench"></i>BTC halten</span>';
+  const pts = (c.curve || []).map(([at, value, bench, carry]) => ({ at, value, bench, carry }));
+  $('cx-legend').innerHTML = '<span><i class="key"></i>Konto</span><span><i class="key bench"></i>BTC halten</span><span><i class="key carry"></i>Cash-and-Carry</span>';
   if (pts.length < 2) { host.innerHTML = '<div class="empty">Die Kurve beginnt nach den ersten 10 Minuten.</div>'; cx.pts = []; return; }
   const W = Math.max(280, host.clientWidth || 600), H = 220, m = { l: 48, r: 92, t: 12, b: 26 };
   const x0 = pts[0].at, x1 = pts[pts.length - 1].at, xs = x1 - x0 || 1;
-  const vals = pts.flatMap((p) => p.bench == null ? [p.value] : [p.value, p.bench]).concat([c.start_usd]);
+  const vals = pts.flatMap((p) => [p.value, p.bench, p.carry].filter((v) => v != null)).concat([c.start_usd]);
   const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo || c.start_usd * 0.01) * 0.15;
   const yLo = lo - pad, yHi = hi + pad, ticks = niceTicks(yLo, yHi), fmt = tickFmt(ticks.length > 1 ? ticks[1] - ticks[0] : 1);
   m.l = Math.max(48, Math.ceil(Math.max(...ticks.map((v) => fmt(v).length)) * 6.6 + 10));
@@ -1323,12 +1333,13 @@ function renderCryptoChart(c) {
   const t1 = svgEl('text', { class: 'axis-text', x: W - m.r, y: H - 8, 'text-anchor': 'end' }); t1.textContent = ddmm(x1); svg.append(t1);
   const path = (key) => { let d = '', pen = false; for (const p of pts) { if (p[key] == null) { pen = false; continue; } d += (pen ? 'L' : 'M') + X(p).toFixed(1) + ' ' + Y(p[key]).toFixed(1) + ' '; pen = true; } return d; };
   svg.append(svgEl('path', { class: 'line bench', d: path('bench') }));
+  svg.append(svgEl('path', { class: 'line carry', d: path('carry') }));
   svg.append(svgEl('path', { class: 'line', d: path('value') }));
   const last = pts[pts.length - 1];
-  const labels = [{ v: last.value, k: '' }, ...(last.bench != null ? [{ v: last.bench, k: ' bench' }] : [])];
-  const ys = labels.map((l) => Y(l.v));
-  if (ys.length === 2 && Math.abs(ys[0] - ys[1]) < 14) { const mid = (ys[0] + ys[1]) / 2, up = ys[0] <= ys[1] ? 0 : 1; ys[up] = mid - 7; ys[1 - up] = mid + 7; }
-  labels.forEach((l, i) => { const t = svgEl('text', { class: 'end-label' + l.k, x: X(last) + 8, y: ys[i] + 4 }); t.textContent = usd(l.v); svg.append(t); });
+  const labels = [{ v: last.value, k: '' }, { v: last.bench, k: ' bench' }, { v: last.carry, k: ' bench' }].filter((l) => l.v != null)
+    .map((l) => ({ ...l, y: Y(l.v) })).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < labels.length; i++) labels[i].y = Math.max(labels[i].y, labels[i - 1].y + 14);   // end labels never overlap
+  labels.forEach((l) => { const t = svgEl('text', { class: 'end-label' + l.k, x: X(last) + 8, y: l.y + 4 }); t.textContent = usd(l.v); svg.append(t); });
   svg.append(svgEl('circle', { class: 'pt', cx: X(last), cy: Y(last.value), r: 4.5 }));
   const hair = svgEl('line', { class: 'hair', x1: 0, x2: 0, y1: m.t, y2: H - m.b, visibility: 'hidden' }); svg.append(hair);
   const dot = svgEl('circle', { class: 'pt', r: 4.5, visibility: 'hidden' }); svg.append(dot);
@@ -1348,6 +1359,7 @@ function showCx(i) {
   const tip = $('cx-tip');
   tip.innerHTML = `<div><span class="key"></span>Konto <b style="display:inline">${usd(p.value)}</b></div>`
     + (p.bench != null ? `<div><span class="key bench"></span>BTC halten ${usd(p.bench)}</div>` : '')
+    + (p.carry != null ? `<div><span class="key carry"></span>Cash-and-Carry ${usd(p.carry)}</div>` : '')
     + `<div class="k">${new Date(p.at * 1000).toLocaleString('de-DE')}</div>`;
   tip.hidden = false;
   const r = svg.getBoundingClientRect(), host = $('cx-chart').getBoundingClientRect();

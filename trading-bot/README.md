@@ -482,6 +482,13 @@ ein Test hält die Kopien gleich).
   gegen „derselbe Startbetrag in BTC“. Liegt die blaue Linie nicht über der
   grauen, hat das Handeln nichts gebracht.
 - **Rückblick** über bis zu 1000 Tage je Setup, einmal pro Woche neu, mit Urteil.
+- **Cash-and-Carry** (violette Linie, eigenes Spielgeld-Konto mit demselben Startbetrag):
+  die Hälfte in BTC, gleich viel im Perpetual short – verdient am Funding, nicht am Kurs.
+  Das Funding kommt stündlich von OKX (BTC-USDT-SWAP), die Gebühren für Ein- und
+  Ausstieg beider Beine sind vom Start an abgezogen. Vorab geprüft
+  (`crypto-skills/forschung/`): ab 2023 jedes Jahr nach Kosten im Plus, aber nur 2–6 %
+  im Jahr und 2026 bisher unter 1 %. Futures für Echtgeld wären eine eigene Entscheidung
+  (Börsenrisiko, Zulässigkeit in Deutschland).
 
 Der Stand liegt in der Datenbank (`bot.sqlite`), läuft also auch in Paper-Live
 auf GitHub weiter und erscheint dort auf der Live-Seite. Echtes Geld bewegt der

@@ -148,7 +148,7 @@ def crypto_svg(c: dict[str, Any], w: int = 1000, h: int = 240) -> str:
     if len(pts) < 2:
         return "<p class=muted>Die Kurve beginnt nach den ersten 10 Minuten.</p>"
     start = float(c.get("start_usd") or pts[0][1])
-    vals = [p[1] for p in pts] + [p[2] for p in pts if p[2]] + [start]
+    vals = [p[1] for p in pts] + [p[i] for p in pts for i in (2, 3) if len(p) > i and p[i]] + [start]
     lo, hi = min(vals), max(vals)
     pad = (hi - lo or start * 0.01) * 0.15
     lo, hi = lo - pad, hi + pad
@@ -165,7 +165,7 @@ def crypto_svg(c: dict[str, Any], w: int = 1000, h: int = 240) -> str:
     def path(i: int) -> str:
         d, pen = [], False
         for p in pts:
-            if p[i] is None:
+            if len(p) <= i or p[i] is None:
                 pen = False
                 continue
             d.append(f"{'L' if pen else 'M'}{X(p[0]):.1f} {Y(p[i]):.1f}")
@@ -178,20 +178,30 @@ def crypto_svg(c: dict[str, Any], w: int = 1000, h: int = 240) -> str:
                      f'<text class=cv-text x={ml - 6} y="{Y(v) + 4:.1f}" text-anchor=end>{_h(_usd(v))}</text>')
     parts.append(f'<text class=cv-text x={ml} y={h - 6}>{_h(_t(x0))}</text>'
                  f'<text class=cv-text x={w - mr} y={h - 6} text-anchor=end>{_h(_t(x1))}</text>')
-    parts.append(f'<path class=cv-bench d="{path(2)}"/><path class=cv-line d="{path(1)}"/>')
+    parts.append(f'<path class=cv-bench d="{path(2)}"/><path class=cv-carry d="{path(3)}"/><path class=cv-line d="{path(1)}"/>')
     last = pts[-1]
-    ys = [Y(last[1])] + ([Y(last[2])] if last[2] else [])
-    if len(ys) == 2 and abs(ys[0] - ys[1]) < 14:
-        mid, up = (ys[0] + ys[1]) / 2, 0 if ys[0] <= ys[1] else 1
-        ys[up], ys[1 - up] = mid - 7, mid + 7
-    parts.append(f'<text class=cv-end x="{X(last[0]) + 8:.1f}" y="{ys[0] + 4:.1f}">{_h(_usd(last[1]))}</text>')
-    if last[2]:
-        parts.append(f'<text class=cv-text x="{X(last[0]) + 8:.1f}" y="{ys[1] + 4:.1f}">BTC {_h(_usd(last[2]))}</text>')
+    labels = sorted(((Y(v), cls, text) for v, cls, text in (
+        (last[1], "cv-end", _usd(last[1])),
+        (last[2] if len(last) > 2 else None, "cv-text", f"BTC {_usd(last[2]) if len(last) > 2 and last[2] else ''}"),
+        (last[3] if len(last) > 3 else None, "cv-text", f"Carry {_usd(last[3]) if len(last) > 3 and last[3] else ''}")) if v))
+    y_prev = None
+    for y, cls, text in labels:
+        y = y if y_prev is None else max(y, y_prev + 14)          # end labels never overlap
+        parts.append(f'<text class={cls} x="{X(last[0]) + 8:.1f}" y="{y + 4:.1f}">{_h(text)}</text>')
+        y_prev = y
     for p in pts[::max(1, len(pts) // 50)] + [last]:
-        tip = f"{_t(p[0])}: Konto {_usd(p[1])}" + (f", BTC halten {_usd(p[2])}" if p[2] else "")
+        tip = (f"{_t(p[0])}: Konto {_usd(p[1])}" + (f", BTC halten {_usd(p[2])}" if p[2] else "")
+               + (f", Cash-and-Carry {_usd(p[3])}" if len(p) > 3 and p[3] else ""))
         parts.append(f'<circle class=cv-hit cx="{X(p[0]):.1f}" cy="{Y(p[1]):.1f}" r=7><title>{_h(tip)}</title></circle>')
     parts.append("</svg>")
     return "".join(parts)
+
+
+def _carry_line(ca: Optional[dict[str, Any]]) -> str:
+    if not ca:
+        return ""
+    return (f"<br>Cash-and-Carry: {_h(_usd(ca['value']))} ({_h(_pct(ca['pnl_pct']))}), {ca['payments']} Funding-Zahlungen, "
+            f"zusammen {_h(_usd(ca['funding']))}, Gebühren {_h(_usd(ca['costs']))} schon abgezogen")
 
 
 def render_crypto_html(c: Optional[dict[str, Any]]) -> str:
@@ -220,7 +230,8 @@ def render_crypto_html(c: Optional[dict[str, Any]]) -> str:
     return (f"<section><h2>Krypto-Desk · Spielgeld gegen echte Binance-Kurse</h2><div class=kpis>{kpis}</div>"
             f"<p class=muted>{_h(c.get('status'))}</p>{crypto_svg(c)}"
             f"<p class=muted><span class=cv-key></span> Konto (was es nach Gebühren brächte) &nbsp; <span class='cv-key bench'></span> "
-            f"derselbe Startbetrag in BTC</p><h2>Offen</h2>{opened}<h2 style='margin-top:12px'>Abgeschlossen</h2>{closed}</section>")
+            f"derselbe Startbetrag in BTC &nbsp; <span class='cv-key carry'></span> Cash-and-Carry (BTC halten und gleich viel short, "
+            f"verdient am Funding){_carry_line(c.get('carry'))}</p><h2>Offen</h2>{opened}<h2 style='margin-top:12px'>Abgeschlossen</h2>{closed}</section>")
 
 
 def render_crypto_md(c: Optional[dict[str, Any]]) -> list[str]:
@@ -230,6 +241,10 @@ def render_crypto_md(c: Optional[dict[str, Any]]) -> list[str]:
          "| Konto | Gewinn | BTC halten | offen | Trades | Ø je Trade |", "|---:|---:|---:|---:|---:|---:|",
          f"| {_usd(c['equity'])} | {_usd(c['pnl'], True)} ({_pct(c['pnl_pct'])}) | {_pct(c.get('bench_pct'))} | "
          f"{len(c['positions'])} | {c['closed_n']} | {_r(c.get('avg_r'))} |", "", _md(c.get("status")), ""]
+    ca = c.get("carry")
+    if ca:
+        L += [f"Cash-and-Carry (BTC halten + gleich viel short, verdient am Funding): {_usd(ca['value'])} "
+              f"({_pct(ca['pnl_pct'])}), {ca['payments']} Funding-Zahlungen, zusammen {_usd(ca['funding'], True)}", ""]
     for p in c["positions"]:
         L.append(f"- {_md(_coin(p['symbol']))}: {_md(p['setup_name'])}, Einstieg {_num(p['price'], '.5g')}, jetzt "
                  f"{_num(p['last'], '.5g')} ({_pct(p['gain_pct'])}), Stop {_num(p['stop'], '.5g')}, Ziel {_num(p['target'], '.5g')}")
@@ -323,6 +338,7 @@ th { color:var(--muted); font-weight:600; font-size:12px; } td.num, th.num { tex
 .cv-line { fill:none; stroke:var(--accent); stroke-width:2; stroke-linejoin:round; } .cv-bench { fill:none; stroke:var(--muted); stroke-width:2; stroke-dasharray:5 4; }
 .cv-grid { stroke:var(--line); } .cv-text { fill:var(--muted); font-size:12px; } .cv-end { fill:var(--ink); font-size:12px; font-weight:600; } .cv-hit { fill:transparent; }
 .cv-key { display:inline-block; width:14px; border-top:2px solid var(--accent); vertical-align:middle; } .cv-key.bench { border-top:2px dashed var(--muted); }
+.cv-carry { fill:none; stroke:#7c3aed; stroke-width:2; } .cv-key.carry { border-top:2px solid #7c3aed; }
 """
 
 

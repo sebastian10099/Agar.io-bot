@@ -13,8 +13,11 @@ Zum Vergleich läuft "BTC halten" mit demselben Startbetrag mit.
 from __future__ import annotations
 
 import copy
+import json
 import threading
 import time
+import urllib.parse
+import urllib.request
 from typing import Any, Callable, Optional
 
 from . import crypto_tm as tm
@@ -30,6 +33,12 @@ CLOSED_KEEP = 500
 SCAN_AFTER_S = 120           # zwei Minuten nach Mitternacht ist die Tageskerze sicher fertig
 BACKTEST_EVERY_S = 7 * DAY
 MIN_ORDER_USD = 10.0
+# Cash-and-Carry (vorab geprüft, crypto-skills/forschung/2026-10-21-ergebnisse.md): die Hälfte in BTC,
+# gleich viel im Perpetual short, verdient am Funding. Funding live von OKX (von überall erreichbar).
+CARRY_URL = "https://www.okx.com/api/v5/public/funding-rate-history"
+CARRY_INST = "BTC-USDT-SWAP"
+CARRY_EVERY_S = 3600
+CARRY_LEG_COST = ((0.10 + 0.05) + (0.05 + 0.05)) / 100     # Spot-Bein plus Perp-Bein, je Richtung
 
 DEFAULTS: dict[str, Any] = {
     "enabled": True,
@@ -70,17 +79,51 @@ def utc_day(ts: float) -> str:
 def new_book(start_usd: float, now: float) -> dict[str, Any]:
     return {"v": 1, "start_usd": float(start_usd), "cash": float(start_usd), "started_at": now, "next_id": 1,
             "positions": [], "closed": [], "equity": [], "bench_start": None, "scan_day": None,
-            "last_scan": None, "backtest": None, "agg": {"setup": {}, "verdict": {}}, "last_equity_at": 0}
+            "last_scan": None, "backtest": None, "agg": {"setup": {}, "verdict": {}}, "last_equity_at": 0,
+            "carry": new_carry(start_usd, now)}
+
+
+def new_carry(start_usd: float, now: float) -> dict[str, Any]:
+    notional = float(start_usd) / 2
+    return {"start_usd": float(start_usd), "notional": notional, "started_at": now, "since_ms": int(now * 1000),
+            "funding": 0.0, "payments": 0, "negative": 0, "last_rate": None, "last_at": None, "checked_at": 0,
+            "costs": notional * 2 * CARRY_LEG_COST, "source": f"OKX {CARRY_INST}"}
+
+
+def carry_value(c: dict[str, Any]) -> float:
+    """What the carry account would hold after closing both legs: start − all fees + funding."""
+    return c["start_usd"] - c["costs"] + c["funding"]
+
+
+def okx_funding(since_ms: int) -> list[tuple[int, float]]:
+    """Realized funding rates after since_ms, oldest first."""
+    q = urllib.parse.urlencode({"instId": CARRY_INST, "before": since_ms, "limit": 100})
+    req = urllib.request.Request(f"{CARRY_URL}?{q}", headers={"User-Agent": scan.UA})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            doc = json.loads(r.read().decode("utf-8"))
+    except (OSError, ValueError) as error:
+        raise RuntimeError(f"OKX nicht erreichbar: {error}") from error
+    if str(doc.get("code")) != "0":
+        raise RuntimeError(f"OKX: {doc.get('msg') or doc.get('code')}")
+    out = []
+    for row in doc.get("data") or []:
+        t, rate = int(row["fundingTime"]), float(row.get("realizedRate") or row["fundingRate"])
+        if t > since_ms:
+            out.append((t, rate))
+    return sorted(out)
 
 
 class CryptoDesk:
     def __init__(self, store: Any, cfg: dict[str, Any], feed: Any = None, clock: Callable[[], float] = time.time,
-                 tm_run: Optional[Callable[..., dict]] = None) -> None:
+                 tm_run: Optional[Callable[..., dict]] = None,
+                 funding: Optional[Callable[[int], list]] = None) -> None:
         self.store = store
         self.cfg = cfg                       # the bot's whole config; the "crypto" section is read live
         self.feed = feed or scan.Feed()
         self.clock = clock
         self.tm_run = tm_run or tm.run
+        self.funding = funding or okx_funding
         self._lock = threading.RLock()
         self._force_scan = False
         self._scan_retry_at = 0.0
@@ -89,6 +132,7 @@ class CryptoDesk:
         self.last_step = None
         book = store.get(KEY)
         self.book = book if isinstance(book, dict) and book.get("v") == 1 else new_book(self.conf()["start_usd"], clock())
+        self.book.setdefault("carry", new_carry(self.book["start_usd"], clock()))   # books from before the carry probe
         self._view: dict[str, Any] = {}
         self._refresh_view()
 
@@ -171,6 +215,8 @@ class CryptoDesk:
                 self.status = "aus (in den Einstellungen einschalten)"
             else:
                 self._check_positions(now)
+                if now - self.book["carry"]["checked_at"] >= CARRY_EVERY_S:
+                    self._carry(now)
                 if self._scan_due(now):
                     self._daily(now)
                 if now - self.book["last_equity_at"] >= EQUITY_EVERY_S:
@@ -303,6 +349,24 @@ class CryptoDesk:
                 "target_first": round(mc["target_first"], 3), "stop_first": round(mc["stop_first"], 3),
                 "hist_n": same.get("n", 0), "hist_r": round(same.get("avg_r", 0.0), 3), "hist_t": round(same.get("t", 0.0), 2)}
 
+    def _carry(self, now: float) -> None:
+        c = self.book["carry"]
+        c["checked_at"] = now
+        try:
+            rows = self.funding(c["since_ms"])
+        except RuntimeError as error:
+            self._error("carry", f"Cash-and-Carry: {error}")
+            c["checked_at"] = now - CARRY_EVERY_S + 600          # try again in 10 minutes
+            return
+        self._errors.pop("carry", None)
+        for t, rate in rows:
+            if t <= c["since_ms"]:
+                continue
+            c["funding"] += c["notional"] * rate               # the short receives a positive rate
+            c["payments"] += 1
+            c["negative"] += rate < 0
+            c["last_rate"], c["last_at"], c["since_ms"] = rate, t / 1000, t
+
     def _equity_point(self, now: float) -> None:
         c = self.conf()
         bench = self._price(c["benchmark"], now)
@@ -310,7 +374,8 @@ class CryptoDesk:
             self.book["bench_start"] = bench
         bvalue = self.book["start_usd"] * bench / self.book["bench_start"] if bench and self.book["bench_start"] else None
         pts = self.book["equity"]
-        pts.append([round(now), round(self.equity(), 2), round(bvalue, 2) if bvalue else None])
+        pts.append([round(now), round(self.equity(), 2), round(bvalue, 2) if bvalue else None,
+                    round(carry_value(self.book["carry"]), 2)])
         if len(pts) > EQUITY_KEEP:               # thin out the older half, keep the recent detail
             half = len(pts) // 2
             pts[:half] = pts[:half:2]
@@ -382,7 +447,7 @@ class CryptoDesk:
             return {"ok": False, "error": "Der Krypto-Desk scannt gerade – in einer Minute noch einmal"}
         try:
             keep = self.book.get("backtest")
-            self.book = new_book(start, self.clock())
+            self.book = new_book(start, self.clock())       # the carry probe starts anew with the same money
             self.book["backtest"] = keep
             self.store.set(KEY, self.book)
             self._log("info", f"Krypto-Konto neu begonnen mit {start:.2f} $ Spielgeld")
@@ -406,6 +471,17 @@ class CryptoDesk:
     def view(self) -> dict[str, Any]:
         return self._view
 
+    def _carry_view(self, now: float) -> dict[str, Any]:
+        c = self.book["carry"]
+        value = carry_value(c)
+        days = max((now - c["started_at"]) / DAY, 1e-9)
+        return {"value": value, "pnl": value - c["start_usd"], "pnl_pct": (value / c["start_usd"] - 1) * 100,
+                "funding": c["funding"], "costs": c["costs"], "payments": c["payments"], "negative": c["negative"],
+                "last_rate": c["last_rate"], "last_at": c["last_at"], "source": c["source"],
+                "started_at": c["started_at"],
+                # funding per year on the whole capital, fees left out (they are paid once)
+                "apr_pct": c["funding"] / c["start_usd"] / days * 365 * 100 if c["payments"] else None}
+
     def _refresh_view(self) -> None:
         b, c = self.book, self.conf()
         eq = self.equity()
@@ -425,7 +501,7 @@ class CryptoDesk:
             stride = len(pts) / 400
             pts = [pts[int(i * stride)] for i in range(400)] + [pts[-1]]
         peak, dd = 0.0, 0.0
-        for _, v, _b in b["equity"]:
+        for v in (p[1] for p in b["equity"]):
             peak = max(peak, v)
             dd = max(dd, (peak - v) / peak if peak else 0.0)
         agg = {g: [{"key": k, "name": scan.SETUP_NAMES.get(k, k), "n": a["n"], "win_rate": a["wins"] / a["n"],
@@ -443,6 +519,7 @@ class CryptoDesk:
             "avg_r": sum(t["r"] for t in closed) / len(closed) if closed else None,
             "curve": pts, "by_setup": agg["setup"], "by_verdict": agg["verdict"],
             "last_scan": b["last_scan"], "backtest": b.get("backtest"), "setup_names": dict(scan.SETUP_NAMES),
+            "carry": self._carry_view(self.clock()),
             "config": {k: c[k] for k in ("risk_pct", "max_open", "entry_window_h", "fee_pct", "slip_pct", "stop_atr",
                                           "target_r", "hold_days", "timemachine", "require_hint")},
         })
