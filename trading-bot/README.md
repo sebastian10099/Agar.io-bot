@@ -181,7 +181,7 @@ Das Dashboard ist zugleich die Steuerung. Vier Reiter:
 Oben rechts: **🔔** (Browser-Benachrichtigung bei jedem Einstieg und Exit,
 fragt einmal um Erlaubnis), **Jetzt pollen** (sofort neue Tokens holen) und
 **Pause**. Pause stoppt nur neue Einstiege – Exits offener Positionen laufen
-weiter. Tasten: `1`–`5` Reiter, `p` Pause, `r` Pollen, `/` Suche.
+weiter. Tasten: `1`–`6` Reiter, `p` Pause, `r` Pollen, `/` Suche.
 
 Die Seite ist vollständig per Tastatur bedienbar, jedes Bedienelement hat einen
 Namen für Screenreader, Rückmeldungen werden vorgelesen, und alle Farbpaare
@@ -456,6 +456,37 @@ Der Knopf „Kaufen“ von Hand geht immer.
 - Maximal 5 offene Positionen, Tages-Verlustlimit 5 % → danach keine neuen Einstiege
 - **Jeder Fill zahlt 1 % Gebühr und 2 % Slippage.** Das ist bewusst pessimistisch. Ein Bot, der nur mit null Kosten profitabel ist, ist nicht profitabel.
 
+## Krypto-Desk – Spielgeld gegen echte Binance-Kurse
+
+Ein zweites, eigenes Konto im Bot (Reiter **Krypto**, Taste <kbd>2</kbd>): 1.000 $
+Spielgeld, nur Spot, nur Long, gegen die echten Kurse von Binance. Es benutzt
+denselben Code wie die Claude-Skills in `crypto-skills/` (`bot/crypto_scan.py`
+= `crypto-scanner/scan.py`, `bot/crypto_tm.py` = `crypto-timemachine/timemachine.py`;
+ein Test hält die Kopien gleich).
+
+- **Jeden Tag ab 00:02 UTC** scannt er die 60 umsatzstärksten Krypto-Paare
+  (ohne Stablecoins, Hebel- und Aktien-Token) nach den fünf Tages-Setups.
+  Gekauft wird nur bis 06:00 UTC (Einstellung „Einstiegsfenster“), so wie der
+  Rückblick rechnet. „Jetzt scannen“ geht immer; solche Käufe heißen „spät“.
+- **Je Treffer läuft die Zeitmaschine** (10.000 Wiederholungen, Historie) und ihr
+  Urteil wird mitgeschrieben. „Nur mit Zeitmaschinen-Hinweis“ kauft nur bei
+  „schwacher Hinweis“; ausgeschaltet (Standard) kauft der Desk alle Setups,
+  damit man vorwärts sieht, ob das Urteil etwas taugt.
+- **Größe:** 1 % des Kontos geht am Stop verloren, nach Gebühr (0,10 %) und
+  Schlupf (0,05 %) je Seite; höchstens 20 % des Kontos je Position, höchstens 8 offen.
+- **Stop 1,5 × ATR, Ziel 2 R, höchstens 10 Tage.** Stop und Ziel liegen wie
+  Orders an der Börse: jede Minute prüft der Desk die fertigen Minutenkerzen;
+  war der Bot aus, holt er die verpassten Minuten nach. Eine Kerze, die beides
+  berührt, zählt als Stop; eine Kurslücke unter den Stop füllt zur Eröffnung.
+- **Diagramm:** alle 10 Minuten der Kontowert (was ein Verkauf jetzt brächte)
+  gegen „derselbe Startbetrag in BTC“. Liegt die blaue Linie nicht über der
+  grauen, hat das Handeln nichts gebracht.
+- **Rückblick** über bis zu 1000 Tage je Setup, einmal pro Woche neu, mit Urteil.
+
+Der Stand liegt in der Datenbank (`bot.sqlite`), läuft also auch in Paper-Live
+auf GitHub weiter und erscheint dort auf der Live-Seite. Echtes Geld bewegt der
+Desk nie.
+
 ## KI-Modus: Claude als zweiter Blick – oder als Entscheider
 
 **Zwei Anbieter:** Claude (Anthropic) oder **OpenRouter** – dort gibt es einen
@@ -646,6 +677,9 @@ bot/
   demo.py        Offline-Markt für Demo und Tests
   ai.py          Claude-Anbindung: zweiter Blick auf gefilterte Kandidaten
   live.py        Schnittstelle für Echtgeld — bewusst nicht implementiert
+  crypto.py      Krypto-Desk: Spielgeld-Konto gegen echte Binance-Kurse
+  crypto_scan.py Kopie von crypto-skills/crypto-scanner/scan.py
+  crypto_tm.py   Kopie von crypto-skills/crypto-timemachine/timemachine.py
   discovery.py   Discovery-Quellen zusammenführen, Status je Quelle
   doctor.py      Selbsttest: Erreichbarkeit und Parser aller Quellen
   preflight.py   Startcheck: HTTPS/CA-Zertifikate und Anthropic-SDK, repariert per pip
@@ -655,13 +689,13 @@ deploy/
 tools/
   audit.py       Laufzeit-Prüfung eines Kontos gegen die eigenen Regeln
   paper_live.py  Schnappschuss (REPORT.md, index.html) für Paper-Live
-tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
+tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight tests.test_crypto_desk
 ```
 
 ## Tests
 
 ```bash
-python3 -m unittest -v tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
+python3 -m unittest -v tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight tests.test_crypto_desk
 ```
 
 Strategie-Entscheidungen, alle Exit-Regeln, der Tracker, ein kompletter

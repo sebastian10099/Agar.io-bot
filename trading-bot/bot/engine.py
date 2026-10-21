@@ -100,6 +100,7 @@ class Engine:
         self.home: Optional[Any] = None          # data dir, set by main for the self-test
         self.demo = False                        # set by main: fake market, no real token pages
         self._stop = threading.Event()
+        self.crypto = None                      # the crypto paper desk (bot/crypto.py), set by main
         self._wake = threading.Event()
         self._lock = threading.Lock()
         self._reports: dict[str, tuple[float, Any, int]] = {}
@@ -852,4 +853,5 @@ class Engine:
             "solana_rpc": self._rpc_status(),
             "equity": self.store.equity_curve(),
             "config": settings.flat(self.cfg),
+            "crypto": self.crypto.view() if self.crypto is not None else None,
         }

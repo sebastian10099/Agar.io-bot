@@ -22,7 +22,9 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # Eine Kopie im eigenen Ordner (Zip für die Claude-App) oder der Scanner im Nachbarordner.
-SCANNERS = (os.path.join(HERE, "scan.py"), os.path.join(HERE, "..", "crypto-scanner", "scan.py"))
+# (im New Token Bot heißt die Kopie crypto_scan.py).
+SCANNERS = (os.path.join(HERE, "scan.py"), os.path.join(HERE, "crypto_scan.py"),
+            os.path.join(HERE, "..", "crypto-scanner", "scan.py"))
 
 
 def _load_scanner():
@@ -289,8 +291,8 @@ def check_plan(plan):
 
 # --------------------------------------------------------------------------- Lauf
 
-def run(a, feed, now_ts):
-    plan = load_plan(a, feed, now_ts)
+def run(a, feed, now_ts, plan=None):
+    plan = plan or load_plan(a, feed, now_ts)
     entry, stop, target = check_plan(plan)
     rule = plan.get("rule", "manual")
     hours = a.hours or (int(plan.get("hold_days", 3)) * 24 if rule.startswith("daily:") else 24)
@@ -387,7 +389,7 @@ def report(doc):
     return "\n".join(lines)
 
 
-def main(argv=None):
+def parser():
     p = argparse.ArgumentParser(description="Krypto-Zeitmaschine (Monte Carlo + Historie, nach Gebühren)")
     p.add_argument("cmd", choices=("run",))
     p.add_argument("--plan", help="Watchlist- oder Plan-Datei (Standard crypto/watchlist.json)")
@@ -412,7 +414,11 @@ def main(argv=None):
     p.add_argument("--offline", help="Ordner mit gespeicherten Binance-Antworten")
     p.add_argument("--json", action="store_true")
     p.add_argument("--write", action="store_true", help="auch crypto/timemachine.json schreiben")
-    a = p.parse_args(argv)
+    return p
+
+
+def main(argv=None):
+    a = parser().parse_args(argv)
     if a.replays < 100:
         sys.exit("--replays: mindestens 100.")
     feed = scan.Feed(a.offline, pause=0 if a.offline else scan.PAUSE)

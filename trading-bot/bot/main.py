@@ -202,6 +202,11 @@ def main(argv: list[str] = None) -> int:
     threading.Thread(target=server.serve_forever, daemon=True, name="dashboard").start()
     thread = threading.Thread(target=engine.run, daemon=True, name="engine")
     thread.start()
+    if not args.demo:                           # idles while switched off, so the switch works without a restart
+        from .crypto import CryptoDesk
+        engine.crypto = CryptoDesk(engine.store, engine.cfg)
+        threading.Thread(target=engine.crypto.run, args=(lambda s: not thread.is_alive() or engine._stop.wait(s),),
+                         daemon=True, name="crypto-desk").start()
     if not args.demo:
         from . import updater
         project = Path(__file__).resolve().parent.parent

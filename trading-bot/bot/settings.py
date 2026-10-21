@@ -132,9 +132,23 @@ SCHEMA: list[dict[str, Any]] = [
      "label": "Max. Anfragen pro Stunde", "group": "KI", "help": "Kostenbremse. Darüber hinaus wird nicht gefragt, die Regeln entscheiden allein."},
     {"path": "ai.min_confidence", "type": "float", "min": 0, "max": 1, "step": 0.05,
      "label": "Mindest-Vertrauen für Kauf", "group": "KI", "help": "Im Modus „Entscheiden“ kauft die KI nur ab dieser Vertrauenszahl."},
+
+    {"path": "crypto.enabled", "type": "bool", "label": "Krypto-Desk", "group": "Krypto",
+     "help": "Eigenes Spielgeld-Konto gegen echte Binance-Kurse: jeden Tag nach 00:00 UTC die Setups des Krypto-Scanners, "
+             "mit Stop, Ziel, Gebühr und Schlupf. Echtes Geld bewegt es nie."},
+    {"path": "crypto.risk_pct", "type": "float", "min": 0.1, "max": 5, "step": 0.1,
+     "label": "Risiko pro Krypto-Trade", "unit": "%", "group": "Krypto",
+     "help": "So viel vom Krypto-Konto geht verloren, wenn der Stop greift (nach Gebühren)."},
+    {"path": "crypto.max_open", "type": "int", "min": 1, "max": 30, "step": 1,
+     "label": "Max. offene Krypto-Positionen", "group": "Krypto"},
+    {"path": "crypto.entry_window_h", "type": "int", "min": 1, "max": 24, "step": 1,
+     "label": "Einstiegsfenster nach 00:00 UTC", "unit": "h", "group": "Krypto",
+     "help": "Nur in diesen Stunden nach dem Tagesschluss kaufen – so wurde im Rückblick gerechnet. Läuft der Bot dann nicht, fällt der Tag aus."},
+    {"path": "crypto.require_hint", "type": "bool", "label": "Nur mit Zeitmaschinen-Hinweis", "group": "Krypto",
+     "help": "Nur kaufen, wenn die Zeitmaschine „Schwacher Hinweis“ sagt (Historie deutlich im Plus). Aus: alle Setups kaufen und das Urteil nur mitschreiben, damit man sieht, ob es etwas taugt."},
 ]
 
-GROUPS = ["Allgemein", "Risiko", "Filter", "Strategie", "Exits", "KI"]
+GROUPS = ["Allgemein", "Risiko", "Filter", "Strategie", "Exits", "KI", "Krypto"]
 
 
 def get_path(cfg: dict[str, Any], path: str) -> Any:

@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - 'trading-bot/**'
+      - 'crypto-skills/**'
       - '.github/workflows/trading-bot.yml'
   pull_request:
     paths:
       - 'trading-bot/**'
+      - 'crypto-skills/**'
       - '.github/workflows/trading-bot.yml'
   workflow_dispatch:
 
@@ -30,12 +32,12 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Tests ohne Anthropic-SDK
         working-directory: trading-bot
-        run: python -W error::ResourceWarning -m unittest -v tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
+        run: python -W error::ResourceWarning -m unittest -v tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight tests.test_crypto_desk
       - name: Tests mit Anthropic-SDK
         working-directory: trading-bot
         run: |
           python -m pip install --quiet anthropic certifi
-          python -W error::ResourceWarning -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight
+          python -W error::ResourceWarning -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight tests.test_crypto_desk
 
   vps:
     name: VPS – Installation als systemd-Dienst (Ubuntu), echte Märkte

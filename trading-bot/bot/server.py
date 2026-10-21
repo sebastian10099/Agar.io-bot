@@ -252,6 +252,21 @@ def make_server(engine: Any, host: str, port: int) -> ThreadingHTTPServer:
                 threading.Timer(0.3, engine.stop).start()      # answer first, then stop the loop; main shuts the server down
             elif self.path == "/api/doctor":
                 self._json(engine.doctor())
+            elif self.path == "/api/crypto":
+                desk = engine.crypto
+                if desk is None:
+                    self._json({"ok": False, "error": "Krypto-Desk läuft nicht (in der Demo oder ausgeschaltet)"}, 409)
+                    return
+                action = body.get("action")
+                if action == "scan":
+                    result = desk.scan_now()
+                    engine.store.log("info", "dashboard: Krypto-Scan von Hand ausgelöst")
+                elif action == "reset":
+                    result = desk.reset(body.get("start_usd"))
+                else:
+                    self._json({"ok": False, "error": "unbekannte Aktion"}, 400)
+                    return
+                self._json(result, 200 if result["ok"] else 409)
             elif self.path == "/api/reset":
                 result = engine.reset(str(body.get("what") or "positions"), body.get("bankroll"))
                 self._json(result, 200 if result["ok"] else 400)
