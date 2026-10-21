@@ -106,6 +106,7 @@
   .scroll { max-height:420px; overflow:auto; -webkit-overflow-scrolling:touch; }
   .scroll.x { max-height:none; }
   .scroll table { min-width:640px; }
+  .scroll.fit table { min-width:0; }
   #cands table { min-width:1200px; }
   #cands td:nth-last-child(2) { min-width:300px; white-space:normal; }
   /* two lines of reasons keep the row low; all of them are in the tooltip and the details */
@@ -193,6 +194,7 @@
     section > h2 .filterbar, section > h2 .note { flex-basis:100%; }
     section > h2 .spacer { display:none; }
     .lo { display:none; }   /* low-priority columns: the detail dialogs still show them */
+    .actions { flex-wrap:wrap; margin-left:0; }
   }
   #cands td:nth-child(2), #open td:first-child { white-space:nowrap; }
   .sw { position:relative; width:38px; height:22px; border-radius:999px; background:var(--line-strong); cursor:pointer;
@@ -276,7 +278,7 @@
       <section>
         <h2>Edge-Report <span class="spacer"></span><span class="filterbar" role="group" aria-label="Edge-Report nach">
           <button class="chip" data-edge="decision" aria-pressed="true">Bot</button><button class="chip" data-edge="rule_decision" aria-pressed="false">Regeln</button><button class="chip" data-edge="ai_decision" aria-pressed="false">KI</button><button class="chip" data-edge="source" aria-pressed="false">Quelle</button></span></h2>
-        <div id="edge"></div>
+        <div id="edge" class="scroll x fit"></div>
         <p class="note" id="edge-note">Vorwärtsrendite nach Entscheidung. Hat buy keinen klaren Vorsprung vor watch und skip, hat die Strategie keine Kante – unabhängig davon, wie die Trades aussehen.</p>
       </section>
       <section>
@@ -300,22 +302,22 @@
       <div id="cx-tip" class="tip" hidden role="status" aria-live="polite"></div>
       <p class="note">Alle 10 Minuten ein Punkt: was das Konto brächte, wenn man jetzt alles verkaufte (nach Gebühr und Schlupf), und derselbe Startbetrag einfach in BTC. Liegt die blaue Linie nicht über der grauen, hat der Desk nichts gebracht, was man nicht auch ohne Handeln bekäme.</p>
     </section>
+    <section><h2>Offene Krypto-Positionen <span class="spacer"></span><span id="cx-n-open" class="pill"></span></h2><div id="cx-open" class="scroll x"></div></section>
     <div class="grid two">
-      <section><h2>Offene Krypto-Positionen <span class="spacer"></span><span id="cx-n-open" class="pill"></span></h2><div id="cx-open" class="scroll x"></div></section>
-      <section><h2>Geschlossene Krypto-Trades</h2><div id="cx-closed" class="scroll"></div></section>
-    </div>
-    <div class="grid two">
+      <section><h2>Geschlossene Krypto-Trades</h2><div id="cx-closed" class="scroll x"></div></section>
       <section>
-        <h2>Ergebnis je Setup</h2><div id="cx-setup"></div>
-        <h2 style="margin-top:14px">Ergebnis je Zeitmaschinen-Urteil</h2><div id="cx-verdict"></div>
+        <h2>Ergebnis je Setup</h2><div id="cx-setup" class="scroll x fit"></div>
+        <h2 style="margin-top:14px">Ergebnis je Zeitmaschinen-Urteil</h2><div id="cx-verdict" class="scroll x fit"></div>
         <p class="note">Taugt das Urteil der Zeitmaschine etwas, liegen „schwacher Hinweis“-Trades vorn. Aussagekräftig erst ab etwa 30 Trades je Zeile.</p>
       </section>
+    </div>
+    <div class="grid two">
       <section>
-        <h2>Rückblick: bis 1000 Tage, nach Gebühren</h2><div id="cx-backtest"></div>
+        <h2>Rückblick: bis 1000 Tage, nach Gebühren</h2><div id="cx-backtest" class="scroll x fit"></div>
         <p class="note">Jedes Setup auf jeder Tageskerze der Top-Coins: Einstieg zur nächsten Eröffnung, Stop 1,5 × ATR, Ziel 2 R, höchstens 10 Tage. Nur Coins, die heute noch handeln – das schönt Käufe nach Kursrutschen. Einmal pro Woche neu.</p>
       </section>
+      <section><h2>Letzter Scan</h2><div id="cx-scan" class="scroll x"></div></section>
     </div>
-    <section><h2>Letzter Scan</h2><div id="cx-scan"></div></section>
   </div>
 
   <div id="tab-control" class="grid" role="tabpanel" aria-labelledby="tabbtn-control" hidden>
@@ -402,7 +404,7 @@
   <div id="tab-analysis" class="grid" role="tabpanel" aria-labelledby="tabbtn-analysis" hidden>
     <section>
       <h2>Warum fällt was durch? <span class="spacer"></span><span class="note" id="why-sub" style="margin:0"></span></h2>
-      <div id="why"></div>
+      <div id="why" class="scroll x fit"></div>
       <p class="note">Jeder Grund zählt einmal pro Kandidat (letzte 200). Steht ein Grund bei fast allen, ist er der Flaschenhals: <b>Zum Parameter</b> springt ins Formular. <b>RugCheck nicht erreichbar</b> heißt: die Prüfung antwortet nicht – siehe Quellen-Karte und Selbsttest; der Token wird dann bewertet und verfolgt, aber nicht gekauft, solange „RugCheck-Ausfall tolerieren“ aus ist.</p>
     </section>
     <section>
@@ -1238,6 +1240,7 @@ $('q').oninput = () => { query = $('q').value; if (state) renderCandidates(state
 const cx = { pts: [], idx: -1, geo: null };
 const signPct = (v) => v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(1).replace('.', ',') + ' %';
 const rr = (v) => v == null ? '–' : (v > 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + ' R';
+const setupName = (k) => (state && state.crypto && state.crypto.setup_names || {})[k] || k;
 const ddmm = (t) => new Date(t * 1000).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 function renderCrypto(s) {
   const c = s.crypto;
@@ -1272,7 +1275,7 @@ function renderCrypto(s) {
     { h: 'raus bis', num: true, f: (r) => ddmm(r.hold_until) },
   ], 'Keine offene Position. Der Desk kauft nach dem nächsten Tagesschluss (00:00 UTC), wenn der Scanner ein Setup findet.');
   $('cx-closed').innerHTML = table(c.closed, [
-    { h: 'Coin', f: (r) => esc(r.symbol.replace(/USDT$/, '')) }, { h: 'Setup', f: (r) => esc(r.setup) },
+    { h: 'Coin', f: (r) => esc(r.symbol.replace(/USDT$/, '')) }, { h: 'Setup', f: (r) => esc(setupName(r.setup)) },
     { h: 'Ergebnis', num: true, f: (r) => usd(r.pnl), cls: (r) => cls(r.pnl) }, { h: 'R', num: true, f: (r) => rr(r.r), cls: (r) => cls(r.r) },
     { h: 'Grund', f: (r) => esc(r.reason) }, { h: 'Dauer', num: true, f: (r) => dur(r.closed_at - r.opened_at) },
     { h: 'Urteil', f: (r) => esc(r.verdict) }, { h: 'Schluss', num: true, f: (r) => ddmm(r.closed_at) },
@@ -1294,8 +1297,8 @@ function renderCrypto(s) {
   $('cx-scan').innerHTML = !ls ? '<div class="empty">Noch kein Scan. Der erste läuft nach dem nächsten Tagesschluss (00:02 UTC) – oder „Jetzt scannen“.</div>'
     : `<p class="note" style="margin-top:0">${ddmm(ls.at)} · ${ls.hits} von ${ls.scanned} Coins mit Setup · ${ls.taken.length} gekauft</p>`
       + table([...ls.taken.map((r) => ({ ...r, why: 'gekauft' })), ...ls.passed], [
-        { h: 'Coin', f: (r) => esc(r.symbol.replace(/USDT$/, '')) }, { h: 'Setups', f: (r) => esc(r.setups.join(', ')) },
-        { h: 'Schluss', num: true, f: (r) => px(r.close) }, { h: 'Zeitmaschine', f: (r) => esc(r.verdict || '–') },
+        { h: 'Coin', f: (r) => esc(r.symbol.replace(/USDT$/, '')) }, { h: 'Setups', f: (r) => esc(r.setups.map(setupName).join(', ')) },
+        { h: 'Zeitmaschine', f: (r) => r.verdict ? `<span title="${esc(r.verdict)}">${esc(r.verdict.split(':')[0])}</span>` : '–' },
         { h: '', f: (r) => esc(r.why) }], '');
 }
 function renderCryptoChart(c) {

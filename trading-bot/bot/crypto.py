@@ -442,7 +442,7 @@ class CryptoDesk:
             "win_rate": wins / len(closed) if closed else None,
             "avg_r": sum(t["r"] for t in closed) / len(closed) if closed else None,
             "curve": pts, "by_setup": agg["setup"], "by_verdict": agg["verdict"],
-            "last_scan": b["last_scan"], "backtest": b.get("backtest"),
+            "last_scan": b["last_scan"], "backtest": b.get("backtest"), "setup_names": dict(scan.SETUP_NAMES),
             "config": {k: c[k] for k in ("risk_pct", "max_open", "entry_window_h", "fee_pct", "slip_pct", "stop_atr",
                                           "target_r", "hold_days", "timemachine", "require_hint")},
         })
