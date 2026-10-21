@@ -1,0 +1,42 @@
+name: Krypto-Skills
+
+on:
+  push:
+    paths:
+      - 'crypto-skills/**'
+      - '.github/workflows/crypto-skills.yml'
+  pull_request:
+    paths:
+      - 'crypto-skills/**'
+      - '.github/workflows/crypto-skills.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, python: '3.9'}
+          - {os: ubuntu-latest, python: '3.13'}
+          - {os: macos-latest, python: '3.12'}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Offline-Tests
+        working-directory: crypto-skills
+        run: python -W error::ResourceWarning -m unittest discover -s tests -v
+      - name: Installation nach ~/.claude/skills
+        run: |
+          bash crypto-skills/install.sh
+          test -f ~/.claude/skills/crypto-scanner/SKILL.md
+          test -f ~/.claude/skills/crypto-timemachine/timemachine.py
+          python ~/.claude/skills/crypto-timemachine/timemachine.py --help > /dev/null
