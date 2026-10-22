@@ -373,5 +373,54 @@ class LivePageTests(unittest.TestCase):
         store.close()
 
 
+class SnapshotDbTests(unittest.TestCase):
+    """tools/snapshot_db.py: the copy that travels between Paper-Live runs stays small, the source untouched."""
+
+    def test_compact_copy_keeps_what_the_runs_need(self):
+        import gzip
+        import importlib.util
+        import sqlite3
+        spec = importlib.util.spec_from_file_location("snapshot_db", ROOT / "tools" / "snapshot_db.py")
+        sd = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sd)
+        now = T0 + 10 * DAY
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "bot.sqlite")
+            ids = {}
+            for name, seen, decision in (("old_skip", now - 3 * DAY, "skip"), ("old_buy", now - 3 * DAY, "buy"),
+                                         ("old_watch", now - 3 * DAY, "watch"), ("old_path", now - 3 * DAY, "skip"),
+                                         ("new_skip", now - 3600, "skip")):
+                ids[name] = store.add_candidate({"seen_at": seen, "chain": "solana", "token": name, "pair": name,
+                                                 "symbol": name, "price_usd": 1.0, "score": 0, "decision": decision,
+                                                 "reasons": [], "snapshot": {}})
+                store.schedule_outcomes(ids[name], seen, [5])
+            # an old skip that lands on the kept sample, and fillers so the plain old skip is not on it
+            while ids["old_skip"] % sd.SAMPLE == 0:
+                ids["old_skip"] = store.add_candidate({"seen_at": now - 3 * DAY, "chain": "solana", "token": "old_skip",
+                                                       "pair": "old_skip", "symbol": "x", "price_usd": 1.0, "score": 0,
+                                                       "decision": "skip", "reasons": [], "snapshot": {}})
+                store.schedule_outcomes(ids["old_skip"], now - 3 * DAY, [5])
+            store.add_path_points([(ids["old_path"], now - 3 * DAY, 1.0), (ids["old_path"], now - 3 * DAY + 60, 1.1)])
+            store.set("crypto_desk", {"v": 1, "cash": 123.0})
+            store.close()
+            src = Path(d) / "bot.sqlite"
+            before = src.stat().st_size, src.stat().st_mtime
+            counts = sd.snapshot(str(src), str(Path(d) / "out.gz"), now=now)
+            self.assertEqual((src.stat().st_size, src.stat().st_mtime), before)       # the live database is never touched
+            with gzip.open(Path(d) / "out.gz") as g, open(Path(d) / "copy.sqlite", "wb") as f:
+                f.write(g.read())
+            db = sqlite3.connect(Path(d) / "copy.sqlite")
+            kept = {r[0] for r in db.execute("SELECT id FROM candidates")}
+            outcome_ids = {r[0] for r in db.execute("SELECT candidate_id FROM outcomes")}
+            kv = db.execute("SELECT value FROM kv WHERE key='crypto_desk'").fetchone()[0]
+            db.close()
+            self.assertNotIn(ids["old_skip"], kept)
+            for name in ("old_buy", "old_watch", "old_path", "new_skip"):
+                self.assertIn(ids[name], kept, name)
+            self.assertTrue(outcome_ids <= kept)
+            self.assertEqual(json.loads(kv)["cash"], 123.0)
+            self.assertLess(counts["after"], counts["before"])
+
+
 if __name__ == "__main__":
     unittest.main()

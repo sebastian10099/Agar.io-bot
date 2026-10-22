@@ -91,17 +91,8 @@ jobs:
           for _ in $(seq 1 120); do curl -s -m 2 http://127.0.0.1:8765/api/state | grep -q '"app": "new-token-bot"' && break; sleep 1; done
           head -20 "$RUNNER_TEMP/bot.out"
 
-          save_account() {   # consistent copy of the running database, compressed
-            python3 - "$NEW_TOKEN_BOT_HOME/bot.sqlite" "$SITE/bot.sqlite.gz" <<'PY' || echo "Konto sichern fehlgeschlagen"
-          import gzip, os, shutil, sqlite3, sys
-          tmp = sys.argv[2] + ".tmp"
-          src = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)   # never create an empty one
-          dst = sqlite3.connect(tmp)
-          src.backup(dst); dst.close(); src.close()
-          with open(tmp, "rb") as f, gzip.open(sys.argv[2], "wb") as g:
-              shutil.copyfileobj(f, g)
-          os.remove(tmp)
-          PY
+          save_account() {   # consistent, compacted copy of the running database (GitHub refuses files over 100 MB)
+            python3 tools/snapshot_db.py "$NEW_TOKEN_BOT_HOME/bot.sqlite" "$SITE/bot.sqlite.gz" || echo "Konto sichern fehlgeschlagen"
           }
           publish() {        # one commit, force-pushed: the branch holds only the latest snapshot
             python3 tools/paper_live.py http://127.0.0.1:8765 "$SITE" "$PAGES_URL" || echo "Schnappschuss fehlgeschlagen"
@@ -114,9 +105,13 @@ jobs:
               { echo; echo "## Backtest auf den Kursverläufen"; echo; echo '```'; cat "$SITE/backtest.txt"; echo '```'; } >> "$SITE/REPORT.md"
             fi
             touch "$SITE/.nojekyll"
-            (cd "$SITE" && rm -rf .git && git init -q -b paper-live && git add -A \
+            # one parentless commit, force-pushed: the branch holds only the latest snapshot. The local repository
+            # stays, so git knows what the remote already has and does not upload the unchanged database again.
+            (cd "$SITE" && { [ -d .git ] || { git init -q -b paper-live \
+                && git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"; }; } \
+              && git checkout -q --orphan next && git add -A \
               && git -c user.name="paper-live" -c user.email="paper-live@users.noreply.github.com" commit -q -m "Paper-Live $(date -u +%FT%TZ)" \
-              && git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" paper-live) || echo "Veröffentlichen fehlgeschlagen"
+              && git branch -M next paper-live && git push -q -f origin paper-live) || echo "Veröffentlichen fehlgeschlagen"
           }
           finish() {
             echo "Ende: Konto sichern und letzten Schnappschuss veröffentlichen"
@@ -128,8 +123,10 @@ jobs:
 
           n=0
           while [ "$(date +%s)" -lt "$END" ]; do
-            if [ $((n % 5)) -eq 0 ]; then                 # account and backtest every 10 minutes
+            if [ $((n % 15)) -eq 0 ]; then                # the account every 30 minutes (and at the end)
               save_account
+            fi
+            if [ $((n % 5)) -eq 0 ]; then                 # the backtest every 10 minutes
               perl -e 'alarm 120; exec @ARGV' python3 tools/backtest.py "$NEW_TOKEN_BOT_HOME" --search > "$SITE/backtest.txt.new" 2>&1 \
                 && mv "$SITE/backtest.txt.new" "$SITE/backtest.txt" || echo "Backtest fehlgeschlagen"
             fi
