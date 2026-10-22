@@ -32,7 +32,7 @@ PUMP_DEXES = {"pumpfun", "pump-fun"}
 
 
 def fetch_state(base: str) -> dict[str, Any]:
-    with urllib.request.urlopen(base.rstrip("/") + "/api/state", timeout=20) as r:
+    with urllib.request.urlopen(base.rstrip("/") + "/api/state", timeout=90) as r:   # a fresh start computes its reports first
         return json.loads(r.read().decode("utf-8"))
 
 

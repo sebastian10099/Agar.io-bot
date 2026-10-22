@@ -392,6 +392,19 @@ class Store:
             self._conn.commit()
         return {"candidates": c, "outcomes": o}
 
+    def thin_skips(self, before: float, sample: int) -> int:
+        """Thin the "skip" verdicts seen before `before` to every `sample`-th id. Buys, watches and every
+        candidate with a price path stay, and so does the recent past. The edge report keeps a baseline;
+        the table – read by every report – stops growing by tens of thousands of rows a day."""
+        with self._lock:
+            n = self._conn.execute(
+                "DELETE FROM candidates WHERE seen_at < ? AND decision = 'skip' AND id % ? != 0"
+                " AND id NOT IN (SELECT DISTINCT candidate_id FROM paths)", (before, sample)).rowcount
+            if n:
+                self._conn.execute("DELETE FROM outcomes WHERE candidate_id NOT IN (SELECT id FROM candidates)")
+            self._conn.commit()
+        return n
+
     def prune_paths(self, before: float) -> int:
         """Drop price paths recorded before `before` (they are the bulk of the database)."""
         with self._lock:

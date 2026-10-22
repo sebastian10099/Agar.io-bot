@@ -631,6 +631,11 @@ derselbe Paper-Modus dauerhaft, mit der vollen Steuerseite.
 
 ## Der Edge-Report — der wichtigste Teil
 
+Zur Größe: Der Bot bewertet zehntausende Tokens am Tag, fast alle mit „skip“. Beim
+Start dünnt er „skip“-Urteile, die älter als einen Tag sind, auf jedes 20. aus (feste
+Stichprobe); Käufe, Beobachtungen und alle Kandidaten mit Kursverlauf bleiben
+vollständig. Die Edge-Berichte rechnet er höchstens alle zwei Minuten neu.
+
 **Ehrliche Messung:** Kurse für fällige Ergebnisse werden gesammelt abgefragt
 (bis zu 30 Paare pro Anfrage), damit auch bei vielen Kandidaten jeder Wert
 pünktlich gemessen wird. Ein Paar, das nicht mehr bepreist wird, während die
@@ -696,6 +701,7 @@ deploy/
 tools/
   audit.py       Laufzeit-Prüfung eines Kontos gegen die eigenen Regeln
   paper_live.py  Schnappschuss (REPORT.md, index.html) für Paper-Live
+  snapshot_db.py kompakte Kopie der Datenbank, die zwischen den Paper-Live-Läufen weiterreist
 tests/           python3 -m unittest tests.test_bot tests.test_control tests.test_ai tests.test_sources tests.test_preflight tests.test_crypto_desk
 ```
 

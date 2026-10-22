@@ -734,6 +734,50 @@ class HousekeepingTests(unittest.TestCase):
             self.assertEqual(len(calls), 3)
             store.close()
 
+    def test_edge_reports_survive_polls_and_expire_after_their_ttl(self):
+        from bot import engine as engine_mod
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]
+            eng = Engine(CFG, store, dex, FakeRug(), clock=dex.now, feeds=demo_feeds(dex))
+            eng.poll_once()
+            calls = []
+            orig = store.edge_report
+            store.edge_report = lambda key="decision": (calls.append(key), orig(key))[1]
+            eng.state()
+            first = len(calls)
+            t[0] += 60; eng.poll_once(); eng.state()
+            self.assertEqual(len(calls), first)                   # a poll does not recompute the slow reports
+            for key in ("edge", "edge_rules", "edge_ai", "edge_source"):
+                at, value, polls = eng._reports[key]
+                eng._reports[key] = (at - engine_mod.SLOW_REPORT_TTL - 1, value, polls)
+            eng.state()
+            self.assertEqual(len(calls), 2 * first)               # their time is up: computed again
+            store.close()
+
+    def test_thin_skips_keeps_buys_paths_and_a_sample(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(Path(d) / "t.sqlite")
+            ids = []
+            for k in range(60):
+                decision = "buy" if k == 5 else "watch" if k == 6 else "skip"
+                ids.append(store.add_candidate({"seen_at": 1000.0 + k, "chain": "solana", "token": f"t{k}", "pair": f"p{k}",
+                                                "decision": decision, "reasons": [], "snapshot": {}}))
+                store.schedule_outcomes(ids[-1], 1000.0 + k, [5])
+            store.add_path_points([(ids[7], 1010.0, 1.0)])
+            recent = store.add_candidate({"seen_at": 9000.0, "chain": "solana", "token": "new", "pair": "new",
+                                          "decision": "skip", "reasons": [], "snapshot": {}})
+            n = store.thin_skips(5000.0, 20)
+            kept = {c["id"] for c in store.candidates(1000)}
+            self.assertEqual(n, 61 - len(kept))
+            for cid in (ids[5], ids[6], ids[7], recent):
+                self.assertIn(cid, kept)
+            self.assertTrue(all(cid in kept for cid in ids if cid % 20 == 0))
+            self.assertFalse(any(cid in kept for cid in ids[8:] if cid % 20 != 0))
+            orphans = store._rows("SELECT count(*) AS n FROM outcomes WHERE candidate_id NOT IN (SELECT id FROM candidates)")
+            self.assertEqual(orphans[0]["n"], 0)
+            self.assertEqual(store.thin_skips(5000.0, 20), 0)
+            store.close()
+
     def test_prune_history_drops_old_candidates_and_outcomes(self):
         with tempfile.TemporaryDirectory() as d:
             store = Store(Path(d) / "t.sqlite"); dex = FakeDex(accel=1.0); t = [dex.started]; dex.now = lambda: t[0]

@@ -70,7 +70,10 @@ PRICE_MODEL = 2
 PATH_KEEP_DAYS = 7           # price paths (the backtest's data, the bulk of the database) this long
 DISCOVERY_BUDGET_S = 20.0      # seconds per poll for finding and judging new tokens; the rest waits for the next poll
 NO_PRICE_WRITE_OFF_MIN = 30.0   # minutes without any price (and past the time stop) before a position is written off
-REPORT_TTL = 10.0            # seconds: edge reports and breakdowns are recomputed at most this often       # price ticks of positions closed longer ago are dropped at start
+REPORT_TTL = 10.0            # seconds: edge reports and breakdowns are recomputed at most this often
+SLOW_REPORT_TTL = 120.0      # the edge reports scan every judged token: at most every two minutes, not after every poll
+THIN_AFTER_DAYS = 1          # older "skip" verdicts are thinned to a sample at start (see Store.thin_skips)
+THIN_SAMPLE = 20       # price ticks of positions closed longer ago are dropped at start
 
 
 class Engine:
@@ -123,11 +126,12 @@ class Engine:
             store.set("edge_since", clock())
             store.set("price_model", PRICE_MODEL)
 
-    def _report(self, key: str, fn: Callable[[], Any]) -> Any:
-        """The page polls every 2 s; the aggregate reports only need to move with the polls."""
+    def _report(self, key: str, fn: Callable[[], Any], slow: bool = False) -> Any:
+        """The page polls every 2 s; the aggregate reports only need to move with the polls.
+        Slow reports (over every judged token) are reused for SLOW_REPORT_TTL whatever the polls do."""
         now = time.time()
         hit = self._reports.get(key)
-        if hit and now - hit[0] < REPORT_TTL and hit[2] == self.poll_count:
+        if hit and (now - hit[0] < SLOW_REPORT_TTL if slow else now - hit[0] < REPORT_TTL and hit[2] == self.poll_count):
             return hit[1]
         value = fn()
         self._reports[key] = (now, value, self.poll_count)
@@ -575,6 +579,10 @@ class Engine:
         dropped = self.store.prune_history(self.clock() - HISTORY_KEEP_DAYS * 86400)
         if dropped["candidates"]:
             self.store.log("info", f"Verlauf aufgeräumt: {dropped['candidates']} Kandidaten älter als {HISTORY_KEEP_DAYS} Tage")
+        thinned = self.store.thin_skips(self.clock() - THIN_AFTER_DAYS * 86400, THIN_SAMPLE)
+        if thinned:
+            self.store.log("info", f"Verlauf ausgedünnt: {thinned} „skip“-Urteile älter als {THIN_AFTER_DAYS} Tage "
+                                   f"(jedes {THIN_SAMPLE}. bleibt als Stichprobe, Käufe und Kursverläufe bleiben alle)")
         while not self._stop.is_set():
             started = time.time()
             try:
@@ -838,10 +846,10 @@ class Engine:
             "daily_limit_hit": self.paper.daily_limit_hit(),
             "stats": self.store.stats(), "open_positions": open_positions,
             "closed": self.store.closed_positions(50), "candidates": self.store.candidates(80),
-            "edge": self._report("edge", self.store.edge_report), "events": self.store.events(60),
-            "edge_rules": self._report("edge_rules", lambda: self.store.edge_report("rule_decision")),
-            "edge_ai": self._report("edge_ai", lambda: self.store.edge_report("ai_decision")),
-            "edge_source": self._report("edge_source", lambda: self.store.edge_report("source")),
+            "edge": self._report("edge", self.store.edge_report, slow=True), "events": self.store.events(60),
+            "edge_rules": self._report("edge_rules", lambda: self.store.edge_report("rule_decision"), slow=True),
+            "edge_ai": self._report("edge_ai", lambda: self.store.edge_report("ai_decision"), slow=True),
+            "edge_source": self._report("edge_source", lambda: self.store.edge_report("source"), slow=True),
             "version": VERSION,
             "build": self._build(),
             "ai": self.advisor.status(),
