@@ -312,6 +312,12 @@ Minuten lag der Median bei +16 %. RugCheck nannte fast alle dieser Pool-Tokens
   40 Trades −16 % je Trade, 16 davon Totalverluste; die vorab festgelegte
   Probe im Backtest zeigte dasselbe (42 Trades, −14 %). Das Profil wird
   nicht mehr mitgeliefert; die Schalter bleiben, um es nachzuprüfen.
+- **„Aktive große Pools“ – im Test gescheitert.** Die vierte vorab festgelegte
+  Probe im Backtest (Liquidität ≥ 30k, ≥ 100 Käufe, 5-Minuten-Plus 0–50 %,
+  Bewertung/Liquidität ≤ 1,5, ohne RugCheck-Gefahr) lag auf den Daten, aus denen
+  sie stammt, bei +20 % je Trade. Auf den 32 Trades danach (Stand 23.10.2026):
+  −0,6 % je Trade, 18 davon Rugs. Nach der vorab festgelegten Regel (≥ 30 neue
+  Trades, nach Kosten im Plus) wird daraus kein Profil.
 - **Ohne RugCheck kein Pool außerhalb von pump.fun:** Antwortet RugCheck
   nicht, prüft der Bot selbst auf der Chain (Freeze, Mint, Token-2022,
   Halter) – wer die Liquidität eines Pools hält, sieht er dabei nicht. Solche
