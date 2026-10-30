@@ -26,7 +26,7 @@ concurrency:
 jobs:
   paper:
     name: Paper-Live – Spielgeld gegen echte Kurse
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 350
     env:
       PAGES_URL: https://sebastian10099.github.io/Agar.io-bot/

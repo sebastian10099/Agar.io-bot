@@ -91,7 +91,7 @@ jobs:
 
   macos:
     name: macOS – Startskripte (bash 3.2), Apple-Python, echte Märkte
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
