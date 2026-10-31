@@ -1,0 +1,8 @@
+OK     Buchhaltung je Position (Kauf, Verkäufe, Gebühren, Rest, Status) (0 geprüft)
+OK     Ausstiege beim richtigen Kurs (Stop-Loss, Gewinnstufen, Trailing, Zeit) (0 geprüft)
+OK     höchstens eine offene Position je Token (0 geprüft)
+OK     Bargeld nie negativ, Bankroll = Start + realisiert (45 geprüft)
+OK     automatische Käufe: Filter, Halter-Regel, Wiedereinstiegs-Sperre (0 geprüft)
+OK     kein Kauf-Urteil mit Sperrgrund (0 geprüft)
+OK     Kurse plausibel (kein Sprung über das 10-Fache in einem Schritt) (0 geprüft)
+7 von 7 Laufzeit-Prüfungen bestanden.
