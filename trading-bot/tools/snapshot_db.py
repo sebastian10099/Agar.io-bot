@@ -22,7 +22,7 @@ import sqlite3
 import sys
 import time
 
-KEEP_FULL_H = 24
+KEEP_FULL_H = 12   # outcomes are measured within 60 min; 24 h outgrew the file limit when pump.fun launches surged
 SAMPLE = 20
 
 
