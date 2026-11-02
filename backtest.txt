@@ -1,0 +1,68 @@
+16836 Kandidaten mit Kursverlauf · Kosten je Seite 1 % Gebühr + 2 % Slippage
+Vergleich – jeder Pool-Token gekauft, Ausstiege wie eingestellt: 12811 Trades · Ø  -31.4 % · Median  -34.9 % · im Plus  33 % · Summe -4020.80 Einsätze
+
+Rugs (−90 % binnen der Stunde): 10442 von 12811 Pool-Tokens
+  Insider-Netzwerk erkannt     mit:  83 % von  23 · ohne:  91 % von 1235
+  10 größte Wallets ≥ 35 %     mit:  91 % von  44 · ohne:  91 % von 1077
+  Ersteller hält > 5 %         mit: 100 % von   1 · ohne:  91 % von 1121
+  „LP Unlocked“                mit:  92 % von 1084 · ohne:  84 % von 174
+  Eigener Pool auf PumpSwap    mit:  80 % von 3833 · ohne:  82 % von 8978
+  Pool auf Meteora             mit:  96 % von 4522 · ohne:  73 % von 8289
+  Bewertung > 3× Liquidität    mit:  56 % von 2657 · ohne:  88 % von 10154
+  5-min-Anstieg > 150 %        mit:  65 % von 1393 · ohne:  84 % von 11418
+  Alter < 10 min               mit:  86 % von 12042 · ohne:  13 % von 769
+
+Probe: Frühkauf in eigenen PumpSwap-Pools (Alter < 1,5 min, Coin nicht von pump.fun)
+  Daten, aus denen die Idee stammt: keine Trades · Rugs 0
+  danach – die eigentliche Probe:   2294 Trades · Ø  -24.9 % · Median  -27.0 % · im Plus  41 % · Summe -570.51 Einsätze · Rugs 1882
+Probe: Frühkauf ohne „Mutable metadata“, größte Wallet ≤ 10 % (RugCheck-Bericht nötig)
+  Daten, aus denen die Idee stammt: keine Trades · Rugs 0
+  danach – die eigentliche Probe:   keine Trades · Rugs 0
+Probe: Kaufdruck ≥ 3 (Liq ≥ 15k, ≥ 8 Käufe, Alter ≤ 30 min, Bewertung/Liq ≤ 3x, ohne RugCheck-Gefahr)
+  Daten, aus denen die Idee stammt: keine Trades · Rugs 0
+  danach – die eigentliche Probe:   2742 Trades · Ø  -38.9 % · Median -100.8 % · im Plus  24 % · Summe -1066.34 Einsätze · Rugs 2405
+Probe: Aktive große Pools (Liq ≥ 30k, ≥ 100 Käufe, 5m 0 bis 50 %, Bewertung/Liq ≤ 1,5x, ohne RugCheck-Gefahr)
+  Daten, aus denen die Idee stammt: keine Trades · Rugs 0
+  danach – die eigentliche Probe:    210 Trades · Ø   -9.2 % · Median   +8.2 % · im Plus  56 % · Summe -19.34 Einsätze · Rugs 168
+
+eingestellt:    3 Trades · Ø  +14.0 % · Median  +41.9 % · im Plus  67 % · Summe +0.42 Einsätze
+  zu wenige Käufe für einen Vergleich der Ausstiege (mindestens 16)
+
+★ Locker – mehr Kandidaten (Paper):    8 Trades · Ø   +6.5 % · Median  +13.3 % · im Plus  50 % · Summe +0.52 Einsätze
+  zu wenige Käufe für einen Vergleich der Ausstiege (mindestens 16)
+
+★ Standard:    3 Trades · Ø  +14.0 % · Median  +41.9 % · im Plus  67 % · Summe +0.42 Einsätze
+  zu wenige Käufe für einen Vergleich der Ausstiege (mindestens 16)
+
+★ Streng – nur die besten: keine Trades
+  zu wenige Käufe für einen Vergleich der Ausstiege (mindestens 16)
+
+Suche über 729 Einstiegsregeln (604 verschiedene Auswahlen) × 6 Ausstiege auf 11710 Pool-Tokens (Rangfolge nur nach der ersten Hälfte, 5855 Tokens):
+  zum Vergleich, jeder Pool-Token, zweite Hälfte: 5855 Trades · Ø  -33.4 % · Median  -37.5 % · im Plus  32 % · Summe -1954.67 Einsätze
+
+  Liq ≥ 30k · Käufe ≥ 100 · Kauf/Verkauf ≥ 1 · 5m egal · Alter ≤ 30 min · Bewertung/Liq ≤ 1.5x
+    Ausstieg: Stop -15 % · Trailing 15 % · Zeit 10 min · Stufen +25%:0.5
+    erste Hälfte:    72 Trades · Ø   -0.3 % · Median  +19.8 % · im Plus  62 % · Summe -0.21 Einsätze
+    zweite Hälfte:  154 Trades · Ø   -6.0 % · Median  +18.9 % · im Plus  69 % · Summe -9.17 Einsätze
+
+  Liq ≥ 30k · Käufe ≥ 100 · Kauf/Verkauf ≥ 1 · 5m egal · Alter ≤ egal · Bewertung/Liq ≤ 1.5x
+    Ausstieg: Stop -15 % · Trailing 15 % · Zeit 10 min · Stufen +25%:0.5
+    erste Hälfte:    76 Trades · Ø   -1.2 % · Median  +12.6 % · im Plus  59 % · Summe -0.94 Einsätze
+    zweite Hälfte:  154 Trades · Ø   -6.0 % · Median  +18.9 % · im Plus  69 % · Summe -9.17 Einsätze
+
+  Liq ≥ 30k · Käufe ≥ 100 · Kauf/Verkauf ≥ 3 · 5m 0 bis 50 % · Alter ≤ 30 min · Bewertung/Liq ≤ 1.5x
+    Ausstieg: Stop -15 % · Trailing 15 % · Zeit 10 min · Stufen +25%:0.5
+    erste Hälfte:    37 Trades · Ø   -1.5 % · Median  +22.6 % · im Plus  70 % · Summe -0.55 Einsätze
+    zweite Hälfte:  120 Trades · Ø   -7.4 % · Median  +16.3 % · im Plus  68 % · Summe -8.89 Einsätze
+
+  Liq ≥ 30k · Käufe ≥ 100 · Kauf/Verkauf ≥ 3 · 5m 0 bis 50 % · Alter ≤ 30 min · Bewertung/Liq ≤ 3x
+    Ausstieg: Stop -15 % · Trailing 15 % · Zeit 10 min · Stufen +25%:0.5
+    erste Hälfte:    37 Trades · Ø   -1.5 % · Median  +22.6 % · im Plus  70 % · Summe -0.55 Einsätze
+    zweite Hälfte:  122 Trades · Ø   -7.3 % · Median  +15.3 % · im Plus  67 % · Summe -8.90 Einsätze
+
+  Liq ≥ 30k · Käufe ≥ 100 · Kauf/Verkauf ≥ 1 · 5m 0 bis 50 % · Alter ≤ 30 min · Bewertung/Liq ≤ 1.5x
+    Ausstieg: Stop -15 % · Trailing 15 % · Zeit 10 min · Stufen +25%:0.5
+    erste Hälfte:    61 Trades · Ø   -2.1 % · Median  +20.5 % · im Plus  67 % · Summe -1.29 Einsätze
+    zweite Hälfte:  145 Trades · Ø   -6.3 % · Median  +18.0 % · im Plus  70 % · Summe -9.12 Einsätze
+
+  0 von 3624 Kombinationen lagen in beiden Hälften im Plus (0 in der ersten)
